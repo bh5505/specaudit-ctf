@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "seed": 123,
+  "live_aws": false,
+  "fixtures": [
+    "tf_s3_public_access",
+    "tf_iam_open"
+  ]
+}

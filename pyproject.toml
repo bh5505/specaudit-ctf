@@ -1,0 +1,60 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "specaudit-ctf"
+version = "0.1.0"
+description = "Collaboration-cut CTF extension for specaudit: curated arms, fail-closed contract, and stdio MCP for agentic security evaluation."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+authors = [
+    { name = "specaudit-ctf maintainers" },
+]
+keywords = ["security", "ctf", "mcp", "agentic", "evaluation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+]
+dependencies = [
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "jsonschema>=4.18",
+    "pytest>=8.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/bh5505/specaudit-ctf"
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["extension*"]
+exclude = ["tests*"]
+
+[tool.setuptools.package-data]
+extension = [
+    "py.typed",
+    "coverage.yaml",
+    "schema/*.json",
+    "heads/*.md",
+    "heads/*/launch_mcp.py",
+    "heads/*/skills/*/SKILL.md",
+]
+"extension.range" = [
+    "manifest.json",
+    "*/expected.json",
+    "*/input/*",
+]

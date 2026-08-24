@@ -1,0 +1,13 @@
+{
+  "kind": "sast",
+  "findings": [
+    {
+      "id": "demo-sast-s3-acl",
+      "rule_id": "s3-public-acl",
+      "asset_id": "s3-public",
+      "severity": "high",
+      "file": "main.tf",
+      "message": "Bucket ACL is public-read"
+    }
+  ]
+}

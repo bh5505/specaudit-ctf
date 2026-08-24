@@ -1,0 +1,275 @@
+# Survey map for the specaudit-ctf collaboration cut.
+# Classifies each surveyed product. Not a ship list of adapters.
+# Curated arms (26): burp-mcp, semgrep-mcp, checkov, prowler-mcp, garak, zaproxy, wapiti, commix, mitreattack-python, vuls, stratus-red-team, osmedeus, zdns, page-fetch, caldera, google-mcp-security, metasploit-mcp, routersploit, sniper, zgrab2, dark-moon, pyrit, deepsec, vvah, ai-deep-sast, agent-wiz. Zero held arm rows. Methodology-only rows are never curated.
+
+version: 1
+entries:
+  - id: loopback
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Native pack-check and validation-client lanes in the specaudit CTF suite. Methodology for this extension, not an adapter.
+
+  - id: foundry
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Open specification for agentic security evaluation, finding lifecycle, and spec-kit workflow.
+
+  - id: codeguard
+    kind: methodology-only
+    protocols: [mcp, http]
+    curated: false
+    notes: Model-agnostic secure-by-default rule corpus for AI coding agents, with optional MCP packaging. A check contract, not a scanner.
+
+  - id: vulnhunter
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Attacker-first hunt, falsify, and verify skills. Teach-only methodology.
+
+  - id: defending-code
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Reference recon, find, verify, report, and patch harness with threat-model-gated scan skills.
+
+  - id: mantis
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Portable multi-stage skill toolkit with inspectable artifacts. Teach-only methodology.
+
+  - id: raptor
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Autonomous offensive and defensive review framework that layers static engines under an agent decision loop.
+
+  - id: deepsec
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Agent-powered large-repository scanner. Curated CLI arm wrapping the Node Commander entry (not npx/pnpm). DEEPSEC_SCAN_ROOT must be an existing workspace with config; invocations cwd there. Operator runs init out of band. scan is the unarmed matcher default and writes workspace state. process is gated by DEEPSEC_DISPATCH_SCOPE=localhost (containment is the scan root) and can cost thousands of dollars.
+
+  - id: vvah
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Multi-stage agentic SAST CLI. Curated CLI arm; doctor live-probes configured backends (may spend tokens); estimate spends nothing (VVAH_SCAN_ROOT, cwd pinned). scan defaults to --stop-after s9 and is gated by VVAH_DISPATCH_SCOPE. remediate is the S10 command and requires VVAH_ALLOW_REMEDIATE=1 plus dispatch scope. validate is not exposed. Agentic pipeline may spend model tokens.
+
+  - id: ai-deep-sast
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Hybrid CI SAST. Curated CLI arm; --skip-llm scan is the safe default and requires a local AI_DEEP_SAST_SEMGREP_CONFIG inside the scan root (no registry p/ default). ai_scan runs local Foundation-Sec via llama-completion; frontier deepscan.py is not exposed beyond dry_run --dry-run. Full AI scan is gated by AI_DEEP_SAST_DISPATCH_SCOPE.
+
+  - id: trailofbits
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Marketplace of composable specialist review skills for Claude Code CLI and Codex CLI.
+
+  - id: cloudflare
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Six-phase security-audit skill covering recon, hunt, adversarial validate, report, and independent verify.
+
+  - id: metasploit-mcp
+    kind: arm
+    protocols: [mcp, http]
+    curated: true
+    notes: Metasploit Framework MCP over RPC. Curated SSE arm; module/session listings are the read tier, execution tools are dispatch gated by METASPLOIT_DISPATCH_SCOPE with per-host RHOSTS scope matching.
+
+  - id: burp-mcp
+    kind: arm
+    protocols: [mcp, http]
+    curated: true
+    notes: Burp Suite MCP. The first curated specialized arm in this cut.
+
+  - id: agent-wiz
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Offline agent-framework graph extractor. Curated CLI arm wrapping first-party agent-wiz. extract and visualize are path-contained local reads. analyze (OpenAI egress) is gated by AGENT_WIZ_DISPATCH_SCOPE and credential presence.
+
+  - id: maestro
+    kind: methodology-only
+    protocols: [http]
+    curated: false
+    notes: Agentic threat-modeling reference application. Methodology artifact, not an adapter.
+
+  - id: prowler-mcp
+    kind: arm
+    protocols: [mcp, http]
+    curated: true
+    notes: First-party CSPM MCP with hub, docs, and optional cloud findings namespaces. Curated MCP arm; read-only namespaces only, cloud scan orchestration and mutation keywords blocked, credential-gated install.
+
+  - id: semgrep-mcp
+    kind: arm
+    protocols: [mcp, cli, http]
+    curated: true
+    notes: First-party SAST MCP and CLI for local rule scans. Curated MCP arm; allowlisted scan and findings reads, inline rule pack required for scans.
+
+  - id: google-mcp-security
+    kind: arm
+    protocols: [mcp, http]
+    curated: true
+    notes: Google security MCP family for threat-intel and SecOps enrichment. Curated GTI MCP arm; all 11 upstream tools are read-only lookups, no dispatch tier.
+
+  - id: garak
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: LLM vulnerability scanner with a probe, detector, and evaluator pipeline. Curated CLI arm; probe/detector listing and local report reading only, target-bound install, open-ended probe dispatch blocked.
+
+  - id: pyrit
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Multi-turn generative-AI red-team framework. Curated CLI arm wrapping first-party pyrit_scan only. list_scenarios is the read tier; scan is gated by PYRIT_DISPATCH_SCOPE. Requires operator PyRIT config. CoPyRIT GUI is out of scope.
+
+  - id: mitre-atlas
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Adversary knowledge base for AI-enabled systems. Curriculum only.
+
+  - id: cyberseceval
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Published LLM security benchmark suites. Curriculum and eval reference.
+
+  - id: cybench
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Professional CTF task set with subtask grading. Challenge-design reference.
+
+  - id: owasp-agentic
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: OWASP agentic application threats, mitigations, and MCP security guides.
+
+  - id: checkov
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Offline graph-based IaC misconfiguration scanner. Curated CLI arm; fixed-argv terraform scan, offline bundle mode, scan root contained to the packaged synthetic range.
+
+  - id: cloudgoat
+    kind: methodology-only
+    protocols: [cli]
+    curated: false
+    notes: Vulnerable-by-design cloud scenarios. Range and curriculum reference, not an adapter.
+
+  - id: stratus-red-team
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Cloud technique library. Curated CLI arm; local technique list reads, warmup/detonate/revert gated by STRATUS_DISPATCH_SCOPE.
+
+  - id: attackforge-testsuites
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Import-ready methodology checklists including telecom and cloud suites.
+
+  - id: attackforge-writeups
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Finding-writeup knowledge bases covering ATT&CK, ATLAS, CWE, and CAPEC.
+
+  - id: attack-stix-data
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: Canonical ATT&CK corpus as STIX 2.1 collection bundles.
+
+  - id: mitreattack-python
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Official ATT&CK Python library and CLIs. Curated CLI arm; local STIX-to-Excel conversion only, network downloader on no tier.
+
+  - id: mitre-cti
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    notes: STIX 2.0 ATT&CK and CAPEC datasets maintained alongside the 2.1 corpus.
+
+  - id: vuls
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Agent-less host vulnerability scanner. Curated CLI arm; local report/summary reads, host scan gated by VULS_DISPATCH_SCOPE, feed fetch on no tier.
+
+  - id: zaproxy
+    kind: arm
+    protocols: [cli, mcp, http]
+    curated: true
+    notes: Intercepting-proxy DAST. Curated native-API arm; allowlisted view reads, scan dispatch gated by ZAP_DISPATCH_SCOPE.
+
+  - id: wapiti
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Black-box web vulnerability scanner. Curated dispatch-only arm (no read-only mode upstream); scans gated by WAPITI_DISPATCH_SCOPE.
+
+  - id: commix
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Command-injection specialist scanner. Curated dispatch-only arm (active prober, no read-only mode upstream); probes gated by COMMIX_DISPATCH_SCOPE.
+
+  - id: zdns
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: High-volume DNS resolution toolkit. Curated dispatch-only arm; live resolution gated by ZDNS_DISPATCH_SCOPE.
+
+  - id: zgrab2
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Application-layer handshake scanner. Curated CLI arm; list_modules is a static allowlist; scan feeds one host on stdin with a closed module set and optional --port. Gated by ZGRAB2_DISPATCH_SCOPE.
+
+  - id: page-fetch
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Headless Chrome URL fetcher. Curated dispatch-only arm; http(s) URL with a hostname, then host-scope via PAGE_FETCH_DISPATCH_SCOPE. Private, metadata, and localhost hosts are allowed if in scope; redirects are not re-checked.
+
+  - id: caldera
+    kind: arm
+    protocols: [http, cli]
+    curated: true
+    notes: Adversary-emulation platform with ATT&CK-mapped abilities and a REST API. Curated REST arm; allowlisted GET reads, operation scheduling gated by CALDERA_DISPATCH_SCOPE.
+
+  - id: osmedeus
+    kind: arm
+    protocols: [cli, http]
+    curated: true
+    notes: Declarative recon orchestration engine. Curated CLI arm; local asset reads, scan dispatch gated by OSMEDEUS_DISPATCH_SCOPE.
+
+  - id: sniper
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Automated pentest harness composing many sub-scanners. Curated dispatch-only CLI arm gated by SNIPER_DISPATCH_SCOPE. Scoping the named target does not bound 90+ sub-tools. Community binary is root-only and phones home when armed. Operators who accept composite egress arm the scope; others leave unarmed.
+
+  - id: dark-moon
+    kind: arm
+    protocols: [cli, mcp]
+    curated: true
+    notes: Autonomous multi-agent pentest platform. Curated CLI arm wrapping the shell launcher; MCP tool names stay unpinned and unbound. campaign/run gated by DARK_MOON_DISPATCH_SCOPE. Composite egress inside Docker.
+
+  - id: routersploit
+    kind: arm
+    protocols: [cli]
+    curated: true
+    notes: Exploitation framework for embedded and CPE devices. Curated CLI arm; non-interactive -m run is gated by ROUTERSPLOIT_DISPATCH_SCOPE. Default unarmed. Every run executes the module (not a check-only path).

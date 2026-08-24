@@ -1,0 +1,14 @@
+{
+  "kind": "asset-config",
+  "assets": [
+    {
+      "id": "s3-public",
+      "type": "aws_s3_bucket",
+      "name": "demo-public-bucket",
+      "region": "us-east-1",
+      "acl": "public-read",
+      "public_access_block": false,
+      "encryption": false
+    }
+  ]
+}

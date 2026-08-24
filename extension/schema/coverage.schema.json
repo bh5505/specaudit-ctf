@@ -1,0 +1,58 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "specaudit-ctf coverage catalog",
+  "description": "Survey map of alternative heads, invocable arms, and methodology-only rows. Not a ship list of adapters.",
+  "type": "object",
+  "required": ["version", "entries"],
+  "additionalProperties": false,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Catalog schema version."
+    },
+    "entries": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/definitions/entry" }
+    }
+  },
+  "definitions": {
+    "entry": {
+      "type": "object",
+      "required": ["id", "kind", "protocols", "curated", "notes"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+          "description": "Stable kebab-case public product id."
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["head", "arm", "methodology-only"],
+          "description": "head = alternative agent or CLI head; arm = invocable tool, scanner, MCP, or CLI adapter candidate; methodology-only = specification, curriculum, or teach-only knowledge."
+        },
+        "protocols": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "enum": ["mcp", "cli", "http", "none"]
+          },
+          "description": "Protocols the row speaks. Use none alone when there is no invocable surface."
+        },
+        "curated": {
+          "type": "boolean",
+          "description": "True only for the maintained specialized arm. Methodology-only rows must be false."
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Short public note. Must stay inside the language bar."
+        }
+      }
+    }
+  }
+}

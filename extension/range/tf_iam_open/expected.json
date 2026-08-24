@@ -1,0 +1,25 @@
+{
+  "exposure": {
+    "id": "demo-exp-iam-open",
+    "kind": "open_identity",
+    "asset_id": "iam-open",
+    "asset_name": "demo-wildcard-policy",
+    "severity": "critical",
+    "summary": "aws_iam_policy iam-open grants Action=* on Resource=*"
+  },
+  "path": [
+    {
+      "from": "any-principal",
+      "to": "iam-open",
+      "via": "iam:AttachUserPolicy",
+      "auth": "principal"
+    }
+  ],
+  "impact": {
+    "id": "demo-imp-iam-open",
+    "kind": "privilege_escalation",
+    "asset_id": "iam-open",
+    "severity": "critical",
+    "summary": "A principal attached to demo-wildcard-policy can act on every resource"
+  }
+}

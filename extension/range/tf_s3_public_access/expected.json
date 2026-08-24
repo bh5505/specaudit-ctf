@@ -1,0 +1,25 @@
+{
+  "exposure": {
+    "id": "demo-exp-s3-public",
+    "kind": "public_storage",
+    "asset_id": "s3-public",
+    "asset_name": "demo-public-bucket",
+    "severity": "high",
+    "summary": "aws_s3_bucket s3-public is reachable without auth"
+  },
+  "path": [
+    {
+      "from": "internet",
+      "to": "s3-public",
+      "via": "https/443",
+      "auth": "none"
+    }
+  ],
+  "impact": {
+    "id": "demo-imp-s3-public",
+    "kind": "data_disclosure",
+    "asset_id": "s3-public",
+    "severity": "high",
+    "summary": "Unauthenticated parties can read objects on demo-public-bucket"
+  }
+}
