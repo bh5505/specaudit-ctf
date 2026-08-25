@@ -86,13 +86,20 @@ def test_bin_env_installs(monkeypatch: pytest.MonkeyPatch, fake_bin: Path) -> No
 # --- policy -------------------------------------------------------------
 
 
-def test_only_scan_action_allowed() -> None:
+def test_only_scan_action_allowed(
+    monkeypatch: pytest.MonkeyPatch, fake_bin: Path
+) -> None:
+    # Install gate fires before policy; a fake binary keeps this hermetic.
+    monkeypatch.setenv(ENV_BIN, str(fake_bin))
     result = _arm().invoke(_spec(), "version", {})
     assert result.ok is False
     assert "not on the allowlist" in result.error
 
 
-def test_caller_args_refused() -> None:
+def test_caller_args_refused(
+    monkeypatch: pytest.MonkeyPatch, fake_bin: Path
+) -> None:
+    monkeypatch.setenv(ENV_BIN, str(fake_bin))
     result = _arm().invoke(_spec(), "scan", {"--flag": "x"})
     assert result.ok is False
     assert "fixed argv" in result.error
