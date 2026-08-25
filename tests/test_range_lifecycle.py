@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -36,167 +37,66 @@ ROOT = Path(__file__).resolve().parents[1]
 RANGE_ROOT = ROOT / "extension" / "range"
 CURATED_ARM_ID = "burp-mcp"
 FIXTURE_ARM_ID = "probe-cli"
+RANGE_SCHEMA_V2 = "range.lifecycle.v2"
+_RANGE_STATUSES = {"complete", "degraded", "failed"}
+_COVERAGE_KEYS = ("attempted", "complete", "skipped", "error")
 
 
-class FakeCliTransport:
-    protocol = "cli"
-
-    def __init__(
-        self,
-        *,
-        installed_ids: set[str] | None = None,
-        result: Result | None = None,
-    ) -> None:
-        self.installed_ids = set(installed_ids or ())
-        self.calls: list[tuple[str, str, dict[str, Any]]] = []
-        self.result = result
-
-    def installed(self, spec: Any) -> bool:
-        return spec.id in self.installed_ids
-
-    def invoke(
-        self, spec: Any, action: str, args: Mapping[str, Any]
-    ) -> Result:
-        payload = dict(args)
-        self.calls.append((spec.id, action, payload))
-        if self.result is not None:
-            return self.result
-        return Result(
-            ok=True,
-            arm_id=spec.id,
-            action=action,
-            output={"echo": payload},
-            error=None,
-        )
+def _assert_v2_status(row: dict[str, Any], expected: str) -> None:
+    assert SCHEMA_ID == RANGE_SCHEMA_V2
+    if "schema" in row:
+        assert row["schema"] == RANGE_SCHEMA_V2
+    assert expected in _RANGE_STATUSES
+    assert row["status"] == expected
+    assert row["ok"] is (expected == "complete")
+    coverage = row["coverage"]
+    for key in _COVERAGE_KEYS:
+        assert isinstance(coverage[key], list)
+        assert coverage[key] == list(dict.fromkeys(coverage[key]))
 
 
-class RaisingTransport(FakeCliTransport):
-    def invoke(
-        self, spec: Any, action: str, args: Mapping[str, Any]
-    ) -> Result:
-        raise RuntimeError("transport boom")
+def _assert_fixture_v2(row: dict[str, Any], expected: str) -> None:
+    assert expected in _RANGE_STATUSES
+    assert row["status"] == expected
+    assert row["ok"] is (expected == "complete")
+    coverage = row["coverage"]
+    for key in _COVERAGE_KEYS:
+        assert isinstance(coverage[key], list)
+    attempted = [item["arm_id"] for item in row["arms"]]
+    assert coverage["attempted"] == attempted
+    assert coverage["complete"] == [
+        item["arm_id"] for item in row["arms"] if item["status"] == "ok"
+    ]
+    assert coverage["skipped"] == [
+        item["arm_id"] for item in row["arms"] if item["status"] == "skipped"
+    ]
+    assert coverage["error"] == [
+        item["arm_id"] for item in row["arms"] if item["status"] == "error"
+    ]
 
 
-def _entry(
-    entry_id: str,
-    *,
-    kind: str = "arm",
-    protocols: tuple[str, ...] = ("cli",),
-    curated: bool = False,
-) -> CatalogEntry:
-    return CatalogEntry(
-        id=entry_id,
-        kind=kind,
-        protocols=protocols,
-        curated=curated,
-        notes="Range fixture row.",
-    )
-
-
-def _catalog() -> Catalog:
-    return Catalog(
-        [
-            _entry(FIXTURE_ARM_ID, curated=True),
-            _entry(CURATED_ARM_ID, protocols=("mcp", "http"), curated=True),
-        ]
-    )
-
-
-def _expected(fixture_id: str) -> dict[str, Any]:
-    path = RANGE_ROOT / fixture_id / "expected.json"
-    with path.open(encoding="utf-8") as handle:
-        data = json.load(handle)
-    assert isinstance(data, dict)
-    return data
-
-
-def test_named_terraform_fixtures_exist() -> None:
-    assert default_range_root() == RANGE_ROOT
-    manifest = json.loads((RANGE_ROOT / "manifest.json").read_text(encoding="utf-8"))
-    assert manifest["live_aws"] is False
-    assert manifest["seed"] == DEFAULT_SEED
-    assert manifest["fixtures"] == [FIXTURE_S3_PUBLIC, FIXTURE_IAM_OPEN]
-    for fixture_id in (FIXTURE_S3_PUBLIC, FIXTURE_IAM_OPEN):
-        fixture_dir = RANGE_ROOT / fixture_id
-        assert (fixture_dir / "input" / "assets.json").is_file()
-        assert (fixture_dir / "input" / "connectivity.json").is_file()
-        assert (fixture_dir / "input" / "sast.json").is_file()
-        assert (fixture_dir / "input" / "main.tf").is_file()
-        assert (fixture_dir / "expected.json").is_file()
-        terraform = (fixture_dir / "input" / "main.tf").read_text(encoding="utf-8")
-        assert "provider" not in terraform
-        assert "access_key" not in terraform.lower()
-        assert "secret_key" not in terraform.lower()
-
-
-def test_range_fixtures_ship_in_non_editable_install(tmp_path: Path) -> None:
-    """Non-editable install must ship extension.range fixtures next to the package."""
-    prefix = tmp_path / "prefix"
-    subprocess.check_call(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            ".",
-            "--target",
-            str(prefix),
-            "--quiet",
-        ],
-        cwd=ROOT,
-    )
-    probe = tmp_path / "probe_range.py"
-    probe.write_text(
-        "from importlib import resources\n"
-        "from extension.range import default_range_root\n"
-        "root = default_range_root()\n"
-        "assert (root / 'manifest.json').is_file(), root\n"
-        "assert (root / 'tf_iam_open' / 'input' / 'main.tf').is_file()\n"
-        "assert (root / 'tf_s3_public_access' / 'input' / 'main.tf').is_file()\n"
-        "pkg = resources.files('extension.range')\n"
-        "assert (pkg / 'manifest.json').is_file()\n"
-        "assert (pkg / 'tf_iam_open' / 'input' / 'main.tf').is_file()\n"
-        "assert (pkg / 'tf_s3_public_access' / 'input' / 'main.tf').is_file()\n",
+def _mismatch_range_root(tmp_path: Path, *, also_match: bool = False) -> Path:
+    broken_id = "tf_mismatch"
+    src = RANGE_ROOT / FIXTURE_S3_PUBLIC
+    dst = tmp_path / broken_id
+    shutil.copytree(src, dst)
+    expected = json.loads((dst / "expected.json").read_text(encoding="utf-8"))
+    expected["exposure"]["summary"] = "deliberately wrong"
+    (dst / "expected.json").write_text(json.dumps(expected), encoding="utf-8")
+    fixtures = [broken_id]
+    if also_match:
+        match_id = FIXTURE_IAM_OPEN
+        shutil.copytree(RANGE_ROOT / match_id, tmp_path / match_id)
+        fixtures.append(match_id)
+    (tmp_path / "manifest.json").write_text(
+        json.dumps({"version": 1, "live_aws": False, "fixtures": fixtures}),
         encoding="utf-8",
     )
-    env = os.environ.copy()
-    env["PYTHONPATH"] = str(prefix)
-    env["PYTHONNOUSERSITE"] = "1"
-    subprocess.check_call([sys.executable, str(probe)], cwd=tmp_path, env=env)
+    return tmp_path
 
 
-def test_run_range_matches_expected_exposure_path_impact() -> None:
-    document = run_range(arm_ids=())
-    assert document["schema"] == SCHEMA_ID
-    assert document["seed"] == DEFAULT_SEED
-    assert document["live_aws"] is False
-    assert document["ok"] is True
-    by_id = {row["id"]: row for row in document["fixtures"]}
-    assert set(by_id) == {FIXTURE_S3_PUBLIC, FIXTURE_IAM_OPEN}
-    for fixture_id, row in by_id.items():
-        expected = _expected(fixture_id)
-        assert row["ok"] is True
-        assert row["matched_expected"] is True
-        assert row["exposure"] == expected["exposure"]
-        assert row["path"] == expected["path"]
-        assert row["impact"] == expected["impact"]
-        assert row["arms"] == []
-
-
-def test_run_range_is_seed_stable() -> None:
-    first = run_range()
-    second = run_range()
-    assert first == second
-    assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
-    assert first["seed"] == DEFAULT_SEED
-    stamped = run_range(seed=DEFAULT_SEED, arm_ids=())
-    again = run_range(seed=DEFAULT_SEED, arm_ids=())
-    assert stamped == again
-
-
-def test_uninstalled_curated_arm_is_skipped(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+@pytest.fixture
+def no_curated_tools(monkeypatch: pytest.MonkeyPatch) -> None:
     # Hermetic: no endpoint envs, and no PATH-discovered CLI binaries
     # even when the host machine really has them installed.
     monkeypatch.delenv("BURP_MCP_ENDPOINT", raising=False)
@@ -285,20 +185,239 @@ def test_uninstalled_curated_arm_is_skipped(
         "OPENAI_API_KEY",
     ):
         monkeypatch.delenv(env, raising=False)
+
+
+class FakeCliTransport:
+    protocol = "cli"
+
+    def __init__(
+        self,
+        *,
+        installed_ids: set[str] | None = None,
+        result: Result | None = None,
+    ) -> None:
+        self.installed_ids = set(installed_ids or ())
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+        self.result = result
+
+    def installed(self, spec: Any) -> bool:
+        return spec.id in self.installed_ids
+
+    def invoke(
+        self, spec: Any, action: str, args: Mapping[str, Any]
+    ) -> Result:
+        payload = dict(args)
+        self.calls.append((spec.id, action, payload))
+        if self.result is not None:
+            return self.result
+        return Result(
+            ok=True,
+            arm_id=spec.id,
+            action=action,
+            output={"echo": payload},
+            error=None,
+        )
+
+
+class RaisingTransport(FakeCliTransport):
+    def invoke(
+        self, spec: Any, action: str, args: Mapping[str, Any]
+    ) -> Result:
+        raise RuntimeError("transport boom")
+
+
+def _entry(
+    entry_id: str,
+    *,
+    kind: str = "arm",
+    protocols: tuple[str, ...] = ("cli",),
+    curated: bool = False,
+) -> CatalogEntry:
+    return CatalogEntry(
+        id=entry_id,
+        kind=kind,
+        protocols=protocols,
+        curated=curated,
+        notes="Range fixture row.",
+    )
+
+
+def _catalog() -> Catalog:
+    return Catalog(
+        [
+            _entry(FIXTURE_ARM_ID, curated=True),
+            _entry(CURATED_ARM_ID, protocols=("mcp", "http"), curated=True),
+        ]
+    )
+
+
+def _single_arm_extension(
+    *,
+    installed: set[str] | None = None,
+    result: Result | None = None,
+    transport: FakeCliTransport | None = None,
+) -> tuple[Extension, FakeCliTransport]:
+    fake = transport or FakeCliTransport(installed_ids=installed, result=result)
+    catalog = Catalog([_entry(FIXTURE_ARM_ID, curated=True)])
+    ext = Extension(
+        catalog=catalog,
+        transports={"cli": fake},
+        arms={FIXTURE_ARM_ID: fake},
+    )
+    return ext, fake
+
+
+def _expected(fixture_id: str) -> dict[str, Any]:
+    path = RANGE_ROOT / fixture_id / "expected.json"
+    with path.open(encoding="utf-8") as handle:
+        data = json.load(handle)
+    assert isinstance(data, dict)
+    return data
+
+
+def test_named_terraform_fixtures_exist() -> None:
+    assert default_range_root() == RANGE_ROOT
+    manifest = json.loads((RANGE_ROOT / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["live_aws"] is False
+    assert manifest["seed"] == DEFAULT_SEED
+    assert manifest["fixtures"] == [FIXTURE_S3_PUBLIC, FIXTURE_IAM_OPEN]
+    for fixture_id in (FIXTURE_S3_PUBLIC, FIXTURE_IAM_OPEN):
+        fixture_dir = RANGE_ROOT / fixture_id
+        assert (fixture_dir / "input" / "assets.json").is_file()
+        assert (fixture_dir / "input" / "connectivity.json").is_file()
+        assert (fixture_dir / "input" / "sast.json").is_file()
+        assert (fixture_dir / "input" / "main.tf").is_file()
+        assert (fixture_dir / "expected.json").is_file()
+        terraform = (fixture_dir / "input" / "main.tf").read_text(encoding="utf-8")
+        assert "provider" not in terraform
+        assert "access_key" not in terraform.lower()
+        assert "secret_key" not in terraform.lower()
+
+
+def test_range_fixtures_ship_in_non_editable_install(tmp_path: Path) -> None:
+    """Non-editable install must ship extension.range fixtures next to the package."""
+    prefix = tmp_path / "prefix"
+    subprocess.check_call(
+        [
+            sys.executable,
+            "-m",
+            "pip",
+            "install",
+            ".",
+            "--target",
+            str(prefix),
+            "--quiet",
+        ],
+        cwd=ROOT,
+    )
+    probe = tmp_path / "probe_range.py"
+    probe.write_text(
+        "from importlib import resources\n"
+        "from extension.range import default_range_root\n"
+        "root = default_range_root()\n"
+        "assert (root / 'manifest.json').is_file(), root\n"
+        "assert (root / 'tf_iam_open' / 'input' / 'main.tf').is_file()\n"
+        "assert (root / 'tf_s3_public_access' / 'input' / 'main.tf').is_file()\n"
+        "pkg = resources.files('extension.range')\n"
+        "assert (pkg / 'manifest.json').is_file()\n"
+        "assert (pkg / 'tf_iam_open' / 'input' / 'main.tf').is_file()\n"
+        "assert (pkg / 'tf_s3_public_access' / 'input' / 'main.tf').is_file()\n",
+        encoding="utf-8",
+    )
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(prefix)
+    env["PYTHONNOUSERSITE"] = "1"
+    subprocess.check_call([sys.executable, str(probe)], cwd=tmp_path, env=env)
+
+
+def test_run_range_matches_expected_exposure_path_impact() -> None:
+    document = run_range(arm_ids=())
+    _assert_v2_status(document, "complete")
+    assert document["seed"] == DEFAULT_SEED
+    assert document["live_aws"] is False
+    assert document["coverage"] == {
+        "attempted": [],
+        "complete": [],
+        "skipped": [],
+        "error": [],
+    }
+    by_id = {row["id"]: row for row in document["fixtures"]}
+    assert set(by_id) == {FIXTURE_S3_PUBLIC, FIXTURE_IAM_OPEN}
+    for fixture_id, row in by_id.items():
+        expected = _expected(fixture_id)
+        _assert_fixture_v2(row, "complete")
+        assert row["matched_expected"] is True
+        assert row["exposure"] == expected["exposure"]
+        assert row["path"] == expected["path"]
+        assert row["impact"] == expected["impact"]
+        assert row["arms"] == []
+
+
+def test_run_range_is_seed_stable() -> None:
+    first = run_range()
+    second = run_range()
+    assert first == second
+    assert json.dumps(first, sort_keys=True) == json.dumps(second, sort_keys=True)
+    assert first["seed"] == DEFAULT_SEED
+    stamped = run_range(seed=DEFAULT_SEED, arm_ids=())
+    again = run_range(seed=DEFAULT_SEED, arm_ids=())
+    assert stamped == again
+
+
+def test_uninstalled_curated_arm_is_skipped(no_curated_tools: None) -> None:
     document = run_range()
-    assert document["ok"] is True
-    curated_ids = sorted(
+    curated_ids = [
         entry.id
         for entry in default_extension().list_entries()
         if entry.kind == CATALOG_KIND_ARM and entry.curated
-    )
+    ]
+    assert len(curated_ids) == 26
     assert CURATED_ARM_ID in curated_ids
+    # RED lock: matching lifecycle plus one unavailable auto-discovered
+    # arm must not report complete / ok=true.
+    _assert_v2_status(document, "degraded")
+    assert document["coverage"]["attempted"] == curated_ids
+    assert document["coverage"]["skipped"] == curated_ids
+    assert document["coverage"]["complete"] == []
+    assert document["coverage"]["error"] == []
     for row in document["fixtures"]:
-        assert row["ok"] is True
+        _assert_fixture_v2(row, "degraded")
+        assert row["matched_expected"] is True
         statuses = {item["arm_id"]: item["status"] for item in row["arms"]}
         assert statuses == {arm_id: "skipped" for arm_id in curated_ids}
         for item in row["arms"]:
             assert item["reason"] == "not installed"
+
+
+def test_auto_discovered_missing_arm_is_degraded() -> None:
+    ext, _fake = _single_arm_extension(installed=set())
+    document = run_range(extension=ext)
+    _assert_v2_status(document, "degraded")
+    for row in document["fixtures"]:
+        _assert_fixture_v2(row, "degraded")
+        assert row["matched_expected"] is True
+        assert row["arms"][0]["status"] == "skipped"
+        assert row["coverage"]["skipped"] == [FIXTURE_ARM_ID]
+
+
+def test_explicit_missing_arm_is_failed() -> None:
+    ext, _fake = _single_arm_extension(installed=set())
+    document = run_range(extension=ext, arm_ids=[FIXTURE_ARM_ID])
+    _assert_v2_status(document, "failed")
+    for row in document["fixtures"]:
+        _assert_fixture_v2(row, "failed")
+        assert row["matched_expected"] is True
+        assert row["arms"][0]["status"] == "skipped"
+        assert row["coverage"]["skipped"] == [FIXTURE_ARM_ID]
+
+
+def test_explicit_empty_arm_ids_lifecycle_match_is_complete() -> None:
+    document = run_range(arm_ids=())
+    _assert_v2_status(document, "complete")
+    for row in document["fixtures"]:
+        _assert_fixture_v2(row, "complete")
+        assert row["matched_expected"] is True
+        assert row["arms"] == []
 
 
 def test_installed_curated_arm_is_invoked() -> None:
@@ -309,12 +428,14 @@ def test_installed_curated_arm_is_invoked() -> None:
         arms={FIXTURE_ARM_ID: fake},
     )
     document = run_range(extension=ext, arm_ids=[FIXTURE_ARM_ID])
-    assert document["ok"] is True
+    _assert_v2_status(document, "complete")
+    assert document["coverage"]["complete"] == [FIXTURE_ARM_ID]
     assert fake.calls == [
         (FIXTURE_ARM_ID, ARM_ACTION, {"fixture_id": FIXTURE_S3_PUBLIC, "seed": DEFAULT_SEED}),
         (FIXTURE_ARM_ID, ARM_ACTION, {"fixture_id": FIXTURE_IAM_OPEN, "seed": DEFAULT_SEED}),
     ]
     for row in document["fixtures"]:
+        _assert_fixture_v2(row, "complete")
         assert row["arms"] == [
             {
                 "arm_id": FIXTURE_ARM_ID,
@@ -328,9 +449,9 @@ def test_installed_curated_arm_is_invoked() -> None:
         ]
 
 
-def test_failed_arm_result_does_not_fail_fixture() -> None:
-    fake = FakeCliTransport(
-        installed_ids={FIXTURE_ARM_ID},
+def test_failed_arm_result_is_never_complete() -> None:
+    ext, _fake = _single_arm_extension(
+        installed={FIXTURE_ARM_ID},
         result=Result(
             ok=False,
             arm_id=FIXTURE_ARM_ID,
@@ -339,32 +460,69 @@ def test_failed_arm_result_does_not_fail_fixture() -> None:
             error="arm declined",
         ),
     )
-    ext = Extension(
-        catalog=_catalog(),
-        transports={"cli": fake},
-        arms={FIXTURE_ARM_ID: fake},
-    )
     document = run_range(extension=ext, arm_ids=[FIXTURE_ARM_ID])
-    assert document["ok"] is True
+    _assert_v2_status(document, "failed")
     for row in document["fixtures"]:
-        assert row["ok"] is True
+        _assert_fixture_v2(row, "failed")
+        assert row["matched_expected"] is True
         assert row["arms"][0]["status"] == "error"
         assert row["arms"][0]["error"] == "arm declined"
+        assert row["coverage"]["error"] == [FIXTURE_ARM_ID]
 
 
-def test_arm_transport_error_does_not_fail_fixture() -> None:
+def test_arm_transport_error_is_never_complete() -> None:
     fake = RaisingTransport(installed_ids={FIXTURE_ARM_ID})
-    ext = Extension(
-        catalog=_catalog(),
-        transports={"cli": fake},
-        arms={FIXTURE_ARM_ID: fake},
-    )
+    ext, _ = _single_arm_extension(transport=fake)
     document = run_range(extension=ext, arm_ids=[FIXTURE_ARM_ID])
-    assert document["ok"] is True
+    _assert_v2_status(document, "failed")
     for row in document["fixtures"]:
-        assert row["ok"] is True
+        _assert_fixture_v2(row, "failed")
+        assert row["matched_expected"] is True
         assert row["arms"][0]["status"] == "error"
         assert "transport boom" in row["arms"][0]["error"]
+
+
+def test_optional_arm_exception_is_degraded_not_complete() -> None:
+    fake = RaisingTransport(installed_ids={FIXTURE_ARM_ID})
+    ext, _ = _single_arm_extension(transport=fake)
+    document = run_range(extension=ext)
+    _assert_v2_status(document, "degraded")
+    for row in document["fixtures"]:
+        _assert_fixture_v2(row, "degraded")
+        assert row["matched_expected"] is True
+        assert row["arms"][0]["status"] == "error"
+
+
+def test_lifecycle_mismatch_is_failed(tmp_path: Path) -> None:
+    root = _mismatch_range_root(tmp_path)
+    document = run_range(range_root=root, arm_ids=())
+    _assert_v2_status(document, "failed")
+    row = document["fixtures"][0]
+    _assert_fixture_v2(row, "failed")
+    assert row["matched_expected"] is False
+    assert row["arms"] == []
+
+
+def test_lifecycle_mismatch_beats_optional_arm_skip(tmp_path: Path) -> None:
+    ext, _fake = _single_arm_extension(installed=set())
+    root = _mismatch_range_root(tmp_path)
+    document = run_range(range_root=root, extension=ext)
+    _assert_v2_status(document, "failed")
+    row = document["fixtures"][0]
+    _assert_fixture_v2(row, "failed")
+    assert row["matched_expected"] is False
+    assert row["arms"][0]["status"] == "skipped"
+
+
+def test_document_roll_up_failed_beats_complete(tmp_path: Path) -> None:
+    root = _mismatch_range_root(tmp_path, also_match=True)
+    document = run_range(range_root=root, arm_ids=())
+    _assert_v2_status(document, "failed")
+    by_id = {row["id"]: row for row in document["fixtures"]}
+    _assert_fixture_v2(by_id["tf_mismatch"], "failed")
+    assert by_id["tf_mismatch"]["matched_expected"] is False
+    _assert_fixture_v2(by_id[FIXTURE_IAM_OPEN], "complete")
+    assert by_id[FIXTURE_IAM_OPEN]["matched_expected"] is True
 
 
 def test_result_document_is_mode_b_loadable(tmp_path: Path) -> None:
@@ -376,10 +534,19 @@ def test_result_document_is_mode_b_loadable(tmp_path: Path) -> None:
         newline="\n",
     )
     loaded = json.loads(path.read_text(encoding="utf-8"))
-    assert loaded["schema"] == SCHEMA_ID
+    _assert_v2_status(loaded, "complete")
     assert loaded["live_aws"] is False
     for row in loaded["fixtures"]:
-        assert set(row) >= {"id", "ok", "exposure", "path", "impact"}
+        assert set(row) >= {
+            "id",
+            "ok",
+            "status",
+            "matched_expected",
+            "coverage",
+            "exposure",
+            "path",
+            "impact",
+        }
         assert isinstance(row["exposure"], dict)
         assert isinstance(row["path"], list)
         assert isinstance(row["impact"], dict)
@@ -552,6 +719,7 @@ def test_arm_transport_error_is_redacted() -> None:
         },
     )
     document = run_range(extension=ext, arm_ids=[FIXTURE_ARM_ID])
+    _assert_v2_status(document, "failed")
     err = document["fixtures"][0]["arms"][0]["error"]
     assert "[redacted]" in err
     assert "token" not in err.lower()
@@ -574,19 +742,29 @@ def test_resolve_arm_ids_dedupes_preserving_order() -> None:
 def test_main_writes_result_document(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert main([]) == 0
+    code = main([])
     printed = json.loads(capsys.readouterr().out)
-    assert printed["ok"] is True
-    assert printed["schema"] == SCHEMA_ID
+    assert printed["schema"] == RANGE_SCHEMA_V2
+    assert printed["ok"] is (printed["status"] == "complete")
+    assert code == (0 if printed["ok"] else 1)
     out = tmp_path / "result.json"
-    assert main(["--out", str(out), "--seed", str(DEFAULT_SEED)]) == 0
+    code2 = main(["--out", str(out), "--seed", str(DEFAULT_SEED)])
     written = json.loads(out.read_text(encoding="utf-8"))
     assert written["seed"] == DEFAULT_SEED
-    assert written["ok"] is True
+    assert written["schema"] == RANGE_SCHEMA_V2
+    assert code2 == (0 if written["ok"] else 1)
     assert {row["id"] for row in written["fixtures"]} == {
         FIXTURE_S3_PUBLIC,
         FIXTURE_IAM_OPEN,
     }
+
+
+def test_main_default_uninstalled_exits_nonzero(
+    no_curated_tools: None, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main([]) == 1
+    printed = json.loads(capsys.readouterr().out)
+    _assert_v2_status(printed, "degraded")
 
 
 def test_module_cli_emits_json() -> None:
@@ -598,8 +776,8 @@ def test_module_cli_emits_json() -> None:
         encoding="utf-8",
         check=False,
     )
-    assert proc.returncode == 0, proc.stderr
     document = json.loads(proc.stdout)
-    assert document["ok"] is True
+    assert document["schema"] == RANGE_SCHEMA_V2
     assert document["live_aws"] is False
-    assert document["schema"] == SCHEMA_ID
+    assert document["ok"] is (document["status"] == "complete")
+    assert proc.returncode == (0 if document["ok"] else 1), proc.stderr

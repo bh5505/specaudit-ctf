@@ -130,9 +130,15 @@ python -m extension.range --out range-result.json --seed 123
 ```
 
 Fixtures `tf_s3_public_access` and `tf_iam_open` are synthetic. The
-runner stamps `live_aws: false`. A missing curated arm is skipped; it
-does not fail the fixture. A transport error is recorded as `error`,
-not skipped.
+runner stamps `live_aws: false` and emits `range.lifecycle.v2`. Document
+and fixture `status` is `complete`, `degraded`, or `failed`; compatibility
+`ok` is true only when `status` is `complete`. A skipped or erroring arm
+cannot be `complete`: auto-discovered arms are optional (`degraded`);
+explicit `arm_ids` are required (`failed`). Lifecycle `matched_expected`
+is independent — a match cannot hide an arm skip/error. Default CLI runs
+auto-discover curated arms and may exit 1 with valid degraded JSON. MCP
+JSON-RPC success is transport-only; the content document carries range
+status.
 
 ## Dispatch doctrine
 

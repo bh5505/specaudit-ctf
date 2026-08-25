@@ -314,13 +314,20 @@ python -m extension.range
 python -m extension.range --out range-result.json --seed 123
 ```
 
-The runner emits a seed-stable document (`range.lifecycle.v1`) with
-`live_aws: false` and `fixtures[].exposure|path|impact`. Curated arms
-are invoked only when installed; a missing arm is skipped only when
-not installed, and does not fail the fixture. A transport error is
-recorded as an `error` row, not skipped. The new nine do not implement
-`observe`; if a binary is accidentally installed, range records
-`Result.ok=False` as `status=error`.
+The runner emits a seed-stable `range.lifecycle.v2` document with
+`live_aws: false`, `fixtures[].exposure|path|impact`, and coverage lists
+of attempted / complete / skipped / error arm ids. Document and fixture
+`status` is `complete`, `degraded`, or `failed`; compatibility `ok` is
+true only when `status` is `complete`. A missing arm is still recorded
+as `skipped` (transport errors as `error`); that row is never
+`complete`. Auto-discovered arms (`arm_ids is None`) are optional
+(`degraded`); explicit `arm_ids` are required (`failed`). Explicit
+`arm_ids=()` has no arms and may be `complete` when lifecycle matches.
+`matched_expected` stays independent: a mismatch is `failed`, and a
+match cannot hide an arm skip/error. Default CLI auto-discovers curated
+arms and may exit 1 with valid degraded JSON. MCP JSON-RPC success is
+transport-only. The new nine do not implement `observe`; if a binary is
+accidentally installed, range records `Result.ok=False` as `status=error`.
 
 ## Tests
 
