@@ -2,6 +2,7 @@
 
 CLI JSON and stdio MCP are encodings of this typed contract. This module does
 not spawn arms, open sockets, or rewrite live invoke / run_range output.
+Semantic complete is parser-owned; JSON Schema is structural only.
 """
 
 from __future__ import annotations
@@ -70,6 +71,14 @@ REASON_BLANKET_SCOPE = "blanket-scope"
 REASON_MISSING_APPROVAL = "missing-approval"
 REASON_INVALID_JSON = "invalid-json"
 REASON_INVALID_ENVELOPE = "invalid-envelope"
+REASON_DEFAULT_OFF = "default-off"
+REASON_NON_DISPATCHABLE_KIND = "non-dispatchable-kind"
+REASON_SCOPE_OVERFLOW = "scope-overflow"
+REASON_COVERAGE_INCONSISTENT = "coverage-inconsistent"
+REASON_CAPABILITY_MISMATCH = "capability-mismatch"
+REASON_CLEANUP_POLICY = "cleanup-policy-mismatch"
+REASON_SIDE_EFFECT_MISMATCH = "side-effect-mismatch"
+REASON_SAFETY_CLASS_MISMATCH = "safety-class-mismatch"
 
 _FAILED_REASONS = frozenset(
     {
@@ -87,8 +96,20 @@ _FAILED_REASONS = frozenset(
         REASON_MISSING_APPROVAL,
         REASON_INVALID_JSON,
         REASON_INVALID_ENVELOPE,
+        REASON_SCOPE_OVERFLOW,
+        REASON_COVERAGE_INCONSISTENT,
+        REASON_CAPABILITY_MISMATCH,
+        REASON_CLEANUP_POLICY,
+        REASON_SIDE_EFFECT_MISMATCH,
+        REASON_SAFETY_CLASS_MISMATCH,
     }
 )
+# default_off is an operator latch, not an execution-result failure class.
+_DISPATCH_DENY_REASONS = _FAILED_REASONS | {
+    REASON_DEFAULT_OFF,
+    REASON_NON_DISPATCHABLE_KIND,
+}
+_SAFETY_RANK = {"R0": 0, "R1": 1, "R2": 2, "R3": 3}
 
 # Synthetic packet-1 freeze. Survey catalog rows are not automatically
 # invocable; methodology-only and held ids are known so they fail closed
@@ -415,10 +436,20 @@ class ResultParse:
     result: ExecutionResult | None
 
 
+@dataclass(frozen=True)
+class PairAcceptance:
+    accepted: bool
+    status: str
+    reasons: tuple[str, ...]
+    manifest: ManifestParse
+    result: ResultParse
+
+
 def parse_capability_manifest(
     source: JsonSource,
     *,
     known_ids: Sequence[str] | None = None,
+    enabled: bool = False,
 ) -> ManifestParse:
     """Parse a capability manifest. Never dispatches."""
     payload, load_reasons = _read_mapping(source)
@@ -438,6 +469,7 @@ def parse_capability_manifest(
     tier = payload.get("tier")
     if isinstance(capability_id, str) and capability_id not in known:
         gate_reasons.append(REASON_UNKNOWN_CAPABILITY)
+    # Reserved ids stay non-invocable even if kind/tier is rewritten.
     if kind == KIND_METHODOLOGY_ONLY or (
         isinstance(capability_id, str) and capability_id in METHODOLOGY_ONLY_IDS
     ):
@@ -446,15 +478,24 @@ def parse_capability_manifest(
         isinstance(capability_id, str) and capability_id in HELD_IDS
     ):
         gate_reasons.append(REASON_HELD)
+    if (
+        kind in ALLOWED_KINDS
+        and kind not in DISPATCHABLE_KINDS
+        and kind != KIND_METHODOLOGY_ONLY
+    ):
+        gate_reasons.append(REASON_NON_DISPATCHABLE_KIND)
+    if payload.get("default_off") is True and not enabled:
+        gate_reasons.append(REASON_DEFAULT_OFF)
+    if _is_dispatch_class(payload) and _missing_approval(payload):
+        gate_reasons.append(REASON_MISSING_APPROVAL)
     dispatch_allowed = (
         schema_ok
         and isinstance(capability_id, str)
         and capability_id in known
         and kind in DISPATCHABLE_KINDS
+        and isinstance(tier, str)
         and tier in ALLOWED_TIERS
-        and tier != TIER_HELD
-        and kind != KIND_METHODOLOGY_ONLY
-        and REASON_BLANKET_SCOPE not in gate_reasons
+        and not any(code in _DISPATCH_DENY_REASONS for code in gate_reasons)
     )
     manifest = _build_manifest(payload) if schema_ok else None
     return ManifestParse(
@@ -510,12 +551,43 @@ def gate_dispatch(
     dispatcher: Dispatcher | None = None,
     *,
     known_ids: Sequence[str] | None = None,
+    enabled: bool = False,
 ) -> ManifestParse:
     """Admit a manifest for invoke. Dispatcher runs only when dispatch is allowed."""
-    parsed = parse_capability_manifest(source, known_ids=known_ids)
+    parsed = parse_capability_manifest(
+        source, known_ids=known_ids, enabled=enabled
+    )
     if parsed.dispatch_allowed and dispatcher is not None and parsed.manifest is not None:
         dispatcher(parsed.manifest)
     return parsed
+
+
+def accept_pair(
+    manifest_source: JsonSource,
+    result_source: JsonSource,
+    *,
+    known_ids: Sequence[str] | None = None,
+) -> PairAcceptance:
+    """Join one manifest and one result into a single fail-closed decision."""
+    manifest = parse_capability_manifest(manifest_source, known_ids=known_ids)
+    result = parse_execution_result(result_source, known_ids=known_ids)
+    join_reasons = _pair_join_reasons(manifest, result)
+    reasons = _unique(
+        [code for code in manifest.reasons if code != REASON_DEFAULT_OFF]
+        + list(result.reasons)
+        + join_reasons
+    )
+    status = result.status
+    if join_reasons or any(code in _FAILED_REASONS for code in reasons):
+        status = STATUS_FAILED
+    accepted = manifest.schema_ok and result.schema_ok and not join_reasons
+    return PairAcceptance(
+        accepted=accepted,
+        status=status,
+        reasons=reasons,
+        manifest=manifest,
+        result=result,
+    )
 
 
 def _read_mapping(
@@ -674,6 +746,8 @@ def _semantic_result_reasons(payload: Mapping[str, Any]) -> list[str]:
     skipped = _str_tuple(coverage.get("skipped"))
     failed = _str_tuple(coverage.get("failed"))
     unsupported = _str_tuple(coverage.get("unsupported"))
+    if _coverage_inconsistent(coverage):
+        reasons.append(REASON_COVERAGE_INCONSISTENT)
     for item in required:
         if item in failed:
             reasons.append(REASON_REQUIRED_FAILED)
@@ -684,6 +758,9 @@ def _semantic_result_reasons(payload: Mapping[str, Any]) -> list[str]:
         elif item not in complete:
             reasons.append(REASON_REQUIRED_FAILED)
     cleanup = payload.get("cleanup") if isinstance(payload.get("cleanup"), dict) else {}
+    # Residual means cleanup did not finish; a digest cannot mint complete.
+    if cleanup.get("residual") is True:
+        reasons.append(REASON_CLEANUP_UNPROVEN)
     if cleanup.get("required") is True:
         proof = cleanup.get("proof_digest")
         if not isinstance(proof, str) or not _DIGEST_RE.match(proof):
@@ -704,6 +781,10 @@ def _semantic_result_reasons(payload: Mapping[str, Any]) -> list[str]:
     if _is_dispatch_class(payload) and _missing_approval(payload):
         reasons.append(REASON_MISSING_APPROVAL)
     scope = payload.get("scope") if isinstance(payload.get("scope"), dict) else {}
+    authorized = _str_tuple(scope.get("authorized"))
+    touched = _str_tuple(scope.get("touched"))
+    if not _scope_subset(touched, authorized):
+        reasons.append(REASON_SCOPE_OVERFLOW)
     for item in list(scope.get("authorized") or []) + list(scope.get("touched") or []):
         if item in BLANKET_SCOPE:
             reasons.append(REASON_BLANKET_SCOPE)
@@ -925,6 +1006,83 @@ def _missing_approval(payload: Mapping[str, Any]) -> bool:
     approval = payload.get("approval_ref")
     roe = payload.get("roe_ref")
     return not (isinstance(approval, str) and approval and isinstance(roe, str) and roe)
+
+
+def _pair_join_reasons(manifest: ManifestParse, result: ResultParse) -> list[str]:
+    # Manifest constraints are the ceiling; the result cannot relax them.
+    parsed_manifest = manifest.manifest
+    parsed_result = result.result
+    if parsed_manifest is None or parsed_result is None:
+        return []
+    reasons: list[str] = []
+    if parsed_manifest.capability_id != parsed_result.capability_id:
+        reasons.append(REASON_CAPABILITY_MISMATCH)
+    if not _scope_subset(
+        parsed_result.scope.authorized, parsed_manifest.authorized_scope
+    ) or not _scope_subset(
+        parsed_result.scope.touched, parsed_manifest.authorized_scope
+    ):
+        reasons.append(REASON_SCOPE_OVERFLOW)
+    if parsed_manifest.cleanup.required and not parsed_result.cleanup.required:
+        reasons.append(REASON_CLEANUP_POLICY)
+    if parsed_manifest.cleanup.required and parsed_manifest.cleanup.proof == "artifact-digest":
+        proof = parsed_result.cleanup.proof_digest
+        if not isinstance(proof, str) or not _DIGEST_RE.match(proof):
+            reasons.append(REASON_CLEANUP_UNPROVEN)
+    declared = set(parsed_manifest.side_effects)
+    observed = set(parsed_result.side_effects)
+    if observed - declared:
+        reasons.append(REASON_SIDE_EFFECT_MISMATCH)
+    if _safety_rank(parsed_result.safety_class) > _safety_rank(
+        parsed_manifest.safety_class
+    ):
+        reasons.append(REASON_SAFETY_CLASS_MISMATCH)
+    if (
+        parsed_manifest.approval_ref
+        and parsed_result.approval_ref != parsed_manifest.approval_ref
+    ):
+        reasons.append(REASON_MISSING_APPROVAL)
+    if parsed_manifest.roe_ref and parsed_result.roe_ref != parsed_manifest.roe_ref:
+        reasons.append(REASON_MISSING_APPROVAL)
+    return reasons
+
+
+def _coverage_inconsistent(coverage: Mapping[str, Any]) -> bool:
+    complete = set(_str_tuple(coverage.get("complete")))
+    skipped = set(_str_tuple(coverage.get("skipped")))
+    unsupported = set(_str_tuple(coverage.get("unsupported")))
+    failed = set(_str_tuple(coverage.get("failed")))
+    attempted = set(_str_tuple(coverage.get("attempted")))
+    outcomes = (complete, skipped, unsupported, failed)
+    for index, left in enumerate(outcomes):
+        for right in outcomes[index + 1 :]:
+            if left & right:
+                return True
+    if (complete | skipped | failed) - attempted:
+        return True
+    if attempted - (complete | skipped | failed | unsupported):
+        return True
+    return False
+
+
+def _within_scope(item: str, authorized: Sequence[str]) -> bool:
+    for root in authorized:
+        if not root:
+            continue
+        if item == root:
+            return True
+        prefix = root if root.endswith("/") else f"{root}/"
+        if item.startswith(prefix):
+            return True
+    return False
+
+
+def _scope_subset(items: Sequence[str], authorized: Sequence[str]) -> bool:
+    return all(_within_scope(item, authorized) for item in items)
+
+
+def _safety_rank(value: str) -> int:
+    return _SAFETY_RANK.get(value, 0)
 
 
 def _build_manifest(payload: Mapping[str, Any]) -> CapabilityManifest:
