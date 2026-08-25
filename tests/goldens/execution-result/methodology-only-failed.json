@@ -1,0 +1,50 @@
+{
+  "schema": "specaudit.ctf.execution-result.v1",
+  "schema_version": 1,
+  "capability_id": "vulnhunter.extract",
+  "tool": {
+    "name": "vulnhunter",
+    "version": "0.0.0"
+  },
+  "scope": {
+    "authorized": ["file:///extension/range/tf_s3_public_access"],
+    "touched": []
+  },
+  "safety_class": "R0",
+  "side_effects": ["none"],
+  "approval_ref": null,
+  "roe_ref": "roe:synthetic-range",
+  "budget": {
+    "reserved": {
+      "timeout_ms": 1000,
+      "max_output_bytes": 4096,
+      "max_tool_steps": 1,
+      "max_spend": null
+    },
+    "spent": {
+      "elapsed_ms": 0,
+      "output_bytes": 0,
+      "tool_steps": 0,
+      "spend": 0
+    }
+  },
+  "started_at": "2026-08-25T12:00:00Z",
+  "finished_at": "2026-08-25T12:00:00Z",
+  "status": "failed",
+  "transport_ok": false,
+  "artifacts": [],
+  "coverage": {
+    "attempted": [],
+    "complete": [],
+    "skipped": [],
+    "unsupported": ["vulnhunter.extract"],
+    "failed": [],
+    "required": []
+  },
+  "cleanup": {
+    "required": false,
+    "proof_digest": null,
+    "residual": false
+  },
+  "limitations": ["methodology-only is never invocable"]
+}
