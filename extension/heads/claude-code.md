@@ -2,8 +2,8 @@
 
 Attach this clone as arms and legs from Claude Code CLI.
 
-The surface is `list`, `describe`, and `invoke` only. There is no inventory
-server and no extra MCP tools.
+The surface is `list`, `describe`, `invoke`, and `run_range`. There is no
+inventory server and no extra MCP tools.
 
 ## CLI
 
@@ -61,4 +61,4 @@ Bundled layout:
 
 Install from this directory (`--plugin-dir extension/heads/claude-code`) or
 treat the skill as a project skill. The skill tells the head to call only
-`list`, `describe`, and `invoke`.
+`list`, `describe`, `invoke`, and `run_range`.

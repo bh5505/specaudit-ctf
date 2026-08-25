@@ -1,4 +1,4 @@
-"""Stdio MCP server exposing list, describe, and invoke.
+"""Stdio MCP server exposing list, describe, invoke, and run_range.
 
 Tool contract error boundary
 ----------------------------
@@ -7,9 +7,9 @@ Tool contract error boundary
 | Bad params shape (non-object     | JSON-RPC -32602          |
 | arguments, missing/invalid       | ``_InvalidParams``       |
 | action/args type)                |                          |
-| Domain failure (unknown id, not  | ``isError: true`` tool   |
-| curated, not installed, not an   | result via               |
-| arm, transport error surfaced    | ``ExtensionError``       |
+| Domain failure (unknown id, held,| ``isError: true`` tool   |
+| not curated, not installed, not  | result via               |
+| an arm, transport error surfaced | ``ExtensionError``       |
 | as Result.ok==False)             |                          |
 |----------------------------------|--------------------------|
 | Unknown tool / method not found  | JSON-RPC -32601          |
@@ -83,14 +83,27 @@ _TOOL_DEFS: tuple[dict[str, Any], ...] = (
         "name": "run_range",
         "description": (
             "Run the synthetic range fixtures and return the seed-stable "
-            "lifecycle document. No live cloud, no file writes over MCP."
+            "lifecycle document. No live cloud, no file writes over MCP. "
+            "Omit arm_ids to auto-discover curated arms (skip/error is "
+            "degraded). Empty arm_ids is lifecycle-only and may be "
+            "complete. Non-empty arm_ids are required (skip/error is "
+            "failed)."
         ),
         "annotations": {"readOnlyHint": True, "openWorldHint": True},
         "inputSchema": {
             "type": "object",
             "properties": {
                 "seed": {"type": "integer"},
-                "arm_ids": {"type": "array", "items": {"type": "string"}},
+                "arm_ids": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Omitted: auto-discover curated arms (optional; "
+                        "skip/error is degraded). Empty: no arms; complete "
+                        "on lifecycle match. Non-empty: required; skip/error "
+                        "is failed."
+                    ),
+                },
             },
             "additionalProperties": False,
         },
@@ -110,7 +123,7 @@ class McpServer:
     """MCP server exposing catalog operations as tools.
 
     The server implements the JSON-RPC 2.0 protocol over stdio or HTTP,
-    exposing list, describe, and invoke operations as MCP tools.
+    exposing list, describe, invoke, and run_range operations as MCP tools.
 
     Attributes:
         extension: The Extension instance to use for catalog operations

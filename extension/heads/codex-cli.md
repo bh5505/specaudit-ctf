@@ -2,8 +2,8 @@
 
 Attach this clone as arms and legs from Codex CLI.
 
-The surface is `list`, `describe`, and `invoke` only. There is no inventory
-server and no extra MCP tools.
+The surface is `list`, `describe`, `invoke`, and `run_range`. There is no
+inventory server and no extra MCP tools.
 
 ## CLI
 
@@ -65,4 +65,4 @@ Bundled layout:
 
 Point a Codex plugin marketplace entry at `extension/heads/codex-cli`, or copy
 the skill under `skills/specaudit-ctf/`. The skill tells the head to call only
-`list`, `describe`, and `invoke`.
+`list`, `describe`, `invoke`, and `run_range`.

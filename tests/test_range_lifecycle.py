@@ -95,8 +95,7 @@ def _mismatch_range_root(tmp_path: Path, *, also_match: bool = False) -> Path:
     return tmp_path
 
 
-@pytest.fixture
-def no_curated_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+def apply_no_curated_tools(monkeypatch: pytest.MonkeyPatch) -> None:
     # Hermetic: no endpoint envs, and no PATH-discovered CLI binaries
     # even when the host machine really has them installed.
     monkeypatch.delenv("BURP_MCP_ENDPOINT", raising=False)
@@ -187,6 +186,11 @@ def no_curated_tools(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(env, raising=False)
 
 
+@pytest.fixture
+def no_curated_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    apply_no_curated_tools(monkeypatch)
+
+
 class FakeCliTransport:
     protocol = "cli"
 
@@ -233,14 +237,17 @@ def _entry(
     protocols: tuple[str, ...] = ("cli",),
     curated: bool = False,
     tier: str = "research",
+    notes: str = "Range fixture row.",
+    held_reason: str | None = None,
 ) -> CatalogEntry:
     return CatalogEntry(
         id=entry_id,
         kind=kind,
         protocols=protocols,
         curated=curated,
-        notes="Range fixture row.",
+        notes=notes,
         tier=tier,
+        held_reason=held_reason,
     )
 
 
@@ -366,7 +373,9 @@ def test_run_range_is_seed_stable() -> None:
     assert stamped == again
 
 
-def test_uninstalled_curated_arm_is_skipped(no_curated_tools: None) -> None:
+def test_uninstalled_curated_arm_is_skipped_held_is_error(
+    no_curated_tools: None,
+) -> None:
     document = run_range()
     entries = default_extension().list_entries()
     curated_ids = [
@@ -400,7 +409,35 @@ def test_uninstalled_curated_arm_is_skipped(no_curated_tools: None) -> None:
             assert by_id[arm_id]["reason"] == "not installed"
         for arm_id in held_ids:
             assert by_id[arm_id]["status"] == "error"
-            assert "held" in (by_id[arm_id].get("error") or "").lower()
+            err = by_id[arm_id].get("error") or ""
+            assert "held" in err.lower()
+            # Catalog policy text must not be keyword-mangled ("token").
+            assert "[redacted]" not in err
+            assert "token passthrough" in err.lower()
+
+
+def test_held_reason_redacted_when_notes_leak_secrets() -> None:
+    entry = _entry(
+        "held-mcp",
+        protocols=("cli",),
+        curated=True,
+        tier="held",
+        notes="operator pasted token=abc password=xyz",
+        held_reason="HTTP MCP is held; no token passthrough.",
+    )
+    fake = FakeCliTransport(installed_ids={"held-mcp"})
+    ext = Extension(
+        catalog=Catalog([entry]),
+        transports={"cli": fake},
+        arms={"held-mcp": fake},
+    )
+    document = run_range(extension=ext, arm_ids=["held-mcp"])
+    _assert_v2_status(document, "failed")
+    err = document["fixtures"][0]["arms"][0]["error"]
+    assert "[redacted]" in err
+    assert "token" not in err.lower()
+    assert "password" not in err.lower()
+    assert fake.calls == []
 
 
 def test_auto_discovered_missing_arm_is_degraded() -> None:

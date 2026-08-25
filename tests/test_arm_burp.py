@@ -376,7 +376,7 @@ def test_paginated_defaults_applied() -> None:
     assert session.calls == [("get_proxy_http_history", {"count": 200, "offset": 0})]
 
 
-def test_extension_invoke_uses_burp_arm() -> None:
+def test_extension_invoke_refuses_held_burp_arm() -> None:
     session = FakeSession()
     ext = Extension(arms={ARM_ID: _arm(session)})
     with pytest.raises(NotHeldError) as err:

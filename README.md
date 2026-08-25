@@ -67,7 +67,11 @@ arms, and uninstalled curated arms are hard errors. Do not invent a
 fallback. `list` / `describe` include `tier`.
 
 `invoke <id> list_tools` returns static JSON (no binary spawn) on
-MCP arms and the nine lifted CLIs. Pyrit scenario discovery is a
+non-held surfaces that implement it (the nine lifted CLIs). Catalog
+`invoke` of held HTTP MCP rows (`burp-mcp`, `semgrep-mcp`,
+`prowler-mcp`, `google-mcp-security`, `metasploit-mcp`) is refused
+even if an endpoint is configured; handler-level `list_tools` is not
+reachable through catalog/CLI/MCP invoke. Pyrit scenario discovery is a
 separate `list_scenarios` action, which runs `pyrit_scan
 --list-scenarios`. Original fixed-argv CLIs (checkov, garak,
 mitreattack-python, wapiti, commix, zdns, vuls, stratus-red-team,
@@ -138,10 +142,12 @@ Fixtures `tf_s3_public_access` and `tf_iam_open` are synthetic. The
 runner stamps `live_aws: false` and emits `range.lifecycle.v2`. Document
 and fixture `status` is `complete`, `degraded`, or `failed`; compatibility
 `ok` is true only when `status` is `complete`. A skipped or erroring arm
-cannot be `complete`: auto-discovered arms are optional (`degraded`);
-explicit `arm_ids` are required (`failed`). Lifecycle `matched_expected`
-is independent — a match cannot hide an arm skip/error. Default CLI runs
-auto-discover curated arms and may exit 1 with valid degraded JSON. MCP
+cannot be `complete`. Omit `arm_ids` (auto-discover) to treat curated arms
+as optional (`degraded` on skip/error). Explicit non-empty `arm_ids` are
+required (`failed` on skip/error). Explicit empty `arm_ids=()` has no arms
+and may be `complete` when lifecycle matches. Lifecycle `matched_expected`
+is independent — a match cannot hide an arm skip/error. Default CLI omits
+`arm_ids` (auto-discover) and may exit 1 with valid degraded JSON. MCP
 JSON-RPC success is transport-only; the content document carries range
 status.
 
