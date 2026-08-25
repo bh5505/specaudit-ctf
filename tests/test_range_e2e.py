@@ -141,8 +141,8 @@ def test_range_with_burp_stub_stays_mode_b_loadable(
         assert set(by_id) == set(curated_ids)
         burp_row = by_id[ARM_ID]
         assert burp_row["status"] == "error"
-        assert burp_row["output"] == {"edition": "professional"}
-        assert burp_row["error"] == "tool 'observe' is not on the allowlist"
+        assert burp_row["output"] is None
+        assert "held" in (burp_row.get("error") or "").lower()
         for arm_id in curated_ids:
             if arm_id != ARM_ID:
                 # Curated but unhandled in this wiring: fail-closed error row.

@@ -366,27 +366,39 @@ def test_run_range_is_seed_stable() -> None:
 
 def test_uninstalled_curated_arm_is_skipped(no_curated_tools: None) -> None:
     document = run_range()
+    entries = default_extension().list_entries()
     curated_ids = [
         entry.id
-        for entry in default_extension().list_entries()
+        for entry in entries
         if entry.kind == CATALOG_KIND_ARM and entry.curated
     ]
+    held_ids = [
+        entry.id
+        for entry in entries
+        if entry.kind == CATALOG_KIND_ARM and entry.curated and entry.tier == "held"
+    ]
+    skipped_ids = [arm_id for arm_id in curated_ids if arm_id not in held_ids]
     assert len(curated_ids) == 26
     assert CURATED_ARM_ID in curated_ids
+    assert CURATED_ARM_ID in held_ids
     # RED lock: matching lifecycle plus one unavailable auto-discovered
     # arm must not report complete / ok=true.
     _assert_v2_status(document, "degraded")
     assert document["coverage"]["attempted"] == curated_ids
-    assert document["coverage"]["skipped"] == curated_ids
+    assert document["coverage"]["skipped"] == skipped_ids
     assert document["coverage"]["complete"] == []
-    assert document["coverage"]["error"] == []
+    assert document["coverage"]["error"] == held_ids
     for row in document["fixtures"]:
         _assert_fixture_v2(row, "degraded")
         assert row["matched_expected"] is True
-        statuses = {item["arm_id"]: item["status"] for item in row["arms"]}
-        assert statuses == {arm_id: "skipped" for arm_id in curated_ids}
-        for item in row["arms"]:
-            assert item["reason"] == "not installed"
+        by_id = {item["arm_id"]: item for item in row["arms"]}
+        assert set(by_id) == set(curated_ids)
+        for arm_id in skipped_ids:
+            assert by_id[arm_id]["status"] == "skipped"
+            assert by_id[arm_id]["reason"] == "not installed"
+        for arm_id in held_ids:
+            assert by_id[arm_id]["status"] == "error"
+            assert "held" in (by_id[arm_id].get("error") or "").lower()
 
 
 def test_auto_discovered_missing_arm_is_degraded() -> None:

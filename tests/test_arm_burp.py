@@ -27,7 +27,7 @@ from extension.arms.burp.policy import (
     ENV_ENDPOINT,
 )
 from extension.arms.burp.sse import configured_http_url, resolve_sse_endpoint, redact
-from extension.contract import ArmSpec, Extension, NotInstalledError, invoke
+from extension.contract import ArmSpec, Extension, NotHeldError, NotInstalledError, invoke
 from extension.__main__ import main
 
 PRO_TOOLS = (
@@ -185,9 +185,9 @@ def test_default_invoke_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
     monkeypatch.setattr("extension.contract._DEFAULT", None)
     ext = Extension()
-    with pytest.raises(NotInstalledError):
+    with pytest.raises(NotHeldError):
         ext.invoke(ARM_ID, "list_tools", {})
-    with pytest.raises(NotInstalledError):
+    with pytest.raises(NotHeldError):
         invoke(ARM_ID, "list_tools", {})
 
 
@@ -378,11 +378,10 @@ def test_paginated_defaults_applied() -> None:
 def test_extension_invoke_uses_burp_arm() -> None:
     session = FakeSession()
     ext = Extension(arms={ARM_ID: _arm(session)})
-    result = ext.invoke(ARM_ID, "list_tools", {})
-    assert result.ok is True
-    assert result.arm_id == ARM_ID
-    assert result.action == "list_tools"
-    assert result.output["edition"] == "professional"
+    with pytest.raises(NotHeldError) as err:
+        ext.invoke(ARM_ID, "list_tools", {})
+    assert err.value.entry_id == ARM_ID
+    assert session.calls == []
 
 
 def test_env_endpoint_installs_arm(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -569,9 +568,9 @@ def test_extension_invoke_against_stub_sse(
 ) -> None:
     url, _state = stub_sse
     ext = Extension(arms={ARM_ID: BurpArm(endpoint=url, timeout=5)})
-    result = ext.invoke(ARM_ID, "url_encode", {"content": "a b"})
-    assert result.ok is True, result.error
-    assert result.output["data"] == "a+b"
+    with pytest.raises(NotHeldError) as err:
+        ext.invoke(ARM_ID, "url_encode", {"content": "a b"})
+    assert err.value.entry_id == ARM_ID
 
 
 def test_community_stub_refuses_tool_call(
@@ -822,8 +821,6 @@ def test_main_invoke_with_stub(
 ) -> None:
     url, _state = stub_sse
     monkeypatch.setenv(ENV_ENDPOINT, url)
-    assert main(["invoke", ARM_ID, "list_tools"]) == 0
-    payload = json.loads(capsys.readouterr().out)
-    assert payload["ok"] is True
-    assert payload["arm_id"] == ARM_ID
-    assert payload["output"]["edition"] == "professional"
+    assert main(["invoke", ARM_ID, "list_tools"]) == 2
+    err = capsys.readouterr().err
+    assert "held" in err.lower()

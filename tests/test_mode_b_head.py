@@ -83,9 +83,11 @@ def test_head_lists_and_describes_curated_burp_without_dialing(
     burp = next(row for row in rows if row["id"] == ARM_ID)
     assert burp["kind"] == "arm"
     assert burp["curated"] is True
+    assert burp["tier"] == "held"
     described = _content_json(_call(server, "describe", {"id": ARM_ID}))
     assert described["id"] == ARM_ID
     assert described["curated"] is True
+    assert described["tier"] == "held"
     assert state.http_hits == 0
     assert state.calls == []
 
@@ -96,23 +98,17 @@ def test_head_invokes_burp_stub(
     url, state = stub_sse
     server = _head(url)
     listed = _call(server, "invoke", {"id": ARM_ID, "action": "list_tools"})
-    assert listed["result"]["isError"] is False
-    listed_payload = _content_json(listed)
-    assert listed_payload["ok"] is True
-    assert listed_payload["arm_id"] == ARM_ID
-    assert listed_payload["output"]["edition"] == "professional"
-
+    assert listed["result"]["isError"] is True
+    assert "held" in _content_text(listed).lower()
     encoded = _call(
         server,
         "invoke",
         {"id": ARM_ID, "action": "url_encode", "args": {"content": "a b"}},
     )
-    assert encoded["result"]["isError"] is False
-    encoded_payload = _content_json(encoded)
-    assert encoded_payload["ok"] is True
-    assert encoded_payload["output"]["data"] == "a+b"
-    assert state.http_hits > 0
-    assert ("url_encode", {"content": "a b"}) in state.calls
+    assert encoded["result"]["isError"] is True
+    assert "held" in _content_text(encoded).lower()
+    assert state.http_hits == 0
+    assert state.calls == []
 
 
 def test_head_stdio_list_and_invoke_burp_stub(
@@ -152,12 +148,15 @@ def test_head_stdio_list_and_invoke_burp_stub(
     lines = [line for line in stdout.getvalue().splitlines() if line.strip()]
     assert len(lines) == 2
     rows = json.loads(json.loads(lines[0])["result"]["content"][0]["text"])
-    assert any(row["id"] == ARM_ID and row["curated"] is True for row in rows)
-    invoked = json.loads(json.loads(lines[1])["result"]["content"][0]["text"])
-    assert invoked["ok"] is True
-    assert invoked["output"]["data"] == "a+b"
-    assert state.http_hits > 0
-    assert ("url_encode", {"content": "a b"}) in state.calls
+    assert any(
+        row["id"] == ARM_ID and row["curated"] is True and row["tier"] == "held"
+        for row in rows
+    )
+    invoked = json.loads(lines[1])
+    assert invoked["result"]["isError"] is True
+    assert "held" in invoked["result"]["content"][0]["text"].lower()
+    assert state.http_hits == 0
+    assert state.calls == []
 
 
 def test_head_default_extension_uses_env_stub(
@@ -167,10 +166,10 @@ def test_head_default_extension_uses_env_stub(
     url, state = stub_sse
     monkeypatch.setenv(ENV_ENDPOINT, url)
     server = McpServer(extension=Extension())
-    result = _content_json(_call(server, "invoke", {"id": ARM_ID, "action": "list_tools"}))
-    assert result["ok"] is True
-    assert result["output"]["edition"] == "professional"
-    assert state.http_hits > 0
+    response = _call(server, "invoke", {"id": ARM_ID, "action": "list_tools"})
+    assert response["result"]["isError"] is True
+    assert "held" in _content_text(response).lower()
+    assert state.http_hits == 0
 
 
 def test_head_invoke_unknown_id_does_not_dial_stub(

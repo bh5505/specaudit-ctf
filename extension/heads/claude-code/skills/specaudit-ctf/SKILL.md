@@ -7,11 +7,12 @@ Use only the specaudit-ctf MCP tools `list`, `describe`, `invoke`, and
 `run_range`, or the matching CLI
 (`python -m extension list|describe|invoke`, `python -m extension.range`).
 
-- `list` — return catalog entries. Do not invent rows.
-- `describe` — take `id`. Return that row.
+- `list` — return catalog entries including `tier`. Do not invent rows.
+- `describe` — take `id`. Return that row including `tier`.
 - `invoke` — take `id`, `action`, and optional `args` object. Only a curated,
-  installed arm succeeds. Unknown ids, methodology-only rows, heads, and
-  non-curated arms are refusals; do not invent a fallback card.
+  installed, non-held arm succeeds. Unknown ids, methodology-only rows,
+  heads, held arms, and non-curated arms are refusals; do not invent a
+  fallback card. `curated` does not mean maintained.
 
 - `run_range` — run the synthetic range fixtures. Optional integer `seed`
   and optional `arm_ids` (curated arms only). Returns the seed-stable

@@ -2,8 +2,10 @@
 
 ## Overview
 
-- **Arms**: 26 specialized adapters. None are held. A specialized
-  handler is required; curated arms never ride a generic transport.
+- **Arms**: 26 specialized adapters. HTTP MCP rows are held; remaining
+  arm rows are research. None are maintained. A specialized handler is
+  required; curated arms never ride a generic transport. `curated` is a
+  deprecated compatibility flag and does not mean maintained.
 - **Legs / methodologies**: 19 methodology-only catalog rows
   (curriculum, spec, teach-only). They are not adapters.
 - **Heads**: attach profiles for Claude Code CLI, Codex CLI, and
@@ -12,8 +14,10 @@
 
 `extension/coverage.yaml` classifies the landscape survey (45 ids,
 frozen order). It is a **survey map**, not a ship list: a row is not
-a promise that an adapter exists. In this cut every arm row is
-curated (26) and every methodology-only row stays uncurated (19).
+a promise that an adapter exists. Every row has a support tier
+(`research` | `experimental` | `maintained` | `held`). In this cut
+every arm row is curated (26 handlers) and every methodology-only
+row stays uncurated (19). `curated` is not `maintained`.
 
 Per-arm caveats (composite egress, exploitation, LLM spend, source
 mutation): [extension/README.md](extension/README.md).
@@ -50,16 +54,17 @@ Examples:
 
 ```text
 python -m extension describe burp-mcp
-python -m extension invoke burp-mcp list_tools
-python -m extension invoke burp-mcp url_encode '{"content": "hello world"}'
+python -m extension describe checkov
+python -m extension invoke checkov scan
 ```
 
 - `list`: catalog entries
 - `describe <id>`: one catalog row
 - `invoke <id> <action> [args]`: fail-closed tool call (optional JSON object)
 
-Unknown ids, methodology-only rows, heads, non-curated arms, and
-uninstalled curated arms are hard errors. Do not invent a fallback.
+Unknown ids, methodology-only rows, heads, held arms, non-curated
+arms, and uninstalled curated arms are hard errors. Do not invent a
+fallback. `list` / `describe` include `tier`.
 
 `invoke <id> list_tools` returns static JSON (no binary spawn) on
 MCP arms and the nine lifted CLIs. Pyrit scenario discovery is a

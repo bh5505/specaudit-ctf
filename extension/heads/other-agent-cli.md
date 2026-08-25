@@ -22,9 +22,9 @@ python extension/heads/claude-code/launch_mcp.py
 `python -m extension.mcp_server` is only safe when the process cwd is this
 clone. A relocated launcher needs `SPECAUDIT_CTF_ROOT` set to the clone root.
 
-- `list` — catalog rows
-- `describe` — one row by `id`
-- `invoke` — curated installed arm (`id`, `action`, `args`)
+- `list` — catalog rows (includes `tier`)
+- `describe` — one row by `id` (includes `tier`)
+- `invoke` — curated installed arm that is not held (`id`, `action`, `args`)
 
 Do not add inventory, paging, or writeback tools on this process. If the other
 CLI already speaks MCP, point it at the same command used by Claude Code CLI

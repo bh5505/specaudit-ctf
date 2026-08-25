@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "specaudit-ctf coverage catalog",
-  "description": "Survey map of alternative heads, invocable arms, and methodology-only rows. Not a ship list of adapters.",
+  "description": "Survey map of alternative heads, invocable arms, and methodology-only rows. Not a ship list of adapters. Support tier is independent of the deprecated curated compatibility flag.",
   "type": "object",
   "required": ["version", "entries"],
   "additionalProperties": false,
@@ -20,7 +20,7 @@
   "definitions": {
     "entry": {
       "type": "object",
-      "required": ["id", "kind", "protocols", "curated", "notes"],
+      "required": ["id", "kind", "protocols", "curated", "tier", "notes"],
       "additionalProperties": false,
       "properties": {
         "id": {
@@ -45,14 +45,50 @@
         },
         "curated": {
           "type": "boolean",
-          "description": "True only for the maintained specialized arm. Methodology-only rows must be false."
+          "description": "Deprecated compatibility flag. True when a specialized handler exists in this cut. Not equivalent to tier=maintained."
+        },
+        "tier": {
+          "type": "string",
+          "enum": ["research", "experimental", "maintained", "held"],
+          "description": "Lifecycle/support tier. research and experimental are not a validator support promise. held is never invocable. maintained is not implied by curated."
+        },
+        "held_reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Required when tier is held. Written reason invoke is refused."
         },
         "notes": {
           "type": "string",
           "minLength": 1,
           "description": "Short public note. Must stay inside the language bar."
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "kind": { "const": "methodology-only" } },
+            "required": ["kind"]
+          },
+          "then": {
+            "properties": {
+              "tier": { "not": { "const": "maintained" } },
+              "curated": { "const": false }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": { "tier": { "const": "held" } },
+            "required": ["tier"]
+          },
+          "then": {
+            "required": ["held_reason"]
+          },
+          "else": {
+            "not": { "required": ["held_reason"] }
+          }
+        }
+      ]
     }
   }
 }

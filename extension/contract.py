@@ -28,6 +28,15 @@ TRANSPORT_CLI = "cli"  # Command-line interface transport
 TRANSPORT_MCP = "mcp"  # Model Context Protocol transport
 SUPPORTED_TRANSPORTS = frozenset({TRANSPORT_CLI, TRANSPORT_MCP})
 
+# Lifecycle/support tiers. curated is not equivalent to maintained.
+TIER_RESEARCH = "research"
+TIER_EXPERIMENTAL = "experimental"
+TIER_MAINTAINED = "maintained"
+TIER_HELD = "held"
+ALLOWED_TIERS = frozenset(
+    {TIER_RESEARCH, TIER_EXPERIMENTAL, TIER_MAINTAINED, TIER_HELD}
+)
+
 
 class ExtensionError(Exception):
     """Fail-closed extension error."""
@@ -60,11 +69,20 @@ class NotAHeadError(ExtensionError):
 
 
 class NotCuratedError(ExtensionError):
-    """Arm exists but is not the maintained specialized adapter."""
+    """Arm exists but is not curated."""
 
     def __init__(self, entry_id: str) -> None:
         self.entry_id = entry_id
         super().__init__(f"{entry_id} is not curated")
+
+
+class NotHeldError(ExtensionError):
+    """Arm exists but its support tier is held; invoke is refused."""
+
+    def __init__(self, entry_id: str, reason: str | None = None) -> None:
+        self.entry_id = entry_id
+        self.reason = reason or "held"
+        super().__init__(f"{entry_id} is held: {self.reason}")
 
 
 class NotInstalledError(ExtensionError):
@@ -82,15 +100,21 @@ class CatalogEntry:
     protocols: tuple[str, ...]
     curated: bool
     notes: str
+    tier: str = TIER_RESEARCH
+    held_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "id": self.id,
             "kind": self.kind,
             "protocols": list(self.protocols),
             "curated": self.curated,
+            "tier": self.tier,
             "notes": self.notes,
         }
+        if self.held_reason is not None:
+            payload["held_reason"] = self.held_reason
+        return payload
 
 
 @dataclass(frozen=True)
@@ -99,6 +123,8 @@ class ArmSpec:
     protocols: tuple[str, ...]
     curated: bool
     notes: str
+    tier: str = TIER_RESEARCH
+    held_reason: str | None = None
 
     @classmethod
     def from_entry(cls, entry: CatalogEntry) -> ArmSpec:
@@ -107,16 +133,22 @@ class ArmSpec:
             protocols=entry.protocols,
             curated=entry.curated,
             notes=entry.notes,
+            tier=entry.tier,
+            held_reason=entry.held_reason,
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "id": self.id,
             "kind": CATALOG_KIND_ARM,
             "protocols": list(self.protocols),
             "curated": self.curated,
+            "tier": self.tier,
             "notes": self.notes,
         }
+        if self.held_reason is not None:
+            payload["held_reason"] = self.held_reason
+        return payload
 
 
 @dataclass(frozen=True)
@@ -125,6 +157,8 @@ class HeadSpec:
     protocols: tuple[str, ...]
     curated: bool
     notes: str
+    tier: str = TIER_RESEARCH
+    held_reason: str | None = None
 
     @classmethod
     def from_entry(cls, entry: CatalogEntry) -> HeadSpec:
@@ -133,16 +167,22 @@ class HeadSpec:
             protocols=entry.protocols,
             curated=entry.curated,
             notes=entry.notes,
+            tier=entry.tier,
+            held_reason=entry.held_reason,
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "id": self.id,
             "kind": CATALOG_KIND_HEAD,
             "protocols": list(self.protocols),
             "curated": self.curated,
+            "tier": self.tier,
             "notes": self.notes,
         }
+        if self.held_reason is not None:
+            payload["held_reason"] = self.held_reason
+        return payload
 
 
 @dataclass(frozen=True)
@@ -341,6 +381,24 @@ def _entry_from_row(row: Any) -> CatalogEntry:
     curated_bool = bool(curated)
     if kind == "methodology-only" and curated_bool:
         raise ExtensionError("methodology-only entry must not be curated")
+    tier = row.get("tier")
+    if not isinstance(tier, str) or not tier.strip():
+        raise ExtensionError("catalog entry tier is required")
+    if tier not in ALLOWED_TIERS:
+        raise ExtensionError(
+            f"catalog entry tier must be one of {sorted(ALLOWED_TIERS)}: {tier}"
+        )
+    if kind == "methodology-only" and tier == TIER_MAINTAINED:
+        raise ExtensionError("methodology-only entry must not be maintained")
+    held_reason_raw = row.get("held_reason")
+    if tier == TIER_HELD:
+        if not isinstance(held_reason_raw, str) or not held_reason_raw.strip():
+            raise ExtensionError("held entry requires held_reason")
+        held_reason: str | None = held_reason_raw.strip()
+    else:
+        if held_reason_raw is not None:
+            raise ExtensionError("held_reason is only valid when tier is held")
+        held_reason = None
     notes = row.get("notes")
     if notes is None or (isinstance(notes, str) and not notes.strip()):
         raise ExtensionError("catalog entry notes is required")
@@ -354,6 +412,8 @@ def _entry_from_row(row: Any) -> CatalogEntry:
         protocols=tuple(str(item) for item in protocols),
         curated=curated_bool,
         notes=notes,
+        tier=tier,
+        held_reason=held_reason,
     )
 
 
@@ -563,6 +623,7 @@ class Extension:
             ExtensionError: If action is not a valid string
             UnknownIdError: If no entry exists with the given ID
             NotAnArmError: If the entry exists but is not an arm
+            NotHeldError: If the arm's support tier is held
             NotCuratedError: If the arm is not curated
             NotInstalledError: If no transport can reach the arm
 
@@ -571,6 +632,8 @@ class Extension:
             raise ExtensionError("action is required")
         payload = _args_payload(args)
         spec = self.arm_spec(arm_id)
+        if spec.tier == TIER_HELD:
+            raise NotHeldError(spec.id, spec.held_reason)
         if not spec.curated:
             raise NotCuratedError(spec.id)
         handler = self._select_handler(spec)
@@ -695,6 +758,7 @@ def invoke(
         ExtensionError: If action is not valid or other invocation errors occur
         UnknownIdError: If no entry exists with the given ID
         NotAnArmError: If the entry exists but is not an arm
+        NotHeldError: If the arm's support tier is held
         NotCuratedError: If the arm is not curated
         NotInstalledError: If no transport can reach the arm
 

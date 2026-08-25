@@ -66,7 +66,7 @@ _TOOL_DEFS: tuple[dict[str, Any], ...] = (
     },
     {
         "name": "invoke",
-        "description": "Invoke a curated installed arm.",
+        "description": "Invoke a curated installed arm that is not held.",
         "annotations": {"readOnlyHint": False, "openWorldHint": True},
         "inputSchema": {
             "type": "object",
