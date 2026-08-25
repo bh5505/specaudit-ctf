@@ -408,6 +408,12 @@ def test_tool_defs_match_documented_surface_and_annotations() -> None:
     }
     assert {tool["name"]: tool["annotations"] for tool in _TOOL_DEFS} == expected
     assert tuple(expected) == TOOLS
+    run_range_tool = next(tool for tool in _TOOL_DEFS if tool["name"] == "run_range")
+    arm_ids = run_range_tool["inputSchema"]["properties"]["arm_ids"]["description"]
+    lowered = arm_ids.lower()
+    assert "omitted" in lowered
+    assert "empty" in lowered
+    assert "degraded" in lowered
 
 
 def test_run_range_returns_seed_stable_document() -> None:
@@ -420,7 +426,7 @@ def test_run_range_returns_seed_stable_document() -> None:
     assert payload["schema"] == "range.lifecycle.v2"
     assert payload["live_aws"] is False
     assert payload["seed"] == DEFAULT_SEED
-    # Fixture catalog auto-discovers an uninstalled curated arm; JSON-RPC
+    # Fixture catalog auto-discovers a missing specialized handler; JSON-RPC
     # success is transport-only and must not hide degraded range status.
     assert payload["status"] == "degraded"
     assert payload["ok"] is False

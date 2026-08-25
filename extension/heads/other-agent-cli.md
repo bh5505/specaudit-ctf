@@ -25,8 +25,11 @@ clone. A relocated launcher needs `SPECAUDIT_CTF_ROOT` set to the clone root.
 - `list` — catalog rows (includes `tier`)
 - `describe` — one row by `id` (includes `tier`)
 - `invoke` — curated installed arm that is not held (`id`, `action`, `args`)
+- `run_range` — synthetic fixtures (`seed`, optional `arm_ids`). Omit
+  `arm_ids` to auto-discover (typically `degraded`); `arm_ids: []` may
+  be `complete`
 
 Do not add inventory, paging, or writeback tools on this process. If the other
 CLI already speaks MCP, point it at the same command used by Claude Code CLI
 and Codex CLI. If it already has a tool runner, wrap the three CLI
-subcommands.
+subcommands plus `python -m extension.range`.

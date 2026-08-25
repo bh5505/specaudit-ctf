@@ -622,7 +622,7 @@ class Extension:
         action: str,
         args: Mapping[str, Any] | None = None,
     ) -> Result:
-        """Invoke an action on a curated, installed arm.
+        """Invoke an action on a curated, installed, non-held arm.
 
         Args:
             arm_id: The unique identifier of the arm to invoke

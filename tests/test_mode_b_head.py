@@ -92,7 +92,7 @@ def test_head_lists_and_describes_curated_burp_without_dialing(
     assert state.calls == []
 
 
-def test_head_invokes_burp_stub(
+def test_head_refuses_held_burp_stub(
     stub_sse: tuple[str, _HitState],
 ) -> None:
     url, state = stub_sse

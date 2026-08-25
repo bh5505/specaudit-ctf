@@ -38,17 +38,18 @@ Schema: [schema/coverage.schema.json](schema/coverage.schema.json).
 
 ### Curated arms by family
 
-**MCP** (endpoint-gated; specialized session, not a generic transport):
+**MCP** (`tier: held` on this public cut; catalog invoke refused;
+handlers preserved; specialized session, not a generic transport):
 
-- `burp-mcp` — HTTP+SSE; allowlisted reads/utilities; Community edition
+- `burp-mcp` — held; HTTP+SSE; allowlisted reads/utilities; Community edition
   refused
-- `semgrep-mcp` — streamable HTTP; scan/findings/AST reads; inline
+- `semgrep-mcp` — held; streamable HTTP; scan/findings/AST reads; inline
   rule pack required (no registry `p/` or URL rules)
-- `prowler-mcp` — HTTP+SSE; read-only `prowler_` / `prowler_docs_` /
+- `prowler-mcp` — held; HTTP+SSE; read-only `prowler_` / `prowler_docs_` /
   `prowler_hub_` prefixes; `prowler_cloud_*` blocked; credential-gated
-- `google-mcp-security` — GTI lookups; all 11 tools are reads; no
+- `google-mcp-security` — held; GTI lookups; all 11 tools are reads; no
   dispatch tier
-- `metasploit-mcp` — SSE; module/session listings read; execution
+- `metasploit-mcp` — held; SSE; module/session listings read; execution
   tools gated by `METASPLOIT_DISPATCH_SCOPE`
 
 **CLI read** (no dispatch tier):
@@ -119,14 +120,15 @@ errors. Do not invent a fallback card. `list` / `describe` include
 
 Catalog `invoke` of HTTP MCP arms (`burp-mcp` and the other held
 rows) is refused even when an endpoint is configured. The specialized
-handler is preserved. Burp is not installed unless `BURP_MCP_ENDPOINT`
-is set to a scheme- and host-validated HTTP+SSE MCP URL; a configured
-endpoint that is unreachable fails the handler with an error. Community edition
-is refused for tool calls. `list_tools` / `tools/list` run when the
-endpoint is reachable; otherwise the invoke fails closed. Only
-allowlisted read or utility actions run. SSE endpoint with CR/LF is
-refused, oversized SSE frames are rejected, and error payloads redact
-credential substrings.
+handler is preserved for later un-hold and for direct unit tests;
+handler-level `list_tools` / `tools/list` are not reachable through
+catalog, CLI, or MCP `invoke`. Burp is not installed unless
+`BURP_MCP_ENDPOINT` is set to a scheme- and host-validated HTTP+SSE
+MCP URL; a configured endpoint that is unreachable fails the handler
+with an error. Community edition is refused for tool calls. Only
+allowlisted read or utility actions run once un-held. SSE endpoint
+with CR/LF is refused, oversized SSE frames are rejected, and error
+payloads redact credential substrings.
 
 Semgrep (`semgrep-mcp`) is installed only when `SEMGREP_MCP_ENDPOINT`
 names a streamable-HTTP MCP URL. Only scan and findings/AST/language
@@ -202,8 +204,9 @@ Env table (all 26): [root README](../README.md#environment-variables).
 
 Caveats are now the operator contract (`policy.CAVEATS`, catalog
 `notes`, `list_tools`, unarmed `Result.error`, CLI stderr). GUI-only
-remains the only skip class. Default unarmed matches the old "held"
-behavior for dispatch: nothing fires until scope is set.
+remains the only skip class. Default unarmed dispatch is refused until
+scope is set (support-tier `held` is separate: catalog invoke is
+refused).
 
 ## Per-arm caveats
 
@@ -328,9 +331,10 @@ of attempted / complete / skipped / error arm ids. Document and fixture
 `status` is `complete`, `degraded`, or `failed`; compatibility `ok` is
 true only when `status` is `complete`. A missing arm is still recorded
 as `skipped` (transport errors as `error`); that row is never
-`complete`. Auto-discovered arms (`arm_ids is None`) are optional
-(`degraded`); explicit `arm_ids` are required (`failed`). Explicit
-`arm_ids=()` has no arms and may be `complete` when lifecycle matches.
+`complete`. Omitted `arm_ids` (`None`) auto-discovers curated arms as
+optional (`degraded` on skip/error). Explicit non-empty `arm_ids` are
+required (`failed` on skip/error). Explicit empty `arm_ids=()` has no
+arms and may be `complete` when lifecycle matches.
 `matched_expected` stays independent: a mismatch is `failed`, and a
 match cannot hide an arm skip/error. Default CLI auto-discovers curated
 arms and may exit 1 with valid degraded JSON. MCP JSON-RPC success is

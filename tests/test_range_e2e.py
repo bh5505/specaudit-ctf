@@ -25,6 +25,7 @@ from extension.range import (
     run_range,
 )
 from tests.test_arm_burp import _StubState, _make_handler
+from tests.test_range_lifecycle import apply_no_curated_tools
 
 ROOT = Path(__file__).resolve().parents[1]
 MODE_B_FIELDS = {
@@ -39,6 +40,11 @@ MODE_B_FIELDS = {
     "arms",
 }
 RANGE_SCHEMA_V2 = "range.lifecycle.v2"
+
+
+@pytest.fixture
+def no_curated_tools(monkeypatch: pytest.MonkeyPatch) -> None:
+    apply_no_curated_tools(monkeypatch)
 
 
 @pytest.fixture
@@ -78,10 +84,15 @@ def _assert_mode_b_loadable(document: dict[str, Any], *, status: str) -> None:
         assert row["path"]
 
 
-def test_range_cli_writes_mode_b_loadable_document(tmp_path: Path) -> None:
+def test_range_cli_writes_mode_b_loadable_document(
+    tmp_path: Path, no_curated_tools: None
+) -> None:
     out = tmp_path / "range-result.json"
     env = os.environ.copy()
     env.pop(ENV_ENDPOINT, None)
+    # Subprocess cannot inherit resolve_binary stubs; keep python's dir
+    # so the interpreter starts, but do not search the host PATH.
+    env["PATH"] = str(Path(sys.executable).parent)
     proc = subprocess.run(
         [
             sys.executable,
@@ -100,13 +111,14 @@ def test_range_cli_writes_mode_b_loadable_document(tmp_path: Path) -> None:
         check=False,
         timeout=15,
     )
+    assert out.is_file(), proc.stderr or proc.stdout
     loaded = json.loads(out.read_text(encoding="utf-8"))
     assert loaded["schema"] == RANGE_SCHEMA_V2
-    assert loaded["ok"] is (loaded["status"] == "complete")
-    assert proc.returncode == (0 if loaded["ok"] else 1), proc.stderr
-    # Default CLI auto-discovers curated arms; popping BURP prevents complete.
-    assert loaded["status"] != "complete"
-    _assert_mode_b_loadable(loaded, status=loaded["status"])
+    # Default CLI omits arm_ids (auto-discover); no curated tools → degraded.
+    assert loaded["status"] == "degraded"
+    assert loaded["ok"] is False
+    assert proc.returncode == 1, proc.stderr
+    _assert_mode_b_loadable(loaded, status="degraded")
     again = json.loads(out.read_text(encoding="utf-8"))
     assert again == loaded
 
