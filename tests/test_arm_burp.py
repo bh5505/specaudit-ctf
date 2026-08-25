@@ -51,6 +51,7 @@ def _spec() -> ArmSpec:
         protocols=("mcp", "http"),
         curated=True,
         notes="Fixture curated MCP arm.",
+        tier="research",
     )
 
 

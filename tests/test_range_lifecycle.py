@@ -31,7 +31,7 @@ from extension.range import (
     run_range,
 )
 from extension.range.__main__ import main
-from extension.range.runner import derive_lifecycle
+from extension.range.runner import _document_status, _fixture_status, derive_lifecycle
 
 ROOT = Path(__file__).resolve().parents[1]
 RANGE_ROOT = ROOT / "extension" / "range"
@@ -232,6 +232,7 @@ def _entry(
     kind: str = "arm",
     protocols: tuple[str, ...] = ("cli",),
     curated: bool = False,
+    tier: str = "research",
 ) -> CatalogEntry:
     return CatalogEntry(
         id=entry_id,
@@ -239,6 +240,7 @@ def _entry(
         protocols=protocols,
         curated=curated,
         notes="Range fixture row.",
+        tier=tier,
     )
 
 
@@ -535,6 +537,96 @@ def test_document_roll_up_failed_beats_complete(tmp_path: Path) -> None:
     assert by_id["tf_mismatch"]["matched_expected"] is False
     _assert_fixture_v2(by_id[FIXTURE_IAM_OPEN], "complete")
     assert by_id[FIXTURE_IAM_OPEN]["matched_expected"] is True
+
+
+@pytest.mark.parametrize("required", (False, True))
+@pytest.mark.parametrize(
+    "arms",
+    (
+        [{"arm_id": FIXTURE_ARM_ID}],
+        [{"arm_id": FIXTURE_ARM_ID, "status": None}],
+        [{"arm_id": FIXTURE_ARM_ID, "status": "unknown"}],
+        [{"arm_id": FIXTURE_ARM_ID, "status": "complete"}],
+        [{"arm_id": FIXTURE_ARM_ID, "status": "OK"}],
+        [{"arm_id": FIXTURE_ARM_ID, "status": ""}],
+        [
+            {"arm_id": FIXTURE_ARM_ID, "status": "ok"},
+            {"arm_id": "other-cli", "status": "mystery"},
+        ],
+    ),
+)
+def test_unknown_arm_status_is_failed_never_complete(
+    required: bool, arms: list[dict[str, Any]]
+) -> None:
+    status = _fixture_status(matched=True, arms=arms, required=required)
+    assert status == "failed"
+    assert status != "complete"
+
+
+def test_unknown_arm_status_run_range_is_failed_never_complete(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def _unknown_arms(*_args: Any, **_kwargs: Any) -> list[dict[str, Any]]:
+        return [
+            {
+                "arm_id": FIXTURE_ARM_ID,
+                "action": ARM_ACTION,
+                "status": "unknown",
+            }
+        ]
+
+    monkeypatch.setattr("extension.range.runner._invoke_arms", _unknown_arms)
+    ext, _fake = _single_arm_extension(installed={FIXTURE_ARM_ID})
+    document = run_range(extension=ext)
+    _assert_v2_status(document, "failed")
+    for row in document["fixtures"]:
+        assert row["status"] == "failed"
+        assert row["ok"] is False
+        assert row["matched_expected"] is True
+        assert row["arms"][0]["status"] == "unknown"
+
+
+def test_document_status_degraded_beats_complete() -> None:
+    assert (
+        _document_status([{"status": "degraded"}, {"status": "complete"}])
+        == "degraded"
+    )
+    assert (
+        _document_status([{"status": "complete"}, {"status": "degraded"}])
+        == "degraded"
+    )
+
+
+def test_document_roll_up_degraded_beats_complete() -> None:
+    class MixedTransport(FakeCliTransport):
+        def invoke(
+            self, spec: Any, action: str, args: Mapping[str, Any]
+        ) -> Result:
+            payload = dict(args)
+            self.calls.append((spec.id, action, payload))
+            if payload.get("fixture_id") == FIXTURE_S3_PUBLIC:
+                raise RuntimeError("optional boom")
+            return Result(
+                ok=True,
+                arm_id=spec.id,
+                action=action,
+                output={"echo": payload},
+                error=None,
+            )
+
+    fake = MixedTransport(installed_ids={FIXTURE_ARM_ID})
+    ext = Extension(
+        catalog=Catalog([_entry(FIXTURE_ARM_ID, curated=True)]),
+        transports={"cli": fake},
+        arms={FIXTURE_ARM_ID: fake},
+    )
+    document = run_range(extension=ext)
+    _assert_v2_status(document, "degraded")
+    by_id = {row["id"]: row for row in document["fixtures"]}
+    _assert_fixture_v2(by_id[FIXTURE_S3_PUBLIC], "degraded")
+    _assert_fixture_v2(by_id[FIXTURE_IAM_OPEN], "complete")
+    assert by_id[FIXTURE_S3_PUBLIC]["arms"][0]["status"] == "error"
+    assert by_id[FIXTURE_IAM_OPEN]["arms"][0]["status"] == "ok"
 
 
 def test_result_document_is_mode_b_loadable(tmp_path: Path) -> None:

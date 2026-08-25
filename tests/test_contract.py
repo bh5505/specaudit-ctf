@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 import subprocess
 import sys
+from dataclasses import MISSING, fields
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.error import URLError
@@ -250,6 +252,7 @@ def test_cli_transport_runs_configured_command() -> None:
         protocols=("cli",),
         curated=True,
         notes="Fixture curated CLI arm.",
+        tier="research",
     )
     assert transport.installed(spec) is True
     result = transport.invoke(spec, "echo", {"k": "v"})
@@ -264,6 +267,7 @@ def test_mcp_transport_not_installed_by_default() -> None:
         protocols=("mcp", "http"),
         curated=True,
         notes="Fixture curated MCP arm.",
+        tier="research",
     )
     transport = McpTransport()
     assert transport.installed(spec) is False
@@ -301,6 +305,7 @@ def test_mcp_transport_http_tools_call(monkeypatch: pytest.MonkeyPatch) -> None:
         protocols=("mcp",),
         curated=True,
         notes="Fixture curated MCP arm.",
+        tier="research",
     )
     transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
     assert transport.installed(spec) is True
@@ -325,6 +330,7 @@ def test_mcp_transport_unreachable_is_result(monkeypatch: pytest.MonkeyPatch) ->
         protocols=("mcp",),
         curated=True,
         notes="Fixture curated MCP arm.",
+        tier="research",
     )
     transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
     result = transport.invoke(spec, "ping", {})
@@ -379,7 +385,13 @@ def test_module_cli_list() -> None:
     assert any(row["id"] == CURATED_ARM_ID for row in rows)
 
 def test_cli_transport_empty_argv_is_not_installed() -> None:
-    spec = ArmSpec(id=FIXTURE_ARM_ID, protocols=("cli",), curated=True, notes="x")
+    spec = ArmSpec(
+        id=FIXTURE_ARM_ID,
+        protocols=("cli",),
+        curated=True,
+        notes="x",
+        tier="research",
+    )
     transport = CliTransport(commands={FIXTURE_ARM_ID: []})
     assert transport.installed(spec) is False
     with pytest.raises(NotInstalledError):
@@ -387,7 +399,13 @@ def test_cli_transport_empty_argv_is_not_installed() -> None:
 
 
 def test_mcp_transport_empty_stdio_argv_is_not_installed_but_preserved() -> None:
-    spec = ArmSpec(id=FIXTURE_ARM_ID, protocols=("mcp",), curated=True, notes="x")
+    spec = ArmSpec(
+        id=FIXTURE_ARM_ID,
+        protocols=("mcp",),
+        curated=True,
+        notes="x",
+        tier="research",
+    )
     transport = McpTransport(stdio_cmds={FIXTURE_ARM_ID: []})
     # Empty list is preserved (not discarded) but counts as not installed
     assert FIXTURE_ARM_ID in transport._stdio_cmds
@@ -409,7 +427,13 @@ def test_mcp_transport_non_object_body_is_malformed(monkeypatch: pytest.MonkeyPa
             return None
 
     monkeypatch.setattr("extension.transports.mcp.urllib_request.urlopen", lambda req, timeout=None: _Resp())
-    spec = ArmSpec(id=CURATED_ARM_ID, protocols=("mcp",), curated=True, notes="x")
+    spec = ArmSpec(
+        id=CURATED_ARM_ID,
+        protocols=("mcp",),
+        curated=True,
+        notes="x",
+        tier="research",
+    )
     transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
     result = transport.invoke(spec, "ping", {})
     assert result.ok is False
@@ -428,7 +452,13 @@ def test_mcp_transport_non_dict_result_is_malformed(monkeypatch: pytest.MonkeyPa
             return None
 
     monkeypatch.setattr("extension.transports.mcp.urllib_request.urlopen", lambda req, timeout=None: _Resp())
-    spec = ArmSpec(id=CURATED_ARM_ID, protocols=("mcp",), curated=True, notes="x")
+    spec = ArmSpec(
+        id=CURATED_ARM_ID,
+        protocols=("mcp",),
+        curated=True,
+        notes="x",
+        tier="research",
+    )
     transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
     result = transport.invoke(spec, "ping", {})
     assert result.ok is False
@@ -449,7 +479,13 @@ def test_mcp_transport_is_error_true_propagates_text(monkeypatch: pytest.MonkeyP
             return None
 
     monkeypatch.setattr("extension.transports.mcp.urllib_request.urlopen", lambda req, timeout=None: _Resp())
-    spec = ArmSpec(id=CURATED_ARM_ID, protocols=("mcp",), curated=True, notes="x")
+    spec = ArmSpec(
+        id=CURATED_ARM_ID,
+        protocols=("mcp",),
+        curated=True,
+        notes="x",
+        tier="research",
+    )
     transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
     result = transport.invoke(spec, "ping", {})
     assert result.ok is False
@@ -468,7 +504,13 @@ def test_mcp_transport_empty_error_object_is_failure(monkeypatch: pytest.MonkeyP
             return None
 
     monkeypatch.setattr("extension.transports.mcp.urllib_request.urlopen", lambda req, timeout=None: _Resp())
-    spec = ArmSpec(id=CURATED_ARM_ID, protocols=("mcp",), curated=True, notes="x")
+    spec = ArmSpec(
+        id=CURATED_ARM_ID,
+        protocols=("mcp",),
+        curated=True,
+        notes="x",
+        tier="research",
+    )
     transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
     result = transport.invoke(spec, "ping", {})
     assert result.ok is False
@@ -616,3 +658,42 @@ def test_curated_arm_never_falls_back_to_generic_transport() -> None:
         ext.invoke(RESEARCH_ARM_ID, "anything", {})
     assert "specialized handler" in str(err.value)
     assert fake.calls == []
+
+
+def test_catalog_types_require_explicit_tier() -> None:
+    for cls in (CatalogEntry, ArmSpec, HeadSpec):
+        param = inspect.signature(cls).parameters["tier"]
+        assert param.default is inspect.Parameter.empty
+        by_name = {item.name: item for item in fields(cls)}
+        assert by_name["tier"].default is MISSING
+        assert by_name["tier"].default_factory is MISSING
+        kwargs: dict[str, Any] = {
+            "id": FIXTURE_ARM_ID,
+            "protocols": ("cli",),
+            "curated": False,
+            "notes": "n",
+        }
+        if cls is CatalogEntry:
+            kwargs["kind"] = "arm"
+        with pytest.raises(TypeError):
+            cls(**kwargs)
+
+
+@pytest.mark.parametrize(
+    "curated",
+    ("true", "false", "yes", "1", 1, 0, None, "", []),
+)
+def test_catalog_types_reject_non_boolean_curated(curated: Any) -> None:
+    for cls in (CatalogEntry, ArmSpec, HeadSpec):
+        kwargs: dict[str, Any] = {
+            "id": FIXTURE_ARM_ID,
+            "protocols": ("cli",),
+            "curated": curated,
+            "notes": "n",
+            "tier": "research",
+        }
+        if cls is CatalogEntry:
+            kwargs["kind"] = "arm"
+        with pytest.raises(ExtensionError, match="curated") as err:
+            cls(**kwargs)
+        assert "boolean" in str(err.value).lower()

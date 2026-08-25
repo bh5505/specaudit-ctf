@@ -350,6 +350,29 @@ def test_language_bar_on_added_tree() -> None:
         "  curated: true\n"
         "  tier: held\n"
         "  notes: a\n",
+        # curated must be a real boolean, not a string
+        "entries:\n"
+        "- id: probe-cli\n"
+        "  kind: arm\n"
+        "  protocols: [cli]\n"
+        "  curated: 'true'\n"
+        "  tier: research\n"
+        "  notes: a\n",
+        # curated integer is not a boolean
+        "entries:\n"
+        "- id: probe-cli\n"
+        "  kind: arm\n"
+        "  protocols: [cli]\n"
+        "  curated: 1\n"
+        "  tier: research\n"
+        "  notes: a\n",
+        # missing curated
+        "entries:\n"
+        "- id: probe-cli\n"
+        "  kind: arm\n"
+        "  protocols: [cli]\n"
+        "  tier: research\n"
+        "  notes: a\n",
     ],
 )
 def test_load_catalog_rejects_malformed_documents(
@@ -367,6 +390,28 @@ def test_load_catalog_invalid_yaml_is_extension_error(tmp_path: Path) -> None:
     with pytest.raises(ExtensionError) as err:
         load_catalog(path)
     assert "invalid catalog yaml" in str(err.value).lower()
+
+
+@pytest.mark.parametrize("curated_yaml", ('"true"', '"false"', '"yes"', "1", "0", "null"))
+def test_load_catalog_rejects_non_boolean_curated(
+    tmp_path: Path, curated_yaml: str
+) -> None:
+    path = tmp_path / "coverage.yaml"
+    path.write_text(
+        "entries:\n"
+        "- id: probe-cli\n"
+        "  kind: arm\n"
+        "  protocols: [cli]\n"
+        f"  curated: {curated_yaml}\n"
+        "  tier: research\n"
+        "  notes: a\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ExtensionError) as err:
+        load_catalog(path)
+    message = str(err.value).lower()
+    assert "curated" in message
+    assert "boolean" in message
 
 
 def test_load_catalog_error_includes_row_index(tmp_path: Path) -> None:
