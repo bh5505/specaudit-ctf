@@ -21,6 +21,7 @@ from extension.contract import (
     NotAHeadError,
     NotAnArmError,
     NotCuratedError,
+    NotHeldError,
     NotInstalledError,
     Result,
     UnknownIdError,
@@ -34,6 +35,7 @@ from extension.transports.mcp import McpTransport
 
 ROOT = Path(__file__).resolve().parents[1]
 CURATED_ARM_ID = "burp-mcp"
+RESEARCH_ARM_ID = "checkov"
 NON_CURATED_ARM_ID = "deepsec"
 METHODOLOGY_ID = "vulnhunter"
 UNKNOWN_ID = "no-such-arm"
@@ -80,6 +82,8 @@ def _entry(
     protocols: tuple[str, ...] = ("cli",),
     curated: bool = False,
     notes: str = "Fixture row.",
+    tier: str = "research",
+    held_reason: str | None = None,
 ) -> CatalogEntry:
     return CatalogEntry(
         id=entry_id,
@@ -87,6 +91,8 @@ def _entry(
         protocols=protocols,
         curated=curated,
         notes=notes,
+        tier=tier,
+        held_reason=held_reason,
     )
 
 
@@ -116,6 +122,10 @@ def test_list_entries_reads_coverage_catalog() -> None:
     burp = next(row for row in rows if row.id == CURATED_ARM_ID)
     assert burp.kind == "arm"
     assert burp.curated is True
+    assert burp.tier == "held"
+    checkov = next(row for row in rows if row.id == RESEARCH_ARM_ID)
+    assert checkov.curated is True
+    assert checkov.tier != "maintained"
 
 
 def test_describe_known_and_unknown() -> None:
@@ -123,6 +133,8 @@ def test_describe_known_and_unknown() -> None:
     row = describe(CURATED_ARM_ID)
     assert row.id == CURATED_ARM_ID
     assert row.kind == "arm"
+    assert row.tier == "held"
+    assert row.held_reason
     with pytest.raises(UnknownIdError) as err:
         describe(UNKNOWN_ID)
     assert err.value.entry_id == UNKNOWN_ID
@@ -178,11 +190,20 @@ def test_invoke_curated_arm_not_installed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Test that invoking a curated but unavailable arm raises NotInstalledError."""
-    monkeypatch.delenv("BURP_MCP_ENDPOINT", raising=False)
+    monkeypatch.setattr("extension.arms.checkov.arm.resolve_binary", lambda: None)
     ext = Extension()
     with pytest.raises(NotInstalledError) as err:
+        ext.invoke(RESEARCH_ARM_ID, "scan", {})
+    assert err.value.entry_id == RESEARCH_ARM_ID
+
+
+def test_invoke_held_arm_refused_even_if_curated() -> None:
+    fake = FakeCliTransport(installed_ids={CURATED_ARM_ID})
+    ext = Extension(transports={"mcp": fake}, arms={CURATED_ARM_ID: fake})
+    with pytest.raises(NotHeldError) as err:
         ext.invoke(CURATED_ARM_ID, "list_tools", {})
     assert err.value.entry_id == CURATED_ARM_ID
+    assert fake.calls == []
 
 
 def test_invoke_fake_cli_transport_records_call() -> None:
@@ -320,6 +341,7 @@ def test_main_list_and_describe(capsys: pytest.CaptureFixture[str]) -> None:
     described = json.loads(capsys.readouterr().out)
     assert described["id"] == CURATED_ARM_ID
     assert described["curated"] is True
+    assert described["tier"] == "held"
 
 
 def test_main_invoke_unknown_id_is_hard_error(
@@ -336,8 +358,8 @@ def test_main_invoke_not_installed(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """Test that invoking not-installed arm via main() exits with error code 2."""
-    monkeypatch.delenv("BURP_MCP_ENDPOINT", raising=False)
-    assert main(["invoke", CURATED_ARM_ID, "list_tools"]) == 2
+    monkeypatch.setattr("extension.arms.checkov.arm.resolve_binary", lambda: None)
+    assert main(["invoke", RESEARCH_ARM_ID, "scan"]) == 2
     err = capsys.readouterr().err
     assert "not installed" in err.lower()
 
@@ -588,9 +610,9 @@ def test_default_extension_wires_drain_arms(
 
 def test_curated_arm_never_falls_back_to_generic_transport() -> None:
     """P0 guard: curated arm without a handler is a hard error."""
-    fake = FakeCliTransport(installed_ids={CURATED_ARM_ID})
+    fake = FakeCliTransport(installed_ids={RESEARCH_ARM_ID})
     ext = Extension(transports={"cli": fake}, arms={})
     with pytest.raises(ExtensionError) as err:
-        ext.invoke(CURATED_ARM_ID, "anything", {})
+        ext.invoke(RESEARCH_ARM_ID, "anything", {})
     assert "specialized handler" in str(err.value)
     assert fake.calls == []

@@ -13,7 +13,7 @@ from extension.arms.prowler.policy import (
     ENV_ENDPOINT,
     refuse_reason,
 )
-from extension.contract import ArmSpec, Extension, NotInstalledError
+from extension.contract import ArmSpec, Extension, NotHeldError, NotInstalledError
 
 
 def _spec() -> ArmSpec:
@@ -226,7 +226,7 @@ def test_default_extension_wires_prowler(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
     ext = Extension()
     assert "prowler-mcp" in ext.arms
-    with pytest.raises(NotInstalledError):
+    with pytest.raises(NotHeldError):
         ext.invoke("prowler-mcp", "prowler_docs_search", {})
 
 

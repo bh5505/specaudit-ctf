@@ -196,7 +196,7 @@ def test_describe_ai_deep_sast_notes_match_live_caveats() -> None:
 def test_language_bar_on_catalog_ids_and_notes(entries: list[dict]) -> None:
     forbidden = tuple(token.lower() for token in _forbidden_tokens())
     for row in entries:
-        haystack = f"{row['id']}\n{row['notes']}".lower()
+        haystack = f"{row['id']}\n{row['notes']}\n{row.get('held_reason') or ''}".lower()
         for token in forbidden:
             assert token not in haystack, f"{row['id']} contains banned token"
 
@@ -319,6 +319,37 @@ def test_language_bar_on_added_tree() -> None:
         "  notes: a\n",
         # version non-integer
         "version: x\nentries:\n- id: probe-cli\n  kind: arm\n  protocols: [cli]\n  curated: false\n  notes: a\n",
+        # missing tier
+        "entries:\n"
+        "- id: probe-cli\n"
+        "  kind: arm\n"
+        "  protocols: [cli]\n"
+        "  curated: false\n"
+        "  notes: a\n",
+        # invalid tier
+        "entries:\n"
+        "- id: probe-cli\n"
+        "  kind: arm\n"
+        "  protocols: [cli]\n"
+        "  curated: false\n"
+        "  tier: stable\n"
+        "  notes: a\n",
+        # methodology-only must not be maintained
+        "entries:\n"
+        "- id: teach-only\n"
+        "  kind: methodology-only\n"
+        "  protocols: [none]\n"
+        "  curated: false\n"
+        "  tier: maintained\n"
+        "  notes: a\n",
+        # held requires a reason
+        "entries:\n"
+        "- id: held-mcp\n"
+        "  kind: arm\n"
+        "  protocols: [mcp]\n"
+        "  curated: true\n"
+        "  tier: held\n"
+        "  notes: a\n",
     ],
 )
 def test_load_catalog_rejects_malformed_documents(
@@ -346,10 +377,12 @@ def test_load_catalog_error_includes_row_index(tmp_path: Path) -> None:
         "  kind: arm\n"
         "  protocols: [cli]\n"
         "  curated: false\n"
+        "  tier: research\n"
         "  notes: a\n"
         "- kind: arm\n"
         "  protocols: [cli]\n"
         "  curated: false\n"
+        "  tier: research\n"
         "  notes: b\n",
         encoding="utf-8",
     )

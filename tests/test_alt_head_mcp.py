@@ -79,7 +79,10 @@ def test_mcp_list_and_invoke_use_fake_transport() -> None:
     assert any(row["id"] == FIXTURE_ARM_ID for row in rows)
 
     described = _call(server, "describe", {"id": FIXTURE_ARM_ID})
-    assert _content_json(described)["id"] == FIXTURE_ARM_ID
+    described_row = _content_json(described)
+    assert described_row["id"] == FIXTURE_ARM_ID
+    assert described_row["tier"] == "research"
+    assert all("tier" in row for row in rows)
 
     invoked = _call(
         server, "invoke", {"id": FIXTURE_ARM_ID, "action": "echo", "args": {"x": 1}}
@@ -262,7 +265,7 @@ def test_module_mcp_list() -> None:
     assert names == ["list", "describe", "invoke", "run_range"]
 
 
-def test_module_mcp_invoke_live_catalog_not_installed() -> None:
+def test_module_mcp_invoke_live_catalog_held() -> None:
     payload = (
         json.dumps(
             {
@@ -291,7 +294,7 @@ def test_module_mcp_invoke_live_catalog_not_installed() -> None:
     line = next(item for item in proc.stdout.splitlines() if item.strip().startswith("{"))
     body = json.loads(line)
     assert body["result"]["isError"] is True
-    assert "not installed" in body["result"]["content"][0]["text"].lower()
+    assert "held" in body["result"]["content"][0]["text"].lower()
 
 
 def test_head_launcher_does_not_import_cwd_extension(tmp_path: Path) -> None:

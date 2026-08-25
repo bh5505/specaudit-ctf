@@ -15,8 +15,9 @@ python -m extension describe <id>
 python -m extension invoke <id> <action> ['{"k":"v"}']
 ```
 
-`invoke` is fail-closed: unknown ids, non-arms, non-curated rows, and
-uninstalled curated arms are hard errors.
+`invoke` is fail-closed: unknown ids, non-arms, held rows, non-curated
+rows, and uninstalled curated arms are hard errors. `list` / `describe`
+include `tier`.
 
 ## MCP
 

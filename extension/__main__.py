@@ -20,7 +20,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     describe_parser.add_argument("id", help="catalog entry identifier (e.g., burp-mcp)")
 
     invoke_parser = sub.add_parser(
-        "invoke", help="invoke a curated installed arm"
+        "invoke", help="invoke a curated installed arm that is not held"
     )
     invoke_parser.add_argument("id", help="catalog entry identifier (e.g., burp-mcp)")
     invoke_parser.add_argument("action", help="action name to invoke (e.g., list_tools)")

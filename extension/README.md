@@ -24,10 +24,15 @@ A validation client may attach the same CLI or MCP surface later.
 - `arm` — invocable tool, scanner, MCP, or CLI adapter
 - `methodology-only` — specification, curriculum, or teach-only knowledge
 
-`curated: true` marks a maintained specialized adapter. **26 arms are
-curated; none are held.** Methodology-only rows are never curated.
-A row on the map is not a promise that an adapter is implemented;
-in this cut every arm row has a specialized handler.
+Every row has a support `tier`: `research` | `experimental` |
+`maintained` | `held`. `curated: true` is a **deprecated**
+compatibility flag meaning a specialized handler exists in this cut;
+it is **not** `tier: maintained`. **26 arms are curated; HTTP MCP
+arms are held; none are maintained.** Methodology-only rows are never
+curated and never maintained. `held` is never invocable and carries
+`held_reason`. research/experimental presence is not a validator
+support promise. A row on the map is not a promise that an adapter is
+implemented; in this cut every arm row has a specialized handler.
 
 Schema: [schema/coverage.schema.json](schema/coverage.schema.json).
 
@@ -103,17 +108,20 @@ Examples:
 
 ```text
 python -m extension describe burp-mcp
-python -m extension invoke burp-mcp list_tools
-python -m extension invoke burp-mcp url_encode '{"content":"a b"}'
+python -m extension describe checkov
+python -m extension invoke checkov scan
 ```
 
 `invoke` is fail-closed: unknown ids, non-arms, methodology-only rows,
-non-curated arms, and uninstalled curated arms are hard errors. Do
-not invent a fallback card.
+held arms, non-curated arms, and uninstalled curated arms are hard
+errors. Do not invent a fallback card. `list` / `describe` include
+`tier`.
 
-Burp is not installed unless `BURP_MCP_ENDPOINT` is set to a
-scheme- and host-validated HTTP+SSE MCP URL; a configured endpoint
-that is unreachable fails the invoke with an error. Community edition
+Catalog `invoke` of HTTP MCP arms (`burp-mcp` and the other held
+rows) is refused even when an endpoint is configured. The specialized
+handler is preserved. Burp is not installed unless `BURP_MCP_ENDPOINT`
+is set to a scheme- and host-validated HTTP+SSE MCP URL; a configured
+endpoint that is unreachable fails the handler with an error. Community edition
 is refused for tool calls. `list_tools` / `tools/list` run when the
 endpoint is reachable; otherwise the invoke fails closed. Only
 allowlisted read or utility actions run. SSE endpoint with CR/LF is

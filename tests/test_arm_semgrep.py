@@ -10,7 +10,7 @@ import pytest
 
 from extension.arms.semgrep import ALLOWED_TOOLS, ARM_ID, BLOCKED_TOOLS, SemgrepArm
 from extension.arms.semgrep.policy import ENV_ENDPOINT, scan_config_refusal
-from extension.contract import ArmSpec, Extension, NotInstalledError
+from extension.contract import ArmSpec, Extension, NotHeldError, NotInstalledError
 
 ALL_TOOLS = tuple(ALLOWED_TOOLS) + tuple(BLOCKED_TOOLS)
 
@@ -231,15 +231,16 @@ def test_default_extension_wires_semgrep(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
     ext = Extension()
     assert "semgrep-mcp" in ext.arms
-    with pytest.raises(NotInstalledError):
+    with pytest.raises(NotHeldError):
         ext.invoke("semgrep-mcp", "semgrep_findings", {})
 
 
 def test_extension_invoke_with_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv(ENV_ENDPOINT, "http://127.0.0.1:8899")
     ext = Extension(arms={ARM_ID: _arm(FakeSession())})
-    result = ext.invoke(ARM_ID, "supported_languages", {})
-    assert result.ok is True
+    with pytest.raises(NotHeldError) as err:
+        ext.invoke(ARM_ID, "supported_languages", {})
+    assert err.value.entry_id == ARM_ID
 
 
 def test_scan_config_multiline_body_not_prefix_matched() -> None:
