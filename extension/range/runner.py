@@ -13,11 +13,14 @@ from ..contract import (
     NotInstalledError,
     default_extension,
 )
-SCHEMA_ID = "range.lifecycle.v1"
+SCHEMA_ID = "range.lifecycle.v2"
 DEFAULT_SEED = 123
 FIXTURE_S3_PUBLIC = "tf_s3_public_access"
 FIXTURE_IAM_OPEN = "tf_iam_open"
 ARM_ACTION = "observe"
+STATUS_COMPLETE = "complete"
+STATUS_DEGRADED = "degraded"
+STATUS_FAILED = "failed"
 _SEVERITY_RANK = {
     "critical": 4,
     "high": 3,
@@ -50,8 +53,11 @@ def run_range(
       - Any other ``Exception`` (including ``UnknownIdError`` for an
         unknown arm id, transport failures) becomes ``status="error"`` with
         a redacted ``error`` string.
-      - Neither outcome fails the fixture; ``ok`` reflects only lifecycle
-        ``matched_expected``.
+      - Skip/error never yields ``status="complete"``. Explicit ``arm_ids``
+        (including ``()``) are required: skip/error is ``failed``. Auto-
+        discovered arms (``arm_ids is None``) are optional: skip/error is
+        ``degraded``. A lifecycle mismatch is ``failed``. Compatibility
+        ``ok`` is true iff ``status`` is ``complete``.
 
     Seed precedence: ``seed`` arg overrides ``manifest.json:seed`` which
     overrides ``DEFAULT_SEED`` (123). Manifest and CLI seeds are validated
@@ -84,16 +90,24 @@ def run_range(
     else:
         document_seed = DEFAULT_SEED
     ext = extension if extension is not None else default_extension()
+    # Capture required-vs-optional before resolving ids so arm_ids=() stays
+    # required-empty (complete on match) and None stays auto-discover optional.
+    required = arm_ids is not None
     resolved_arms = _resolve_arm_ids(ext, arm_ids)
     rows = [
-        _run_fixture(root, fixture_id, document_seed, ext, resolved_arms)
+        _run_fixture(
+            root, fixture_id, document_seed, ext, resolved_arms, required=required
+        )
         for fixture_id in manifest["fixtures"]
     ]
+    status = _document_status(rows)
     return {
         "schema": SCHEMA_ID,
         "seed": document_seed,
         "live_aws": False,
-        "ok": all(row["ok"] for row in rows),
+        "status": status,
+        "ok": status == STATUS_COMPLETE,
+        "coverage": _merge_coverage(rows),
         "fixtures": rows,
     }
 
@@ -133,6 +147,8 @@ def _run_fixture(
     seed: int,
     ext: Extension,
     arm_ids: Sequence[str],
+    *,
+    required: bool,
 ) -> dict[str, Any]:
     fixture_dir = root / fixture_id
     if not fixture_dir.is_dir():
@@ -149,14 +165,18 @@ def _run_fixture(
         "path": expected.get("path"),
         "impact": expected.get("impact"),
     }
+    arms = _invoke_arms(ext, arm_ids, fixture_id, seed)
+    status = _fixture_status(matched=matched, arms=arms, required=required)
     return {
         "id": fixture_id,
-        "ok": matched,
+        "status": status,
+        "ok": status == STATUS_COMPLETE,
         "matched_expected": matched,
+        "coverage": _coverage_from_arms(arms),
         "exposure": derived["exposure"],
         "path": derived["path"],
         "impact": derived["impact"],
-        "arms": _invoke_arms(ext, arm_ids, fixture_id, seed),
+        "arms": arms,
     }
 
 
@@ -292,6 +312,71 @@ def _resolve_arm_ids(
         for entry in ext.list_entries()
         if entry.kind == CATALOG_KIND_ARM and entry.curated
     ]
+
+
+def _fixture_status(
+    *,
+    matched: bool,
+    arms: Sequence[Mapping[str, Any]],
+    required: bool,
+) -> str:
+    if not matched:
+        return STATUS_FAILED
+    limited = any(row.get("status") in {"skipped", "error"} for row in arms)
+    if not limited:
+        return STATUS_COMPLETE
+    return STATUS_FAILED if required else STATUS_DEGRADED
+
+
+def _document_status(rows: Sequence[Mapping[str, Any]]) -> str:
+    statuses = [row["status"] for row in rows]
+    if any(status == STATUS_FAILED for status in statuses):
+        return STATUS_FAILED
+    if any(status == STATUS_DEGRADED for status in statuses):
+        return STATUS_DEGRADED
+    return STATUS_COMPLETE
+
+
+def _coverage_from_arms(rows: Sequence[Mapping[str, Any]]) -> dict[str, list[str]]:
+    attempted: list[str] = []
+    complete: list[str] = []
+    skipped: list[str] = []
+    error: list[str] = []
+    for row in rows:
+        arm_id = str(row["arm_id"])
+        attempted.append(arm_id)
+        status = row.get("status")
+        if status == "ok":
+            complete.append(arm_id)
+        elif status == "skipped":
+            skipped.append(arm_id)
+        else:
+            error.append(arm_id)
+    return {
+        "attempted": attempted,
+        "complete": complete,
+        "skipped": skipped,
+        "error": error,
+    }
+
+
+def _unique_ids(ids: Sequence[str]) -> list[str]:
+    return list(dict.fromkeys(ids))
+
+
+def _merge_coverage(rows: Sequence[Mapping[str, Any]]) -> dict[str, list[str]]:
+    merged: dict[str, list[str]] = {
+        "attempted": [],
+        "complete": [],
+        "skipped": [],
+        "error": [],
+    }
+    for row in rows:
+        coverage = row["coverage"]
+        for key in merged:
+            merged[key].extend(coverage[key])
+    return {key: _unique_ids(vals) for key, vals in merged.items()}
+
 
 def _invoke_arms(
     ext: Extension,

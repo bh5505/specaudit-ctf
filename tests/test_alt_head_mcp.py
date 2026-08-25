@@ -13,7 +13,7 @@ import pytest
 
 from extension.contract import Extension
 from extension.mcp_server import TOOLS, _MAX_BYTES, McpServer, main
-from extension.range import DEFAULT_SEED
+from extension.range import DEFAULT_SEED, SCHEMA_ID
 from tests.test_contract import (
     CURATED_ARM_ID,
     FIXTURE_ARM_ID,
@@ -411,10 +411,16 @@ def test_run_range_returns_seed_stable_document() -> None:
     server, _fake = _server()
     response = _call(server, "run_range", {})
     assert "error" not in response
+    assert response["result"]["isError"] is False
     payload = json.loads(response["result"]["content"][0]["text"])
-    assert payload["schema"] == "range.lifecycle.v1"
+    assert SCHEMA_ID == "range.lifecycle.v2"
+    assert payload["schema"] == "range.lifecycle.v2"
     assert payload["live_aws"] is False
     assert payload["seed"] == DEFAULT_SEED
+    # Fixture catalog auto-discovers an uninstalled curated arm; JSON-RPC
+    # success is transport-only and must not hide degraded range status.
+    assert payload["status"] == "degraded"
+    assert payload["ok"] is False
 
 
 def test_run_range_seed_validated_as_shape_error() -> None:
@@ -429,6 +435,7 @@ def test_run_range_arm_ids_restricted_to_curated() -> None:
     server, _fake = _server()
     response = _call(server, "run_range", {"arm_ids": [FIXTURE_ARM_ID]})
     assert "error" not in response
+    assert response["result"]["isError"] is False
     payload = json.loads(response["result"]["content"][0]["text"])
     invoked = {
         row["arm_id"]
@@ -436,10 +443,36 @@ def test_run_range_arm_ids_restricted_to_curated() -> None:
         for row in fixture["arms"]
     }
     assert invoked == {FIXTURE_ARM_ID}
+    assert payload["schema"] == "range.lifecycle.v2"
+    assert payload["status"] == "complete"
+    assert payload["ok"] is True
     # Mixed lists fail closed entirely: one non-curated id refuses the call.
     bad = _call(server, "run_range", {"arm_ids": [FIXTURE_ARM_ID, "no-such-arm"]})
     assert bad["result"]["isError"] is True
     assert "curated" in bad["result"]["content"][0]["text"]
+
+
+def test_run_range_explicit_empty_arm_ids_is_complete() -> None:
+    server, _fake = _server()
+    response = _call(server, "run_range", {"arm_ids": []})
+    assert "error" not in response
+    assert response["result"]["isError"] is False
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["schema"] == "range.lifecycle.v2"
+    assert payload["status"] == "complete"
+    assert payload["ok"] is True
+    assert payload["coverage"]["attempted"] == []
+
+
+def test_run_range_explicit_missing_arm_is_failed_transport_ok() -> None:
+    server, _fake = _server()
+    response = _call(server, "run_range", {"arm_ids": [CURATED_ARM_ID]})
+    assert "error" not in response
+    assert response["result"]["isError"] is False
+    payload = json.loads(response["result"]["content"][0]["text"])
+    assert payload["schema"] == "range.lifecycle.v2"
+    assert payload["status"] == "failed"
+    assert payload["ok"] is False
 
 
 def test_run_range_arm_ids_shape_rejected() -> None:

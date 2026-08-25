@@ -27,7 +27,18 @@ from extension.range import (
 from tests.test_arm_burp import _StubState, _make_handler
 
 ROOT = Path(__file__).resolve().parents[1]
-MODE_B_FIELDS = {"id", "ok", "exposure", "path", "impact"}
+MODE_B_FIELDS = {
+    "id",
+    "ok",
+    "status",
+    "matched_expected",
+    "coverage",
+    "exposure",
+    "path",
+    "impact",
+    "arms",
+}
+RANGE_SCHEMA_V2 = "range.lifecycle.v2"
 
 
 @pytest.fixture
@@ -45,16 +56,20 @@ def stub_sse() -> Any:
         thread.join(timeout=2)
 
 
-def _assert_mode_b_loadable(document: dict[str, Any]) -> None:
-    assert document["schema"] == SCHEMA_ID
+def _assert_mode_b_loadable(document: dict[str, Any], *, status: str) -> None:
+    assert SCHEMA_ID == RANGE_SCHEMA_V2
+    assert document["schema"] == RANGE_SCHEMA_V2
     assert document["live_aws"] is False
-    assert document["ok"] is True
+    assert document["status"] == status
+    assert document["ok"] is (status == "complete")
     assert document["seed"] == DEFAULT_SEED
+    assert set(document["coverage"]) == {"attempted", "complete", "skipped", "error"}
     by_id = {row["id"]: row for row in document["fixtures"]}
     assert set(by_id) == {FIXTURE_S3_PUBLIC, FIXTURE_IAM_OPEN}
     for row in by_id.values():
         assert set(row) >= MODE_B_FIELDS
-        assert row["ok"] is True
+        assert row["ok"] is (row["status"] == "complete")
+        assert row["status"] in {"complete", "degraded", "failed"}
         assert isinstance(row["exposure"], dict)
         assert isinstance(row["path"], list)
         assert isinstance(row["impact"], dict)
@@ -85,9 +100,13 @@ def test_range_cli_writes_mode_b_loadable_document(tmp_path: Path) -> None:
         check=False,
         timeout=15,
     )
-    assert proc.returncode == 0, proc.stderr
     loaded = json.loads(out.read_text(encoding="utf-8"))
-    _assert_mode_b_loadable(loaded)
+    assert loaded["schema"] == RANGE_SCHEMA_V2
+    assert loaded["ok"] is (loaded["status"] == "complete")
+    assert proc.returncode == (0 if loaded["ok"] else 1), proc.stderr
+    # Default CLI auto-discovers curated arms; popping BURP prevents complete.
+    assert loaded["status"] != "complete"
+    _assert_mode_b_loadable(loaded, status=loaded["status"])
     again = json.loads(out.read_text(encoding="utf-8"))
     assert again == loaded
 
@@ -101,7 +120,7 @@ def test_range_runner_document_is_mode_b_loadable(tmp_path: Path) -> None:
         newline="\n",
     )
     loaded = json.loads(path.read_text(encoding="utf-8"))
-    _assert_mode_b_loadable(loaded)
+    _assert_mode_b_loadable(loaded, status="complete")
     assert loaded == json.loads(json.dumps(document, sort_keys=True))
 
 
@@ -111,7 +130,7 @@ def test_range_with_burp_stub_stays_mode_b_loadable(
     url, _state = stub_sse
     ext = Extension(arms={ARM_ID: BurpArm(endpoint=url, timeout=5)})
     document = run_range(extension=ext)
-    _assert_mode_b_loadable(document)
+    _assert_mode_b_loadable(document, status="degraded")
     curated_ids = sorted(
         entry.id
         for entry in ext.list_entries()

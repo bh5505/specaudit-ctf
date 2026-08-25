@@ -15,7 +15,9 @@ Use only the specaudit-ctf MCP tools `list`, `describe`, `invoke`, and
 
 - `run_range` — run the synthetic range fixtures. Optional integer `seed`
   and optional `arm_ids` (curated arms only). Returns the seed-stable
-  lifecycle document; no live cloud, no file writes.
+  `range.lifecycle.v2` document (`status`: complete|degraded|failed;
+  `ok` is true only when complete). JSON-RPC success is transport-only.
+  No live cloud, no file writes.
 
 Do not call other MCP tools on this server. Do not treat the catalog as a
 ship list of adapters.
