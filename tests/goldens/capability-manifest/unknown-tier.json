@@ -1,0 +1,33 @@
+{
+  "schema": "specaudit.ctf.capability.manifest.v1",
+  "schema_version": 1,
+  "capability_id": "fixture.local-read",
+  "tier": "stable",
+  "kind": "arm",
+  "tool": {
+    "name": "fixture-local-read",
+    "version": "1.0.0"
+  },
+  "protocols": ["cli-json"],
+  "safety_class": "R0",
+  "side_effects": ["local-read"],
+  "default_off": true,
+  "synthetic_only": true,
+  "authorized_scope": ["file:///extension/range/tf_s3_public_access"],
+  "approval_ref": null,
+  "roe_ref": "roe:synthetic-range",
+  "budget": {
+    "timeout_ms": 30000,
+    "max_output_bytes": 1048576,
+    "max_tool_steps": 8,
+    "max_spend": null
+  },
+  "cleanup": {
+    "required": false,
+    "proof": "none"
+  },
+  "redaction": {
+    "fields": ["authorization", "cookie", "set-cookie"],
+    "env": ["AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "AWS_SESSION_TOKEN"]
+  }
+}

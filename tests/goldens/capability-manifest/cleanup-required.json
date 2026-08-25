@@ -1,0 +1,33 @@
+{
+  "schema": "specaudit.ctf.capability.manifest.v1",
+  "schema_version": 1,
+  "capability_id": "fixture.cleanup-write",
+  "tier": "research",
+  "kind": "arm",
+  "tool": {
+    "name": "fixture-cleanup-write",
+    "version": "1.0.0"
+  },
+  "protocols": ["cli-json"],
+  "safety_class": "R1",
+  "side_effects": ["local-write"],
+  "default_off": true,
+  "synthetic_only": true,
+  "authorized_scope": ["file:///extension/range/tf_s3_public_access"],
+  "approval_ref": "approval:synthetic-local-write",
+  "roe_ref": "roe:synthetic-range",
+  "budget": {
+    "timeout_ms": 30000,
+    "max_output_bytes": 1048576,
+    "max_tool_steps": 8,
+    "max_spend": null
+  },
+  "cleanup": {
+    "required": true,
+    "proof": "artifact-digest"
+  },
+  "redaction": {
+    "fields": ["authorization", "cookie", "set-cookie"],
+    "env": ["AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "AWS_SESSION_TOKEN"]
+  }
+}
