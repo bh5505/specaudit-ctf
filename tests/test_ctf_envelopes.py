@@ -72,8 +72,12 @@ class _Spy:
         self.calls.append(manifest)
 
 
-def _gate(path: Path, dispatcher: Callable[..., Any] | None = None) -> Any:
-    return _envelopes().gate_dispatch(path, dispatcher=dispatcher)
+def _gate(
+    path: Path,
+    dispatcher: Callable[..., Any] | None = None,
+    **kwargs: Any,
+) -> Any:
+    return _envelopes().gate_dispatch(path, dispatcher=dispatcher, **kwargs)
 
 
 # --- schema files exist and lock the envelope ids ----------------------
@@ -92,9 +96,14 @@ def test_result_schema_file_declares_v1() -> None:
     schema = _schema(RESULT_SCHEMA_PATH)
     assert schema["$schema"] == "http://json-schema.org/draft-07/schema#"
     assert RESULT_SCHEMA_ID in schema["title"]
+    description = str(schema["description"]).lower()
+    assert "transport_ok" in description
+    assert "parser" in description
     assert schema["properties"]["schema"]["const"] == RESULT_SCHEMA_ID
     assert schema["properties"]["schema_version"]["const"] == 1
     assert schema["properties"]["status"]["enum"] == ["complete", "degraded", "failed"]
+    status_description = str(schema["properties"]["status"].get("description", "")).lower()
+    assert "parser" in status_description
     assert schema["additionalProperties"] is False
 
 
@@ -182,7 +191,12 @@ def test_complete_synthetic_readonly_success() -> None:
         RESULTS / "complete-synthetic-readonly.json"
     )
     assert manifest.schema_ok is True
-    assert manifest.dispatch_allowed is True
+    assert manifest.dispatch_allowed is False
+    assert "default-off" in manifest.reasons
+    enabled = env.parse_capability_manifest(
+        MANIFESTS / "complete-synthetic-readonly.json", enabled=True
+    )
+    assert enabled.dispatch_allowed is True
     assert manifest.manifest is not None
     assert manifest.manifest.capability_id == "fixture.local-read"
     assert manifest.manifest.safety_class == "R0"
@@ -340,14 +354,18 @@ def test_held_failed_zero_dispatch() -> None:
 
 def test_eligible_manifest_dispatcher_is_called() -> None:
     spy = _Spy()
-    gated = _gate(MANIFESTS / "complete-synthetic-readonly.json", dispatcher=spy)
+    gated = _gate(
+        MANIFESTS / "complete-synthetic-readonly.json",
+        dispatcher=spy,
+        enabled=True,
+    )
     assert gated.dispatch_allowed is True
     assert len(spy.calls) == 1
     assert spy.calls[0].capability_id == "fixture.local-read"
 
 
 def test_gate_dispatch_without_dispatcher_does_not_raise() -> None:
-    gated = _gate(MANIFESTS / "complete-synthetic-readonly.json")
+    gated = _gate(MANIFESTS / "complete-synthetic-readonly.json", enabled=True)
     assert gated.dispatch_allowed is True
 
 
@@ -394,3 +412,215 @@ def test_malformed_json_is_failed_zero_dispatch(tmp_path: Path) -> None:
     parsed = _envelopes().parse_execution_result(path)
     assert parsed.status == "failed"
     assert spy.calls == []
+
+
+# --- R-P3: reserved ids + default_off deny dispatch -----------------------
+
+
+def test_default_off_eligible_spy_path_does_not_dispatch() -> None:
+    spy = _Spy()
+    gated = _gate(MANIFESTS / "complete-synthetic-readonly.json", dispatcher=spy)
+    assert gated.schema_ok is True
+    assert gated.dispatch_allowed is False
+    assert "default-off" in gated.reasons
+    assert spy.calls == []
+
+
+def test_rewritten_methodology_id_does_not_dispatch() -> None:
+    payload = _load(MANIFESTS / "methodology-only.json")
+    payload["kind"] = "arm"
+    payload["tier"] = "research"
+    spy = _Spy()
+    gated = _envelopes().gate_dispatch(payload, dispatcher=spy, enabled=True)
+    assert gated.schema_ok is True
+    assert gated.dispatch_allowed is False
+    assert "methodology-only" in gated.reasons
+    assert spy.calls == []
+
+
+def test_rewritten_held_id_does_not_dispatch() -> None:
+    payload = _load(MANIFESTS / "held.json")
+    payload["kind"] = "arm"
+    payload["tier"] = "research"
+    spy = _Spy()
+    gated = _envelopes().gate_dispatch(payload, dispatcher=spy, enabled=True)
+    assert gated.schema_ok is True
+    assert gated.dispatch_allowed is False
+    assert "held" in gated.reasons
+    assert spy.calls == []
+
+
+def test_fail_closed_reason_denies_dispatch_even_when_enabled() -> None:
+    payload = _load(MANIFESTS / "complete-synthetic-readonly.json")
+    payload["authorized_scope"] = ["0.0.0.0/0"]
+    spy = _Spy()
+    gated = _envelopes().gate_dispatch(payload, dispatcher=spy, enabled=True)
+    assert gated.dispatch_allowed is False
+    assert "blanket-scope" in gated.reasons
+    assert spy.calls == []
+
+
+# --- R-P4: parser-owned complete, residual, scope, coverage, pair ---------
+
+
+def test_semantic_complete_is_parser_not_json_schema() -> None:
+    payload = _load(RESULTS / "complete-synthetic-readonly.json")
+    payload["artifacts"] = []
+    jsonschema.validate(instance=payload, schema=_schema(RESULT_SCHEMA_PATH))
+    parsed = _envelopes().parse_execution_result(payload)
+    assert parsed.status == "failed"
+    assert parsed.status != "complete"
+    assert "unowned-evidence" in parsed.reasons
+
+
+def test_transport_ok_false_does_not_prevent_complete() -> None:
+    payload = _load(RESULTS / "complete-synthetic-readonly.json")
+    payload["transport_ok"] = False
+    parsed = _envelopes().parse_execution_result(payload)
+    assert parsed.status == "complete"
+    assert parsed.result is not None
+    assert parsed.result.transport_ok is False
+
+
+def test_transport_ok_true_does_not_upgrade_failed() -> None:
+    payload = _load(RESULTS / "required-arm-error-failed.json")
+    payload["transport_ok"] = True
+    parsed = _envelopes().parse_execution_result(payload)
+    assert parsed.status == "failed"
+    assert parsed.result is not None
+    assert parsed.result.transport_ok is True
+
+
+def test_cleanup_residual_true_is_failed_even_with_proof() -> None:
+    payload = _load(RESULTS / "cleanup-unproven-failed.json")
+    payload["cleanup"] = {
+        "required": True,
+        "proof_digest": (
+            "sha256:1fa61777032b52af38d63ab38b5e4024e01de821e63224baa5b4cd7d6cdaa22b"
+        ),
+        "residual": True,
+    }
+    payload["status"] = "complete"
+    parsed = _envelopes().parse_execution_result(payload)
+    assert parsed.status == "failed"
+    assert parsed.result is not None
+    assert parsed.result.cleanup.residual is True
+    assert env_reason(parsed, "cleanup-unproven")
+
+
+def test_touched_outside_authorized_is_failed() -> None:
+    payload = _load(RESULTS / "complete-synthetic-readonly.json")
+    payload["scope"]["touched"] = ["file:///etc/passwd"]
+    parsed = _envelopes().parse_execution_result(payload)
+    assert parsed.status == "failed"
+    assert "scope-overflow" in parsed.reasons
+
+
+def test_touched_nested_path_within_authorized_prefix_is_ok() -> None:
+    payload = _load(RESULTS / "complete-synthetic-readonly.json")
+    payload["scope"]["touched"] = [
+        "file:///extension/range/tf_s3_public_access/input/main.tf"
+    ]
+    parsed = _envelopes().parse_execution_result(payload)
+    assert parsed.status == "complete"
+    assert "scope-overflow" not in parsed.reasons
+
+
+def test_coverage_sets_must_be_consistent() -> None:
+    payload = _load(RESULTS / "complete-synthetic-readonly.json")
+    payload["coverage"] = {
+        "attempted": ["fixture.local-read", "fixture.optional-probe"],
+        "complete": ["fixture.local-read", "fixture.optional-probe"],
+        "skipped": ["fixture.optional-probe"],
+        "unsupported": [],
+        "failed": [],
+        "required": ["fixture.local-read"],
+    }
+    parsed = _envelopes().parse_execution_result(payload)
+    assert parsed.status == "failed"
+    assert "coverage-inconsistent" in parsed.reasons
+
+
+def test_accept_pair_complete_synthetic_readonly() -> None:
+    env = _envelopes()
+    pair = env.accept_pair(
+        MANIFESTS / "complete-synthetic-readonly.json",
+        RESULTS / "complete-synthetic-readonly.json",
+    )
+    assert pair.accepted is True
+    assert pair.status == "complete"
+    assert pair.manifest.dispatch_allowed is False
+    assert pair.result.schema_ok is True
+
+
+def test_accept_pair_optional_unavailable_is_degraded() -> None:
+    pair = _envelopes().accept_pair(
+        MANIFESTS / "range-observe.json",
+        RESULTS / "optional-unavailable-degraded.json",
+    )
+    assert pair.accepted is True
+    assert pair.status == "degraded"
+    assert pair.status != "complete"
+
+
+def test_accept_pair_capability_mismatch_is_failed() -> None:
+    payload = _load(RESULTS / "complete-synthetic-readonly.json")
+    payload["capability_id"] = "fixture.range-observe"
+    pair = _envelopes().accept_pair(
+        MANIFESTS / "complete-synthetic-readonly.json", payload
+    )
+    assert pair.accepted is False
+    assert pair.status == "failed"
+    assert "capability-mismatch" in pair.reasons
+
+
+def test_accept_pair_result_cannot_relax_cleanup() -> None:
+    payload = _load(RESULTS / "cleanup-unproven-failed.json")
+    payload["cleanup"] = {
+        "required": False,
+        "proof_digest": None,
+        "residual": False,
+    }
+    payload["status"] = "complete"
+    pair = _envelopes().accept_pair(MANIFESTS / "cleanup-required.json", payload)
+    assert pair.accepted is False
+    assert pair.status == "failed"
+    assert "cleanup-policy-mismatch" in pair.reasons
+
+
+def test_accept_pair_result_cannot_expand_manifest_scope() -> None:
+    payload = _load(RESULTS / "complete-synthetic-readonly.json")
+    payload["scope"] = {
+        "authorized": [
+            "file:///extension/range/tf_s3_public_access",
+            "file:///tmp",
+        ],
+        "touched": ["file:///tmp"],
+    }
+    pair = _envelopes().accept_pair(
+        MANIFESTS / "complete-synthetic-readonly.json", payload
+    )
+    assert pair.accepted is False
+    assert pair.status == "failed"
+    assert "scope-overflow" in pair.reasons
+
+
+def test_accept_pair_cleanup_residual_is_failed() -> None:
+    pair = _envelopes().accept_pair(
+        MANIFESTS / "cleanup-required.json",
+        RESULTS / "cleanup-unproven-failed.json",
+    )
+    assert pair.status == "failed"
+    assert "cleanup-unproven" in pair.reasons
+
+
+def test_accept_pair_observed_side_effect_cannot_exceed_manifest() -> None:
+    payload = _load(RESULTS / "complete-synthetic-readonly.json")
+    payload["side_effects"] = ["local-read", "cloud-mutate"]
+    payload["approval_ref"] = "approval:synthetic-local-write"
+    pair = _envelopes().accept_pair(
+        MANIFESTS / "complete-synthetic-readonly.json", payload
+    )
+    assert pair.accepted is False
+    assert pair.status == "failed"
+    assert "side-effect-mismatch" in pair.reasons

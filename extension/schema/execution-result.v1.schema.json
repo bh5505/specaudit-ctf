@@ -1,7 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "specaudit.ctf.execution-result.v1",
-  "description": "CLI JSON and stdio MCP encoding of one capability run. transport_ok is informational. Status is complete, degraded, or failed; complete is fail-closed.",
+  "description": "CLI JSON and stdio MCP encoding of one capability run. transport_ok is informational. Status is complete, degraded, or failed; semantic complete is owned by the parser, not this schema alone.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -91,7 +91,8 @@
     "finished_at": { "$ref": "#/definitions/utc_timestamp" },
     "status": {
       "type": "string",
-      "enum": ["complete", "degraded", "failed"]
+      "enum": ["complete", "degraded", "failed"],
+      "description": "Claimed status. Semantic complete is enforced by the parser, not by this schema."
     },
     "transport_ok": {
       "type": "boolean"
