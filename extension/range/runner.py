@@ -21,6 +21,8 @@ ARM_ACTION = "observe"
 STATUS_COMPLETE = "complete"
 STATUS_DEGRADED = "degraded"
 STATUS_FAILED = "failed"
+_ARM_STATUS_OK = "ok"
+_ARM_STATUS_LIMITED = frozenset({"skipped", "error"})
 _SEVERITY_RANK = {
     "critical": 4,
     "high": 3,
@@ -53,11 +55,13 @@ def run_range(
       - Any other ``Exception`` (including ``UnknownIdError`` for an
         unknown arm id, transport failures) becomes ``status="error"`` with
         a redacted ``error`` string.
-      - Skip/error never yields ``status="complete"``. Explicit ``arm_ids``
-        (including ``()``) are required: skip/error is ``failed``. Auto-
-        discovered arms (``arm_ids is None``) are optional: skip/error is
-        ``degraded``. A lifecycle mismatch is ``failed``. Compatibility
-        ``ok`` is true iff ``status`` is ``complete``.
+      - Only arm ``status="ok"`` is success; missing/unknown is ``failed``,
+        never ``complete``. Skip/error never yields ``complete``. Explicit
+        ``arm_ids`` (including ``()``) are required: skip/error is
+        ``failed``. Auto-discovered arms (``arm_ids is None``) are
+        optional: skip/error is ``degraded``. A lifecycle mismatch is
+        ``failed``. Compatibility ``ok`` is true iff ``status`` is
+        ``complete``.
 
     Seed precedence: ``seed`` arg overrides ``manifest.json:seed`` which
     overrides ``DEFAULT_SEED`` (123). Manifest and CLI seeds are validated
@@ -322,7 +326,16 @@ def _fixture_status(
 ) -> str:
     if not matched:
         return STATUS_FAILED
-    limited = any(row.get("status") in {"skipped", "error"} for row in arms)
+    limited = False
+    for row in arms:
+        status = row.get("status")
+        if status == _ARM_STATUS_OK:
+            continue
+        if status in _ARM_STATUS_LIMITED:
+            limited = True
+            continue
+        # Missing/unknown is not an allowlisted success; never complete.
+        return STATUS_FAILED
     if not limited:
         return STATUS_COMPLETE
     return STATUS_FAILED if required else STATUS_DEGRADED

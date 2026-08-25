@@ -93,6 +93,12 @@ class NotInstalledError(ExtensionError):
         super().__init__(f"{entry_id} is not installed")
 
 
+def _require_bool_curated(curated: Any, *, label: str = "curated") -> None:
+    # Truthy strings/ints must not become curated; the field is a real boolean.
+    if not isinstance(curated, bool):
+        raise ExtensionError(f"{label} must be a boolean")
+
+
 @dataclass(frozen=True)
 class CatalogEntry:
     id: str
@@ -100,8 +106,11 @@ class CatalogEntry:
     protocols: tuple[str, ...]
     curated: bool
     notes: str
-    tier: str = TIER_RESEARCH
+    tier: str
     held_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_bool_curated(self.curated)
 
     def to_dict(self) -> dict[str, Any]:
         payload = {
@@ -123,8 +132,11 @@ class ArmSpec:
     protocols: tuple[str, ...]
     curated: bool
     notes: str
-    tier: str = TIER_RESEARCH
+    tier: str
     held_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_bool_curated(self.curated)
 
     @classmethod
     def from_entry(cls, entry: CatalogEntry) -> ArmSpec:
@@ -157,8 +169,11 @@ class HeadSpec:
     protocols: tuple[str, ...]
     curated: bool
     notes: str
-    tier: str = TIER_RESEARCH
+    tier: str
     held_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_bool_curated(self.curated)
 
     @classmethod
     def from_entry(cls, entry: CatalogEntry) -> HeadSpec:
@@ -376,10 +391,8 @@ def _entry_from_row(row: Any) -> CatalogEntry:
     if "none" in protocols and protocols != ["none"]:
         raise ExtensionError("catalog entry protocols 'none' must be exclusive")
     curated = row.get("curated")
-    # Preserve original bool coercion for backward compat but validate presence.
-    # Schema requires boolean; allow truthiness check but methodology-only must be False.
-    curated_bool = bool(curated)
-    if kind == "methodology-only" and curated_bool:
+    _require_bool_curated(curated, label="catalog entry curated")
+    if kind == "methodology-only" and curated:
         raise ExtensionError("methodology-only entry must not be curated")
     tier = row.get("tier")
     if not isinstance(tier, str) or not tier.strip():
@@ -410,7 +423,7 @@ def _entry_from_row(row: Any) -> CatalogEntry:
         id=entry_id,
         kind=kind,
         protocols=tuple(str(item) for item in protocols),
-        curated=curated_bool,
+        curated=curated,
         notes=notes,
         tier=tier,
         held_reason=held_reason,

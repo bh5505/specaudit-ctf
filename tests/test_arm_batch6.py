@@ -31,7 +31,11 @@ SLEEP_BODY = "import time\ntime.sleep(30)\n"
 
 def _spec(arm_id: str) -> ArmSpec:
     return ArmSpec(
-        id=arm_id, protocols=("cli",), curated=True, notes="Fixture arm."
+        id=arm_id,
+        protocols=("cli",),
+        curated=True,
+        notes="Fixture arm.",
+        tier="research",
     )
 
 

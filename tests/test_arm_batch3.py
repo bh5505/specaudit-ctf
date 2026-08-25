@@ -29,7 +29,11 @@ from extension.contract import ArmSpec, NotInstalledError
 
 def _spec(arm_id: str) -> ArmSpec:
     return ArmSpec(
-        id=arm_id, protocols=("cli",), curated=True, notes="Fixture arm."
+        id=arm_id,
+        protocols=("cli",),
+        curated=True,
+        notes="Fixture arm.",
+        tier="research",
     )
 
 
