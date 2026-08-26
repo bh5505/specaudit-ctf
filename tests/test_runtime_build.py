@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import stat
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -105,6 +106,31 @@ def test_offline_fetch_refuses_missing_cache_without_network(
     )
     with pytest.raises(build.BuildError, match="--offline"):
         build.fetch(offline=True)
+
+
+def test_smoke_rejects_claimed_observed_custody_digest_mismatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle = tmp_path / "bundle"
+    monkeypatch.setattr(build, "_require_real_launcher", lambda _path: None)
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        artifact_dir = Path(argv[argv.index("--artifact-dir") + 1])
+        artifact = artifact_dir / "agentwiz-tools.json"
+        artifact.write_bytes(b'{"tools":[]}\n')
+        artifact.chmod(0o600)
+        envelope = {
+            "capability_id": build.CAPABILITY_ID,
+            "status": "complete",
+            "attempt_id": build._ATTEMPT_ID,
+            "artifacts": [{"digest": "sha256:" + "0" * 64}],
+        }
+        return subprocess.CompletedProcess(argv, 0, json.dumps(envelope), "")
+
+    monkeypatch.setattr(build.subprocess, "run", fake_run)
+
+    with pytest.raises(build.BuildError, match="smoke artifact custody mismatch"):
+        build.smoke(bundle)
 
 
 def test_tree_v1_vector_matches_cross_language_contract(tmp_path: Path) -> None:
