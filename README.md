@@ -58,9 +58,11 @@ python -m extension describe checkov
 python -m extension invoke checkov scan
 ```
 
-- `list`: catalog entries
-- `describe <id>`: one catalog row
-- `invoke <id> <action> [args]`: fail-closed tool call (optional JSON object)
+- `list`: catalog entries (catalog JSON)
+- `describe <id>`: one catalog row (catalog JSON)
+- `invoke <id> <action> [args]`: fail-closed tool call (optional JSON object).
+  Stdout is `specaudit.ctf.execution-result.v1`. Process exit 0 is not
+  `complete`; `transport_ok` is informational.
 
 Unknown ids, methodology-only rows, heads, held arms, non-curated
 arms, and uninstalled curated arms are hard errors. Do not invent a
@@ -138,18 +140,24 @@ python -m extension.range
 python -m extension.range --out range-result.json --seed 123
 ```
 
-Fixtures `tf_s3_public_access` and `tf_iam_open` are synthetic. The
-runner stamps `live_aws: false` and emits `range.lifecycle.v2`. Document
-and fixture `status` is `complete`, `degraded`, or `failed`; compatibility
-`ok` is true only when `status` is `complete`. A skipped or erroring arm
-cannot be `complete`. Omit `arm_ids` (auto-discover) to treat curated arms
-as optional (`degraded` on skip/error). Explicit non-empty `arm_ids` are
-required (`failed` on skip/error). Explicit empty `arm_ids=()` has no arms
-and may be `complete` when lifecycle matches. Lifecycle `matched_expected`
-is independent — a match cannot hide an arm skip/error. Default CLI omits
-`arm_ids` (auto-discover) and may exit 1 with valid degraded JSON. MCP
-JSON-RPC success is transport-only; the content document carries range
-status.
+Fixtures `tf_s3_public_access` and `tf_iam_open` are synthetic. CLI
+stdout and `--out` are `specaudit.ctf.execution-result.v1`. Process
+exit 0 is not `complete`; `transport_ok` is informational. Library
+`run_range()` still returns seed-stable `range.lifecycle.v2` with
+`live_aws: false`. The inner lifecycle document is coverage input and
+a `range-report` artifact digest, not a second all-clear: inner `ok`
+is not the outer status. `--seed` applies to that inner run. Document
+and fixture `status` is `complete`, `degraded`, or `failed`;
+compatibility `ok` is true only when `status` is `complete`. A skipped
+or erroring arm cannot be `complete`. Omit `arm_ids` (auto-discover) to
+treat curated arms as optional (`degraded` on skip/error). Explicit
+non-empty `arm_ids` are required (`failed` on skip/error). Explicit
+empty `arm_ids=()` has no arms and may be `complete` when lifecycle
+matches. Lifecycle `matched_expected` is independent — a match cannot
+hide an arm skip/error. Default CLI omits `arm_ids` (auto-discover) and
+may exit 1 with a valid degraded execution-result envelope. MCP
+JSON-RPC success is transport-only; the MCP content document is still
+`range.lifecycle.v2`.
 
 ## Dispatch doctrine
 

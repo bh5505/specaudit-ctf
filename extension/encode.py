@@ -28,6 +28,8 @@ from .envelopes import (
 
 RANGE_CAPABILITY_ID = "fixture.range-observe"
 RANGE_TOOL = {"name": "fixture-range", "version": "1.0.0"}
+# Packet-1 freeze URI, not observed scan roots. Do not treat invoke
+# authorized/touched as a filesystem walk of what the arm read.
 INVOKE_SCOPE = ("file:///extension/range/tf_s3_public_access",)
 RANGE_SCOPE = (
     "file:///extension/range/tf_s3_public_access",
@@ -44,10 +46,11 @@ _INVOKE_RESERVED = {
     "max_tool_steps": 8,
     "max_spend": None,
 }
+# Match range-observe freeze reserved. Spent steps are this one capability.
 _RANGE_RESERVED = {
     "timeout_ms": 60000,
     "max_output_bytes": 1048576,
-    "max_tool_steps": 64,
+    "max_tool_steps": 16,
     "max_spend": None,
 }
 
@@ -65,15 +68,15 @@ def encode_invoke_result(
     """Encode a completed transport Result. Caller exit code stays Result.ok."""
     cap = _capability_id(result.arm_id, result.action)
     blob = _canonical_bytes(result.output)
+    owned = result.output not in (None, "")
+    artifacts = [_artifact(blob, kind="scan-report")] if owned else []
     if result.ok:
         claimed = STATUS_COMPLETE
         coverage = _coverage(attempted=(cap,), complete=(cap,), required=(cap,))
-        artifacts = [_artifact(blob, kind="scan-report")]
         limitations: tuple[str, ...] = ()
     else:
         claimed = STATUS_FAILED
         coverage = _coverage(attempted=(cap,), failed=(cap,), required=(cap,))
-        artifacts = [_artifact(blob, kind="scan-report")] if result.output not in (None, "") else []
         limitations = ("required arm failed",)
     candidate = _envelope(
         capability_id=cap,
@@ -209,7 +212,7 @@ def encode_range_document(
         ),
         limitations=tuple(limitations),
         output_bytes=len(blob),
-        tool_steps=max(1, len(attempted)),
+        tool_steps=1,
     )
     return _admit(candidate)
 

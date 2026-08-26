@@ -169,12 +169,35 @@ def test_invoke_success_emits_v1_exit_zero_is_not_complete(
     parsed = _assert_execution_result(
         payload, known_ids=(*KNOWN_CAPABILITY_IDS, "checkov.scan")
     )
+    assert payload["status"] == "complete"
     assert payload["transport_ok"] is True
     assert code == 0
-    # Exit 0 is informational transport success, not semantic complete.
-    assert parsed.status == parsed.result.status
+    assert parsed.status == "complete"
     assert parsed.result.transport_ok is True
     assert parsed.result.artifacts
+    default = parse_execution_result(payload)
+    assert default.status == "failed"
+    assert "unknown-capability" in default.reasons
+
+
+def test_invoke_transport_ok_exit_zero_can_be_non_complete(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = Result(ok=True, arm_id="checkov", action="scan", output=None, error=None)
+    monkeypatch.setattr(
+        "extension.__main__.Extension.invoke",
+        lambda self, arm_id, action, args=None: fake,
+    )
+    code = invoke_main(["invoke", "checkov", "scan", "{}"])
+    payload = _stdout_json(capsys)
+    parsed = _assert_execution_result(
+        payload, known_ids=(*KNOWN_CAPABILITY_IDS, "checkov.scan")
+    )
+    assert code == 0
+    assert payload["transport_ok"] is True
+    assert payload["status"] == "failed"
+    assert parsed.status == "failed"
+    assert "unowned-evidence" in parsed.reasons
 
 
 def test_invoke_arm_error_emits_failed_envelope_exit_one(
@@ -288,6 +311,24 @@ def test_range_complete_encoder_pairs_with_manifest() -> None:
     pair = accept_pair(MANIFESTS / "range-observe.json", payload)
     assert pair.accepted is True
     assert pair.status == "complete"
+
+
+def test_range_encoder_spends_one_step_under_freeze_budget(
+    no_curated_tools: None,
+) -> None:
+    inner = run_range()
+    assert len(inner["coverage"]["attempted"]) == 26
+    payload = encode_range_document(
+        inner,
+        started_at="2026-08-25T12:00:00Z",
+        finished_at="2026-08-25T12:00:00Z",
+    )
+    parsed = _assert_execution_result(payload)
+    assert payload["budget"]["reserved"]["max_tool_steps"] == 16
+    assert payload["budget"]["spent"]["tool_steps"] == 1
+    assert payload["status"] == "degraded"
+    assert parsed.status == "degraded"
+    assert "budget-breach" not in parsed.reasons
 
 
 def test_encode_range_ignores_inner_compatibility_ok() -> None:

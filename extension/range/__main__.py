@@ -22,7 +22,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--seed",
         type=int,
         default=None,
-        help="stamp this seed on the result document",
+        help="apply this seed to the inner lifecycle run (hashed into the range-report artifact)",
     )
     try:
         ns = parser.parse_args(list(argv) if argv is not None else None)

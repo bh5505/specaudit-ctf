@@ -85,7 +85,7 @@ def _assert_mode_b_loadable(document: dict[str, Any], *, status: str) -> None:
         assert row["path"]
 
 
-def test_range_cli_writes_mode_b_loadable_document(
+def test_range_cli_out_writes_execution_result_v1(
     tmp_path: Path, no_curated_tools: None
 ) -> None:
     out = tmp_path / "range-result.json"
