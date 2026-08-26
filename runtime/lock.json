@@ -1,0 +1,911 @@
+{
+  "capability_manifest": {
+    "path": "tests/goldens/capability-manifest/agent-wiz.list_tools.json",
+    "sha256": "5b4cd591151b4ccc64b67afd1697954b1bab27061941d3dbba7ec82497e32d3e"
+  },
+  "cpython": {
+    "asset": "cpython-3.11.16+20260825-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+    "host_abi": {
+      "elf_interpreter": "/lib64/ld-linux-x86-64.so.2",
+      "maximum_glibc_symbol_version": "2.17",
+      "needed": [
+        "libc.so.6",
+        "libdl.so.2",
+        "libm.so.6",
+        "libpthread.so.0",
+        "librt.so.1",
+        "libutil.so.1"
+      ]
+    },
+    "launcher_sha256": "bba9c5269e5794349c1b3bf2bcec677315462a4419dadcc3caefd43fb24d8c94",
+    "platform": "x86_64-unknown-linux-gnu",
+    "python_build_standalone_release": "20260825",
+    "sha256": "232f75c9dd6733b41a8101b5076b2a248360722dedded5688f4ac7d5931d8eac",
+    "size": 30931922,
+    "url": "https://github.com/astral-sh/python-build-standalone/releases/download/20260825/cpython-3.11.16+20260825-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
+    "version": "3.11.16"
+  },
+  "included_stdlib_files": [
+    {
+      "name": "__future__",
+      "path": "__future__.py",
+      "sha256": "981d4c398849f9ebcab72300d9c1fe288fd6d7f28957b3b3fa3a493a5836d95c"
+    },
+    {
+      "name": "_collections_abc",
+      "path": "_collections_abc.py",
+      "sha256": "ec646ef7e27aae261adef3c57b9d18822c6526b3e9562dabb9f3cb4e6803066c"
+    },
+    {
+      "name": "_compression",
+      "path": "_compression.py",
+      "sha256": "3ad5d60627477a60939ee44fc1bb3a05dbe8fb52f0f75039b8f5d8f1a278b981"
+    },
+    {
+      "name": "_frozen_importlib",
+      "path": "importlib/_bootstrap.py",
+      "sha256": "2aa31b7369a9725ce893fed35e33a2ffb1c908ecc7411a34d7975cb25a28f695"
+    },
+    {
+      "name": "_frozen_importlib_external",
+      "path": "importlib/_bootstrap_external.py",
+      "sha256": "3f6722d00f362179a1394d97e3bce5e51611d0ffa8a36b3bb6bf6439b56d8bf2"
+    },
+    {
+      "name": "_strptime",
+      "path": "_strptime.py",
+      "sha256": "d132241724bde0b494a2fcbb6500d4cecf603e79dd662908c452b83904536a01"
+    },
+    {
+      "name": "_weakrefset",
+      "path": "_weakrefset.py",
+      "sha256": "91895a451d06e9f521a1171b31b9b19bc9740f35af00d4fa106338ab7167c9ac"
+    },
+    {
+      "name": "abc",
+      "path": "abc.py",
+      "sha256": "e558702a95cdce3febd289da021715d2b92bc43995b8a1bc58dfa1c3d8010287"
+    },
+    {
+      "name": "argparse",
+      "path": "argparse.py",
+      "sha256": "e878677e158d0bc0fb5119e0df74d94236f3653777bc9f2ea3fee49c167fe001"
+    },
+    {
+      "name": "ast",
+      "path": "ast.py",
+      "sha256": "c513073798bdbf3cdef09327d0d2d381a53213a13a4ba3f02729695327539406"
+    },
+    {
+      "name": "base64",
+      "path": "base64.py",
+      "sha256": "7de2ffc30db7b791f482ee8e6cba30a7b69452324d466231f29395be00154b4b"
+    },
+    {
+      "name": "bisect",
+      "path": "bisect.py",
+      "sha256": "e5b2ff166f48a06e70ae831d8c9b47283fcd0c254306eee12d3dae9c55e11526"
+    },
+    {
+      "name": "bz2",
+      "path": "bz2.py",
+      "sha256": "76ab3252924e71e859d7d90e8d3db13b6554975cfcac0fdadced4de7f8779330"
+    },
+    {
+      "name": "calendar",
+      "path": "calendar.py",
+      "sha256": "15903bacf6416869a58abff7d1680e16f26e9bd0186ad0562a0668d05f076fd9"
+    },
+    {
+      "name": "codecs",
+      "path": "codecs.py",
+      "sha256": "f16a81d14e7f73931ecf9f9f2e17c10bc0ca29bbe38b0243f6919b70882fcfea"
+    },
+    {
+      "name": "collections",
+      "path": "collections/__init__.py",
+      "sha256": "64b09e7062bb7f41e080900d414988c289624aea0ee6ca4037f1e317a11374ee"
+    },
+    {
+      "name": "collections.abc",
+      "path": "collections/abc.py",
+      "sha256": "9cb4208f99128a0489b6c8e6c61637617dd7d4250c59e065491957eda084dd10"
+    },
+    {
+      "name": "contextlib",
+      "path": "contextlib.py",
+      "sha256": "d732c045bc7450997f97b2f79cfdb1546b68d2655e89ab3170f3b19b3930d83c"
+    },
+    {
+      "name": "copy",
+      "path": "copy.py",
+      "sha256": "27dcfc53a4b9d4fbc3d90c74e549eb6eca9301524d6d2fbff9a6589cf51b6fd5"
+    },
+    {
+      "name": "copyreg",
+      "path": "copyreg.py",
+      "sha256": "5499e1be7ba52d4715a911ae65ef2d703db9379d21fff2a07fad8877c318e070"
+    },
+    {
+      "name": "dataclasses",
+      "path": "dataclasses.py",
+      "sha256": "77a41ea9eb35d959781087b72ef5b452218b57b9d8f2d28688d45a40ca7f8a09"
+    },
+    {
+      "name": "datetime",
+      "path": "datetime.py",
+      "sha256": "cc9bcb0f1c2f44e1a6cd51882979e113e973c2e65ed84b9aaedabb48d47aa356"
+    },
+    {
+      "name": "dis",
+      "path": "dis.py",
+      "sha256": "2e8d70c8cd2f4ce1fab5574f4a5ee81f5572d929da00067d14e6f6582356d240"
+    },
+    {
+      "name": "email",
+      "path": "email/__init__.py",
+      "sha256": "e4f46e3414c4602c9abb8b404a45e84412fc49dbe38a3d163f9575132dc7c93e"
+    },
+    {
+      "name": "email._encoded_words",
+      "path": "email/_encoded_words.py",
+      "sha256": "4178321600c0a19ca04cfe8542ce44487f339d15d89a473b58cea63c0b230217"
+    },
+    {
+      "name": "email._parseaddr",
+      "path": "email/_parseaddr.py",
+      "sha256": "4308932872acbf4a674312a45a49b870e48026e3dfedc878ee2f512ddf2f30ba"
+    },
+    {
+      "name": "email._policybase",
+      "path": "email/_policybase.py",
+      "sha256": "3db4bf3be5bdba13ab9a78ce30784c330d6dbc657b4e9142210dc8b264cfd424"
+    },
+    {
+      "name": "email.base64mime",
+      "path": "email/base64mime.py",
+      "sha256": "e2b4b87a5f42a8c5780e343f675513bbcc6abdd23fa14f8f1a7d4f7d72304770"
+    },
+    {
+      "name": "email.charset",
+      "path": "email/charset.py",
+      "sha256": "3ccb2e860390656664d271f08da8c0bae9a4297cc7e90be664d7c82d364e442f"
+    },
+    {
+      "name": "email.encoders",
+      "path": "email/encoders.py",
+      "sha256": "690b275529788cc48e8f541a2aef321dc31e92f75764ac7924896db72d8a9555"
+    },
+    {
+      "name": "email.errors",
+      "path": "email/errors.py",
+      "sha256": "dbfb4bbfc85e9d556d3385dc6356518846d8a122bc643b171ea61b6e8dc42c8b"
+    },
+    {
+      "name": "email.feedparser",
+      "path": "email/feedparser.py",
+      "sha256": "ca333e0462c96505d8c510f260192256306fa889c011c6f2eaa8d50c70503cce"
+    },
+    {
+      "name": "email.header",
+      "path": "email/header.py",
+      "sha256": "4d9baa908ad5288dd8fad8cf20b3802ffac77ba1642727804a633b201c56e5ca"
+    },
+    {
+      "name": "email.iterators",
+      "path": "email/iterators.py",
+      "sha256": "1080a2d03779176d6d45f6ecd976dbe69f5579f7e4e83b75224c3f92fd258102"
+    },
+    {
+      "name": "email.message",
+      "path": "email/message.py",
+      "sha256": "275f2d0a31e1331cd90014039c4c150fe5822c3e981638cc31d4973ee0fb27eb"
+    },
+    {
+      "name": "email.parser",
+      "path": "email/parser.py",
+      "sha256": "7a665bc106e9d4f6f8f2c8de53b2c1d5b97f5105cc7da638b82d731f6f9e354e"
+    },
+    {
+      "name": "email.quoprimime",
+      "path": "email/quoprimime.py",
+      "sha256": "77b454bd3ba3b5e3776be28ae3a0fd8de5d1e50d5b8ee10dd539c37c2bd68082"
+    },
+    {
+      "name": "email.utils",
+      "path": "email/utils.py",
+      "sha256": "014848ca9a7f3a747e0ae8e0814f5c5734301bea880d73618ea0fd61e53b0342"
+    },
+    {
+      "name": "encodings",
+      "path": "encodings/__init__.py",
+      "sha256": "78c4744d407690f321565488710b5aaf6486b5afa8d185637aa1e7633ab59cd8"
+    },
+    {
+      "name": "encodings.aliases",
+      "path": "encodings/aliases.py",
+      "sha256": "6fdcc49ba23a0203ae6cf28e608f8e6297d7c4d77d52e651db3cb49b9564c6d2"
+    },
+    {
+      "name": "encodings.utf_8",
+      "path": "encodings/utf_8.py",
+      "sha256": "ba0cac060269583523ca9506473a755203037c57d466a11aa89a30a5f6756f3d"
+    },
+    {
+      "name": "enum",
+      "path": "enum.py",
+      "sha256": "01addb65722daecee235caf6b345e4a910b1882aacc29e4fb846e0e0904043e6"
+    },
+    {
+      "name": "fnmatch",
+      "path": "fnmatch.py",
+      "sha256": "6683da36e47af523f3f41e18ad244d837783e19e98911cc0b7415dea81494ebc"
+    },
+    {
+      "name": "functools",
+      "path": "functools.py",
+      "sha256": "6d80018a3fa9fed44c5b78f881987ee3ab3fb1238b077b4e6dcb4b76da7db73b"
+    },
+    {
+      "name": "genericpath",
+      "path": "genericpath.py",
+      "sha256": "34497be8d2eb70df61e94cb2ee1938433145c977a56b36be37cc41a3a71d32c2"
+    },
+    {
+      "name": "gettext",
+      "path": "gettext.py",
+      "sha256": "a5c249a522b6b8e3aa6f1b12a8bcc09508b99ad612b58d2fc973db27ea3b7cc3"
+    },
+    {
+      "name": "hashlib",
+      "path": "hashlib.py",
+      "sha256": "e2bffb462e4d43e6637b9450e259e8ba2a56626ba3037d68aa1cee68b3f61d4a"
+    },
+    {
+      "name": "heapq",
+      "path": "heapq.py",
+      "sha256": "6d43277e5c76fc0f073cd388fcff852d14d068f6bb6d4886c340f8b75a1229a9"
+    },
+    {
+      "name": "http",
+      "path": "http/__init__.py",
+      "sha256": "fec3d2f335260c6da338cc45955b053e80039a9611ef2651519724f84def641c"
+    },
+    {
+      "name": "http.client",
+      "path": "http/client.py",
+      "sha256": "1d41c7caf2d3b263a6e1e313120db4c8fc5021c0c9783ee861bf1a43c9cde5d8"
+    },
+    {
+      "name": "importlib",
+      "path": "importlib/__init__.py",
+      "sha256": "49ad4fdc8139026f7f3773e3f50f09207ff6bd8e92a2c382545525235448e525"
+    },
+    {
+      "name": "importlib._abc",
+      "path": "importlib/_abc.py",
+      "sha256": "e24fa90513d1fd6e10df30dc28044dfcad857b88161c79de10f7109c18227e8d"
+    },
+    {
+      "name": "importlib._bootstrap",
+      "path": "importlib/_bootstrap.py",
+      "sha256": "2aa31b7369a9725ce893fed35e33a2ffb1c908ecc7411a34d7975cb25a28f695"
+    },
+    {
+      "name": "importlib._bootstrap_external",
+      "path": "importlib/_bootstrap_external.py",
+      "sha256": "3f6722d00f362179a1394d97e3bce5e51611d0ffa8a36b3bb6bf6439b56d8bf2"
+    },
+    {
+      "name": "importlib.machinery",
+      "path": "importlib/machinery.py",
+      "sha256": "d045cd7ecf2a12b6ecbfbef79eb114e87ef2ebd756f5b705f73e6f3266e3dede"
+    },
+    {
+      "name": "importlib.util",
+      "path": "importlib/util.py",
+      "sha256": "a1f26649b3409cc90627d3657dd8d38d159bd7e7a2ce34ecca1297119701f608"
+    },
+    {
+      "name": "inspect",
+      "path": "inspect.py",
+      "sha256": "7a134c67f2256307547f2f0b81eb6f89b652c078ab22e59c062770ba9736c6ff"
+    },
+    {
+      "name": "io",
+      "path": "io.py",
+      "sha256": "12636601d4f488b583cff41668c3a386c3b2d93499df09de0df9d9a2a4b95194"
+    },
+    {
+      "name": "ipaddress",
+      "path": "ipaddress.py",
+      "sha256": "ba8d3389ff084fcb232b48204ec04f2b3ea4bd0eadf7b18c814947d185de2c64"
+    },
+    {
+      "name": "json",
+      "path": "json/__init__.py",
+      "sha256": "d5d41e2c29049515d295d81a6d40b4890fbec8d8482cfb401630f8ef2f77e4d5"
+    },
+    {
+      "name": "json.decoder",
+      "path": "json/decoder.py",
+      "sha256": "9f02654649816145bc76f8c210a5fe3ba1de142d4d97a1c93105732e747c285b"
+    },
+    {
+      "name": "json.encoder",
+      "path": "json/encoder.py",
+      "sha256": "af7bd40a0d0d0a3e726a9b4b3a2a543019f6ab97a340d0162a9c29ca9da97869"
+    },
+    {
+      "name": "json.scanner",
+      "path": "json/scanner.py",
+      "sha256": "8604d9d03786d0d509abb49e9f069337278ea988c244069ae8ca2c89acc2cb08"
+    },
+    {
+      "name": "keyword",
+      "path": "keyword.py",
+      "sha256": "afbe73afb68d32fa998e5ff3d081090deec457152470f5331cc2bd430a0e9d2a"
+    },
+    {
+      "name": "linecache",
+      "path": "linecache.py",
+      "sha256": "c985113d9219c02950916e75090158bccf44cacac09014741b1c59b07968d111"
+    },
+    {
+      "name": "locale",
+      "path": "locale.py",
+      "sha256": "ac828df41b2fac93ba3e66a2735216c98c0e1853b8dfb9b859e301fe64153feb"
+    },
+    {
+      "name": "lzma",
+      "path": "lzma.py",
+      "sha256": "58fb9d2fdc8a8af7b25e218f17ea3b51bdfa53bdf40f440ab33c605974ca5c2e"
+    },
+    {
+      "name": "ntpath",
+      "path": "ntpath.py",
+      "sha256": "258e9f1fb694c4f73314fa5bf13ec03db90f1b136549de82b4e12af7a98f38e2"
+    },
+    {
+      "name": "opcode",
+      "path": "opcode.py",
+      "sha256": "e6fc6dc49ced415d6ec285aaf1076148b8c4cb253d3a4d2384a7bab994d394bf"
+    },
+    {
+      "name": "operator",
+      "path": "operator.py",
+      "sha256": "b2af20f67667203c1730e686cc5d0427becc94db4c97f1d3efe3ed2158473f6a"
+    },
+    {
+      "name": "os",
+      "path": "os.py",
+      "sha256": "8a5d4ac7b87c6c5b31fcb5081f7f7c06f8403a2fdb3eb23692c48933baeb899e"
+    },
+    {
+      "name": "os.path",
+      "path": "posixpath.py",
+      "sha256": "aa5c97446b9d11a3b6d5a5f949a814243bbda8f2862d70bd9f18ad6961bb001c"
+    },
+    {
+      "name": "pathlib",
+      "path": "pathlib.py",
+      "sha256": "3b21ac188fd9ac20bacc8ccd976fabd5d8ccf5000f8e157d3dfff005b228fb3d"
+    },
+    {
+      "name": "posixpath",
+      "path": "posixpath.py",
+      "sha256": "aa5c97446b9d11a3b6d5a5f949a814243bbda8f2862d70bd9f18ad6961bb001c"
+    },
+    {
+      "name": "queue",
+      "path": "queue.py",
+      "sha256": "f6c37fc37cd7440979f7d22d40ee818fa3b714c573610c08fa52911d541193f0"
+    },
+    {
+      "name": "quopri",
+      "path": "quopri.py",
+      "sha256": "7070b61e5a582423a1bb405e3d23cb3e26c4faafcb142a8cbb88ec3f2d6104e9"
+    },
+    {
+      "name": "random",
+      "path": "random.py",
+      "sha256": "b931a2d452db89ab9e1f79d59b66ce194dbd6748049cfe44699726da52b9c956"
+    },
+    {
+      "name": "re",
+      "path": "re/__init__.py",
+      "sha256": "029ead61f362489e9bb034f4c2503abee95462056541e9ad07715de3c353b0da"
+    },
+    {
+      "name": "re._casefix",
+      "path": "re/_casefix.py",
+      "sha256": "41572ac50cf96b04496e676d8a6708898bb8e752e06dad34ed4c50c5d8f1fe40"
+    },
+    {
+      "name": "re._compiler",
+      "path": "re/_compiler.py",
+      "sha256": "c05067f8bfa4c13cbbf1eedc4d5cafc9b621bcb6ebc5771ba0518a18095af15a"
+    },
+    {
+      "name": "re._constants",
+      "path": "re/_constants.py",
+      "sha256": "3e4463dc8ba87c4a3563be46d2d593e82ca9a0fb91768cfe5a07554ed3de82c5"
+    },
+    {
+      "name": "re._parser",
+      "path": "re/_parser.py",
+      "sha256": "4748e39c77d6dc14f81af80e68a62ad99031a8182d5e0b219a6666d0cfb1626f"
+    },
+    {
+      "name": "reprlib",
+      "path": "reprlib.py",
+      "sha256": "264433cc232332db871666b3bb6e4c2cb97b092cb8d5056a45ec2e53daea2b1c"
+    },
+    {
+      "name": "runpy",
+      "path": "runpy.py",
+      "sha256": "f7af4206d8cbb27fce7731174b190edd6569ec3fad060a727d4bfcde69dd965c"
+    },
+    {
+      "name": "selectors",
+      "path": "selectors.py",
+      "sha256": "1eeb102373e18c96311203f30c516e785bd8642275aa0bd66e43a284c9692385"
+    },
+    {
+      "name": "shutil",
+      "path": "shutil.py",
+      "sha256": "f6da78257f31823dc53dc4fa72b27da59205d7dcfa97aa0f0683e546db91e26b"
+    },
+    {
+      "name": "signal",
+      "path": "signal.py",
+      "sha256": "0363c964c90ac0b3e515de5749205e6e6454051a1211058375d84d91eab6071a"
+    },
+    {
+      "name": "socket",
+      "path": "socket.py",
+      "sha256": "64360e73e3db69396d45d5ee256e8306b3653212ab96ae4a130070488cddbb30"
+    },
+    {
+      "name": "ssl",
+      "path": "ssl.py",
+      "sha256": "8806125ae5b1967e220ab3c73ce939736eb9251e3a431bd19d7cb9035f097cdc"
+    },
+    {
+      "name": "stat",
+      "path": "stat.py",
+      "sha256": "052af0327eae6941b69b05c088b3e748f79995635f80ac4cc7125eb333eb4c77"
+    },
+    {
+      "name": "string",
+      "path": "string.py",
+      "sha256": "24aeae1f0526250f442022022bf98df9a823b1cb330543ee79e70e44907462e9"
+    },
+    {
+      "name": "struct",
+      "path": "struct.py",
+      "sha256": "9c231f9497caf513a22dee8f790b07f969b0e45854a0bdd6dd84b492e08c2856"
+    },
+    {
+      "name": "subprocess",
+      "path": "subprocess.py",
+      "sha256": "baa9f9138d8d20df6284f67e7d2e790f847f65e2c5370de322d54cccd737f2d9"
+    },
+    {
+      "name": "tempfile",
+      "path": "tempfile.py",
+      "sha256": "ea4b01b1dfd4ab1f3974a98c216879770a4f7db060bf233a48e3a4223487c836"
+    },
+    {
+      "name": "threading",
+      "path": "threading.py",
+      "sha256": "f8b8d9ebd040e1373d76e73c23c683f7c7c204add96bf9d8d9c21ac751cf5252"
+    },
+    {
+      "name": "token",
+      "path": "token.py",
+      "sha256": "2cabb6a81cafa84b475fc852c20b6bad45955ec0f88063720a831495215f776b"
+    },
+    {
+      "name": "tokenize",
+      "path": "tokenize.py",
+      "sha256": "79aa94ebe1761811ea9b2da2ada409a8cb9abd7c6eac241d0c181a36684bb609"
+    },
+    {
+      "name": "types",
+      "path": "types.py",
+      "sha256": "0c08fbb650c37535a7d8361fc12029e3f4c72a418cf564e8779dae14b979e5ba"
+    },
+    {
+      "name": "typing",
+      "path": "typing.py",
+      "sha256": "eff3df4f1d65e13d690b8f427cada4dd3b88431dd1e7f319fda1bd0062113203"
+    },
+    {
+      "name": "urllib",
+      "path": "urllib/__init__.py",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "urllib.error",
+      "path": "urllib/error.py",
+      "sha256": "d12b3cc66af3f42a8ebe63e1c91d24f92c6237b6a93a3702938dffabd812d77b"
+    },
+    {
+      "name": "urllib.parse",
+      "path": "urllib/parse.py",
+      "sha256": "16d609efe91f08901df42c3176a6046e34e97fd39813954871d5a16e89e6b454"
+    },
+    {
+      "name": "urllib.request",
+      "path": "urllib/request.py",
+      "sha256": "a9cf43cba43ffd83956d4b14be76869585ac9c0fbf935f8772cfad24dbce4c03"
+    },
+    {
+      "name": "urllib.response",
+      "path": "urllib/response.py",
+      "sha256": "7e6c3b6d7a95f0d74f5968f51a87adae8a51bf42390cdfec98c7a99203e7bb76"
+    },
+    {
+      "name": "warnings",
+      "path": "warnings.py",
+      "sha256": "47328418f0365f0897a2d3789f684dbaba1d5b9c492871f1b72a35b8e2e92021"
+    },
+    {
+      "name": "weakref",
+      "path": "weakref.py",
+      "sha256": "56f8d313fb74019e53eb9287400702fbce788b7fe30e097b0b6e06296f3f080c"
+    },
+    {
+      "name": "zipimport",
+      "path": "zipimport.py",
+      "sha256": "e84b98dd13d3a8ae3ff2094ef2889dcead41d754f0531686f0b70b8d225676cc"
+    }
+  ],
+  "included_stdlib_module_names": [
+    "__future__",
+    "_collections_abc",
+    "_compression",
+    "_frozen_importlib",
+    "_frozen_importlib_external",
+    "_strptime",
+    "_weakrefset",
+    "abc",
+    "argparse",
+    "ast",
+    "base64",
+    "bisect",
+    "bz2",
+    "calendar",
+    "codecs",
+    "collections",
+    "collections.abc",
+    "contextlib",
+    "copy",
+    "copyreg",
+    "dataclasses",
+    "datetime",
+    "dis",
+    "email",
+    "email._encoded_words",
+    "email._parseaddr",
+    "email._policybase",
+    "email.base64mime",
+    "email.charset",
+    "email.encoders",
+    "email.errors",
+    "email.feedparser",
+    "email.header",
+    "email.iterators",
+    "email.message",
+    "email.parser",
+    "email.quoprimime",
+    "email.utils",
+    "encodings",
+    "encodings.aliases",
+    "encodings.utf_8",
+    "enum",
+    "fnmatch",
+    "functools",
+    "genericpath",
+    "gettext",
+    "hashlib",
+    "heapq",
+    "http",
+    "http.client",
+    "importlib",
+    "importlib._abc",
+    "importlib._bootstrap",
+    "importlib._bootstrap_external",
+    "importlib.machinery",
+    "importlib.util",
+    "inspect",
+    "io",
+    "ipaddress",
+    "json",
+    "json.decoder",
+    "json.encoder",
+    "json.scanner",
+    "keyword",
+    "linecache",
+    "locale",
+    "lzma",
+    "ntpath",
+    "opcode",
+    "operator",
+    "os",
+    "os.path",
+    "pathlib",
+    "posixpath",
+    "queue",
+    "quopri",
+    "random",
+    "re",
+    "re._casefix",
+    "re._compiler",
+    "re._constants",
+    "re._parser",
+    "reprlib",
+    "runpy",
+    "selectors",
+    "shutil",
+    "signal",
+    "socket",
+    "ssl",
+    "stat",
+    "string",
+    "struct",
+    "subprocess",
+    "tempfile",
+    "threading",
+    "token",
+    "tokenize",
+    "types",
+    "typing",
+    "urllib",
+    "urllib.error",
+    "urllib.parse",
+    "urllib.request",
+    "urllib.response",
+    "warnings",
+    "weakref",
+    "zipimport"
+  ],
+  "included_yaml_files": [
+    {
+      "name": "yaml",
+      "path": "yaml/__init__.py",
+      "sha256": "b19dfcc333d6a75dfd73073901164507252f271b41d3b5f7d85510033a0547a7"
+    },
+    {
+      "name": "yaml._yaml",
+      "path": "yaml/_yaml.cpython-311-x86_64-linux-gnu.so",
+      "sha256": "aa9bb0d7b261b8266ababd9e19f5bf2f505d9a84ba360ce16502297e8a033765"
+    },
+    {
+      "name": "yaml.composer",
+      "path": "yaml/composer.py",
+      "sha256": "fcaa37d16afa783594794a5ab94193dcb720f503c19ce3d59539c8311189f453"
+    },
+    {
+      "name": "yaml.constructor",
+      "path": "yaml/constructor.py",
+      "sha256": "90d8247da78b524c10618fd0e857f54f3d97570fe91b5c5513d024ef3faf88b0"
+    },
+    {
+      "name": "yaml.cyaml",
+      "path": "yaml/cyaml.py",
+      "sha256": "e99ac01bd7c062f7557b614aff0d21997a06ed962ca185306a91bc0a20bbd87d"
+    },
+    {
+      "name": "yaml.dumper",
+      "path": "yaml/dumper.py",
+      "sha256": "3cb72d66563064ba7b5e679477046ebf89d8399d940670c8532f3e94a7cb17ea"
+    },
+    {
+      "name": "yaml.emitter",
+      "path": "yaml/emitter.py",
+      "sha256": "8e086d694ede170837d5b1b407b45979aff6f40762f422a65eafd08e04290a44"
+    },
+    {
+      "name": "yaml.error",
+      "path": "yaml/error.py",
+      "sha256": "021f73fada072546c4f63f8cf18a7181244ce4280b09cc15cc980b2d1176171a"
+    },
+    {
+      "name": "yaml.events",
+      "path": "yaml/events.py",
+      "sha256": "e74fd392c810884e2ea7e94aa3f57e9c1cbeb402319083d0c58e6a0e1282787c"
+    },
+    {
+      "name": "yaml.loader",
+      "path": "yaml/loader.py",
+      "sha256": "5156becc8aa6905482218abf3e04869b835226db4763645fff3438fdbd5f1cdd"
+    },
+    {
+      "name": "yaml.nodes",
+      "path": "yaml/nodes.py",
+      "sha256": "80f28d8fca4a09d87677882bde021820d9cf39a3b11a12405226211919cf13ce"
+    },
+    {
+      "name": "yaml.parser",
+      "path": "yaml/parser.py",
+      "sha256": "8a55a9e6fbe0a07146cef3990c8b45a068c3e83e369e1959ad9ca30306b4a09a"
+    },
+    {
+      "name": "yaml.reader",
+      "path": "yaml/reader.py",
+      "sha256": "d1d9b38ab3a20c6e17a38d519ee412ecaf6b918df18c78956ac7c330d4ea08dc"
+    },
+    {
+      "name": "yaml.representer",
+      "path": "yaml/representer.py",
+      "sha256": "22e58ff9c016f6c1ca1274b4802a926bcf78935060e1c813c5a0f021c6d143e6"
+    },
+    {
+      "name": "yaml.resolver",
+      "path": "yaml/resolver.py",
+      "sha256": "f4bf9561f9b89961f1503d558385fbae30d12bfed565de9bf76c33abb63620a6"
+    },
+    {
+      "name": "yaml.scanner",
+      "path": "yaml/scanner.py",
+      "sha256": "60433788b652690c17710460da5d91e0c753d3318fd85f5e1e42862a71f25906"
+    },
+    {
+      "name": "yaml.serializer",
+      "path": "yaml/serializer.py",
+      "sha256": "0a1b85826854d35863e31808f0668abfabdf33606e8f06bd8bb7761401e3edc0"
+    },
+    {
+      "name": "yaml.tokens",
+      "path": "yaml/tokens.py",
+      "sha256": "953408cd2570f0c83dc2fe39f7e4e388e41eeb05738aa69196a5f6ffcf6ba79e"
+    }
+  ],
+  "included_yaml_module_names": [
+    "yaml",
+    "yaml._yaml",
+    "yaml.composer",
+    "yaml.constructor",
+    "yaml.cyaml",
+    "yaml.dumper",
+    "yaml.emitter",
+    "yaml.error",
+    "yaml.events",
+    "yaml.loader",
+    "yaml.nodes",
+    "yaml.parser",
+    "yaml.reader",
+    "yaml.representer",
+    "yaml.resolver",
+    "yaml.scanner",
+    "yaml.serializer",
+    "yaml.tokens"
+  ],
+  "license_files": {
+    "licenses/cpython-LICENSE.txt": {
+      "sha256": "3b2f81fe21d181c499c59a256c8e1968455d6689d269aa85373bfb6af41da3bf",
+      "source": "cpython:python/lib/python3.11/LICENSE.txt"
+    },
+    "licenses/pyyaml-LICENSE.txt": {
+      "sha256": "8d3928f9dc4490fd635707cb88eb26bd764102a7282954307d3e5167a577e8a4",
+      "source": "pyyaml:.dist-info/licenses/LICENSE"
+    },
+    "licenses/pyyaml-METADATA.txt": {
+      "sha256": "03c3b415ed38d09faedc49360e930769b40c58f68585e6de00e2e4916a858d34",
+      "source": "pyyaml:.dist-info/METADATA"
+    },
+    "licenses/specaudit-ctf-LICENSE.txt": {
+      "sha256": "3c0b3d6af7b88fd50341b7a0a6eb88dae3f8fcd13f4ff34e27ee842334e151b0",
+      "source": "LICENSE"
+    }
+  },
+  "producer_source_files": {
+    "extension/__init__.py": "c3eef999fb386405cfb5a343bf25289017a61c67962df9c24ad04fb2f0a9fa80",
+    "extension/__main__.py": "48ee360821d3d0c3dd745e3d75c428c1b1f51bc3206ad429f13e7cb4212928f5",
+    "extension/arms/__init__.py": "f4beef2cf2d1d56588cad877fddcdc945d750a64ec0133ca30b773fc2fc89410",
+    "extension/arms/agentwiz/__init__.py": "12e8cd127de0c65955f518780ec0bb008eba587ee8ca6d55e06ea75454452ea2",
+    "extension/arms/agentwiz/arm.py": "46aa28cad7bcd53a08977e0560ec9a6c08a6d6e6db584beac535fe76ab62ad7a",
+    "extension/arms/agentwiz/policy.py": "8dee4142330be0ae3d7ed938ace2c299283f52c95b907591ea3cd539f12d97a5",
+    "extension/arms/aideepsast/__init__.py": "f30eb0a40f17348ba97868623cfa25f5fd476ec7df216592dc618ea1dc07e0cf",
+    "extension/arms/aideepsast/arm.py": "174f8f20b615ab424d83741a46e5b4ab6cde1c2b312733520ac462aa721fb92f",
+    "extension/arms/aideepsast/policy.py": "6a4c6cd4803988ce254f109cb3474f5310f71d19a6139294d9b2fdd45c8f4e2f",
+    "extension/arms/burp/__init__.py": "742dc3bfa2f5f5ac5d8f262b021abce910266cfaad57e2a824565a55d935b321",
+    "extension/arms/burp/arm.py": "04a6bb82b19a89db8d1f65975e42f93287718f8262ad58694bf69098bd746691",
+    "extension/arms/burp/policy.py": "97787cf481071efe31557d583993485322f4f6dbdbcf537976b7b2334b3a9951",
+    "extension/arms/burp/sse.py": "4c4de02374e4a568cf8ed5f923b26cc4af3e67cfd204de460430f84ac5716656",
+    "extension/arms/caldera/__init__.py": "4da560b96be08f8890dd492b8b916be040abf991722c87ee3978ba28635d9fcc",
+    "extension/arms/caldera/arm.py": "ab93f07dd65d8efc8087cde4c8d9ef81b5bf0661c34bf2df950e28e7a4d4d82e",
+    "extension/arms/caldera/policy.py": "c793a5c0bad31a545ba0cf6277aa3c12dbf80c7513e5e02062da6a516a36ba92",
+    "extension/arms/checkov/__init__.py": "38e31b6aa7ff52c8947e0e797c140258a707b331f7efa20ec577696865e497ff",
+    "extension/arms/checkov/arm.py": "6ae0d04e950158195fecbb1cbc81b885b19b704f1127db3e2ee5e9240e291930",
+    "extension/arms/checkov/policy.py": "ab4152a79a52d31212309b7bfc5a64adfccf8ccdcafaf8f0be082f308ca6b6f3",
+    "extension/arms/commix/__init__.py": "ccf9dd35cd9c66780294030f1425c0cccd077891b09d1bedddae4cbc954fb7b9",
+    "extension/arms/commix/arm.py": "83a35e034108ea200a36face7ce80a5c8073b7a59a05635144c7a365d69fdd91",
+    "extension/arms/commix/policy.py": "dbf97daf87af91ff41b0a671128e3806600b6bd9e3b5b571aeba722a01c0cab0",
+    "extension/arms/darkmoon/__init__.py": "ed92c25008e4bfa2e3d25ab14d159cd8e33b85cd86143bd781c6accaa3ce86dd",
+    "extension/arms/darkmoon/arm.py": "57289780f658424ecc0ccc880ed31199f2a62990a7c7ab48b574ba65c6961e06",
+    "extension/arms/darkmoon/policy.py": "0f933757a034101c1f2a1a1e3f739a6f12485d865141e7a24199894463cc2254",
+    "extension/arms/deepsec/__init__.py": "2dd7c2b7d25a93ac5b50a1ebb76e846943e11dd69018de303b27af80046caecb",
+    "extension/arms/deepsec/arm.py": "173fe9ad6c9913deaa8c3ce3a3f2b8b939b87c26126536593531141d29c0d4f7",
+    "extension/arms/deepsec/policy.py": "51867e7f63f64ea41820557efb0f7647d6b0daca7401fe4d3726a4341f52cc7b",
+    "extension/arms/dispatch.py": "2fa481b0d2cf1a5aa5d0d4c15fd577012fb384d343997a863873ffa23e949f3c",
+    "extension/arms/garak/__init__.py": "4405c7059f8626657caac7d6db30e2599bdd074a59678b9101088074f8bb89f9",
+    "extension/arms/garak/arm.py": "bbc889af1c4ef979a45e437439b561a618c620d1f697e94dc1f4d9d26dc734f6",
+    "extension/arms/garak/policy.py": "ca5652b88e4aa31a828feee6d0e220ebb5cde7b14f501ea47a0f0ce95c6137ae",
+    "extension/arms/gti/__init__.py": "33ac4baa988d63e8d7ec95f9edc7a70f47449250c5f7e8eb1d6a7a32cb466310",
+    "extension/arms/gti/arm.py": "b5dfe18fcd3bf9f846771dec53be65628005423d09ea865cf7fdb170588d273c",
+    "extension/arms/gti/policy.py": "74119721cfe6f59d3a88ed987880246898ccaa9fb250d2c10fdfcaf22090f2a4",
+    "extension/arms/mcp_client.py": "fffd240052304e5baff9a033277800b9936912b65be31d5bc90708dbd6e9882f",
+    "extension/arms/metasploit/__init__.py": "a1410b88a1b5d7a5ee3b5ed4f27f39a55a4f1a3883e6bd1a5789e6ac6e394102",
+    "extension/arms/metasploit/arm.py": "6d92ebd855126f15db3b5a5cc6077020aa7df15e63a92512199c1ec5cba4330d",
+    "extension/arms/metasploit/policy.py": "d514540bb9d1277ea623243050e125a50f99652326bd669030b8acf293dc3205",
+    "extension/arms/mitreattack/__init__.py": "fa2801208e0b2ca4098197a3f67fb1d7e1dcd2ede353eb9cca7a98d96f263cc0",
+    "extension/arms/mitreattack/arm.py": "5bf180298bb24519856e378ccc767fe21ea2a2e45fc4dfa906f31e0031d1df1d",
+    "extension/arms/mitreattack/policy.py": "738e52e3323601669bd6eb6b547456107fca5beafd8c15429c3849001ee43b87",
+    "extension/arms/osmedeus/__init__.py": "45ee38b813c275cec2624fdc7693d17139f342c433d18be727c2a70c9865a61f",
+    "extension/arms/osmedeus/arm.py": "2266c82af2391443a2323156f86303ae0a25db1b8eb240fe69cc57174ba34954",
+    "extension/arms/osmedeus/policy.py": "cea934feac98a952dc43c32d6ea81dc26c9c86993aeb3364cc9fa3ef9154a50c",
+    "extension/arms/pagefetch/__init__.py": "a40196903685074022688771ef3d533438a6702af38181d8514bd7978a1923d0",
+    "extension/arms/pagefetch/arm.py": "c89f0b58576e8a7fc6ef08f8df55104fd7ce6a9c80c64fa5168ce81603044a3e",
+    "extension/arms/pagefetch/policy.py": "9c0de5ba40110f9ee7900d63e4f70bed1e82dc994a0e0a992746ec69a36084b9",
+    "extension/arms/policy_base.py": "ee2a78d029e6e518958029e7421f7182caae498430e46c8722fae41f25e50c8d",
+    "extension/arms/prowler/__init__.py": "c0332cf0da9ef1f2d6883d762f3abe4208392d86c889e7e1fceb6ccf857180cc",
+    "extension/arms/prowler/arm.py": "2016d3ddb1da0d85f6e92ca080eaa1db99a7382d5e770dafc66e42ac04c5927f",
+    "extension/arms/prowler/policy.py": "f84edefab9030a9f53bec6d6be0b344a3ad34742e933c50575c3ce080a7e01b7",
+    "extension/arms/pyrit/__init__.py": "15f363d9b813e6ee78aed493e5d626e6a19c9af14bf4b475bb07f45547187f0d",
+    "extension/arms/pyrit/arm.py": "d7e1f8366ea70e88426184610aba9adfd4f943534b2111cd65333930054b10b1",
+    "extension/arms/pyrit/policy.py": "bcd7605e90ad812c4965fc04894b0b25a1e40a687f09df302dcccd69933baef6",
+    "extension/arms/routersploit/__init__.py": "43d072a5356a89c4024a373ea60d175373a701d908d9d828082751b7dd91fd29",
+    "extension/arms/routersploit/arm.py": "1ca55ab077c27e0138bd4230ce72cfe8373a9908eea8a7d0ccc52ba40bc674c6",
+    "extension/arms/routersploit/policy.py": "d3f37e564559c7c69664bf1ad5fbda3f1895611a6fa4cb45ee9dd2f86c801338",
+    "extension/arms/semgrep/__init__.py": "0d393799b329114753d9a468cf9159bf906219b8feb18f512f5f9d61b3f6cbbc",
+    "extension/arms/semgrep/arm.py": "544075c58fe52f73cc97e64593e0eb6837d05c160b6185706acf5e743f1400a9",
+    "extension/arms/semgrep/policy.py": "a5ba64a37e8fc03a4634a8d0a7f7b28fc427abd0e9709fa8acbe940574d223e4",
+    "extension/arms/sniper/__init__.py": "13106bca07307f3f2d81de791bb6031d965aff93526819c77a10a8d8f855da19",
+    "extension/arms/sniper/arm.py": "40090015fff6259069cf6a8e6045519ddb20a491f7cddf75f1c231c571ef1e21",
+    "extension/arms/sniper/policy.py": "fbeec74848e0152d6758aca615ea0aecb857f80524a916c28040e41b42f39063",
+    "extension/arms/stratus/__init__.py": "f49e79b6d67df22e30254d38d85a6d17320cfb45e5475c42b6678ebf081d98c3",
+    "extension/arms/stratus/arm.py": "c2a08853ca3d95e2388f4762bc17d76e7809dc1af30b8bda1f87a4865fda1763",
+    "extension/arms/stratus/policy.py": "52232afd7755e32fba15f3160bd1695d94bbb3518ef462ffaa9e6387fdd61cbe",
+    "extension/arms/vuls/__init__.py": "223de37585440038b05544757d67de332613503344b8887c4968d95c25b5d391",
+    "extension/arms/vuls/arm.py": "10938e4bebe390a5b17623eee00a8dec2f309d28c290fa997e32daad84cf4841",
+    "extension/arms/vuls/policy.py": "9f0e84b7cbe9cff569b4e2bd6e73e15862d5d89ee989b56bb66007f4dfc31399",
+    "extension/arms/vvah/__init__.py": "d05cf1c36802beca59f533414b021e8c911cd58c126706cb233aa43b583d32c1",
+    "extension/arms/vvah/arm.py": "994e8a9870544346981e7b677662babdba7adf742e983bdefc80c170acfc2a4c",
+    "extension/arms/vvah/policy.py": "d26ffeaaf84a6bbc496b74f5621af571c27d45f5065c39f4da26a51baccb1a2c",
+    "extension/arms/wapiti/__init__.py": "4c91395d27855074af2f6515f490a534b2b2f42fd087e0a98d49b9406441fd13",
+    "extension/arms/wapiti/arm.py": "c20993978eb7a5d0d7fcffb7e84da36f3e9c6e216113797f17984c2512ea7773",
+    "extension/arms/wapiti/policy.py": "220881e6f5db5a982886e3e7f890dfce8b4b4276b4b8d0e32a699c9953ff326c",
+    "extension/arms/zap/__init__.py": "1a4eba25042ea30beaa7a147bb743f5209fac2dfca2b599dbd4fbde6f7fe854e",
+    "extension/arms/zap/arm.py": "e595df14b24f4ba3fb4d09879a50b6f986e64d61833a3f3af1822c57342f5f20",
+    "extension/arms/zap/policy.py": "0bec7a1f596988ecf701ae5e891b3ebb58e969aa88596bcf5845011e4fe4afaa",
+    "extension/arms/zdns/__init__.py": "a8a8d4709bfc143b4dba09ee91f3ef2fbaaf73bf9d6f2953bb63d6f9114777b4",
+    "extension/arms/zdns/arm.py": "049ea8b7b083c49ea6e7ccb6701b4ac5c1bc00ea3513ef4f6bb087dc84588f9d",
+    "extension/arms/zdns/policy.py": "d1c1196bc3cce3d06cc6f06f1982308dee77e5ed7f1d8f0cc8aa1dd66d14e0e9",
+    "extension/arms/zgrab2/__init__.py": "f2b6d0a7dbdc0c957982ae7a6c1633e61b74da2aa3dc265ae637aba126270451",
+    "extension/arms/zgrab2/arm.py": "1f03abec0d2c36dac9440f7220211e9370f0d0867773a95b46a143947d147e2e",
+    "extension/arms/zgrab2/policy.py": "0bee264c5fbefa59a0da6b2a0056d4a864528eb8078283a20e993066114abb15",
+    "extension/contract.py": "ea9fe6481330ca8cabd2271f4aab89e2ca3565e9a28b4628da65d541e49de38c",
+    "extension/coverage.yaml": "6c154f604613ee012207b0c1ff46400bf06a70a5c5da7304a949b6ea854920f6",
+    "extension/encode.py": "df4926d64a057dff9f26a6b53f0ecf6277486191173630636b7f8476256867c6",
+    "extension/envelopes.py": "5a83fdcca537a3d2e68d3f2536956cfdd13b1b47d493c40749c2ecdbc21a3abc",
+    "extension/invoke_profiles.py": "7ad236e4a8e47c874e5eb0f2041f0000837c3f5905064aee6d13fb434442e93a",
+    "extension/transports/__init__.py": "c5afd05b12fd804b399e5e8ba2f3e874288e3d30ac1ccc1633d7bb3ffe150722",
+    "extension/transports/cli.py": "d4cded661df4bb000c6e5fe89e3bc36cc22396a48535ac5b3d7bd44cb4c9e8e1",
+    "extension/transports/mcp.py": "fbf1ea760edf63c5e6a2b6f5447debf231ff8a26b4b79824e06cbcf8059969e2"
+  },
+  "pyyaml": {
+    "sha256": "b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d",
+    "size": 806638,
+    "url": "https://files.pythonhosted.org/packages/71/60/917329f640924b18ff085ab889a11c763e0b573da888e8404ff486657602/pyyaml-6.0.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl",
+    "version": "6.0.3",
+    "wheel": "pyyaml-6.0.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl"
+  },
+  "schema": "specaudit-ctf.runtime-lock.v1",
+  "tool": {
+    "name": "specaudit-ctf",
+    "version": "0.1.0"
+  }
+}

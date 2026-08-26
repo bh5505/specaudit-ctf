@@ -51,7 +51,11 @@ class AgentWizArm:
         self.timeout = timeout
 
     def installed(self, spec: ArmSpec) -> bool:
-        return spec.id == ARM_ID and resolve_binary() is not None
+        # list_tools enumerates from the measured bundled/catalog source (see
+        # _list_tools) and needs no external agent-wiz binary. Every other
+        # action still requires one; that gate lives in invoke() below, not
+        # here, so a caller cannot use "not installed" to skip past it.
+        return spec.id == ARM_ID
 
     def _timeout_for(self, action: str) -> float:
         return ACTION_TIMEOUTS.get(action, self.timeout)
@@ -61,12 +65,12 @@ class AgentWizArm:
     ) -> Result:
         if spec.id != ARM_ID:
             raise NotInstalledError(spec.id)
-        binary = resolve_binary()
-        if binary is None:
-            raise NotInstalledError(spec.id)
         payload = dict(args)
         if action in LIST_ACTIONS:
             return self._list_tools(spec, action, payload)
+        binary = resolve_binary()
+        if binary is None:
+            raise NotInstalledError(spec.id)
         if action not in ALLOWED_ACTIONS and action not in DISPATCH_ACTIONS:
             return Result(
                 ok=False,

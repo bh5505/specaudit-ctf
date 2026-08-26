@@ -626,15 +626,22 @@ def test_aideepsast_scan_requires_local_semgrep_config(
 # --- agent-wiz -----------------------------------------------------------
 
 
-def test_agentwiz_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_agentwiz_list_tools_available_without_binary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """list_tools enumerates from the measured bundle/catalog source and
+    needs no external binary; every other action stays NotInstalled."""
     monkeypatch.delenv("AGENT_WIZ_BIN", raising=False)
     monkeypatch.setattr(
         "extension.arms.agentwiz.arm.resolve_binary", lambda: None
     )
     arm = AgentWizArm()
-    assert arm.installed(_spec(AGENT_WIZ_ID)) is False
-    with pytest.raises(NotInstalledError):
-        arm.invoke(_spec(AGENT_WIZ_ID), "extract", {})
+    assert arm.installed(_spec(AGENT_WIZ_ID)) is True
+    result = arm.invoke(_spec(AGENT_WIZ_ID), "list_tools", {})
+    assert result.ok is True
+    for action in ("extract", "visualize", "analyze"):
+        with pytest.raises(NotInstalledError):
+            arm.invoke(_spec(AGENT_WIZ_ID), action, {})
 
 
 def test_agentwiz_frameworks_argparse_verbatim(
