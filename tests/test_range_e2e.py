@@ -16,6 +16,7 @@ import pytest
 from extension.arms.burp import ARM_ID, BurpArm
 from extension.arms.burp.policy import ENV_ENDPOINT
 from extension.contract import Extension
+from extension.envelopes import RESULT_SCHEMA_ID, parse_execution_result
 from extension.range import (
     ARM_ACTION,
     DEFAULT_SEED,
@@ -113,12 +114,15 @@ def test_range_cli_writes_mode_b_loadable_document(
     )
     assert out.is_file(), proc.stderr or proc.stdout
     loaded = json.loads(out.read_text(encoding="utf-8"))
-    assert loaded["schema"] == RANGE_SCHEMA_V2
+    assert loaded["schema"] == RESULT_SCHEMA_ID
     # Default CLI omits arm_ids (auto-discover); no curated tools → degraded.
     assert loaded["status"] == "degraded"
-    assert loaded["ok"] is False
+    assert "ok" not in loaded
+    assert "fixtures" not in loaded
     assert proc.returncode == 1, proc.stderr
-    _assert_mode_b_loadable(loaded, status="degraded")
+    parsed = parse_execution_result(loaded)
+    assert parsed.schema_ok is True
+    assert parsed.status == "degraded"
     again = json.loads(out.read_text(encoding="utf-8"))
     assert again == loaded
 

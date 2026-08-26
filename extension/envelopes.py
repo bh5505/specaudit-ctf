@@ -1,7 +1,7 @@
 """Fail-closed parse/validate for CTF capability-manifest and execution-result v1.
 
-CLI JSON and stdio MCP are encodings of this typed contract. This module does
-not spawn arms, open sockets, or rewrite live invoke / run_range output.
+CLI invoke and run_range JSON are encodings of this typed contract (see
+extension.encode). This module does not spawn arms or open sockets.
 Semantic complete is parser-owned; JSON Schema is structural only.
 """
 

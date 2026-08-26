@@ -8,6 +8,7 @@ import sys
 from typing import Any, Sequence
 
 from .contract import Extension, ExtensionError
+from .encode import encode_invoke_failure, encode_invoke_result, utc_now
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -46,9 +47,27 @@ def main(argv: Sequence[str] | None = None) -> int:
             _emit(ext.describe(ns.id).to_dict())
             return 0
         if ns.cmd == "invoke":
-            args = _parse_args_json(ns.args)
-            result = ext.invoke(ns.id, ns.action, args)
-            _emit(result.to_dict())
+            started = utc_now()
+            try:
+                args = _parse_args_json(ns.args)
+                result = ext.invoke(ns.id, ns.action, args)
+            except ExtensionError as exc:
+                _emit(
+                    encode_invoke_failure(
+                        exc,
+                        arm_id=ns.id,
+                        action=ns.action,
+                        started_at=started,
+                        finished_at=utc_now(),
+                    )
+                )
+                print(str(exc), file=sys.stderr)
+                return 2
+            _emit(
+                encode_invoke_result(
+                    result, started_at=started, finished_at=utc_now()
+                )
+            )
             if not result.ok and result.error:
                 print(f"Invoke failed for {ns.id}.{ns.action}: {result.error}", file=sys.stderr)
             return 0 if result.ok else 1
