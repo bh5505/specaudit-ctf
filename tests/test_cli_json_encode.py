@@ -123,17 +123,36 @@ def test_invoke_methodology_only_emits_failed_envelope(
 def test_invoke_not_installed_emits_failed_envelope(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr("extension.arms.agentwiz.arm.resolve_binary", lambda: None)
-    code = invoke_main(["invoke", "agent-wiz", "list_tools"])
+    # zgrab2, not agent-wiz: agent-wiz.list_tools enumerates from the
+    # measured bundle/catalog source and no longer requires a binary (see
+    # test_agentwiz_list_tools_available_without_a_binary_or_path below).
+    monkeypatch.setattr("extension.arms.zgrab2.arm.resolve_binary", lambda: None)
+    code = invoke_main(["invoke", "zgrab2", "list_tools"])
     payload = _stdout_json(capsys)
     parsed = _assert_execution_result(payload)
-    assert payload["capability_id"] == "agent-wiz.list_tools"
+    assert payload["capability_id"] == "zgrab2.list_tools"
     assert payload["status"] == "failed"
     assert payload["transport_ok"] is False
     assert code == 2
     assert parsed.status == "failed"
     assert "required-step-skipped" in parsed.reasons
     assert "capability-profile-mismatch" not in parsed.reasons
+
+
+def test_agentwiz_list_tools_available_without_a_binary_or_path(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Unmocked: real resolve_binary() with no AGENT_WIZ_BIN and no PATH."""
+    monkeypatch.delenv("AGENT_WIZ_BIN", raising=False)
+    monkeypatch.setenv("PATH", "")
+    code = invoke_main(["invoke", "agent-wiz", "list_tools"])
+    payload = _stdout_json(capsys)
+    parsed = _assert_execution_result(payload)
+    assert payload["capability_id"] == "agent-wiz.list_tools"
+    assert payload["status"] == "complete"
+    assert payload["transport_ok"] is True
+    assert code == 0
+    assert parsed.status == "complete"
 
 
 def test_invoke_invalid_json_args_emits_failed_envelope(

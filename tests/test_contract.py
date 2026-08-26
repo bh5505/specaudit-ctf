@@ -615,7 +615,9 @@ def test_curated_arms_have_specialized_handlers() -> None:
 def test_default_extension_wires_drain_arms(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Extension() maps the nine later arms; uninstalled list_tools is NotInstalled."""
+    """Extension() maps the nine later arms; uninstalled list_tools is
+    NotInstalled -- except agent-wiz, whose list_tools enumerates from the
+    measured bundled/catalog source and needs no external binary."""
     ids_and_mods = (
         ("routersploit", "routersploit"),
         ("sniper", "sniper"),
@@ -646,6 +648,10 @@ def test_default_extension_wires_drain_arms(
     ext = Extension()
     for arm_id, _ in ids_and_mods:
         assert arm_id in ext.arms
+        if arm_id == "agent-wiz":
+            result = ext.invoke(arm_id, "list_tools", {})
+            assert result.ok is True
+            continue
         with pytest.raises(NotInstalledError):
             ext.invoke(arm_id, "list_tools", {})
 

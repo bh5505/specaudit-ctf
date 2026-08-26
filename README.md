@@ -40,6 +40,15 @@ pip install -r requirements-dev.txt
 `[project.optional-dependencies] dev` in `pyproject.toml`. There is
 no console script; operators use `python -m extension`.
 
+## Validator runtime
+
+The X3 runtime builder produces a real, relocatable Linux x86-64 GNU CPython
+bundle for the validator-owned `agent-wiz.list_tools` path. Fetching locked
+inputs is explicit; assembly, verification, archive round-trip, and Mode-A
+smoke are offline. Generated runtimes are not committed. See
+[runtime/README.md](runtime/README.md) for the lock, reproducibility,
+installation, rotation, and rollback contract.
+
 ## CLI
 
 From the repository root:
@@ -245,8 +254,11 @@ Shared gate: `extension/arms/dispatch.py`. Caveats:
 | `AGENT_WIZ_BIN` / `AGENT_WIZ_SCAN_ROOT` / `AGENT_WIZ_DISPATCH_SCOPE` | agent-wiz | binary; path root (cwd); arm `AGENT_WIZ_DISPATCH_SCOPE=localhost` |
 | `OPENAI_API_KEY` | agent-wiz | required for `analyze`; presence-checked, never logged |
 
-Missing `*_BIN` **and** missing PATH → `installed()` is false. A
-binary on PATH without `*_BIN` does install (checkov/wapiti pattern).
+Missing `*_BIN` **and** missing PATH → executable actions are unavailable.
+For `agent-wiz`, the bundled metadata-only `list_tools` exception remains
+available while `extract`, `visualize`, and `analyze` raise `NotInstalled` at
+the arm/Extension layer. A binary on PATH without `*_BIN` installs executable
+actions where that arm supports the checkov/wapiti pattern.
 Path-scoped `*_DISPATCH_SCOPE` is a dummy explicit hostname
 (`localhost`); putting a filesystem path there is refused.
 
