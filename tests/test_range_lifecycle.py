@@ -20,6 +20,7 @@ from extension.contract import (
     Result,
     default_extension,
 )
+from extension.envelopes import RESULT_SCHEMA_ID
 from extension.range import (
     ARM_ACTION,
     DEFAULT_SEED,
@@ -885,19 +886,17 @@ def test_main_writes_result_document(
 ) -> None:
     code = main([])
     printed = json.loads(capsys.readouterr().out)
-    assert printed["schema"] == RANGE_SCHEMA_V2
-    assert printed["ok"] is (printed["status"] == "complete")
-    assert code == (0 if printed["ok"] else 1)
+    assert printed["schema"] == RESULT_SCHEMA_ID
+    assert "ok" not in printed
+    assert printed["status"] in _RANGE_STATUSES
+    assert code == (0 if printed["status"] == "complete" else 1)
     out = tmp_path / "result.json"
     code2 = main(["--out", str(out), "--seed", str(DEFAULT_SEED)])
     written = json.loads(out.read_text(encoding="utf-8"))
-    assert written["seed"] == DEFAULT_SEED
-    assert written["schema"] == RANGE_SCHEMA_V2
-    assert code2 == (0 if written["ok"] else 1)
-    assert {row["id"] for row in written["fixtures"]} == {
-        FIXTURE_S3_PUBLIC,
-        FIXTURE_IAM_OPEN,
-    }
+    assert written["schema"] == RESULT_SCHEMA_ID
+    assert written["capability_id"] == "fixture.range-observe"
+    assert "ok" not in written
+    assert code2 == (0 if written["status"] == "complete" else 1)
 
 
 def test_main_default_uninstalled_exits_nonzero(
@@ -905,7 +904,9 @@ def test_main_default_uninstalled_exits_nonzero(
 ) -> None:
     assert main([]) == 1
     printed = json.loads(capsys.readouterr().out)
-    _assert_v2_status(printed, "degraded")
+    assert printed["schema"] == RESULT_SCHEMA_ID
+    assert printed["status"] == "degraded"
+    assert "ok" not in printed
 
 
 def test_module_cli_emits_json() -> None:
@@ -918,7 +919,7 @@ def test_module_cli_emits_json() -> None:
         check=False,
     )
     document = json.loads(proc.stdout)
-    assert document["schema"] == RANGE_SCHEMA_V2
-    assert document["live_aws"] is False
-    assert document["ok"] is (document["status"] == "complete")
-    assert proc.returncode == (0 if document["ok"] else 1), proc.stderr
+    assert document["schema"] == RESULT_SCHEMA_ID
+    assert "ok" not in document
+    assert document["status"] in _RANGE_STATUSES
+    assert proc.returncode == (0 if document["status"] == "complete" else 1), proc.stderr

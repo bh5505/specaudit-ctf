@@ -1,7 +1,7 @@
 """Fail-closed parse/validate for CTF capability-manifest and execution-result v1.
 
-CLI JSON and stdio MCP are encodings of this typed contract. This module does
-not spawn arms, open sockets, or rewrite live invoke / run_range output.
+CLI invoke and run_range JSON are encodings of this typed contract (see
+extension.encode). This module does not spawn arms or open sockets.
 Semantic complete is parser-owned; JSON Schema is structural only.
 """
 
@@ -12,6 +12,8 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
+
+from .invoke_profiles import INVOKE_CAPABILITY_IDS, INVOKE_PROFILES
 
 MANIFEST_SCHEMA_ID = "specaudit.ctf.capability.manifest.v1"
 RESULT_SCHEMA_ID = "specaudit.ctf.execution-result.v1"
@@ -79,6 +81,7 @@ REASON_CAPABILITY_MISMATCH = "capability-mismatch"
 REASON_CLEANUP_POLICY = "cleanup-policy-mismatch"
 REASON_SIDE_EFFECT_MISMATCH = "side-effect-mismatch"
 REASON_SAFETY_CLASS_MISMATCH = "safety-class-mismatch"
+REASON_PROFILE_MISMATCH = "capability-profile-mismatch"
 
 _FAILED_REASONS = frozenset(
     {
@@ -102,6 +105,7 @@ _FAILED_REASONS = frozenset(
         REASON_CLEANUP_POLICY,
         REASON_SIDE_EFFECT_MISMATCH,
         REASON_SAFETY_CLASS_MISMATCH,
+        REASON_PROFILE_MISMATCH,
     }
 )
 # default_off is an operator latch, not an execution-result failure class.
@@ -121,6 +125,7 @@ KNOWN_CAPABILITY_IDS = frozenset(
         "fixture.local-read",
         "fixture.range-observe",
         "fixture.cleanup-write",
+        *INVOKE_CAPABILITY_IDS,
         *METHODOLOGY_ONLY_IDS,
         *HELD_IDS,
     }
@@ -740,6 +745,8 @@ def _validate_result_structure(payload: Mapping[str, Any]) -> list[str]:
 
 def _semantic_result_reasons(payload: Mapping[str, Any]) -> list[str]:
     reasons: list[str] = []
+    if _invoke_profile_mismatch(payload):
+        reasons.append(REASON_PROFILE_MISMATCH)
     coverage = payload.get("coverage") if isinstance(payload.get("coverage"), dict) else {}
     required = _str_tuple(coverage.get("required"))
     complete = _str_tuple(coverage.get("complete"))
@@ -798,6 +805,72 @@ def _semantic_result_reasons(payload: Mapping[str, Any]) -> list[str]:
         # Stamped after failed reasons are known; derivation also inspects coverage.
         reasons.append(REASON_OPTIONAL_LIMITATION)
     return reasons
+
+
+def _invoke_profile_mismatch(payload: Mapping[str, Any]) -> bool:
+    capability_id = payload.get("capability_id")
+    if not isinstance(capability_id, str):
+        return False
+    profile = INVOKE_PROFILES.get(capability_id)
+    if profile is None:
+        return False
+    tool = payload.get("tool")
+    scope = payload.get("scope")
+    budget = payload.get("budget")
+    cleanup = payload.get("cleanup")
+    coverage = payload.get("coverage")
+    if not all(
+        isinstance(value, dict) for value in (tool, scope, budget, cleanup, coverage)
+    ):
+        return True
+    assert isinstance(tool, dict)
+    assert isinstance(scope, dict)
+    assert isinstance(budget, dict)
+    assert isinstance(cleanup, dict)
+    assert isinstance(coverage, dict)
+    reserved = budget.get("reserved")
+    if not isinstance(reserved, dict):
+        return True
+    expected_reserved = {
+        "timeout_ms": profile.timeout_ms,
+        "max_output_bytes": profile.max_output_bytes,
+        "max_tool_steps": profile.max_tool_steps,
+        "max_spend": profile.max_spend,
+    }
+    if (
+        tool.get("name") != profile.tool_name
+        or tool.get("version") != profile.tool_version
+    ):
+        return True
+    if scope.get("authorized") != list(profile.authorized_scope):
+        return True
+    if payload.get("safety_class") != profile.safety_class:
+        return True
+    if (
+        reserved != expected_reserved
+        or cleanup.get("required") != profile.cleanup_required
+    ):
+        return True
+    if payload.get("approval_ref") != profile.approval_ref:
+        return True
+    if payload.get("roe_ref") != profile.roe_ref:
+        return True
+    if payload.get("status") == STATUS_COMPLETE:
+        expected_coverage = {
+            "attempted": [profile.capability_id],
+            "complete": [profile.capability_id],
+            "skipped": [],
+            "unsupported": [],
+            "failed": [],
+            "required": [profile.capability_id],
+        }
+        if coverage != expected_coverage:
+            return True
+    if payload.get("transport_ok") is True:
+        return scope.get("touched") != list(profile.touched_scope) or payload.get(
+            "side_effects"
+        ) != list(profile.side_effects)
+    return scope.get("touched") != [] or payload.get("side_effects") != ["none"]
 
 
 def _derive_status(reasons: Sequence[str], payload: Mapping[str, Any]) -> str:

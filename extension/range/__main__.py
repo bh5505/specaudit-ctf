@@ -6,8 +6,9 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Sequence
+from typing import Any, Mapping, Sequence
 
+from ..encode import encode_range_document, encode_range_failure, utc_now
 from .runner import RangeError, run_range
 
 
@@ -21,7 +22,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--seed",
         type=int,
         default=None,
-        help="stamp this seed on the result document",
+        help="apply this seed to the inner lifecycle run (hashed into the range-report artifact)",
     )
     try:
         ns = parser.parse_args(list(argv) if argv is not None else None)
@@ -29,18 +30,30 @@ def main(argv: Sequence[str] | None = None) -> int:
         code = exc.code
         return int(code) if isinstance(code, int) else 2
 
+    started = utc_now()
     try:
         document = run_range(seed=ns.seed)
     except RangeError as exc:
+        envelope = encode_range_failure(
+            exc, started_at=started, finished_at=utc_now()
+        )
+        _write(envelope, ns.out)
         print(str(exc), file=sys.stderr)
         return 2
 
-    text = json.dumps(document, indent=2, sort_keys=True)
-    if ns.out:
-        Path(ns.out).write_text(text + "\n", encoding="utf-8", newline="\n")
+    envelope = encode_range_document(
+        document, started_at=started, finished_at=utc_now()
+    )
+    _write(envelope, ns.out)
+    return 0 if envelope.get("status") == "complete" else 1
+
+
+def _write(payload: Mapping[str, Any], out: str | None) -> None:
+    text = json.dumps(payload, indent=2, sort_keys=True)
+    if out:
+        Path(out).write_text(text + "\n", encoding="utf-8", newline="\n")
     else:
         sys.stdout.write(text + "\n")
-    return 0 if document.get("ok") else 1
 
 
 if __name__ == "__main__":

@@ -93,6 +93,17 @@ class NotInstalledError(ExtensionError):
         super().__init__(f"{entry_id} is not installed")
 
 
+class UnmanifestedCapabilityError(ExtensionError):
+    """An arm action is outside the bounded X2-PUB invoke registry."""
+
+    def __init__(self, entry_id: str, action: str) -> None:
+        self.entry_id = entry_id
+        self.action = action
+        super().__init__(
+            f"{entry_id}.{action} is not in the X2-PUB read-only manifest"
+        )
+
+
 def _require_bool_curated(curated: Any, *, label: str = "curated") -> None:
     # Truthy strings/ints must not become curated; the field is a real boolean.
     if not isinstance(curated, bool):

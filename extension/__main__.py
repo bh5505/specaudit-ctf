@@ -7,7 +7,16 @@ import json
 import sys
 from typing import Any, Sequence
 
-from .contract import Extension, ExtensionError
+from .contract import (
+    TIER_HELD,
+    Extension,
+    ExtensionError,
+    NotCuratedError,
+    NotHeldError,
+    UnmanifestedCapabilityError,
+)
+from .encode import encode_invoke_failure, encode_invoke_result, utc_now
+from .invoke_profiles import invoke_profile
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -37,8 +46,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         code = exc.code
         return int(code) if isinstance(code, int) else 2
 
-    ext = Extension()
     try:
+        ext = Extension()
         if ns.cmd == "list":
             _emit([entry.to_dict() for entry in ext.list_entries()])
             return 0
@@ -46,9 +55,40 @@ def main(argv: Sequence[str] | None = None) -> int:
             _emit(ext.describe(ns.id).to_dict())
             return 0
         if ns.cmd == "invoke":
-            args = _parse_args_json(ns.args)
-            result = ext.invoke(ns.id, ns.action, args)
-            _emit(result.to_dict())
+            started = utc_now()
+            profile = None
+            try:
+                spec = ext.arm_spec(ns.id)
+                if spec.tier == TIER_HELD:
+                    raise NotHeldError(spec.id, spec.held_reason)
+                if not spec.curated:
+                    raise NotCuratedError(spec.id)
+                profile = invoke_profile(ns.id, ns.action)
+                if profile is None:
+                    raise UnmanifestedCapabilityError(ns.id, ns.action)
+                args = _parse_args_json(ns.args)
+                result = ext.invoke(ns.id, ns.action, args)
+            except ExtensionError as exc:
+                _emit(
+                    encode_invoke_failure(
+                        exc,
+                        arm_id=ns.id,
+                        action=ns.action,
+                        profile=profile,
+                        started_at=started,
+                        finished_at=utc_now(),
+                    )
+                )
+                print(str(exc), file=sys.stderr)
+                return 2
+            _emit(
+                encode_invoke_result(
+                    result,
+                    profile=profile,
+                    started_at=started,
+                    finished_at=utc_now(),
+                )
+            )
             if not result.ok and result.error:
                 print(f"Invoke failed for {ns.id}.{ns.action}: {result.error}", file=sys.stderr)
             return 0 if result.ok else 1

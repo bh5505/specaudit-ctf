@@ -55,16 +55,26 @@ Examples:
 ```text
 python -m extension describe burp-mcp
 python -m extension describe checkov
-python -m extension invoke checkov scan
+python -m extension invoke agent-wiz list_tools
 ```
 
-- `list`: catalog entries
-- `describe <id>`: one catalog row
-- `invoke <id> <action> [args]`: fail-closed tool call (optional JSON object)
+- `list`: catalog entries (catalog JSON)
+- `describe <id>`: one catalog row (catalog JSON)
+- `invoke <id> <action> [args]`: fail-closed tool call (optional JSON object).
+  Stdout is `specaudit.ctf.execution-result.v1`. Process exit 0 is not
+  `complete`; `transport_ok` is informational.
 
-Unknown ids, methodology-only rows, heads, held arms, non-curated
-arms, and uninstalled curated arms are hard errors. Do not invent a
-fallback. `list` / `describe` include `tier`.
+X2-PUB admits only the explicit in-process `list_tools` profiles for
+`agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `pyrit`,
+`routersploit`, `sniper`, `vvah`, and `zgrab2`. These profiles read static
+policy metadata and do not spawn the upstream binary. Every other CLI invoke
+action—including local scanner subprocesses and dispatch-class actions—is
+refused before `Extension.invoke` until it has authoritative per-action
+safety, scope, side-effect, budget, cleanup, and tool-version metadata.
+
+Unknown ids, unmanifested actions, methodology-only rows, heads, held arms,
+non-curated arms, and uninstalled curated arms are hard errors. Do not invent
+a fallback. `list` / `describe` include `tier`.
 
 `invoke <id> list_tools` returns static JSON (no binary spawn) on
 non-held surfaces that implement it (the nine lifted CLIs). Catalog
@@ -138,18 +148,25 @@ python -m extension.range
 python -m extension.range --out range-result.json --seed 123
 ```
 
-Fixtures `tf_s3_public_access` and `tf_iam_open` are synthetic. The
-runner stamps `live_aws: false` and emits `range.lifecycle.v2`. Document
-and fixture `status` is `complete`, `degraded`, or `failed`; compatibility
-`ok` is true only when `status` is `complete`. A skipped or erroring arm
-cannot be `complete`. Omit `arm_ids` (auto-discover) to treat curated arms
-as optional (`degraded` on skip/error). Explicit non-empty `arm_ids` are
-required (`failed` on skip/error). Explicit empty `arm_ids=()` has no arms
-and may be `complete` when lifecycle matches. Lifecycle `matched_expected`
-is independent — a match cannot hide an arm skip/error. Default CLI omits
-`arm_ids` (auto-discover) and may exit 1 with valid degraded JSON. MCP
-JSON-RPC success is transport-only; the content document carries range
-status.
+Fixtures `tf_s3_public_access` and `tf_iam_open` are synthetic. CLI
+stdout and `--out` are `specaudit.ctf.execution-result.v1`. Process
+exit 0 if and only if the outer envelope `status` is `complete`; inner
+`ok` does not decide it. `transport_ok` is informational. Library
+`run_range()` still returns seed-stable `range.lifecycle.v2` with
+`live_aws: false`. The inner lifecycle document is coverage input and
+a `range-report` artifact digest, not a second all-clear: inner `ok`
+is not the outer status. `--seed` applies to that inner run. Document
+and fixture `status` is `complete`, `degraded`, or `failed`;
+compatibility `ok` is true only when `status` is `complete`. A skipped
+or erroring arm cannot be `complete`. Omit `arm_ids` (auto-discover) to
+treat curated arms as optional (`degraded` on skip/error). Explicit
+non-empty `arm_ids` are required (`failed` on skip/error). Explicit
+empty `arm_ids=()` has no arms and may be `complete` when lifecycle
+matches. Lifecycle `matched_expected` is independent — a match cannot
+hide an arm skip/error. Default CLI omits `arm_ids` (auto-discover) and
+may exit 1 with a valid degraded execution-result envelope. MCP
+JSON-RPC success is transport-only; the MCP content document is still
+`range.lifecycle.v2`.
 
 ## Dispatch doctrine
 

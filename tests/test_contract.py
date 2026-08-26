@@ -359,15 +359,15 @@ def test_main_invoke_unknown_id_is_hard_error(
     assert "unknown id" in err.lower()
 
 
-def test_main_invoke_not_installed(
+def test_main_invoke_unmanifested_action_is_refused(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Test that invoking not-installed arm via main() exits with error code 2."""
+    """CLI refuses actions outside the bounded read-only manifest."""
     monkeypatch.setattr("extension.arms.checkov.arm.resolve_binary", lambda: None)
     assert main(["invoke", RESEARCH_ARM_ID, "scan"]) == 2
     err = capsys.readouterr().err
-    assert "not installed" in err.lower()
+    assert "read-only manifest" in err.lower()
 
 
 def test_module_cli_list() -> None:

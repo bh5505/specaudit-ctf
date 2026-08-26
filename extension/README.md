@@ -110,13 +110,22 @@ Examples:
 ```text
 python -m extension describe burp-mcp
 python -m extension describe checkov
-python -m extension invoke checkov scan
+python -m extension invoke agent-wiz list_tools
 ```
 
 `invoke` is fail-closed: unknown ids, non-arms, methodology-only rows,
 held arms, non-curated arms, and uninstalled curated arms are hard
 errors. Do not invent a fallback card. `list` / `describe` include
-`tier`.
+`tier` and stay catalog JSON. `invoke` stdout is
+`specaudit.ctf.execution-result.v1`. Process exit 0 is not `complete`;
+`transport_ok` is informational.
+
+The X2-PUB CLI manifest admits only in-process `list_tools` policy reads for
+`agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `pyrit`,
+`routersploit`, `sniper`, `vvah`, and `zgrab2`. Other actions are refused
+before `Extension.invoke`; no subprocess, network, spend, or mutation action
+may borrow fabricated R0/local-read metadata. Direct library and stdio MCP
+surfaces keep their existing gates and pre-X4 result shapes.
 
 Catalog `invoke` of HTTP MCP arms (`burp-mcp` and the other held
 rows) is refused even when an endpoint is configured. The specialized
@@ -325,21 +334,28 @@ python -m extension.range
 python -m extension.range --out range-result.json --seed 123
 ```
 
-The runner emits a seed-stable `range.lifecycle.v2` document with
-`live_aws: false`, `fixtures[].exposure|path|impact`, and coverage lists
-of attempted / complete / skipped / error arm ids. Document and fixture
-`status` is `complete`, `degraded`, or `failed`; compatibility `ok` is
-true only when `status` is `complete`. A missing arm is still recorded
-as `skipped` (transport errors as `error`); that row is never
-`complete`. Omitted `arm_ids` (`None`) auto-discovers curated arms as
-optional (`degraded` on skip/error). Explicit non-empty `arm_ids` are
-required (`failed` on skip/error). Explicit empty `arm_ids=()` has no
-arms and may be `complete` when lifecycle matches.
-`matched_expected` stays independent: a mismatch is `failed`, and a
-match cannot hide an arm skip/error. Default CLI auto-discovers curated
-arms and may exit 1 with valid degraded JSON. MCP JSON-RPC success is
-transport-only. The new nine do not implement `observe`; if a binary is
-accidentally installed, range records `Result.ok=False` as `status=error`.
+CLI stdout and `--out` are `specaudit.ctf.execution-result.v1`. Process
+exit 0 if and only if the outer envelope `status` is `complete`; inner
+`ok` does not decide it. `transport_ok` is informational. Library
+`run_range()` still emits a seed-stable `range.lifecycle.v2` document
+with `live_aws: false`, `fixtures[].exposure|path|impact`, and coverage
+lists of attempted / complete / skipped / error arm ids. The inner
+lifecycle document is coverage input and a `range-report` artifact
+digest, not a second all-clear: inner `ok` is not the outer status.
+`--seed` applies to that inner run. Document and fixture `status` is
+`complete`, `degraded`, or `failed`; compatibility `ok` is true only
+when `status` is `complete`. A missing arm is still recorded as
+`skipped` (transport errors as `error`); that row is never `complete`.
+Omitted `arm_ids` (`None`) auto-discovers curated arms as optional
+(`degraded` on skip/error). Explicit non-empty `arm_ids` are required
+(`failed` on skip/error). Explicit empty `arm_ids=()` has no arms and
+may be `complete` when lifecycle matches. `matched_expected` stays
+independent: a mismatch is `failed`, and a match cannot hide an arm
+skip/error. Default CLI auto-discovers curated arms and may exit 1 with
+a valid degraded execution-result envelope. MCP JSON-RPC success is
+transport-only; the MCP content document is still `range.lifecycle.v2`.
+The new nine do not implement `observe`; if a binary is accidentally
+installed, range records `Result.ok=False` as `status=error`.
 
 ## Tests
 
