@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
+import stat
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
 
@@ -17,15 +19,24 @@ from .contract import (
     UnknownIdError,
 )
 from .envelopes import (
+    MANIFEST_SCHEMA_ID,
     RESULT_SCHEMA_ID,
     SCHEMA_VERSION,
     STATUS_COMPLETE,
     STATUS_DEGRADED,
     STATUS_FAILED,
+    _ATTEMPT_ID_RE,
     _CAPABILITY_ID_RE,
+    parse_capability_manifest,
     parse_execution_result,
 )
-from .invoke_profiles import InvokeProfile, PACKAGE_NAME, PACKAGE_VERSION
+from .invoke_profiles import (
+    INVOKE_PROFILES,
+    InvokeProfile,
+    PACKAGE_NAME,
+    PACKAGE_VERSION,
+    invoke_profile,
+)
 
 RANGE_CAPABILITY_ID = "fixture.range-observe"
 RANGE_TOOL = {"name": "fixture-range", "version": "1.0.0"}
@@ -52,10 +63,259 @@ _RANGE_RESERVED = {
     "max_tool_steps": 16,
     "max_spend": None,
 }
+# Static producer redaction; not inferred from a child-returned document.
+_MANIFEST_REDACTION = {
+    "fields": ("authorization", "cookie", "set-cookie"),
+    "env": ("AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "AWS_SESSION_TOKEN"),
+}
+# Producer handoff bounds. Match reserved max_output_bytes on these profiles.
+MAX_ARTIFACT_COUNT = 8
+MAX_ARTIFACT_AGGREGATE_BYTES = 1_048_576
+_ARTIFACT_FILE_MODE = 0o600
+
+
+class AttemptContractError(Exception):
+    """Fail-closed attempt/artifact transport contract error."""
+
+
+class InvalidAttemptIdError(AttemptContractError):
+    """Caller supplied an attempt id that cannot be echoed structurally."""
+
+
+class ArtifactDirError(AttemptContractError):
+    """Caller requested artifact handoff with an unusable directory."""
+
+
+class ArtifactHandoffError(AttemptContractError):
+    """Requested artifact bytes could not be written; envelope is not complete."""
+
+    def __init__(self, message: str, *, envelope: Mapping[str, Any]) -> None:
+        super().__init__(message)
+        self.envelope = dict(envelope)
 
 
 def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_attempt_id(value: str | None) -> str | None:
+    """Return a structurally valid attempt id, or None when omitted."""
+    if value is None:
+        return None
+    if not isinstance(value, str) or not _ATTEMPT_ID_RE.match(value):
+        raise InvalidAttemptIdError(
+            "invalid attempt id (expected attempt-<64 lowercase hex>)"
+        )
+    return value
+
+
+def mode_a_supported() -> bool:
+    """Mode A needs Unix descriptor-relative directory writes."""
+    return (
+        os.name == "posix"
+        and hasattr(os, "O_DIRECTORY")
+        and hasattr(os, "O_NOFOLLOW")
+        and hasattr(os, "O_CLOEXEC")
+        and hasattr(os, "O_EXCL")
+    )
+
+
+class ArtifactSink:
+    """Bound Unix directory fd for exclusive digest-named artifact writes.
+
+    Writes use dir_fd/openat semantics so a path or ancestor swap after
+    admission cannot redirect bytes into a replacement directory.
+    """
+
+    def __init__(self, dir_fd: int) -> None:
+        if dir_fd < 0:
+            raise ArtifactDirError("artifact directory is not usable")
+        self._dir_fd = dir_fd
+        self._count = 0
+        self._bytes = 0
+
+    @classmethod
+    def open(cls, path: str) -> ArtifactSink:
+        if not isinstance(path, str) or not os.path.isabs(path):
+            raise ArtifactDirError("artifact directory must be an absolute path")
+        normalized = path.rstrip("/") or "/"
+        try:
+            info = os.lstat(normalized)
+        except FileNotFoundError as exc:
+            raise ArtifactDirError("artifact directory does not exist") from exc
+        except OSError as exc:
+            raise ArtifactDirError("artifact directory is not usable") from exc
+        if stat.S_ISLNK(info.st_mode):
+            raise ArtifactDirError("artifact directory must not be a symlink")
+        if not stat.S_ISDIR(info.st_mode):
+            raise ArtifactDirError("artifact directory must be a directory")
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
+        try:
+            fd = os.open(normalized, flags)
+        except OSError as exc:
+            raise ArtifactDirError("artifact directory is not usable") from exc
+        try:
+            opened = os.fstat(fd)
+            if not stat.S_ISDIR(opened.st_mode):
+                raise ArtifactDirError("artifact directory must be a directory")
+            if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+                raise ArtifactDirError("artifact directory changed during admission")
+            names = [name for name in os.listdir(fd) if name not in (".", "..")]
+            if names:
+                raise ArtifactDirError("artifact directory must be empty")
+        except ArtifactDirError:
+            os.close(fd)
+            raise
+        except OSError as exc:
+            os.close(fd)
+            raise ArtifactDirError("artifact directory is not usable") from exc
+        return cls(fd)
+
+    def write(self, digest: str, blob: bytes) -> None:
+        if self._dir_fd < 0:
+            raise OSError("artifact directory is closed")
+        if len(blob) > MAX_ARTIFACT_AGGREGATE_BYTES:
+            raise OSError("artifact exceeds size cap")
+        if self._bytes + len(blob) > MAX_ARTIFACT_AGGREGATE_BYTES:
+            raise OSError("artifact aggregate exceeds size cap")
+        if self._count + 1 > MAX_ARTIFACT_COUNT:
+            raise OSError("artifact count exceeds cap")
+        name = artifact_filename(digest)
+        if os.sep in name or (os.altsep and os.altsep in name):
+            raise OSError("artifact filename must be a relative basename")
+        flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW
+        fd = os.open(name, flags, _ARTIFACT_FILE_MODE, dir_fd=self._dir_fd)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode):
+                raise OSError("artifact is not a regular file")
+            if hasattr(os, "fchmod"):
+                os.fchmod(fd, _ARTIFACT_FILE_MODE)
+            view = memoryview(blob)
+            offset = 0
+            while offset < len(blob):
+                written = os.write(fd, view[offset:])
+                if written <= 0:
+                    raise OSError("artifact write made no progress")
+                offset += written
+            os.fsync(fd)
+        except Exception:
+            try:
+                os.close(fd)
+            except OSError:
+                pass
+            try:
+                os.unlink(name, dir_fd=self._dir_fd)
+            except OSError:
+                pass
+            raise
+        os.close(fd)
+        try:
+            os.fsync(self._dir_fd)
+        except OSError:
+            try:
+                os.unlink(name, dir_fd=self._dir_fd)
+            except OSError:
+                pass
+            raise
+        self._count += 1
+        self._bytes += len(blob)
+
+    def close(self) -> None:
+        fd = self._dir_fd
+        self._dir_fd = -1
+        if fd >= 0:
+            os.close(fd)
+
+    def __enter__(self) -> ArtifactSink:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+
+def bind_artifact_dir(
+    value: str | None, *, attempt_id: str | None
+) -> ArtifactSink | None:
+    """Admit and bind a validator-owned artifact directory. Not local-write authority.
+
+    Opens the directory before tool dispatch. Mode A is Unix-only.
+    """
+    if value is None:
+        return None
+    if attempt_id is None:
+        raise ArtifactDirError("--artifact-dir requires --attempt-id")
+    if not mode_a_supported():
+        raise ArtifactDirError("Mode A artifact custody is Unix-only")
+    return ArtifactSink.open(value)
+
+
+def artifact_filename(digest: str) -> str:
+    """Deterministic regular filename derived from a claimed sha256 digest."""
+    if not isinstance(digest, str) or not digest.startswith("sha256:"):
+        raise OSError("artifact digest is not a sha256 digest")
+    hexdigest = digest[7:]
+    if len(hexdigest) != 64 or any(ch not in "0123456789abcdef" for ch in hexdigest):
+        raise OSError("artifact digest is not a sha256 digest")
+    return f"sha256-{hexdigest}"
+
+
+def encode_capability_manifest(profile: InvokeProfile) -> dict[str, Any]:
+    """Encode one producer-authored capability.manifest.v1 from a registry profile.
+
+    Authority is ``invoke_profiles.INVOKE_PROFILES``. A caller-constructed
+    copy is refused so a child-self-declared document cannot mint admission.
+    This function never dispatches.
+    """
+    authoritative = invoke_profile(profile.arm_id, profile.action)
+    if authoritative is None or authoritative is not profile:
+        raise ValueError("capability manifest requires an authoritative InvokeProfile")
+    candidate = {
+        "schema": MANIFEST_SCHEMA_ID,
+        "schema_version": SCHEMA_VERSION,
+        "capability_id": profile.capability_id,
+        "tier": "research",
+        "kind": "arm",
+        "tool": {"name": profile.tool_name, "version": profile.tool_version},
+        "protocols": ["cli-json"],
+        "safety_class": profile.safety_class,
+        "side_effects": list(profile.side_effects),
+        "default_off": True,
+        "synthetic_only": True,
+        "authorized_scope": list(profile.authorized_scope),
+        "approval_ref": profile.approval_ref,
+        "roe_ref": profile.roe_ref,
+        "budget": {
+            "timeout_ms": profile.timeout_ms,
+            "max_output_bytes": profile.max_output_bytes,
+            "max_tool_steps": profile.max_tool_steps,
+            "max_spend": profile.max_spend,
+        },
+        "cleanup": {
+            "required": profile.cleanup_required,
+            "proof": "none" if not profile.cleanup_required else "artifact-digest",
+        },
+        "redaction": {
+            "fields": list(_MANIFEST_REDACTION["fields"]),
+            "env": list(_MANIFEST_REDACTION["env"]),
+        },
+    }
+    parsed = parse_capability_manifest(candidate)
+    if parsed.manifest is None:
+        raise ValueError("internal capability-manifest encoder produced an invalid envelope")
+    payload = parsed.manifest.to_dict()
+    reparsed = parse_capability_manifest(payload)
+    if reparsed.manifest is None:
+        raise ValueError("capability-manifest parser did not agree with encoded document")
+    return payload
+
+
+def encode_capability_manifests() -> dict[str, dict[str, Any]]:
+    """Encode the static manifest for every authoritative InvokeProfile."""
+    return {
+        capability_id: encode_capability_manifest(profile)
+        for capability_id, profile in INVOKE_PROFILES.items()
+    }
 
 
 def encode_invoke_result(
@@ -64,6 +324,8 @@ def encode_invoke_result(
     profile: InvokeProfile,
     started_at: str,
     finished_at: str,
+    attempt_id: str | None = None,
+    artifact_dir: ArtifactSink | None = None,
 ) -> dict[str, Any]:
     """Encode one admitted result using its authoritative action profile."""
     cap = profile.capability_id
@@ -107,8 +369,10 @@ def encode_invoke_result(
         cleanup_required=profile.cleanup_required,
         approval_ref=profile.approval_ref,
         roe_ref=profile.roe_ref,
+        attempt_id=attempt_id,
     )
-    return _admit(candidate)
+    blobs = {item["digest"]: blob for item in artifacts}
+    return _admit_with_artifacts(candidate, blobs=blobs, artifact_dir=artifact_dir)
 
 
 def encode_invoke_failure(
@@ -119,6 +383,8 @@ def encode_invoke_failure(
     profile: InvokeProfile | None,
     started_at: str,
     finished_at: str,
+    attempt_id: str | None = None,
+    artifact_dir: ArtifactSink | None = None,
 ) -> dict[str, Any]:
     """Encode a fail-closed invoke that never produced a transport Result."""
     cap = _capability_id(arm_id, action)
@@ -185,8 +451,9 @@ def encode_invoke_failure(
         cleanup_required=(profile.cleanup_required if profile else False),
         approval_ref=(profile.approval_ref if profile else None),
         roe_ref=(profile.roe_ref if profile else None),
+        attempt_id=attempt_id,
     )
-    return _admit(candidate)
+    return _admit_with_artifacts(candidate, blobs={}, artifact_dir=artifact_dir)
 
 
 def encode_range_document(
@@ -194,6 +461,8 @@ def encode_range_document(
     *,
     started_at: str,
     finished_at: str,
+    attempt_id: str | None = None,
+    artifact_dir: ArtifactSink | None = None,
 ) -> dict[str, Any]:
     """Wrap range.lifecycle.v2 as coverage input. Inner ok is not outer status."""
     claimed = document.get("status")
@@ -237,8 +506,10 @@ def encode_range_document(
         cleanup_required=False,
         approval_ref=None,
         roe_ref=ROE_REF,
+        attempt_id=attempt_id,
     )
-    return _admit(candidate)
+    blobs = {item["digest"]: blob for item in candidate["artifacts"]}
+    return _admit_with_artifacts(candidate, blobs=blobs, artifact_dir=artifact_dir)
 
 
 def encode_range_failure(
@@ -246,6 +517,8 @@ def encode_range_failure(
     *,
     started_at: str,
     finished_at: str,
+    attempt_id: str | None = None,
+    artifact_dir: ArtifactSink | None = None,
 ) -> dict[str, Any]:
     candidate = _envelope(
         capability_id=RANGE_CAPABILITY_ID,
@@ -267,8 +540,9 @@ def encode_range_failure(
         cleanup_required=False,
         approval_ref=None,
         roe_ref=ROE_REF,
+        attempt_id=attempt_id,
     )
-    return _admit(candidate)
+    return _admit_with_artifacts(candidate, blobs={}, artifact_dir=artifact_dir)
 
 
 def _admit(candidate: Mapping[str, Any]) -> dict[str, Any]:
@@ -279,6 +553,45 @@ def _admit(candidate: Mapping[str, Any]) -> dict[str, Any]:
     reparsed = parse_execution_result(payload)
     if reparsed.result is None or reparsed.status != payload["status"]:
         raise ValueError("execution-result parser did not agree with encoded status")
+    return payload
+
+
+def _admit_with_artifacts(
+    candidate: Mapping[str, Any],
+    *,
+    blobs: Mapping[str, bytes],
+    artifact_dir: ArtifactSink | None,
+) -> dict[str, Any]:
+    payload = _admit(candidate)
+    if artifact_dir is None:
+        return payload
+    claimed = [
+        item["digest"]
+        for item in payload.get("artifacts") or []
+        if isinstance(item, dict) and isinstance(item.get("digest"), str)
+    ]
+    if not claimed:
+        return payload
+    try:
+        for digest in claimed:
+            blob = blobs.get(digest)
+            if blob is None:
+                raise OSError("missing canonical bytes for claimed artifact digest")
+            artifact_dir.write(digest, blob)
+    except OSError as exc:
+        failed = dict(payload)
+        # Do not claim bytes this attempt did not deliver. Keep the original
+        # status and transport_ok: transport_ok is invocation/response
+        # transport, not custody. Parser fail-closes unowned-evidence when
+        # the claim stays substantive without owned artifacts.
+        failed["artifacts"] = []
+        failed["limitations"] = list(
+            dict.fromkeys(
+                [*(failed.get("limitations") or []), "artifact handoff failed"]
+            )
+        )
+        envelope = _admit(failed)
+        raise ArtifactHandoffError("artifact handoff failed", envelope=envelope) from exc
     return payload
 
 
@@ -303,48 +616,57 @@ def _envelope(
     cleanup_required: bool,
     approval_ref: str | None,
     roe_ref: str | None,
+    attempt_id: str | None = None,
 ) -> dict[str, Any]:
     finished = finished_at if finished_at >= started_at else started_at
-    return {
+    attempt = parse_attempt_id(attempt_id)
+    payload: dict[str, Any] = {
         "schema": RESULT_SCHEMA_ID,
         "schema_version": SCHEMA_VERSION,
         "capability_id": capability_id,
         "tool": {"name": tool["name"], "version": tool["version"]},
-        "scope": {
-            "authorized": list(authorized),
-            "touched": list(dict.fromkeys(touched)),
-        },
-        "safety_class": safety_class,
-        "side_effects": list(side_effects),
-        "approval_ref": approval_ref,
-        "roe_ref": roe_ref,
-        "budget": {
-            "reserved": {
-                "timeout_ms": reserved["timeout_ms"],
-                "max_output_bytes": reserved["max_output_bytes"],
-                "max_tool_steps": reserved["max_tool_steps"],
-                "max_spend": reserved["max_spend"],
-            },
-            "spent": {
-                "elapsed_ms": _elapsed_ms(started_at, finished),
-                "output_bytes": max(output_bytes, 0),
-                "tool_steps": max(tool_steps, 0),
-                "spend": 0,
-            },
-        },
-        "started_at": started_at,
-        "finished_at": finished,
-        "status": status,
-        "transport_ok": transport_ok,
-        "artifacts": [dict(item) for item in artifacts],
-        "coverage": dict(coverage),
-        "cleanup": {
-            "required": cleanup_required,
-            "proof_digest": None,
-            "residual": False,
-        },
-        "limitations": list(dict.fromkeys(item for item in limitations if item)),
     }
+    if attempt is not None:
+        payload["attempt_id"] = attempt
+    payload.update(
+        {
+            "scope": {
+                "authorized": list(authorized),
+                "touched": list(dict.fromkeys(touched)),
+            },
+            "safety_class": safety_class,
+            "side_effects": list(side_effects),
+            "approval_ref": approval_ref,
+            "roe_ref": roe_ref,
+            "budget": {
+                "reserved": {
+                    "timeout_ms": reserved["timeout_ms"],
+                    "max_output_bytes": reserved["max_output_bytes"],
+                    "max_tool_steps": reserved["max_tool_steps"],
+                    "max_spend": reserved["max_spend"],
+                },
+                "spent": {
+                    "elapsed_ms": _elapsed_ms(started_at, finished),
+                    "output_bytes": max(output_bytes, 0),
+                    "tool_steps": max(tool_steps, 0),
+                    "spend": 0,
+                },
+            },
+            "started_at": started_at,
+            "finished_at": finished,
+            "status": status,
+            "transport_ok": transport_ok,
+            "artifacts": [dict(item) for item in artifacts],
+            "coverage": dict(coverage),
+            "cleanup": {
+                "required": cleanup_required,
+                "proof_digest": None,
+                "residual": False,
+            },
+            "limitations": list(dict.fromkeys(item for item in limitations if item)),
+        }
+    )
+    return payload
 
 
 def _coverage(

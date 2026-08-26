@@ -27,6 +27,7 @@ VALID_MANIFESTS = (
     "methodology-only.json",
     "held.json",
     "unknown-capability.json",
+    "agent-wiz.list_tools.json",
 )
 INVALID_MANIFESTS = (
     "unknown-schema.json",

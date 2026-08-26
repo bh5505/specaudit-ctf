@@ -102,7 +102,7 @@ From the repository root:
 ```text
 python -m extension list
 python -m extension describe <id>
-python -m extension invoke <id> <action> ['{"k":"v"}']
+python -m extension invoke <id> <action> ['{"k":"v"}'] [--attempt-id attempt-<hex>] [--artifact-dir ABSOLUTE_DIR]
 ```
 
 Examples:
@@ -117,8 +117,15 @@ python -m extension invoke agent-wiz list_tools
 held arms, non-curated arms, and uninstalled curated arms are hard
 errors. Do not invent a fallback card. `list` / `describe` include
 `tier` and stay catalog JSON. `invoke` stdout is
-`specaudit.ctf.execution-result.v1`. Process exit 0 is not `complete`;
-`transport_ok` is informational.
+`specaudit.ctf.execution-result.v1`. Process exit 0 is not `complete`.
+`transport_ok` is informational: it means the tool invocation/response
+transport succeeded, not that artifact custody succeeded. Optional
+`--attempt-id` / `--artifact-dir` are Mode A. `--artifact-dir` must be
+an absolute, existing, real, empty per-attempt Unix directory; the
+producer binds it before dispatch. Malformed attempt ids, invalid or
+non-empty artifact directories, and unsupported Mode-A platforms fail
+before execution and may report only on stderr (no result envelope).
+Omit both flags for portable Mode B.
 
 The X2-PUB CLI manifest admits only in-process `list_tools` policy reads for
 `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `pyrit`,
@@ -332,12 +339,19 @@ JSON plus a tiny Terraform sample. There is no live cloud.
 ```text
 python -m extension.range
 python -m extension.range --out range-result.json --seed 123
+python -m extension.range --attempt-id attempt-<hex> --artifact-dir ABSOLUTE_DIR
 ```
 
-CLI stdout and `--out` are `specaudit.ctf.execution-result.v1`. Process
-exit 0 if and only if the outer envelope `status` is `complete`; inner
-`ok` does not decide it. `transport_ok` is informational. Library
-`run_range()` still emits a seed-stable `range.lifecycle.v2` document
+CLI stdout and `--out` are `specaudit.ctf.execution-result.v1`. Mode A
+(`--artifact-dir`) emits the envelope only on stdout; `--out` combined
+with `--artifact-dir` is rejected before range execution and may report
+only on stderr. The artifact directory must be a fresh empty private
+per-attempt Unix directory bound before dispatch. Process exit 0 if and
+only if the outer envelope `status` is `complete`; inner `ok` does not
+decide it. `transport_ok` is informational: it means the tool
+invocation/response transport succeeded, not that artifact custody
+succeeded. Library `run_range()` still emits a seed-stable
+`range.lifecycle.v2` document
 with `live_aws: false`, `fixtures[].exposure|path|impact`, and coverage
 lists of attempted / complete / skipped / error arm ids. The inner
 lifecycle document is coverage input and a `range-report` artifact

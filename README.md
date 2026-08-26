@@ -47,7 +47,7 @@ From the repository root:
 ```text
 python -m extension list
 python -m extension describe <id>
-python -m extension invoke <id> <action> ['{"k":"v"}']
+python -m extension invoke <id> <action> ['{"k":"v"}'] [--attempt-id attempt-<hex>] [--artifact-dir ABSOLUTE_DIR]
 ```
 
 Examples:
@@ -62,7 +62,20 @@ python -m extension invoke agent-wiz list_tools
 - `describe <id>`: one catalog row (catalog JSON)
 - `invoke <id> <action> [args]`: fail-closed tool call (optional JSON object).
   Stdout is `specaudit.ctf.execution-result.v1`. Process exit 0 is not
-  `complete`; `transport_ok` is informational.
+  `complete`. `transport_ok` is informational: it means the tool
+  invocation/response transport succeeded, not that artifact custody
+  succeeded. Optional `--attempt-id attempt-<64 lowercase hex>` is echoed
+  on every structurally valid result for that attempt. Optional
+  `--artifact-dir ABSOLUTE_DIR` is a validator-owned response channel
+  (not profile `local-write`): it requires a valid attempt id and a
+  fresh empty per-attempt Unix directory that already exists and is not
+  a symlink. The producer binds that directory before dispatch and writes
+  claimed artifact bytes under a digest-derived name relative to the
+  bound descriptor. Mode A artifact custody is Unix-only. Malformed
+  attempt ids, invalid or non-empty artifact directories, and unsupported
+  Mode-A platforms fail before execution and may report only on stderr
+  (no result envelope). Omit both flags for Mode B (portable; no
+  `attempt_id`, no artifact files).
 
 X2-PUB admits only the explicit in-process `list_tools` profiles for
 `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `pyrit`,
@@ -146,13 +159,20 @@ process. This tree does not ship a third named head profile.
 ```text
 python -m extension.range
 python -m extension.range --out range-result.json --seed 123
+python -m extension.range --attempt-id attempt-<hex> --artifact-dir ABSOLUTE_DIR
 ```
 
 Fixtures `tf_s3_public_access` and `tf_iam_open` are synthetic. CLI
-stdout and `--out` are `specaudit.ctf.execution-result.v1`. Process
-exit 0 if and only if the outer envelope `status` is `complete`; inner
-`ok` does not decide it. `transport_ok` is informational. Library
-`run_range()` still returns seed-stable `range.lifecycle.v2` with
+stdout and `--out` are `specaudit.ctf.execution-result.v1`. Mode A
+(`--artifact-dir`) emits the envelope only on stdout: `--out` combined
+with `--artifact-dir` is rejected before range execution and may report
+only on stderr. The artifact directory must be a fresh empty private
+per-attempt Unix directory; the producer binds it before dispatch.
+Process exit 0 if and only if the outer envelope `status` is
+`complete`; inner `ok` does not decide it. `transport_ok` is
+informational: it means the tool invocation/response transport
+succeeded, not that artifact custody succeeded. Library `run_range()`
+still returns seed-stable `range.lifecycle.v2` with
 `live_aws: false`. The inner lifecycle document is coverage input and
 a `range-report` artifact digest, not a second all-clear: inner `ok`
 is not the outer status. `--seed` applies to that inner run. Document

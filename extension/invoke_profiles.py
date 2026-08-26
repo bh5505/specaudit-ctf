@@ -5,6 +5,9 @@ X2-PUB is limited to in-process, read-only policy discovery.  In particular,
 the registry intentionally excludes every action that spawns a subprocess,
 touches a caller-selected path, reaches a network, spends model tokens, or
 mutates state.
+
+Capability manifests for these profiles are encoded from this registry.
+A child-returned or caller-constructed document is not authority.
 """
 
 from __future__ import annotations
