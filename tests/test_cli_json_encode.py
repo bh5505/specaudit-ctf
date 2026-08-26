@@ -154,7 +154,7 @@ def test_invoke_invalid_json_args_emits_failed_envelope(
     assert any("invalid" in item.lower() for item in payload["limitations"])
 
 
-def test_invoke_success_emits_v1_exit_zero_is_not_complete(
+def test_invoke_success_emits_complete_v1_and_default_parse_is_unknown_capability(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fake = Result(

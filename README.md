@@ -142,7 +142,8 @@ python -m extension.range --out range-result.json --seed 123
 
 Fixtures `tf_s3_public_access` and `tf_iam_open` are synthetic. CLI
 stdout and `--out` are `specaudit.ctf.execution-result.v1`. Process
-exit 0 is not `complete`; `transport_ok` is informational. Library
+exit 0 if and only if the outer envelope `status` is `complete`; inner
+`ok` does not decide it. `transport_ok` is informational. Library
 `run_range()` still returns seed-stable `range.lifecycle.v2` with
 `live_aws: false`. The inner lifecycle document is coverage input and
 a `range-report` artifact digest, not a second all-clear: inner `ok`

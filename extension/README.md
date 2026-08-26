@@ -328,7 +328,8 @@ python -m extension.range --out range-result.json --seed 123
 ```
 
 CLI stdout and `--out` are `specaudit.ctf.execution-result.v1`. Process
-exit 0 is not `complete`; `transport_ok` is informational. Library
+exit 0 if and only if the outer envelope `status` is `complete`; inner
+`ok` does not decide it. `transport_ok` is informational. Library
 `run_range()` still emits a seed-stable `range.lifecycle.v2` document
 with `live_aws: false`, `fixtures[].exposure|path|impact`, and coverage
 lists of attempted / complete / skipped / error arm ids. The inner
