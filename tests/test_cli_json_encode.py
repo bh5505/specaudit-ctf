@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -15,12 +16,8 @@ import pytest
 from extension.__main__ import main as invoke_main
 from extension.contract import Result
 from extension.encode import encode_range_document
-from extension.envelopes import (
-    KNOWN_CAPABILITY_IDS,
-    RESULT_SCHEMA_ID,
-    accept_pair,
-    parse_execution_result,
-)
+from extension.envelopes import RESULT_SCHEMA_ID, accept_pair, parse_execution_result
+from extension.invoke_profiles import INVOKE_PROFILES, PACKAGE_VERSION
 from extension.range import run_range
 from extension.range.__main__ import main as range_main
 from tests.test_range_lifecycle import apply_no_curated_tools
@@ -126,13 +123,11 @@ def test_invoke_methodology_only_emits_failed_envelope(
 def test_invoke_not_installed_emits_failed_envelope(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr("extension.arms.checkov.arm.resolve_binary", lambda: None)
-    code = invoke_main(["invoke", "checkov", "scan"])
+    monkeypatch.setattr("extension.arms.agentwiz.arm.resolve_binary", lambda: None)
+    code = invoke_main(["invoke", "agent-wiz", "list_tools"])
     payload = _stdout_json(capsys)
-    parsed = _assert_execution_result(
-        payload, known_ids=(*KNOWN_CAPABILITY_IDS, "checkov.scan")
-    )
-    assert payload["capability_id"] == "checkov.scan"
+    parsed = _assert_execution_result(payload)
+    assert payload["capability_id"] == "agent-wiz.list_tools"
     assert payload["status"] == "failed"
     assert payload["transport_ok"] is False
     assert code == 2
@@ -142,11 +137,9 @@ def test_invoke_not_installed_emits_failed_envelope(
 def test_invoke_invalid_json_args_emits_failed_envelope(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    code = invoke_main(["invoke", "checkov", "scan", "not-json"])
+    code = invoke_main(["invoke", "agent-wiz", "list_tools", "not-json"])
     payload = _stdout_json(capsys)
-    parsed = _assert_execution_result(
-        payload, known_ids=(*KNOWN_CAPABILITY_IDS, "checkov.scan")
-    )
+    parsed = _assert_execution_result(payload)
     assert payload["status"] == "failed"
     assert payload["transport_ok"] is False
     assert code == 2
@@ -154,45 +147,93 @@ def test_invoke_invalid_json_args_emits_failed_envelope(
     assert any("invalid" in item.lower() for item in payload["limitations"])
 
 
-def test_invoke_success_emits_complete_v1_and_default_parse_is_unknown_capability(
+def test_invoke_success_uses_manifest_profile_and_default_parser_agrees(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fake = Result(
-        ok=True, arm_id="checkov", action="scan", output={"findings": []}, error=None
+        ok=True,
+        arm_id="agent-wiz",
+        action="list_tools",
+        output={"read_actions": ["extract", "visualize"]},
+        error=None,
     )
     monkeypatch.setattr(
         "extension.__main__.Extension.invoke",
         lambda self, arm_id, action, args=None: fake,
     )
-    code = invoke_main(["invoke", "checkov", "scan", "{}"])
+    code = invoke_main(["invoke", "agent-wiz", "list_tools", "{}"])
     payload = _stdout_json(capsys)
-    parsed = _assert_execution_result(
-        payload, known_ids=(*KNOWN_CAPABILITY_IDS, "checkov.scan")
-    )
+    parsed = _assert_execution_result(payload)
     assert payload["status"] == "complete"
     assert payload["transport_ok"] is True
     assert code == 0
     assert parsed.status == "complete"
     assert parsed.result.transport_ok is True
     assert parsed.result.artifacts
-    default = parse_execution_result(payload)
-    assert default.status == "failed"
-    assert "unknown-capability" in default.reasons
+    assert payload["tool"] == {"name": "specaudit-ctf", "version": PACKAGE_VERSION}
+    assert payload["scope"] == {
+        "authorized": ["policy://extension/arms/agent-wiz"],
+        "touched": ["policy://extension/arms/agent-wiz"],
+    }
+    assert payload["safety_class"] == "R0"
+    assert payload["side_effects"] == ["local-read"]
+    assert payload["cleanup"]["required"] is False
+    assert "unknown-capability" not in parsed.reasons
+
+
+def test_manifested_policy_read_does_not_spawn_upstream_binary(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        "extension.arms.agentwiz.arm.resolve_binary", lambda: "/fake/agent-wiz"
+    )
+
+    def forbidden_spawn(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("list_tools spawned the upstream binary")
+
+    monkeypatch.setattr("extension.arms.agentwiz.arm.subprocess.run", forbidden_spawn)
+    assert invoke_main(["invoke", "agent-wiz", "list_tools"]) == 0
+    payload = _stdout_json(capsys)
+    parsed = _assert_execution_result(payload)
+    assert parsed.status == "complete"
+    assert payload["capability_id"] == "agent-wiz.list_tools"
+
+
+def test_default_parser_rejects_profile_metadata_tampering(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    fake = Result(
+        ok=True,
+        arm_id="agent-wiz",
+        action="list_tools",
+        output={"read_actions": ["extract", "visualize"]},
+        error=None,
+    )
+    monkeypatch.setattr(
+        "extension.__main__.Extension.invoke",
+        lambda self, arm_id, action, args=None: fake,
+    )
+    assert invoke_main(["invoke", "agent-wiz", "list_tools"]) == 0
+    payload = _stdout_json(capsys)
+    payload["scope"]["authorized"] = ["policy://extension/arms/other"]
+    parsed = parse_execution_result(payload)
+    assert parsed.status == "failed"
+    assert "capability-profile-mismatch" in parsed.reasons
 
 
 def test_invoke_transport_ok_exit_zero_can_be_non_complete(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    fake = Result(ok=True, arm_id="checkov", action="scan", output=None, error=None)
+    fake = Result(
+        ok=True, arm_id="agent-wiz", action="list_tools", output=None, error=None
+    )
     monkeypatch.setattr(
         "extension.__main__.Extension.invoke",
         lambda self, arm_id, action, args=None: fake,
     )
-    code = invoke_main(["invoke", "checkov", "scan", "{}"])
+    code = invoke_main(["invoke", "agent-wiz", "list_tools", "{}"])
     payload = _stdout_json(capsys)
-    parsed = _assert_execution_result(
-        payload, known_ids=(*KNOWN_CAPABILITY_IDS, "checkov.scan")
-    )
+    parsed = _assert_execution_result(payload)
     assert code == 0
     assert payload["transport_ok"] is True
     assert payload["status"] == "failed"
@@ -205,8 +246,8 @@ def test_invoke_arm_error_emits_failed_envelope_exit_one(
 ) -> None:
     fake = Result(
         ok=False,
-        arm_id="checkov",
-        action="scan",
+        arm_id="agent-wiz",
+        action="list_tools",
         output=None,
         error="scanner failed",
     )
@@ -214,15 +255,51 @@ def test_invoke_arm_error_emits_failed_envelope_exit_one(
         "extension.__main__.Extension.invoke",
         lambda self, arm_id, action, args=None: fake,
     )
-    code = invoke_main(["invoke", "checkov", "scan"])
+    code = invoke_main(["invoke", "agent-wiz", "list_tools"])
     payload = _stdout_json(capsys)
-    parsed = _assert_execution_result(
-        payload, known_ids=(*KNOWN_CAPABILITY_IDS, "checkov.scan")
-    )
+    parsed = _assert_execution_result(payload)
     assert payload["status"] == "failed"
     assert payload["transport_ok"] is True
     assert code == 1
     assert parsed.status == "failed"
+
+
+def test_unmanifested_dispatch_is_refused_before_extension_invoke(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    calls: list[tuple[str, str]] = []
+
+    def forbidden_invoke(self: Any, arm_id: str, action: str, args: Any = None) -> Any:
+        calls.append((arm_id, action))
+        raise AssertionError("unmanifested action reached Extension.invoke")
+
+    monkeypatch.setattr("extension.__main__.Extension.invoke", forbidden_invoke)
+    code = invoke_main(
+        ["invoke", "page-fetch", "fetch", '{"url":"https://example.com"}']
+    )
+    payload = _stdout_json(capsys)
+    parsed = _assert_execution_result(payload)
+    assert calls == []
+    assert code == 2
+    assert payload["capability_id"] == "page-fetch.fetch"
+    assert payload["status"] == "failed"
+    assert payload["transport_ok"] is False
+    assert payload["side_effects"] == ["none"]
+    assert payload["scope"]["touched"] == []
+    assert "unknown-capability" in parsed.reasons
+
+
+def test_manifest_profiles_are_static_read_only_policy_actions() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert PACKAGE_VERSION == project["project"]["version"]
+    assert INVOKE_PROFILES
+    for capability_id, profile in INVOKE_PROFILES.items():
+        assert capability_id == f"{profile.arm_id}.list_tools"
+        assert profile.action == "list_tools"
+        assert profile.safety_class == "R0"
+        assert profile.side_effects == ("local-read",)
+        assert profile.cleanup_required is False
+        assert profile.max_spend is None
 
 
 def test_module_invoke_cli_emits_v1_subprocess() -> None:

@@ -110,7 +110,7 @@ Examples:
 ```text
 python -m extension describe burp-mcp
 python -m extension describe checkov
-python -m extension invoke checkov scan
+python -m extension invoke agent-wiz list_tools
 ```
 
 `invoke` is fail-closed: unknown ids, non-arms, methodology-only rows,
@@ -119,6 +119,13 @@ errors. Do not invent a fallback card. `list` / `describe` include
 `tier` and stay catalog JSON. `invoke` stdout is
 `specaudit.ctf.execution-result.v1`. Process exit 0 is not `complete`;
 `transport_ok` is informational.
+
+The X2-PUB CLI manifest admits only in-process `list_tools` policy reads for
+`agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `pyrit`,
+`routersploit`, `sniper`, `vvah`, and `zgrab2`. Other actions are refused
+before `Extension.invoke`; no subprocess, network, spend, or mutation action
+may borrow fabricated R0/local-read metadata. Direct library and stdio MCP
+surfaces keep their existing gates and pre-X4 result shapes.
 
 Catalog `invoke` of HTTP MCP arms (`burp-mcp` and the other held
 rows) is refused even when an endpoint is configured. The specialized

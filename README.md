@@ -55,7 +55,7 @@ Examples:
 ```text
 python -m extension describe burp-mcp
 python -m extension describe checkov
-python -m extension invoke checkov scan
+python -m extension invoke agent-wiz list_tools
 ```
 
 - `list`: catalog entries (catalog JSON)
@@ -64,9 +64,17 @@ python -m extension invoke checkov scan
   Stdout is `specaudit.ctf.execution-result.v1`. Process exit 0 is not
   `complete`; `transport_ok` is informational.
 
-Unknown ids, methodology-only rows, heads, held arms, non-curated
-arms, and uninstalled curated arms are hard errors. Do not invent a
-fallback. `list` / `describe` include `tier`.
+X2-PUB admits only the explicit in-process `list_tools` profiles for
+`agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `pyrit`,
+`routersploit`, `sniper`, `vvah`, and `zgrab2`. These profiles read static
+policy metadata and do not spawn the upstream binary. Every other CLI invoke
+action—including local scanner subprocesses and dispatch-class actions—is
+refused before `Extension.invoke` until it has authoritative per-action
+safety, scope, side-effect, budget, cleanup, and tool-version metadata.
+
+Unknown ids, unmanifested actions, methodology-only rows, heads, held arms,
+non-curated arms, and uninstalled curated arms are hard errors. Do not invent
+a fallback. `list` / `describe` include `tier`.
 
 `invoke <id> list_tools` returns static JSON (no binary spawn) on
 non-held surfaces that implement it (the nine lifted CLIs). Catalog

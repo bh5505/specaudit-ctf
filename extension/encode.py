@@ -13,10 +13,10 @@ from .contract import (
     NotHeldError,
     NotInstalledError,
     Result,
+    UnmanifestedCapabilityError,
     UnknownIdError,
 )
 from .envelopes import (
-    KNOWN_CAPABILITY_IDS,
     RESULT_SCHEMA_ID,
     SCHEMA_VERSION,
     STATUS_COMPLETE,
@@ -25,12 +25,10 @@ from .envelopes import (
     _CAPABILITY_ID_RE,
     parse_execution_result,
 )
+from .invoke_profiles import InvokeProfile, PACKAGE_NAME, PACKAGE_VERSION
 
 RANGE_CAPABILITY_ID = "fixture.range-observe"
 RANGE_TOOL = {"name": "fixture-range", "version": "1.0.0"}
-# Packet-1 freeze URI, not observed scan roots. Do not treat invoke
-# authorized/touched as a filesystem walk of what the arm read.
-INVOKE_SCOPE = ("file:///extension/range/tf_s3_public_access",)
 RANGE_SCOPE = (
     "file:///extension/range/tf_s3_public_access",
     "file:///extension/range/tf_iam_open",
@@ -40,7 +38,8 @@ _RANGE_SCOPE_BY_FIXTURE = {
     "tf_iam_open": "file:///extension/range/tf_iam_open",
 }
 ROE_REF = "roe:synthetic-range"
-_INVOKE_RESERVED = {
+_REFUSED_SCOPE = ("urn:specaudit-ctf:refused-before-dispatch",)
+_REFUSED_RESERVED = {
     "timeout_ms": 30000,
     "max_output_bytes": 1048576,
     "max_tool_steps": 8,
@@ -62,29 +61,40 @@ def utc_now() -> str:
 def encode_invoke_result(
     result: Result,
     *,
+    profile: InvokeProfile,
     started_at: str,
     finished_at: str,
 ) -> dict[str, Any]:
-    """Encode a completed transport Result. Caller exit code stays Result.ok."""
-    cap = _capability_id(result.arm_id, result.action)
+    """Encode one admitted result using its authoritative action profile."""
+    cap = profile.capability_id
     blob = _canonical_bytes(result.output)
     owned = result.output not in (None, "")
-    artifacts = [_artifact(blob, kind="scan-report")] if owned else []
-    if result.ok:
+    identity_matches = (
+        result.arm_id == profile.arm_id and result.action == profile.action
+    )
+    artifacts = (
+        [_artifact(blob, kind="policy-report")] if owned and identity_matches else []
+    )
+    if result.ok and identity_matches:
         claimed = STATUS_COMPLETE
         coverage = _coverage(attempted=(cap,), complete=(cap,), required=(cap,))
         limitations: tuple[str, ...] = ()
+    elif not identity_matches:
+        claimed = STATUS_FAILED
+        coverage = _coverage(attempted=(cap,), failed=(cap,), required=(cap,))
+        limitations = ("arm result identity did not match admitted capability",)
     else:
         claimed = STATUS_FAILED
         coverage = _coverage(attempted=(cap,), failed=(cap,), required=(cap,))
         limitations = ("required arm failed",)
     candidate = _envelope(
         capability_id=cap,
-        tool=_tool(result.arm_id),
-        authorized=INVOKE_SCOPE,
-        touched=INVOKE_SCOPE,
-        side_effects=("local-read",),
-        reserved=_INVOKE_RESERVED,
+        tool={"name": profile.tool_name, "version": profile.tool_version},
+        authorized=profile.authorized_scope,
+        touched=profile.touched_scope,
+        safety_class=profile.safety_class,
+        side_effects=profile.side_effects,
+        reserved=_profile_reserved(profile),
         started_at=started_at,
         finished_at=finished_at,
         status=claimed,
@@ -94,8 +104,11 @@ def encode_invoke_result(
         limitations=limitations,
         output_bytes=len(blob),
         tool_steps=1,
+        cleanup_required=profile.cleanup_required,
+        approval_ref=profile.approval_ref,
+        roe_ref=profile.roe_ref,
     )
-    return _admit(candidate, extra_known=(cap,))
+    return _admit(candidate)
 
 
 def encode_invoke_failure(
@@ -103,18 +116,20 @@ def encode_invoke_failure(
     *,
     arm_id: str,
     action: str,
+    profile: InvokeProfile | None,
     started_at: str,
     finished_at: str,
 ) -> dict[str, Any]:
     """Encode a fail-closed invoke that never produced a transport Result."""
     cap = _capability_id(arm_id, action)
-    extra: tuple[str, ...] = () if isinstance(exc, UnknownIdError) else (cap,)
+    if profile is not None:
+        cap = profile.capability_id
     attempted: tuple[str, ...] = ()
     skipped: tuple[str, ...] = ()
     unsupported: tuple[str, ...] = ()
     failed: tuple[str, ...] = ()
     required: tuple[str, ...] = ()
-    if isinstance(exc, UnknownIdError):
+    if isinstance(exc, (UnknownIdError, UnmanifestedCapabilityError)):
         limitations = ("unknown capability",)
     elif isinstance(exc, NotHeldError):
         unsupported = (cap,)
@@ -136,7 +151,6 @@ def encode_invoke_failure(
         required = (cap,)
         limitations = (f"{arm_id} is {exc.kind}, not an arm",)
     elif _is_invalid_args(exc):
-        extra = (cap,)
         limitations = ("invalid JSON arguments",)
     else:
         attempted = (cap,)
@@ -145,11 +159,14 @@ def encode_invoke_failure(
         limitations = ("invoke failed",)
     candidate = _envelope(
         capability_id=cap,
-        tool=_tool(arm_id),
-        authorized=INVOKE_SCOPE,
+        tool=_failure_tool(profile),
+        authorized=(profile.authorized_scope if profile else _REFUSED_SCOPE),
         touched=(),
+        safety_class=(profile.safety_class if profile else "R0"),
         side_effects=("none",),
-        reserved=_INVOKE_RESERVED,
+        reserved=(
+            _profile_reserved(profile) if profile is not None else _REFUSED_RESERVED
+        ),
         started_at=started_at,
         finished_at=finished_at,
         status=STATUS_FAILED,
@@ -165,8 +182,11 @@ def encode_invoke_failure(
         limitations=limitations,
         output_bytes=0,
         tool_steps=0,
+        cleanup_required=(profile.cleanup_required if profile else False),
+        approval_ref=(profile.approval_ref if profile else None),
+        roe_ref=(profile.roe_ref if profile else None),
     )
-    return _admit(candidate, extra_known=extra)
+    return _admit(candidate)
 
 
 def encode_range_document(
@@ -197,6 +217,7 @@ def encode_range_document(
         tool=RANGE_TOOL,
         authorized=RANGE_SCOPE,
         touched=_range_touched(document),
+        safety_class="R0",
         side_effects=("local-read",),
         reserved=_RANGE_RESERVED,
         started_at=started_at,
@@ -213,6 +234,9 @@ def encode_range_document(
         limitations=tuple(limitations),
         output_bytes=len(blob),
         tool_steps=1,
+        cleanup_required=False,
+        approval_ref=None,
+        roe_ref=ROE_REF,
     )
     return _admit(candidate)
 
@@ -228,6 +252,7 @@ def encode_range_failure(
         tool=RANGE_TOOL,
         authorized=RANGE_SCOPE,
         touched=(),
+        safety_class="R0",
         side_effects=("none",),
         reserved=_RANGE_RESERVED,
         started_at=started_at,
@@ -239,19 +264,21 @@ def encode_range_failure(
         limitations=("range run failed",),
         output_bytes=0,
         tool_steps=0,
+        cleanup_required=False,
+        approval_ref=None,
+        roe_ref=ROE_REF,
     )
     return _admit(candidate)
 
 
-def _admit(
-    candidate: Mapping[str, Any], *, extra_known: Sequence[str] = ()
-) -> dict[str, Any]:
-    known = tuple(dict.fromkeys([*KNOWN_CAPABILITY_IDS, *extra_known]))
-    parsed = parse_execution_result(candidate, known_ids=known)
-    if parsed.result is not None:
-        return parsed.result.to_dict()
-    payload = dict(candidate)
-    payload["status"] = STATUS_FAILED
+def _admit(candidate: Mapping[str, Any]) -> dict[str, Any]:
+    parsed = parse_execution_result(candidate)
+    if parsed.result is None:
+        raise ValueError("internal execution-result encoder produced an invalid envelope")
+    payload = parsed.result.to_dict()
+    reparsed = parse_execution_result(payload)
+    if reparsed.result is None or reparsed.status != payload["status"]:
+        raise ValueError("execution-result parser did not agree with encoded status")
     return payload
 
 
@@ -261,6 +288,7 @@ def _envelope(
     tool: Mapping[str, str],
     authorized: Sequence[str],
     touched: Sequence[str],
+    safety_class: str,
     side_effects: Sequence[str],
     reserved: Mapping[str, Any],
     started_at: str,
@@ -272,6 +300,9 @@ def _envelope(
     limitations: Sequence[str],
     output_bytes: int,
     tool_steps: int,
+    cleanup_required: bool,
+    approval_ref: str | None,
+    roe_ref: str | None,
 ) -> dict[str, Any]:
     finished = finished_at if finished_at >= started_at else started_at
     return {
@@ -283,10 +314,10 @@ def _envelope(
             "authorized": list(authorized),
             "touched": list(dict.fromkeys(touched)),
         },
-        "safety_class": "R0",
+        "safety_class": safety_class,
         "side_effects": list(side_effects),
-        "approval_ref": None,
-        "roe_ref": ROE_REF,
+        "approval_ref": approval_ref,
+        "roe_ref": roe_ref,
         "budget": {
             "reserved": {
                 "timeout_ms": reserved["timeout_ms"],
@@ -307,7 +338,11 @@ def _envelope(
         "transport_ok": transport_ok,
         "artifacts": [dict(item) for item in artifacts],
         "coverage": dict(coverage),
-        "cleanup": {"required": False, "proof_digest": None, "residual": False},
+        "cleanup": {
+            "required": cleanup_required,
+            "proof_digest": None,
+            "residual": False,
+        },
         "limitations": list(dict.fromkeys(item for item in limitations if item)),
     }
 
@@ -346,9 +381,19 @@ def _capability_id(arm_id: str, action: str) -> str:
     return "unknown.capability"
 
 
-def _tool(arm_id: str) -> dict[str, str]:
-    name = arm_id if isinstance(arm_id, str) and arm_id else "unknown"
-    return {"name": name, "version": "0.0.0"}
+def _profile_reserved(profile: InvokeProfile) -> dict[str, Any]:
+    return {
+        "timeout_ms": profile.timeout_ms,
+        "max_output_bytes": profile.max_output_bytes,
+        "max_tool_steps": profile.max_tool_steps,
+        "max_spend": profile.max_spend,
+    }
+
+
+def _failure_tool(profile: InvokeProfile | None) -> dict[str, str]:
+    if profile is not None:
+        return {"name": profile.tool_name, "version": profile.tool_version}
+    return {"name": PACKAGE_NAME, "version": PACKAGE_VERSION}
 
 
 def _range_touched(document: Mapping[str, Any]) -> tuple[str, ...]:
