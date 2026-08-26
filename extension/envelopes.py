@@ -818,12 +818,16 @@ def _invoke_profile_mismatch(payload: Mapping[str, Any]) -> bool:
     scope = payload.get("scope")
     budget = payload.get("budget")
     cleanup = payload.get("cleanup")
-    if not all(isinstance(value, dict) for value in (tool, scope, budget, cleanup)):
+    coverage = payload.get("coverage")
+    if not all(
+        isinstance(value, dict) for value in (tool, scope, budget, cleanup, coverage)
+    ):
         return True
     assert isinstance(tool, dict)
     assert isinstance(scope, dict)
     assert isinstance(budget, dict)
     assert isinstance(cleanup, dict)
+    assert isinstance(coverage, dict)
     reserved = budget.get("reserved")
     if not isinstance(reserved, dict):
         return True
@@ -851,6 +855,17 @@ def _invoke_profile_mismatch(payload: Mapping[str, Any]) -> bool:
         return True
     if payload.get("roe_ref") != profile.roe_ref:
         return True
+    if payload.get("status") == STATUS_COMPLETE:
+        expected_coverage = {
+            "attempted": [profile.capability_id],
+            "complete": [profile.capability_id],
+            "skipped": [],
+            "unsupported": [],
+            "failed": [],
+            "required": [profile.capability_id],
+        }
+        if coverage != expected_coverage:
+            return True
     if payload.get("transport_ok") is True:
         return scope.get("touched") != list(profile.touched_scope) or payload.get(
             "side_effects"

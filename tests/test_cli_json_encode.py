@@ -132,6 +132,8 @@ def test_invoke_not_installed_emits_failed_envelope(
     assert payload["transport_ok"] is False
     assert code == 2
     assert parsed.status == "failed"
+    assert "required-step-skipped" in parsed.reasons
+    assert "capability-profile-mismatch" not in parsed.reasons
 
 
 def test_invoke_invalid_json_args_emits_failed_envelope(
@@ -145,6 +147,7 @@ def test_invoke_invalid_json_args_emits_failed_envelope(
     assert code == 2
     assert parsed.status == "failed"
     assert any("invalid" in item.lower() for item in payload["limitations"])
+    assert "capability-profile-mismatch" not in parsed.reasons
 
 
 def test_invoke_success_uses_manifest_profile_and_default_parser_agrees(
@@ -221,6 +224,52 @@ def test_default_parser_rejects_profile_metadata_tampering(
     assert "capability-profile-mismatch" in parsed.reasons
 
 
+@pytest.mark.parametrize(
+    "coverage",
+    [
+        {
+            "attempted": [],
+            "complete": [],
+            "skipped": [],
+            "unsupported": [],
+            "failed": [],
+            "required": [],
+        },
+        {
+            "attempted": ["fixture.local-read"],
+            "complete": ["fixture.local-read"],
+            "skipped": [],
+            "unsupported": [],
+            "failed": [],
+            "required": ["fixture.local-read"],
+        },
+    ],
+    ids=("empty", "foreign-capability"),
+)
+def test_default_parser_binds_complete_coverage_to_profile_capability(
+    coverage: dict[str, list[str]],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fake = Result(
+        ok=True,
+        arm_id="agent-wiz",
+        action="list_tools",
+        output={"read_actions": ["extract", "visualize"]},
+        error=None,
+    )
+    monkeypatch.setattr(
+        "extension.__main__.Extension.invoke",
+        lambda self, arm_id, action, args=None: fake,
+    )
+    assert invoke_main(["invoke", "agent-wiz", "list_tools"]) == 0
+    payload = _stdout_json(capsys)
+    payload["coverage"] = coverage
+    parsed = parse_execution_result(payload)
+    assert parsed.status == "failed"
+    assert "capability-profile-mismatch" in parsed.reasons
+
+
 def test_invoke_transport_ok_exit_zero_can_be_non_complete(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -262,6 +311,8 @@ def test_invoke_arm_error_emits_failed_envelope_exit_one(
     assert payload["transport_ok"] is True
     assert code == 1
     assert parsed.status == "failed"
+    assert "required-step-failed" in parsed.reasons
+    assert "capability-profile-mismatch" not in parsed.reasons
 
 
 def test_unmanifested_dispatch_is_refused_before_extension_invoke(
