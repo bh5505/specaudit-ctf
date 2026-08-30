@@ -62,7 +62,19 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     arm_ids: list[str] | None = None
     if ns.arm_ids is not None:
-        arm_ids = [item for item in ns.arm_ids.split(",") if item]
+        # Parity with the MCP shape check: an empty value is lifecycle-only
+        # (required-empty); any whitespace-only entry is a caller shape error
+        # (exit 2 here, JSON-RPC -32602 there) — never a silently dropped
+        # arm. Entries are otherwise kept verbatim: arm ids are kebab-case,
+        # so anything else fails the curated-arm domain check on both
+        # transports with the same envelope.
+        if ns.arm_ids == "":
+            arm_ids = []
+        else:
+            arm_ids = ns.arm_ids.split(",")
+            if any(not item.strip() for item in arm_ids):
+                print("arm-ids entries must be non-empty", file=sys.stderr)
+                return 2
 
     outcome = dispatch_range(
         Extension(),
