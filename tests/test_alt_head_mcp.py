@@ -521,9 +521,10 @@ def test_run_range_huge_document_stays_bounded(
     framed response size; only its digest is admitted.
     """
     server, _fake = _server()
+    document = {"pad": "x" * (_MAX_BYTES + 1)}
     monkeypatch.setattr(
         "extension.dispatch.run_range",
-        lambda **_kwargs: {"pad": "x" * (_MAX_BYTES + 1)},
+        lambda **_kwargs: document,
     )
     response = _call(server, "run_range", {})
     assert "error" not in response
@@ -531,7 +532,12 @@ def test_run_range_huge_document_stays_bounded(
     assert len(text) < _MAX_BYTES
     payload = json.loads(text)
     assert len(payload["artifacts"]) == 1
-    assert payload["artifacts"][0]["digest"].startswith("sha256:")
+    # Pin the digest to the *patched* document's canonical bytes, so the
+    # test proves the monkeypatch was exercised: a silently ineffective
+    # patch target would produce the real (small) document's digest here.
+    canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
+    expected = "sha256:" + __import__("hashlib").sha256(canonical).hexdigest()
+    assert payload["artifacts"][0]["digest"] == expected
 
 
 def test_run_range_out_of_range_seed_is_domain_error() -> None:
@@ -552,15 +558,17 @@ def test_mcp_unknown_tool_arguments_are_invalid_params() -> None:
     validate tool inputs)."""
     server, fake = _server()
     cases = (
-        ("invoke", {"id": "agent-wiz", "action": "list_tools", "bogus": 1}),
-        ("run_range", {"seed": 1, "extra": True}),
-        ("describe", {"id": "agent-wiz", "detail": "full"}),
-        ("list", {"unexpected": []}),
+        ("invoke", {"id": "agent-wiz", "action": "list_tools", "bogus": 1}, "bogus"),
+        ("run_range", {"seed": 1, "extra": True}, "extra"),
+        ("describe", {"id": "agent-wiz", "detail": "full"}, "detail"),
+        ("list", {"unexpected": []}, "unexpected"),
     )
-    for tool, arguments in cases:
+    for tool, arguments, unknown_key in cases:
         response = _call(server, tool, arguments)
         assert response["error"]["code"] == -32602, (tool, arguments)
-        assert "unknown" in response["error"]["message"].lower()
+        # The message names the rejected key, proving *this* surface's
+        # rejection rather than any incidental "unknown" wording.
+        assert unknown_key in response["error"]["message"], (tool, unknown_key)
     assert fake.calls == []
 
 
@@ -578,15 +586,21 @@ def test_tool_argument_keys_derive_from_declared_schemas() -> None:
 
 
 def test_initialize_negotiation_fallbacks() -> None:
-    from extension.mcp_server import _initialize
+    # Expectations derive from the implementation constants, so adding an
+    # older supported version cannot silently outdate this test.
+    from extension.mcp_server import (
+        _LATEST_PROTOCOL_VERSION,
+        _SUPPORTED_PROTOCOL_VERSIONS,
+        _initialize,
+    )
 
-    supported = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
-    for version in supported:
+    assert "1999-01-01" not in _SUPPORTED_PROTOCOL_VERSIONS
+    for version in _SUPPORTED_PROTOCOL_VERSIONS:
         assert _initialize({"protocolVersion": version})["protocolVersion"] == version
     # Missing, non-string, and unsupported requests answer with the latest
     # supported version rather than echoing caller input.
     for params in ({}, {"protocolVersion": 123}, {"protocolVersion": "1999-01-01"}):
-        assert _initialize(params)["protocolVersion"] == "2025-11-25"
+        assert _initialize(params)["protocolVersion"] == _LATEST_PROTOCOL_VERSION
 
 
 def test_range_cli_arm_ids_whitespace_matches_mcp_shape(
@@ -595,6 +609,8 @@ def test_range_cli_arm_ids_whitespace_matches_mcp_shape(
     """Whitespace-only entries are shape errors on both transports; an empty
     value stays lifecycle-only; entries are otherwise kept verbatim so the
     curated-arm domain check is identical."""
+    import json as _json
+
     from extension.range import __main__ as range_cli
 
     # Whitespace-only entry: usage error before dispatch, no envelope — the
@@ -606,12 +622,19 @@ def test_range_cli_arm_ids_whitespace_matches_mcp_shape(
     assert range_cli.main(["--arm-ids", "", "--seed", "7"]) == 0
     capsys.readouterr()
 
-    # Verbatim entries reach the curated check: a padded id fails with the
-    # same failure envelope the MCP transport produces for the same value.
+    # Verbatim entries reach the curated check on BOTH transports. Run the
+    # same logical request through the MCP tool and compare envelopes, so
+    # the parity claim below is asserted, not assumed.
     assert range_cli.main(["--arm-ids", " burp-mcp"]) == 2
-    import json as _json
+    cli_payload = _json.loads(capsys.readouterr().out)
+    assert cli_payload["schema"] == "specaudit.ctf.execution-result.v1"
+    assert cli_payload["status"] == "failed"
+    assert cli_payload["transport_ok"] is False
 
-    payload = _json.loads(capsys.readouterr().out)
-    assert payload["schema"] == "specaudit.ctf.execution-result.v1"
-    assert payload["status"] == "failed"
-    assert payload["transport_ok"] is False
+    server = McpServer()
+    response = _call(server, "run_range", {"arm_ids": [" burp-mcp"]})
+    assert response["result"]["isError"] is True
+    mcp_payload = _json.loads(response["result"]["content"][0]["text"])
+    assert mcp_payload["schema"] == "specaudit.ctf.execution-result.v1"
+    for field in ("status", "transport_ok", "limitations", "coverage"):
+        assert mcp_payload[field] == cli_payload[field], field
