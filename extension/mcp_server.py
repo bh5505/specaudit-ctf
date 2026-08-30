@@ -322,6 +322,7 @@ class McpServer:
             arguments = {}
         if not isinstance(arguments, Mapping):
             raise _InvalidParams("arguments must be an object")
+        _reject_unknown_arguments(name, arguments)
         try:
             if name == "invoke":
                 return self._invoke_tool(arguments)
@@ -411,6 +412,30 @@ def _outcome_content(outcome: DispatchOutcome) -> dict[str, Any]:
         is_error=outcome.exit_code != 0,
         structured=outcome.envelope,
     )
+
+
+_TOOL_ARGUMENT_KEYS: dict[str, frozenset[str]] = {
+    "list": frozenset(),
+    "describe": frozenset({"id"}),
+    "invoke": frozenset({"id", "action", "args", "attempt_id", "artifact_dir"}),
+    "run_range": frozenset({"seed", "arm_ids", "attempt_id", "artifact_dir"}),
+}
+
+
+def _reject_unknown_arguments(name: str, arguments: Mapping[str, Any]) -> None:
+    """Enforce each tool's declared inputSchema server-side.
+
+    The spec places input validation on the server (MUST), and every
+    declared schema carries ``additionalProperties: false``: an argument key
+    outside the tool's surface is a caller shape error (-32602), never a
+    silently ignored ride-along.
+    """
+    allowed = _TOOL_ARGUMENT_KEYS[name]
+    unknown = sorted(str(key) for key in arguments if key not in allowed)
+    if unknown:
+        raise _InvalidParams(
+            f"unknown {name} arguments: {', '.join(unknown)}"
+        )
 
 
 def _require_id(arguments: Mapping[str, Any]) -> str:

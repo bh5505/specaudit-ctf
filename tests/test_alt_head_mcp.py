@@ -544,3 +544,21 @@ def test_run_range_out_of_range_seed_is_domain_error() -> None:
     assert payload["status"] == "failed"
     assert payload["transport_ok"] is False
     assert payload["limitations"] == ["range run failed"]
+
+
+def test_mcp_unknown_tool_arguments_are_invalid_params() -> None:
+    """Server-side input validation: the declared additionalProperties:false
+    schemas are enforced, not just advertised (MCP spec: servers MUST
+    validate tool inputs)."""
+    server, fake = _server()
+    cases = (
+        ("invoke", {"id": "agent-wiz", "action": "list_tools", "bogus": 1}),
+        ("run_range", {"seed": 1, "extra": True}),
+        ("describe", {"id": "agent-wiz", "detail": "full"}),
+        ("list", {"unexpected": []}),
+    )
+    for tool, arguments in cases:
+        response = _call(server, tool, arguments)
+        assert response["error"]["code"] == -32602, (tool, arguments)
+        assert "unknown" in response["error"]["message"].lower()
+    assert fake.calls == []
