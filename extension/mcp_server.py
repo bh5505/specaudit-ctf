@@ -415,10 +415,12 @@ def _outcome_content(outcome: DispatchOutcome) -> dict[str, Any]:
 
 
 _TOOL_ARGUMENT_KEYS: dict[str, frozenset[str]] = {
-    "list": frozenset(),
-    "describe": frozenset({"id"}),
-    "invoke": frozenset({"id", "action", "args", "attempt_id", "artifact_dir"}),
-    "run_range": frozenset({"seed", "arm_ids", "attempt_id", "artifact_dir"}),
+    # Derived from the declared schemas so the enforced surface can never
+    # drift from the advertised one: a schema edit changes validation with
+    # it, and every schema carries additionalProperties: false (guarded by
+    # the tool-defs test).
+    tool["name"]: frozenset(tool["inputSchema"].get("properties", ()))
+    for tool in _TOOL_DEFS
 }
 
 

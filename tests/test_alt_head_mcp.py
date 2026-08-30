@@ -562,3 +562,56 @@ def test_mcp_unknown_tool_arguments_are_invalid_params() -> None:
         assert response["error"]["code"] == -32602, (tool, arguments)
         assert "unknown" in response["error"]["message"].lower()
     assert fake.calls == []
+
+
+def test_tool_argument_keys_derive_from_declared_schemas() -> None:
+    """The enforced server-side surface is derived from _TOOL_DEFS, so it can
+    never drift from the advertised inputSchemas."""
+    from extension.mcp_server import _TOOL_ARGUMENT_KEYS, _TOOL_DEFS, TOOLS
+
+    assert set(_TOOL_ARGUMENT_KEYS) == set(TOOLS)
+    for tool in _TOOL_DEFS:
+        schema_props = set(tool["inputSchema"].get("properties", {}))
+        assert _TOOL_ARGUMENT_KEYS[tool["name"]] == frozenset(schema_props)
+        for required in tool["inputSchema"].get("required", []):
+            assert required in schema_props
+
+
+def test_initialize_negotiation_fallbacks() -> None:
+    from extension.mcp_server import _initialize
+
+    supported = {"2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25"}
+    for version in supported:
+        assert _initialize({"protocolVersion": version})["protocolVersion"] == version
+    # Missing, non-string, and unsupported requests answer with the latest
+    # supported version rather than echoing caller input.
+    for params in ({}, {"protocolVersion": 123}, {"protocolVersion": "1999-01-01"}):
+        assert _initialize(params)["protocolVersion"] == "2025-11-25"
+
+
+def test_range_cli_arm_ids_whitespace_matches_mcp_shape(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Whitespace-only entries are shape errors on both transports; an empty
+    value stays lifecycle-only; entries are otherwise kept verbatim so the
+    curated-arm domain check is identical."""
+    from extension.range import __main__ as range_cli
+
+    # Whitespace-only entry: usage error before dispatch, no envelope — the
+    # CLI mirror of the MCP -32602 shape rejection.
+    assert range_cli.main(["--arm-ids", " "]) == 2
+    assert capsys.readouterr().out == ""
+
+    # Empty value stays lifecycle-only (required-empty, may complete).
+    assert range_cli.main(["--arm-ids", "", "--seed", "7"]) == 0
+    capsys.readouterr()
+
+    # Verbatim entries reach the curated check: a padded id fails with the
+    # same failure envelope the MCP transport produces for the same value.
+    assert range_cli.main(["--arm-ids", " burp-mcp"]) == 2
+    import json as _json
+
+    payload = _json.loads(capsys.readouterr().out)
+    assert payload["schema"] == "specaudit.ctf.execution-result.v1"
+    assert payload["status"] == "failed"
+    assert payload["transport_ok"] is False
