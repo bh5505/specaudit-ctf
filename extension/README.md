@@ -131,8 +131,11 @@ The X2-PUB CLI manifest admits only in-process `list_tools` policy reads for
 `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `pyrit`,
 `routersploit`, `sniper`, `vvah`, and `zgrab2`. Other actions are refused
 before `Extension.invoke`; no subprocess, network, spend, or mutation action
-may borrow fabricated R0/local-read metadata. Direct library and stdio MCP
-surfaces keep their existing gates and pre-X4 result shapes.
+may borrow fabricated R0/local-read metadata. Since X4-PUB the stdio MCP
+`invoke` tool enforces the same registry through the shared
+`extension.dispatch` and returns the same `execution-result.v1`
+envelope as the CLI (timestamps differ per run); the direct library
+surface keeps its existing gates.
 
 Catalog `invoke` of HTTP MCP arms (`burp-mcp` and the other held
 rows) is refused even when an endpoint is configured. The specialized
@@ -339,6 +342,7 @@ JSON plus a tiny Terraform sample. There is no live cloud.
 ```text
 python -m extension.range
 python -m extension.range --out range-result.json --seed 123
+python -m extension.range --arm-ids "" --seed 7
 python -m extension.range --attempt-id attempt-<hex> --artifact-dir ABSOLUTE_DIR
 ```
 

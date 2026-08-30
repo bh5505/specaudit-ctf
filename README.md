@@ -136,6 +136,27 @@ doctrine: synthetic, seed-stable fixtures, no path arguments,
 curated `arm_ids` only, no file writes over MCP (`--out` stays
 CLI-only). Cite it as a boundary, not a precedent.
 
+X4-PUB transport contract:
+
+- `invoke` and `run_range` return the same
+  `specaudit.ctf.execution-result.v1` envelopes as the CLI JSON
+  output for the same logical request (timestamps differ per run);
+  both transports share one dispatch, and
+  `tests/goldens/transport-parity/matrix.json` is the frozen parity
+  matrix.
+- `isError` on a tool result mirrors the CLI process exit code
+  (nonzero exit = `isError: true`). It is a transport signal; the
+  verdict vocabulary (`complete` / `degraded` / `failed`) lives in
+  the envelope status only.
+- Optional `attempt_id` / `artifact_dir` tool arguments carry the
+  same Mode A contract as `--attempt-id` / `--artifact-dir`
+  (invalid forms are JSON-RPC `-32602`, never an envelope).
+- Framing is newline-delimited JSON per the MCP stdio transport
+  (spec revision 2025-11-25); legacy Content-Length input is
+  rejected as a parse error, messages are capped at 1 MiB, and the
+  initialize handshake echoes a supported requested protocol version
+  or answers with the latest supported one.
+
 ## Heads
 
 Attach profiles:
@@ -168,6 +189,7 @@ process. This tree does not ship a third named head profile.
 ```text
 python -m extension.range
 python -m extension.range --out range-result.json --seed 123
+python -m extension.range --arm-ids "" --seed 7
 python -m extension.range --attempt-id attempt-<hex> --artifact-dir ABSOLUTE_DIR
 ```
 

@@ -72,7 +72,9 @@ def _forbid_range(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
         calls.append(args)
         raise AssertionError("run_range executed")
 
-    monkeypatch.setattr("extension.range.__main__.run_range", forbidden)
+    # X4-PUB: run_range is called from the shared transport dispatch, so the
+    # zero-execution seam is the dispatch module's import, not the CLI module.
+    monkeypatch.setattr("extension.dispatch.run_range", forbidden)
     return calls
 
 

@@ -178,6 +178,8 @@ def test_head_invoke_unknown_id_does_not_dial_stub(
     url, state = stub_sse
     response = _call(_head(url), "invoke", {"id": UNKNOWN_ID, "action": "list_tools"})
     assert response["result"]["isError"] is True
-    assert "unknown id" in _content_text(response).lower()
+    payload = json.loads(_content_text(response))
+    assert payload["status"] == "failed"
+    assert payload["limitations"] == ["unknown capability"]
     assert state.http_hits == 0
     assert state.calls == []

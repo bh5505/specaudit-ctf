@@ -1,0 +1,430 @@
+{
+  "schema": "specaudit.ctf.transport-parity.v1",
+  "description": "Frozen X4-PUB transport-parity fixture matrix. Every case names one logical request; the parity test executes it through both transports (CLI JSON and stdio MCP tools/call) and asserts envelope equivalence modulo wall-clock fields. Frozen fields are host-independent by construction; cases marked equivalence_only assert cross-transport equality without pinning host-dependent values. isError mirrors the CLI exit code (nonzero exit = isError); verdict vocabulary lives in the envelope status (G-24).",
+  "normalization": {
+    "drop_fields": [
+      "started_at",
+      "finished_at"
+    ],
+    "drop_paths": [
+      "budget.spent.elapsed_ms"
+    ]
+  },
+  "cases": [
+    {
+      "id": "list_catalog",
+      "kind": "payload",
+      "cli": [
+        "list"
+      ],
+      "mcp_tool": "list",
+      "mcp_arguments": {},
+      "expect": {
+        "exit_code": 0,
+        "is_error": false
+      }
+    },
+    {
+      "id": "describe_agent_wiz",
+      "kind": "payload",
+      "cli": [
+        "describe",
+        "agent-wiz"
+      ],
+      "mcp_tool": "describe",
+      "mcp_arguments": {
+        "id": "agent-wiz"
+      },
+      "expect": {
+        "exit_code": 0,
+        "is_error": false
+      }
+    },
+    {
+      "id": "describe_unknown",
+      "kind": "domain_error_no_envelope",
+      "cli": [
+        "describe",
+        "no-such-arm"
+      ],
+      "mcp_tool": "describe",
+      "mcp_arguments": {
+        "id": "no-such-arm"
+      },
+      "expect": {
+        "exit_code": 2,
+        "is_error": true,
+        "message_contains": "unknown id"
+      }
+    },
+    {
+      "id": "invoke_agent_wiz_list_tools",
+      "kind": "envelope",
+      "cli": [
+        "invoke",
+        "agent-wiz",
+        "list_tools"
+      ],
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "agent-wiz",
+        "action": "list_tools",
+        "args": {}
+      },
+      "expect": {
+        "exit_code": 0,
+        "is_error": false,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "complete",
+          "transport_ok": true,
+          "capability_id": "agent-wiz.list_tools",
+          "limitations": [],
+          "artifact_kinds": [
+            "policy-report"
+          ],
+          "artifact_digests": [
+            "sha256:e5deb8e08de06a6a33085513da3aadd9153fd35cba614aeb589da36394fc7f92"
+          ]
+        }
+      }
+    },
+    {
+      "id": "invoke_agent_wiz_list_tools_attempt_echo",
+      "kind": "envelope",
+      "cli": [
+        "invoke",
+        "agent-wiz",
+        "list_tools",
+        "--attempt-id",
+        "attempt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      ],
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "agent-wiz",
+        "action": "list_tools",
+        "args": {},
+        "attempt_id": "attempt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "expect": {
+        "exit_code": 0,
+        "is_error": false,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "complete",
+          "transport_ok": true,
+          "capability_id": "agent-wiz.list_tools",
+          "attempt_id": "attempt-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "artifact_digests": [
+            "sha256:e5deb8e08de06a6a33085513da3aadd9153fd35cba614aeb589da36394fc7f92"
+          ]
+        }
+      }
+    },
+    {
+      "id": "invoke_unknown_id",
+      "kind": "envelope",
+      "cli": [
+        "invoke",
+        "no-such-arm",
+        "ping"
+      ],
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "no-such-arm",
+        "action": "ping"
+      },
+      "expect": {
+        "exit_code": 2,
+        "is_error": true,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "failed",
+          "transport_ok": false,
+          "limitations": [
+            "unknown capability"
+          ],
+          "artifacts_empty": true
+        }
+      }
+    },
+    {
+      "id": "invoke_held_burp_mcp",
+      "kind": "envelope",
+      "cli": [
+        "invoke",
+        "burp-mcp",
+        "ping"
+      ],
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "burp-mcp",
+        "action": "ping"
+      },
+      "expect": {
+        "exit_code": 2,
+        "is_error": true,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "failed",
+          "transport_ok": false,
+          "limitations": [
+            "held capability is never invocable"
+          ],
+          "artifacts_empty": true
+        }
+      }
+    },
+    {
+      "id": "invoke_methodology_only_vulnhunter",
+      "kind": "envelope",
+      "cli": [
+        "invoke",
+        "vulnhunter",
+        "extract"
+      ],
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "vulnhunter",
+        "action": "extract"
+      },
+      "expect": {
+        "exit_code": 2,
+        "is_error": true,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "failed",
+          "transport_ok": false,
+          "limitations": [
+            "methodology-only is never invocable"
+          ],
+          "artifacts_empty": true
+        }
+      }
+    },
+    {
+      "id": "invoke_unmanifested_agent_wiz_extract",
+      "kind": "envelope",
+      "cli": [
+        "invoke",
+        "agent-wiz",
+        "extract"
+      ],
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "agent-wiz",
+        "action": "extract"
+      },
+      "expect": {
+        "exit_code": 2,
+        "is_error": true,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "failed",
+          "transport_ok": false,
+          "limitations": [
+            "unknown capability"
+          ],
+          "artifacts_empty": true
+        }
+      }
+    },
+    {
+      "id": "invoke_invalid_args_json_cli_only",
+      "kind": "transport_idiom_divergence",
+      "note": "A JSON-string arguments body exists only on the CLI; MCP arguments arrive pre-parsed. CLI fail-closes with an invalid-args envelope (exit 2); the MCP shape equivalent (non-object args) is JSON-RPC -32602 with no envelope. Both refuse before dispatch.",
+      "cli": [
+        "invoke",
+        "agent-wiz",
+        "list_tools",
+        "not-json"
+      ],
+      "cli_expect": {
+        "exit_code": 2,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "failed",
+          "transport_ok": false,
+          "limitations": [
+            "invalid JSON arguments"
+          ]
+        }
+      },
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "agent-wiz",
+        "action": "list_tools",
+        "args": "not-json"
+      },
+      "mcp_expect": {
+        "json_rpc_error_code": -32602
+      }
+    },
+    {
+      "id": "invoke_vvah_list_tools_equivalence_only",
+      "kind": "envelope_equivalence_only",
+      "note": "Installed state is host-dependent; both transports must agree with each other on the same host without pinning a class.",
+      "cli": [
+        "invoke",
+        "vvah",
+        "list_tools"
+      ],
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "vvah",
+        "action": "list_tools"
+      }
+    },
+    {
+      "id": "run_range_seed7_required_empty",
+      "kind": "envelope",
+      "cli_module": "extension.range",
+      "cli": [
+        "--seed",
+        "7",
+        "--arm-ids",
+        ""
+      ],
+      "mcp_tool": "run_range",
+      "mcp_arguments": {
+        "seed": 7,
+        "arm_ids": []
+      },
+      "expect": {
+        "exit_code": 0,
+        "is_error": false,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "complete",
+          "transport_ok": true,
+          "capability_id": "fixture.range-observe",
+          "artifact_kinds": [
+            "range-report"
+          ],
+          "artifact_digests": [
+            "sha256:0079782b6a150171b5ea0aa1f589de35e6572eadd58739d3c441343763b26be9"
+          ]
+        }
+      }
+    },
+    {
+      "id": "run_range_noncurated_arm_id",
+      "kind": "envelope",
+      "cli_module": "extension.range",
+      "cli": [
+        "--arm-ids",
+        "no-such-arm"
+      ],
+      "mcp_tool": "run_range",
+      "mcp_arguments": {
+        "arm_ids": [
+          "no-such-arm"
+        ]
+      },
+      "expect": {
+        "exit_code": 2,
+        "is_error": true,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "failed",
+          "transport_ok": false,
+          "limitations": [
+            "range run failed"
+          ],
+          "artifacts_empty": true
+        }
+      }
+    },
+    {
+      "id": "run_range_seed_out_of_range",
+      "kind": "envelope",
+      "cli_module": "extension.range",
+      "cli": [
+        "--seed",
+        "2147483648"
+      ],
+      "mcp_tool": "run_range",
+      "mcp_arguments": {
+        "seed": 2147483648
+      },
+      "expect": {
+        "exit_code": 2,
+        "is_error": true,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "failed",
+          "transport_ok": false,
+          "limitations": [
+            "range run failed"
+          ],
+          "artifacts_empty": true
+        }
+      }
+    },
+    {
+      "id": "run_range_auto_discover_equivalence_only",
+      "kind": "envelope_equivalence_only",
+      "note": "Auto-discovery includes host-dependent installed state, but held curated arms force at least one error row on every host, and error rows count as limited under optional (auto-discovered) semantics, so the document status is degraded everywhere; per-arm rows, limitations, and the range-report digest vary with the host.",
+      "cli_module": "extension.range",
+      "cli": [],
+      "mcp_tool": "run_range",
+      "mcp_arguments": {},
+      "expect": {
+        "is_error": true,
+        "envelope": {
+          "status": "degraded"
+        }
+      }
+    },
+    {
+      "id": "contract_invalid_attempt_id",
+      "kind": "transport_idiom_divergence",
+      "note": "Pre-dispatch contract violations never reach a tool execution on either transport: the CLI exits 2 with stderr only; MCP answers -32602 with no envelope.",
+      "cli": [
+        "invoke",
+        "agent-wiz",
+        "list_tools",
+        "--attempt-id",
+        "not-an-attempt"
+      ],
+      "cli_expect": {
+        "exit_code": 2,
+        "stdout_empty": true
+      },
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "agent-wiz",
+        "action": "list_tools",
+        "attempt_id": "not-an-attempt"
+      },
+      "mcp_expect": {
+        "json_rpc_error_code": -32602
+      }
+    },
+    {
+      "id": "contract_artifact_dir_requires_attempt_id",
+      "kind": "transport_idiom_divergence",
+      "note": "artifact_dir without attempt_id is refused before dispatch on both transports.",
+      "cli": [
+        "invoke",
+        "agent-wiz",
+        "list_tools",
+        "--artifact-dir",
+        "/nonexistent/nowhere"
+      ],
+      "cli_expect": {
+        "exit_code": 2,
+        "stdout_empty": true
+      },
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "agent-wiz",
+        "action": "list_tools",
+        "artifact_dir": "/nonexistent/nowhere"
+      },
+      "mcp_expect": {
+        "json_rpc_error_code": -32602
+      }
+    }
+  ]
+}
