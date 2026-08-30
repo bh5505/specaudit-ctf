@@ -72,9 +72,10 @@ def _forbid_range(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
         calls.append(args)
         raise AssertionError("run_range executed")
 
-    # X4-PUB: run_range is called from the shared transport dispatch, so the
-    # zero-execution seam is the dispatch module's import, not the CLI module.
-    monkeypatch.setattr("extension.dispatch.run_range", forbidden)
+    # X4-PUB: run_range is resolved lazily from its defining module inside
+    # dispatch_range, so the zero-execution seam is extension.range.runner
+    # (the source the lazy `from` reads), not any CLI/dispatch re-export.
+    monkeypatch.setattr("extension.range.runner.run_range", forbidden)
     return calls
 
 
@@ -467,6 +468,15 @@ def test_agent_wiz_golden_matches_encoder_and_is_admitted() -> None:
 
 def test_all_nine_manifests_are_deterministic_and_admitted() -> None:
     assert len(INVOKE_PROFILES) == 9
+    # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
+    # agent-wiz may be maintained; any second promotion is a reviewed,
+    # deliberate change to this assertion, never a quiet drift.
+    maintained = sorted(
+        capability_id
+        for capability_id, profile in INVOKE_PROFILES.items()
+        if profile.tier == "maintained"
+    )
+    assert maintained == ["agent-wiz.list_tools"]
     first = encode_capability_manifests()
     second = encode_capability_manifests()
     assert first == second

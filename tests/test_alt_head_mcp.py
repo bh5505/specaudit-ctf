@@ -522,7 +522,7 @@ def test_run_range_huge_document_stays_bounded(
     """
     server, _fake = _server()
     monkeypatch.setattr(
-        "extension.dispatch.run_range",
+        "extension.range.runner.run_range",
         lambda **_kwargs: {"pad": "x" * (_MAX_BYTES + 1)},
     )
     response = _call(server, "run_range", {})
