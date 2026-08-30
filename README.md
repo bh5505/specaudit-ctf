@@ -3,7 +3,9 @@
 ## Overview
 
 - **Arms**: 26 specialized adapters. HTTP MCP rows are held; remaining
-  arm rows are research. None are maintained. A specialized handler is
+  arm rows are research except the agent-wiz read tier
+  (`agent-wiz.list_tools`), the sole maintained capability (X5-PROMOTE).
+  A specialized handler is
   required; curated arms never ride a generic transport. `curated` is a
   deprecated compatibility flag and does not mean maintained.
 - **Legs / methodologies**: 19 methodology-only catalog rows

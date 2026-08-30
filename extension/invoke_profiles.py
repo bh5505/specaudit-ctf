@@ -38,6 +38,9 @@ class InvokeProfile:
     cleanup_required: bool
     approval_ref: str | None
     roe_ref: str | None
+    # Support tier carried into the capability manifest. X5-PROMOTE: the
+    # agent-wiz read tier is the catalog's only maintained capability.
+    tier: str = "research"
 
 
 _STATIC_POLICY_ARMS = (
@@ -53,7 +56,7 @@ _STATIC_POLICY_ARMS = (
 )
 
 
-def _policy_profile(arm_id: str) -> InvokeProfile:
+def _policy_profile(arm_id: str, tier: str = "research") -> InvokeProfile:
     capability_id = f"{arm_id}.list_tools"
     scope = (f"policy://extension/arms/{arm_id}",)
     return InvokeProfile(
@@ -73,12 +76,21 @@ def _policy_profile(arm_id: str) -> InvokeProfile:
         cleanup_required=False,
         approval_ref=None,
         roe_ref=None,
+        tier=tier,
     )
 
 
+# X5-PROMOTE: agent-wiz's read tier is promoted to maintained (doc 13
+# evidence gate; dossier on AuditPack issue #5). No adjacent row moves.
+_POLICY_ARM_TIERS = {arm_id: "research" for arm_id in _STATIC_POLICY_ARMS}
+_POLICY_ARM_TIERS["agent-wiz"] = "maintained"
+
 INVOKE_PROFILES = {
     profile.capability_id: profile
-    for profile in (_policy_profile(arm_id) for arm_id in _STATIC_POLICY_ARMS)
+    for profile in (
+        _policy_profile(arm_id, tier)
+        for arm_id, tier in _POLICY_ARM_TIERS.items()
+    )
 }
 INVOKE_CAPABILITY_IDS = frozenset(INVOKE_PROFILES)
 

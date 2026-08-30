@@ -456,7 +456,7 @@ def test_agent_wiz_golden_matches_encoder_and_is_admitted() -> None:
     assert enabled.manifest.capability_id == "agent-wiz.list_tools"
     assert enabled.manifest.tool.name == profile.tool_name
     assert enabled.manifest.tool.version == profile.tool_version
-    assert enabled.manifest.tier == "research"
+    assert enabled.manifest.tier == "maintained"
     assert enabled.manifest.kind == "arm"
     assert enabled.manifest.safety_class == "R0"
     assert enabled.manifest.side_effects == ("local-read",)
@@ -485,7 +485,9 @@ def test_all_nine_manifests_are_deterministic_and_admitted() -> None:
             "version": profile.tool_version,
         }
         assert payload["protocols"] == ["cli-json"]
-        assert payload["tier"] == "research"
+        assert payload["tier"] == profile.tier
+        if profile.arm_id == "agent-wiz":
+            assert payload["tier"] == "maintained"
         assert payload["kind"] == "arm"
         assert payload["safety_class"] == "R0"
         assert payload["side_effects"] == ["local-read"]

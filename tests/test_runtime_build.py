@@ -77,7 +77,7 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
     assert len(lock["included_yaml_files"]) == 18
     assert lock["capability_manifest"] == {
         "path": "tests/goldens/capability-manifest/agent-wiz.list_tools.json",
-        "sha256": "5b4cd591151b4ccc64b67afd1697954b1bab27061941d3dbba7ec82497e32d3e",
+        "sha256": "5bbb55e6c8cb8ceb143f4a72740802b31e451375b3f1e780ca94a5ca6b76efcc",
     }
     for rel, expected in lock["producer_source_files"].items():
         assert hashlib.sha256((ROOT / rel).read_bytes()).hexdigest() == expected
@@ -253,7 +253,7 @@ def test_artifact_manifest_is_deterministic_and_separates_timings(
     assert first == second
     assert "timings" not in first
     assert first["capability_manifest"]["sha256"] == (
-        "sha256:5b4cd591151b4ccc64b67afd1697954b1bab27061941d3dbba7ec82497e32d3e"
+        "sha256:5bbb55e6c8cb8ceb143f4a72740802b31e451375b3f1e780ca94a5ca6b76efcc"
     )
     assert first["platform"] == {
         "os": "linux",

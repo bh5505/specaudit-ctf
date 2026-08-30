@@ -1,7 +1,7 @@
 {
   "capability_manifest": {
     "path": "tests/goldens/capability-manifest/agent-wiz.list_tools.json",
-    "sha256": "5b4cd591151b4ccc64b67afd1697954b1bab27061941d3dbba7ec82497e32d3e"
+    "sha256": "5bbb55e6c8cb8ceb143f4a72740802b31e451375b3f1e780ca94a5ca6b76efcc"
   },
   "cpython": {
     "asset": "cpython-3.11.16+20260825-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",

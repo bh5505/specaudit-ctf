@@ -274,7 +274,7 @@ def encode_capability_manifest(profile: InvokeProfile) -> dict[str, Any]:
         "schema": MANIFEST_SCHEMA_ID,
         "schema_version": SCHEMA_VERSION,
         "capability_id": profile.capability_id,
-        "tier": "research",
+        "tier": profile.tier,
         "kind": "arm",
         "tool": {"name": profile.tool_name, "version": profile.tool_version},
         "protocols": ["cli-json"],
