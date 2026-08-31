@@ -2,18 +2,24 @@
   "schema": "specaudit.ctf.capability.manifest.v1",
   "schema_version": 1,
   "capability_id": "agent-wiz.list_tools",
-  "tier": "research",
+  "tier": "maintained",
   "kind": "arm",
   "tool": {
     "name": "specaudit-ctf",
     "version": "0.1.0"
   },
-  "protocols": ["cli-json"],
+  "protocols": [
+    "cli-json"
+  ],
   "safety_class": "R0",
-  "side_effects": ["local-read"],
+  "side_effects": [
+    "local-read"
+  ],
   "default_off": true,
   "synthetic_only": true,
-  "authorized_scope": ["policy://extension/arms/agent-wiz"],
+  "authorized_scope": [
+    "policy://extension/arms/agent-wiz"
+  ],
   "approval_ref": null,
   "roe_ref": null,
   "budget": {
@@ -27,7 +33,15 @@
     "proof": "none"
   },
   "redaction": {
-    "fields": ["authorization", "cookie", "set-cookie"],
-    "env": ["AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "AWS_SESSION_TOKEN"]
+    "fields": [
+      "authorization",
+      "cookie",
+      "set-cookie"
+    ],
+    "env": [
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SESSION_TOKEN"
+    ]
   }
 }

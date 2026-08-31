@@ -88,7 +88,8 @@ def test_every_catalog_row_has_tier(entries: list[dict]) -> None:
     missing = [row["id"] for row in entries if row.get("tier") not in ALLOWED_TIERS]
     assert missing == []
     maintained = [row["id"] for row in entries if row["tier"] == "maintained"]
-    assert maintained == []
+    # X5-PROMOTE: exactly one maintained arm, no bulk promotion.
+    assert maintained == ["agent-wiz"]
 
 
 def test_kind_counts_preserved(entries: list[dict]) -> None:

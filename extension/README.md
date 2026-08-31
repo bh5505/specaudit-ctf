@@ -28,8 +28,9 @@ Every row has a support `tier`: `research` | `experimental` |
 `maintained` | `held`. `curated: true` is a **deprecated**
 compatibility flag meaning a specialized handler exists in this cut;
 it is **not** `tier: maintained`. **26 arms are curated; HTTP MCP
-arms are held; none are maintained.** Methodology-only rows are never
-curated and never maintained. `held` is never invocable and carries
+arms are held; exactly one capability is maintained — the agent-wiz
+read tier `agent-wiz.list_tools` (X5-PROMOTE, doc 13 evidence gate).**
+Methodology-only rows are never curated and never maintained. `held` is never invocable and carries
 `held_reason`. research/experimental presence is not a validator
 support promise. A row on the map is not a promise that an adapter is
 implemented; in this cut every arm row has a specialized handler.

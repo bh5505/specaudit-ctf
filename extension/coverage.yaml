@@ -113,8 +113,8 @@ entries:
     kind: arm
     protocols: [cli]
     curated: true
-    tier: research
-    notes: Offline agent-framework graph extractor. Curated CLI arm wrapping first-party agent-wiz. extract and visualize are path-contained local reads. analyze (OpenAI egress) is gated by AGENT_WIZ_DISPATCH_SCOPE and credential presence.
+    tier: maintained
+    notes: Offline agent-framework graph extractor. Curated CLI arm wrapping first-party agent-wiz; the read tier agent-wiz.list_tools is the only maintained capability (X5-PROMOTE, doc 13 evidence gate; owner specaudit-ctf maintainers). extract and visualize are path-contained local reads. analyze (OpenAI egress) is gated by AGENT_WIZ_DISPATCH_SCOPE and credential presence.
 
   - id: maestro
     kind: methodology-only
