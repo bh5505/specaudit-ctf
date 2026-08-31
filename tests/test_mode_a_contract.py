@@ -72,7 +72,10 @@ def _forbid_range(monkeypatch: pytest.MonkeyPatch) -> list[tuple[Any, ...]]:
         calls.append(args)
         raise AssertionError("run_range executed")
 
-    monkeypatch.setattr("extension.range.__main__.run_range", forbidden)
+    # X4-PUB: run_range is resolved lazily from its defining module inside
+    # dispatch_range, so the zero-execution seam is extension.range.runner
+    # (the source the lazy `from` reads), not any CLI/dispatch re-export.
+    monkeypatch.setattr("extension.range.runner.run_range", forbidden)
     return calls
 
 

@@ -8,17 +8,9 @@ import sys
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
-from ..encode import (
-    ArtifactDirError,
-    ArtifactHandoffError,
-    AttemptContractError,
-    bind_artifact_dir,
-    encode_range_document,
-    encode_range_failure,
-    parse_attempt_id,
-    utc_now,
-)
-from .runner import RangeError, run_range
+from ..contract import Extension
+from ..dispatch import dispatch_range
+from ..encode import ArtifactDirError
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -32,6 +24,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=int,
         default=None,
         help="apply this seed to the inner lifecycle run (hashed into the range-report artifact)",
+    )
+    parser.add_argument(
+        "--arm-ids",
+        default=None,
+        help=(
+            "comma-separated curated arm ids; omitted auto-discovers curated "
+            "arms as optional, an empty value runs lifecycle-only, and named "
+            "arms are required (parity with the MCP run_range arm_ids argument)"
+        ),
     )
     parser.add_argument(
         "--attempt-id",
@@ -49,51 +50,44 @@ def main(argv: Sequence[str] | None = None) -> int:
         code = exc.code
         return int(code) if isinstance(code, int) else 2
 
-    artifact_dir = None
-    try:
-        try:
-            attempt_id = parse_attempt_id(ns.attempt_id)
-            if ns.out is not None and ns.artifact_dir is not None:
-                raise ArtifactDirError(
-                    "Mode A rejects --out when --artifact-dir is present; "
-                    "emit the envelope on stdout only"
-                )
-            artifact_dir = bind_artifact_dir(ns.artifact_dir, attempt_id=attempt_id)
-        except AttemptContractError as exc:
-            print(str(exc), file=sys.stderr)
-            return 2
-
-        started = utc_now()
-        try:
-            document = run_range(seed=ns.seed)
-        except RangeError as exc:
-            envelope = encode_range_failure(
-                exc,
-                started_at=started,
-                finished_at=utc_now(),
-                attempt_id=attempt_id,
+    if ns.out is not None and ns.artifact_dir is not None:
+        message = str(
+            ArtifactDirError(
+                "Mode A rejects --out when --artifact-dir is present; "
+                "emit the envelope on stdout only"
             )
-            _write(envelope, ns.out)
-            print(str(exc), file=sys.stderr)
-            return 2
+        )
+        print(message, file=sys.stderr)
+        return 2
 
-        try:
-            envelope = encode_range_document(
-                document,
-                started_at=started,
-                finished_at=utc_now(),
-                attempt_id=attempt_id,
-                artifact_dir=artifact_dir,
-            )
-        except ArtifactHandoffError as exc:
-            _write(exc.envelope, ns.out)
-            print(str(exc), file=sys.stderr)
-            return 2
-        _write(envelope, ns.out)
-        return 0 if envelope.get("status") == "complete" else 1
-    finally:
-        if artifact_dir is not None:
-            artifact_dir.close()
+    arm_ids: list[str] | None = None
+    if ns.arm_ids is not None:
+        # Parity with the MCP shape check: an empty value is lifecycle-only
+        # (required-empty); any whitespace-only entry is a caller shape error
+        # (exit 2 here, JSON-RPC -32602 there) — never a silently dropped
+        # arm. Entries are otherwise kept verbatim: arm ids are kebab-case,
+        # so anything else fails the curated-arm domain check on both
+        # transports with the same envelope.
+        if ns.arm_ids == "":
+            arm_ids = []
+        else:
+            arm_ids = ns.arm_ids.split(",")
+            if any(not item.strip() for item in arm_ids):
+                print("arm-ids entries must be non-empty", file=sys.stderr)
+                return 2
+
+    outcome = dispatch_range(
+        Extension(),
+        seed=ns.seed,
+        arm_ids=arm_ids,
+        attempt_id=ns.attempt_id,
+        artifact_dir=ns.artifact_dir,
+    )
+    if outcome.envelope is not None:
+        _write(outcome.envelope, ns.out)
+    if outcome.stderr_line:
+        print(outcome.stderr_line, file=sys.stderr)
+    return outcome.exit_code
 
 
 def _write(payload: Mapping[str, Any], out: str | None) -> None:

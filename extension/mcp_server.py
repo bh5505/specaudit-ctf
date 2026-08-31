@@ -1,46 +1,175 @@
 """Stdio MCP server exposing list, describe, invoke, and run_range.
 
-Tool contract error boundary
-----------------------------
-| Error class                      | MCP mapping              |
-|----------------------------------|--------------------------|
-| Bad params shape (non-object     | JSON-RPC -32602          |
-| arguments, missing/invalid       | ``_InvalidParams``       |
-| action/args type)                |                          |
-| Domain failure (unknown id, held,| ``isError: true`` tool   |
-| not curated, not installed, not  | result via               |
-| an arm, transport error surfaced | ``ExtensionError``       |
-| as Result.ok==False)             |                          |
-|----------------------------------|--------------------------|
-| Unknown tool / method not found  | JSON-RPC -32601          |
-| Malformed JSON                   | JSON-RPC -32700          |
+X4-PUB parity: ``invoke`` and ``run_range`` return the same
+``execution-result.v1`` envelopes as the CLI JSON surface by sharing
+``extension.dispatch``. Timestamps differ per run; every other field is
+transport-independent. The frozen equivalence matrix lives at
+``tests/goldens/transport-parity/matrix.json``.
 
-Shape errors are caller mistakes; domain errors are evaluated results
-returned inside a successful JSON-RPC envelope with ``isError`` set.
+Transport binding (MCP stdio per spec revision 2025-11-25):
+
+- Framing is newline-delimited JSON only. Messages MUST NOT contain
+  embedded newlines, and nothing but valid JSON-RPC messages is ever
+  written to stdout. Legacy Content-Length input (never MCP stdio) is
+  rejected as a parse error rather than silently accepted.
+- The initialize handshake negotiates a supported protocol version:
+  a supported request version is echoed; anything else answers with the
+  latest supported version.
+- Message size is capped at 1 MiB (implementation-defined; the spec is
+  silent).
+
+Error boundary
+--------------
+| Error class                       | MCP mapping              |
+|-----------------------------------|--------------------------|
+| Bad params shape (non-object      | JSON-RPC -32602          |
+| arguments, missing/invalid        | ``_InvalidParams``       |
+| id/action/seed/arm_ids/attempt    |                          |
+| contract type, unknown tool)      |                          |
+| Attempt/artifact contract error   | JSON-RPC -32602          |
+| (invalid attempt id, unusable     | (pre-dispatch; never a   |
+| artifact dir)                     | tool execution)          |
+| Domain failure (unknown id, held, | ``isError: true`` tool   |
+| not curated, not installed, not   | result whose content is  |
+| an arm, unmanifested action,      | the failed               |
+| range refusal)                    | execution-result.v1      |
+|                                   | envelope                 |
+| Evaluated non-success (arm        | ``isError: true`` tool   |
+| result ok=False; range status     | result; the envelope     |
+| degraded/failed)                  | carries the verdict      |
+| Unknown method                    | JSON-RPC -32601          |
+| Malformed/oversized/legacy-framed | JSON-RPC -32700          |
+| message                           |                          |
+
+``isError`` mirrors the CLI exit code (nonzero exit = ``isError: true``).
+It is a transport signal, not a verdict: G-24 keeps verdict vocabulary in
+the envelope's ``status``.
 """
 
 from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 from typing import Any, Mapping, Sequence, TextIO
 
-from .contract import CATALOG_KIND_ARM, Extension, ExtensionError
-from .range.runner import RangeError, run_range
+from .contract import Extension, ExtensionError
+from .dispatch import DispatchOutcome, dispatch_invoke, dispatch_range
 
 TOOLS = ("list", "describe", "invoke", "run_range")
-_PROTOCOL_VERSION = "2024-11-05"
+# Legacy-era initialize handshake, newest first. 2025-11-25 is the revision
+# the campaign guardrails cite; the 2026+ per-request-metadata era is out of
+# scope for X4.
+_SUPPORTED_PROTOCOL_VERSIONS = (
+    "2025-11-25",
+    "2025-06-18",
+    "2025-03-26",
+    "2024-11-05",
+)
+_LATEST_PROTOCOL_VERSION = _SUPPORTED_PROTOCOL_VERSIONS[0]
 _SERVER_NAME = "specaudit-ctf"
 _SERVER_VERSION = "1.0.0"
 _MAX_BYTES = 1024 * 1024
 _MISSING = object()
+_RESULT_SCHEMA = json.loads(
+    (Path(__file__).resolve().parent / "schema" / "execution-result.v1.schema.json")
+    .read_text(encoding="utf-8")
+)
 
 
 class _ParseError(Exception):
-    def __init__(self, message: str, *, framing: str) -> None:
-        super().__init__(message)
-        self.framing = framing
+    pass
 
+
+_INVOKE_TOOL_DEF: dict[str, Any] = {
+    "name": "invoke",
+    "description": (
+        "Invoke a curated installed arm that is not held. Only the bounded "
+        "read-only X2-PUB action registry is admitted; the result is an "
+        "execution-result.v1 envelope identical to `python -m extension "
+        "invoke` output (timestamps differ per run). isError mirrors the "
+        "CLI nonzero exit; the envelope status is the verdict."
+    ),
+    "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "id": {"type": "string"},
+            "action": {"type": "string"},
+            "args": {
+                "type": "object",
+                "description": "Action arguments (default: {}).",
+            },
+            "attempt_id": {
+                "type": "string",
+                "description": (
+                    "Optional validator-minted attempt-<64 lowercase hex> "
+                    "echoed in the result envelope."
+                ),
+            },
+            "artifact_dir": {
+                "type": "string",
+                "description": (
+                    "Optional absolute empty Unix directory bound before "
+                    "dispatch for digest-named artifacts (Mode A custody "
+                    "handoff; requires attempt_id; Unix-only)."
+                ),
+            },
+        },
+        "required": ["id", "action"],
+        "additionalProperties": False,
+    },
+    "outputSchema": _RESULT_SCHEMA,
+}
+
+_RUN_RANGE_TOOL_DEF: dict[str, Any] = {
+    "name": "run_range",
+    "description": (
+        "Run the synthetic range fixtures and return an execution-result.v1 "
+        "envelope wrapping the seed-stable range.lifecycle.v2 document, "
+        "identical to `python -m extension.range` output (timestamps differ "
+        "per run). No live cloud, no file writes over MCP (--out stays "
+        "CLI-only). isError mirrors the CLI nonzero exit; degraded/failed "
+        "verdicts live in the envelope status, never in transport success. "
+        "Omit arm_ids to auto-discover curated arms (skip/error is "
+        "degraded). Empty arm_ids is lifecycle-only and may be complete. "
+        "Non-empty arm_ids are required (skip/error is failed)."
+    ),
+    "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    "inputSchema": {
+        "type": "object",
+        "properties": {
+            "seed": {"type": "integer"},
+            "arm_ids": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Omitted: auto-discover curated arms (optional; "
+                    "skip/error is degraded). Empty: no arms; complete "
+                    "on lifecycle match. Non-empty: required; skip/error "
+                    "is failed."
+                ),
+            },
+            "attempt_id": {
+                "type": "string",
+                "description": (
+                    "Optional validator-minted attempt-<64 lowercase hex> "
+                    "echoed in the result envelope."
+                ),
+            },
+            "artifact_dir": {
+                "type": "string",
+                "description": (
+                    "Optional absolute empty Unix directory bound before "
+                    "dispatch for digest-named artifacts (Mode A custody "
+                    "handoff; requires attempt_id; Unix-only)."
+                ),
+            },
+        },
+        "additionalProperties": False,
+    },
+    "outputSchema": _RESULT_SCHEMA,
+}
 
 _TOOL_DEFS: tuple[dict[str, Any], ...] = (
     {
@@ -64,50 +193,8 @@ _TOOL_DEFS: tuple[dict[str, Any], ...] = (
             "additionalProperties": False,
         },
     },
-    {
-        "name": "invoke",
-        "description": "Invoke a curated installed arm that is not held.",
-        "annotations": {"readOnlyHint": False, "openWorldHint": True},
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "id": {"type": "string"},
-                "action": {"type": "string"},
-                "args": {"type": "object"},
-            },
-            "required": ["id", "action"],
-            "additionalProperties": False,
-        },
-    },
-    {
-        "name": "run_range",
-        "description": (
-            "Run the synthetic range fixtures and return the seed-stable "
-            "lifecycle document. No live cloud, no file writes over MCP. "
-            "Omit arm_ids to auto-discover curated arms (skip/error is "
-            "degraded). Empty arm_ids is lifecycle-only and may be "
-            "complete. Non-empty arm_ids are required (skip/error is "
-            "failed)."
-        ),
-        "annotations": {"readOnlyHint": True, "openWorldHint": True},
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "seed": {"type": "integer"},
-                "arm_ids": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": (
-                        "Omitted: auto-discover curated arms (optional; "
-                        "skip/error is degraded). Empty: no arms; complete "
-                        "on lifecycle match. Non-empty: required; skip/error "
-                        "is failed."
-                    ),
-                },
-            },
-            "additionalProperties": False,
-        },
-    },
+    _INVOKE_TOOL_DEF,
+    _RUN_RANGE_TOOL_DEF,
 )
 
 
@@ -122,8 +209,8 @@ class _InvalidParams(Exception):
 class McpServer:
     """MCP server exposing catalog operations as tools.
 
-    The server implements the JSON-RPC 2.0 protocol over stdio or HTTP,
-    exposing list, describe, invoke, and run_range operations as MCP tools.
+    The server implements JSON-RPC 2.0 over stdio, exposing list,
+    describe, invoke, and run_range operations as MCP tools.
 
     Attributes:
         extension: The Extension instance to use for catalog operations
@@ -188,15 +275,15 @@ class McpServer:
         out = stdout if stdout is not None else sys.stdout
         while True:
             try:
-                message, framing = _read_message(inn)
+                message = _read_message(inn)
             except EOFError:
                 return 0
             except _ParseError as exc:
-                if not _write_parse_error(out, exc, framing=exc.framing):
+                if not _write_parse_error(out, exc):
                     return 1
                 continue
             except (json.JSONDecodeError, ValueError, UnicodeDecodeError) as exc:
-                if not _write_parse_error(out, exc, framing="ndjson"):
+                if not _write_parse_error(out, exc):
                     return 1
                 continue
             except OSError:
@@ -206,7 +293,7 @@ class McpServer:
             response = self.handle(message)
             if response is not None:
                 try:
-                    _write_message(out, response, framing=framing)
+                    _write_message(out, response)
                 except OSError:
                     return 1
 
@@ -235,7 +322,12 @@ class McpServer:
             arguments = {}
         if not isinstance(arguments, Mapping):
             raise _InvalidParams("arguments must be an object")
+        _reject_unknown_arguments(name, arguments)
         try:
+            if name == "invoke":
+                return self._invoke_tool(arguments)
+            if name == "run_range":
+                return self._run_range_tool(arguments)
             payload = self._run_tool(name, arguments)
         except ExtensionError as exc:
             return _tool_content(str(exc), is_error=True)
@@ -247,8 +339,15 @@ class McpServer:
         if name == "describe":
             entry_id = _require_id(arguments)
             return self.extension.describe(entry_id).to_dict()
-        if name == "run_range":
-            return self._run_range(arguments)
+        raise _InvalidParams(f"unknown tool: {name}")
+
+    def _invoke_tool(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Run one bounded invoke through the shared dispatch.
+
+        Parity: the returned envelope is byte-equivalent to the CLI JSON
+        output for the same logical request modulo started_at/finished_at/
+        spent.elapsed_ms.
+        """
         entry_id = _require_id(arguments)
         action = _require_action(arguments)
         # Do not coerce falsy non-mapping values to {}. Only None means
@@ -259,16 +358,25 @@ class McpServer:
             args = {}
         if not isinstance(args, Mapping):
             raise _InvalidParams("args must be a mapping")
-        return self.extension.invoke(entry_id, action, args).to_dict()
+        outcome = dispatch_invoke(
+            self.extension,
+            arm_id=entry_id,
+            action=action,
+            args=args,
+            attempt_id=_optional_str(arguments, "attempt_id"),
+            artifact_dir=_optional_str(arguments, "artifact_dir"),
+        )
+        return _outcome_content(outcome)
 
-    def _run_range(self, arguments: Mapping[str, Any]) -> Any:
-        """Run the synthetic range with MCP-side guards.
+    def _run_range_tool(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Run the synthetic range through the shared dispatch.
 
-        Shape errors (seed type, arm_ids shape) map to -32602 like other
-        param-shape concerns; non-curated arm ids are domain errors mapped
-        to isError results. Fixtures resolve from the package root only -
-        no path arguments exist on this tool - and the response never
-        writes files (`--out` stays CLI-only).
+        Shape errors (seed type, arm_ids shape, attempt/artifact contract)
+        map to -32602 like other param-shape concerns; everything else is
+        an evaluated result inside the execution-result.v1 envelope.
+        Fixtures resolve from the package root only - no path arguments
+        exist on this tool - and the response never writes files (`--out`
+        stays CLI-only).
         """
         seed = arguments.get("seed")
         if seed is not None:
@@ -280,34 +388,65 @@ class McpServer:
                 isinstance(item, str) and item.strip() for item in arm_ids
             ):
                 raise _InvalidParams("arm_ids must be an array of non-empty strings")
-            curated = {
-                entry.id
-                for entry in self.extension.list_entries()
-                if entry.kind == CATALOG_KIND_ARM and entry.curated
-            }
-            for arm_id in arm_ids:
-                if arm_id not in curated:
-                    raise ExtensionError(
-                        f"run_range arm_ids must be curated arms: {arm_id}"
-                    )
-        try:
-            document = run_range(
-                seed=seed, extension=self.extension, arm_ids=arm_ids
-            )
-        except RangeError as exc:
-            # Runner domain errors (e.g. seed outside the signed 32-bit
-            # window) surface as isError tool results, not -32603.
-            raise ExtensionError(str(exc)) from exc
-        if len(json.dumps(document, sort_keys=True).encode("utf-8")) > _MAX_BYTES:
-            raise ExtensionError(f"range document exceeds {_MAX_BYTES} bytes")
-        return document
+        outcome = dispatch_range(
+            self.extension,
+            seed=seed,
+            arm_ids=arm_ids,
+            attempt_id=_optional_str(arguments, "attempt_id"),
+            artifact_dir=_optional_str(arguments, "artifact_dir"),
+        )
+        return _outcome_content(outcome)
+
+
+def _outcome_content(outcome: DispatchOutcome) -> dict[str, Any]:
+    """Render one dispatch outcome as an MCP tool result.
+
+    isError mirrors the CLI exit code (transport signal, not a verdict);
+    the envelope inside the content carries the evaluated status.
+    """
+    if outcome.contract_error is not None:
+        raise _InvalidParams(str(outcome.contract_error))
+    assert outcome.envelope is not None  # only contract errors lack one
+    return _tool_content(
+        outcome.envelope,
+        is_error=outcome.exit_code != 0,
+        structured=outcome.envelope,
+    )
+
+
+_TOOL_ARGUMENT_KEYS: dict[str, frozenset[str]] = {
+    # Derived from the declared schemas so the enforced surface can never
+    # drift from the advertised one: a schema edit changes validation with
+    # it, and every schema carries additionalProperties: false (guarded by
+    # the tool-defs test).
+    tool["name"]: frozenset(tool["inputSchema"].get("properties", ()))
+    for tool in _TOOL_DEFS
+}
+
+
+def _reject_unknown_arguments(name: str, arguments: Mapping[str, Any]) -> None:
+    """Enforce each tool's declared inputSchema server-side.
+
+    The spec places input validation on the server (MUST), and every
+    declared schema carries ``additionalProperties: false``: an argument key
+    outside the tool's surface is a caller shape error (-32602), never a
+    silently ignored ride-along.
+    """
+    allowed = _TOOL_ARGUMENT_KEYS[name]
+    unknown = sorted(str(key) for key in arguments if key not in allowed)
+    if unknown:
+        raise _InvalidParams(
+            f"unknown {name} arguments: {', '.join(unknown)}"
+        )
+
 
 def _require_id(arguments: Mapping[str, Any]) -> str:
     """Extract and validate the 'id' parameter from tool arguments.
 
-    Domain errors map to isError=true responses (shape validated at _tools_call).
-    Contrast with _require_action which raises _InvalidParams (-32602) because
-    action is a tool-param shape concern, while id maps to catalog domain.
+    A missing or non-string id is a tool-param shape error (-32602), matching
+    the CLI's argparse refusal of a missing positional; an id that is present
+    and well-formed but absent from the catalog stays a domain error (isError
+    envelope) raised by the downstream lookup.
 
     Args:
         arguments: The tool arguments mapping
@@ -316,12 +455,12 @@ def _require_id(arguments: Mapping[str, Any]) -> str:
         The validated entry ID string
 
     Raises:
-        ExtensionError: If id is missing or not a valid string
+        _InvalidParams: If id is missing or not a valid string
 
     """
     entry_id = arguments.get("id")
     if not isinstance(entry_id, str) or not entry_id.strip():
-        raise ExtensionError("id is required")
+        raise _InvalidParams("id is required")
     return entry_id
 
 
@@ -346,8 +485,22 @@ def _require_action(arguments: Mapping[str, Any]) -> str:
     return action
 
 
+def _optional_str(arguments: Mapping[str, Any], key: str) -> str | None:
+    """Extract an optional string tool argument; wrong types are -32602."""
+    value = arguments.get(key)
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise _InvalidParams(f"{key} must be a string")
+    return value
+
+
 def _initialize(params: Mapping[str, Any]) -> dict[str, Any]:
     """Handle the initialize handshake request.
+
+    A supported requested version is echoed verbatim; anything else is
+    answered with the latest supported version (spec: the server MUST
+    respond with a version it supports).
 
     Args:
         params: The initialize request parameters
@@ -357,8 +510,8 @@ def _initialize(params: Mapping[str, Any]) -> dict[str, Any]:
 
     """
     version = params.get("protocolVersion")
-    if not isinstance(version, str) or not version.strip():
-        version = _PROTOCOL_VERSION
+    if version not in _SUPPORTED_PROTOCOL_VERSIONS:
+        version = _LATEST_PROTOCOL_VERSION
     return {
         "protocolVersion": version,
         "capabilities": {"tools": {"listChanged": False}},
@@ -366,12 +519,19 @@ def _initialize(params: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _tool_content(payload: Any, *, is_error: bool) -> dict[str, Any]:
+def _tool_content(
+    payload: Any,
+    *,
+    is_error: bool,
+    structured: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
     """Wrap tool result in MCP content envelope.
 
     Args:
         payload: The result payload (string or JSON-serializable object)
         is_error: Whether this represents an error result
+        structured: Optional structuredContent value (2025-06-18+; older
+            clients ignore the additive field)
 
     Returns:
         A dict with content array and isError flag
@@ -381,10 +541,13 @@ def _tool_content(payload: Any, *, is_error: bool) -> dict[str, Any]:
         text = payload
     else:
         text = json.dumps(payload, sort_keys=True)
-    return {
+    result: dict[str, Any] = {
         "content": [{"type": "text", "text": text}],
         "isError": is_error,
     }
+    if structured is not None:
+        result["structuredContent"] = structured
+    return result
 
 
 def _rpc_error(req_id: Any, code: int, message: str) -> dict[str, Any]:
@@ -406,197 +569,78 @@ def _rpc_error(req_id: Any, code: int, message: str) -> dict[str, Any]:
     }
 
 
-def _read_message(stream: TextIO) -> tuple[Any, str]:
-    buffer = getattr(stream, "buffer", None)
-    if buffer is not None:
-        return _read_message_bytes(buffer)
-    return _read_message_text(stream)
+def _read_message(stream: TextIO) -> Any:
+    """Read one newline-delimited JSON message from a text stream.
 
-
-def _read_message_text(stream: TextIO) -> tuple[Any, str]:
-    """Read a JSON-RPC message from a text stream.
-
-    Supports both ndjson (newline-delimited JSON) and Content-Length framing.
-
-    Args:
-        stream: The text stream to read from
-
-    Returns:
-        A tuple of (parsed_message, framing_type) or (None, framing) for EOF
+    Stdio MCP framing is ndjson only. Legacy Content-Length input is a
+    parse error, not an alternate framing. Blank lines are skipped.
 
     Raises:
-        _ParseError: If the message is malformed or exceeds size limits
-
+        EOFError: If the stream ends
+        _ParseError: If a line is not JSON or exceeds the size cap
     """
     while True:
-        try:
-            line = stream.readline()
-        except OSError as exc:
-            raise _ParseError(str(exc), framing="ndjson") from exc
+        line = stream.readline()
         if line == "":
-            return None, "ndjson"
+            raise EOFError
         stripped = line.strip()
         if not stripped:
             continue
-        if stripped.startswith("{"):
-            _reject_oversize(len(stripped.encode("utf-8")), "ndjson")
-            return _loads(stripped, "ndjson"), "ndjson"
-        headers = [line]
-        while True:
-            try:
-                nxt = stream.readline()
-            except OSError as exc:
-                raise _ParseError(str(exc), framing="content-length") from exc
-            if nxt == "":
-                raise _ParseError("unexpected EOF in headers", framing="content-length")
-            if nxt.strip() == "":
-                break
-            headers.append(nxt)
-        length = _header_length(headers)
-        try:
-            body = stream.read(length)
-        except OSError as exc:
-            raise _ParseError(str(exc), framing="content-length") from exc
-        return _loads(body, "content-length"), "content-length"
+        _reject_oversize(len(stripped.encode("utf-8")))
+        return _loads(stripped)
 
 
-def _read_message_bytes(buffer: Any) -> tuple[Any, str]:
-    while True:
-        try:
-            line = buffer.readline()
-        except OSError as exc:
-            raise _ParseError(str(exc), framing="ndjson") from exc
-        if not line:
-            return None, "ndjson"
-        stripped = line.strip()
-        if not stripped:
-            continue
-        if stripped.startswith(b"{"):
-            _reject_oversize(len(stripped), "ndjson")
-            try:
-                text = stripped.decode("utf-8")
-            except UnicodeDecodeError as exc:
-                raise _ParseError(str(exc), framing="ndjson") from exc
-            return _loads(text, "ndjson"), "ndjson"
-        headers = [line]
-        while True:
-            try:
-                nxt = buffer.readline()
-            except OSError as exc:
-                raise _ParseError(str(exc), framing="content-length") from exc
-            if not nxt:
-                raise _ParseError("unexpected EOF in headers", framing="content-length")
-            if nxt in (b"\r\n", b"\n"):
-                break
-            headers.append(nxt)
-        length = _header_length(
-            item.decode("ascii", errors="replace") for item in headers
-        )
-        try:
-            body = buffer.read(length)
-        except OSError as exc:
-            raise _ParseError(str(exc), framing="content-length") from exc
-        if len(body) < length:
-            raise _ParseError("truncated body", framing="content-length")
-        try:
-            text = body.decode("utf-8")
-        except UnicodeDecodeError as exc:
-            raise _ParseError(str(exc), framing="content-length") from exc
-        return _loads(text, "content-length"), "content-length"
-
-
-def _loads(text: str, framing: str) -> Any:
+def _loads(text: str) -> Any:
     try:
         return json.loads(text)
     except json.JSONDecodeError as exc:
-        raise _ParseError(str(exc), framing=framing) from exc
+        raise _ParseError(str(exc)) from exc
 
 
-def _reject_oversize(size: int, framing: str) -> None:
+def _reject_oversize(size: int) -> None:
     if size > _MAX_BYTES:
-        raise _ParseError(f"message exceeds {_MAX_BYTES} bytes", framing=framing)
+        raise _ParseError(f"message exceeds {_MAX_BYTES} bytes")
 
 
-def _header_length(headers: Any) -> int:
-    """Extract Content-Length value from headers.
-
-    Args:
-        headers: Sequence of header lines (strings or bytes)
-
-    Returns:
-        The Content-Length value as an integer
-
-    Raises:
-        _ParseError: If Content-Length is missing, invalid, or out of range
-
-    """
-    for raw in headers:
-        text = raw if isinstance(raw, str) else raw.decode("ascii", errors="replace")
-        if text.lower().startswith("content-length:"):
-            raw_len = text.split(":", 1)[1].strip()
-            try:
-                length = int(raw_len)
-            except ValueError as exc:
-                raise _ParseError(
-                    f"invalid Content-Length: {raw_len}", framing="content-length"
-                ) from exc
-            if length < 0 or length > _MAX_BYTES:
-                raise _ParseError(
-                    f"Content-Length {length} exceeds {_MAX_BYTES} bytes",
-                    framing="content-length",
-                )
-            return length
-    raise _ParseError("missing Content-Length", framing="content-length")
-
-
-def _write_parse_error(stream: TextIO, exc: BaseException, *, framing: str) -> bool:
+def _write_parse_error(stream: TextIO, exc: BaseException) -> bool:
     """Write a parse error response to the stream.
 
     Args:
         stream: The output stream to write to
         exc: The exception that caused the parse error
-        framing: The framing type to use ("ndjson" or "content-length")
 
     Returns:
         True if write succeeded, False on OSError
 
     """
     try:
-        _write_message(
-            stream,
-            _rpc_error(None, -32700, f"Parse error: {exc}"),
-            framing=framing,
-        )
+        _write_message(stream, _rpc_error(None, -32700, f"Parse error: {exc}"))
     except OSError:
         return False
     return True
 
 
-def _write_message(stream: TextIO, message: Mapping[str, Any], *, framing: str) -> None:
-    """Write a JSON-RPC message to the stream.
+def _write_message(stream: TextIO, message: Mapping[str, Any]) -> None:
+    """Write one JSON-RPC message as a single ndjson line.
+
+    Nothing but complete JSON messages ever reaches stdout (spec: the
+    server MUST NOT write anything that is not a valid MCP message).
 
     Args:
         stream: The output stream to write to
         message: The JSON-RPC message dict
-        framing: The framing type to use ("ndjson" or "content-length")
 
     Raises:
         OSError: If the write operation fails
 
     """
     body = json.dumps(message, ensure_ascii=False)
-    encoded = body.encode("utf-8")
-    if framing == "content-length":
-        header = f"Content-Length: {len(encoded)}\r\n\r\n"
-        buffer = getattr(stream, "buffer", None)
-        if buffer is not None:
-            buffer.write(header.encode("ascii"))
-            buffer.write(encoded)
-            buffer.flush()
-            return
-        stream.write(header)
-        stream.write(body)
-        stream.flush()
+    buffer = getattr(stream, "buffer", None)
+    if buffer is not None:
+        # Binary write keeps "\n" from becoming "\r\n" on text-mode
+        # Windows streams; ndjson lines must end in a bare newline.
+        buffer.write(body.encode("utf-8") + b"\n")
+        buffer.flush()
         return
     stream.write(body)
     stream.write("\n")

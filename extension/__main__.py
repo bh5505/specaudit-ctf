@@ -7,24 +7,8 @@ import json
 import sys
 from typing import Any, Sequence
 
-from .contract import (
-    TIER_HELD,
-    Extension,
-    ExtensionError,
-    NotCuratedError,
-    NotHeldError,
-    UnmanifestedCapabilityError,
-)
-from .encode import (
-    ArtifactHandoffError,
-    AttemptContractError,
-    bind_artifact_dir,
-    encode_invoke_failure,
-    encode_invoke_result,
-    parse_attempt_id,
-    utc_now,
-)
-from .invoke_profiles import invoke_profile
+from .contract import Extension, ExtensionError
+from .dispatch import dispatch_invoke
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -64,81 +48,43 @@ def main(argv: Sequence[str] | None = None) -> int:
         code = exc.code
         return int(code) if isinstance(code, int) else 2
 
-    attempt_id = None
-    artifact_dir = None
     try:
-        if ns.cmd == "invoke":
+        ext = Extension()
+        if ns.cmd == "list":
+            _emit([entry.to_dict() for entry in ext.list_entries()])
+            return 0
+        if ns.cmd == "describe":
             try:
-                attempt_id = parse_attempt_id(ns.attempt_id)
-                artifact_dir = bind_artifact_dir(
-                    ns.artifact_dir, attempt_id=attempt_id
-                )
-            except AttemptContractError as exc:
-                print(str(exc), file=sys.stderr)
-                return 2
-
-        try:
-            ext = Extension()
-            if ns.cmd == "list":
-                _emit([entry.to_dict() for entry in ext.list_entries()])
-                return 0
-            if ns.cmd == "describe":
                 _emit(ext.describe(ns.id).to_dict())
                 return 0
-            if ns.cmd == "invoke":
-                started = utc_now()
-                profile = None
-                try:
-                    spec = ext.arm_spec(ns.id)
-                    if spec.tier == TIER_HELD:
-                        raise NotHeldError(spec.id, spec.held_reason)
-                    if not spec.curated:
-                        raise NotCuratedError(spec.id)
-                    profile = invoke_profile(ns.id, ns.action)
-                    if profile is None:
-                        raise UnmanifestedCapabilityError(ns.id, ns.action)
-                    args = _parse_args_json(ns.args)
-                    result = ext.invoke(ns.id, ns.action, args)
-                except ExtensionError as exc:
-                    _emit(
-                        encode_invoke_failure(
-                            exc,
-                            arm_id=ns.id,
-                            action=ns.action,
-                            profile=profile,
-                            started_at=started,
-                            finished_at=utc_now(),
-                            attempt_id=attempt_id,
-                        )
-                    )
-                    print(str(exc), file=sys.stderr)
-                    return 2
-                try:
-                    envelope = encode_invoke_result(
-                        result,
-                        profile=profile,
-                        started_at=started,
-                        finished_at=utc_now(),
-                        attempt_id=attempt_id,
-                        artifact_dir=artifact_dir,
-                    )
-                except ArtifactHandoffError as exc:
-                    _emit(exc.envelope)
-                    print(str(exc), file=sys.stderr)
-                    return 2
-                _emit(envelope)
-                if not result.ok and result.error:
-                    print(
-                        f"Invoke failed for {ns.id}.{ns.action}: {result.error}",
-                        file=sys.stderr,
-                    )
-                return 0 if result.ok else 1
-        except ExtensionError as exc:
-            print(str(exc), file=sys.stderr)
-            return 2
-    finally:
-        if artifact_dir is not None:
-            artifact_dir.close()
+            except ExtensionError as exc:
+                print(str(exc), file=sys.stderr)
+                return 2
+        if ns.cmd == "invoke":
+            args_error: ExtensionError | None = None
+            args: dict[str, Any] = {}
+            try:
+                args = _parse_args_json(ns.args)
+            except ExtensionError as exc:
+                args_error = exc
+            outcome = dispatch_invoke(
+                ext,
+                arm_id=ns.id,
+                action=ns.action,
+                args=args,
+                args_error=args_error,
+                attempt_id=ns.attempt_id,
+                artifact_dir=ns.artifact_dir,
+            )
+            if outcome.envelope is not None:
+                _emit(outcome.envelope)
+            if outcome.stderr_line:
+                print(outcome.stderr_line, file=sys.stderr)
+            return outcome.exit_code
+    except ExtensionError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    return 2
 
 
 def _parse_args_json(raw: str) -> dict[str, Any]:

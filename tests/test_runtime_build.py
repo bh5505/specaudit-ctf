@@ -72,7 +72,9 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
         "b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d"
     )
     assert lock["pyyaml"]["size"] == 806638
-    assert len(lock["producer_source_files"]) == 93
+    # 94 since X4-PUB: the traced sealed invocation imports
+    # extension/dispatch.py (the shared transport dispatch) at module top.
+    assert len(lock["producer_source_files"]) == 94
     assert len(lock["included_stdlib_files"]) == 107
     assert len(lock["included_yaml_files"]) == 18
     assert lock["capability_manifest"] == {
