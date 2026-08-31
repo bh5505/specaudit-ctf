@@ -24,7 +24,7 @@ Error boundary
 |-----------------------------------|--------------------------|
 | Bad params shape (non-object      | JSON-RPC -32602          |
 | arguments, missing/invalid        | ``_InvalidParams``       |
-| action/seed/arm_ids/attempt       |                          |
+| id/action/seed/arm_ids/attempt    |                          |
 | contract type, unknown tool)      |                          |
 | Attempt/artifact contract error   | JSON-RPC -32602          |
 | (invalid attempt id, unusable     | (pre-dispatch; never a   |
@@ -443,9 +443,10 @@ def _reject_unknown_arguments(name: str, arguments: Mapping[str, Any]) -> None:
 def _require_id(arguments: Mapping[str, Any]) -> str:
     """Extract and validate the 'id' parameter from tool arguments.
 
-    Domain errors map to isError=true responses (shape validated at _tools_call).
-    Contrast with _require_action which raises _InvalidParams (-32602) because
-    action is a tool-param shape concern, while id maps to catalog domain.
+    A missing or non-string id is a tool-param shape error (-32602), matching
+    the CLI's argparse refusal of a missing positional; an id that is present
+    and well-formed but absent from the catalog stays a domain error (isError
+    envelope) raised by the downstream lookup.
 
     Args:
         arguments: The tool arguments mapping
@@ -454,12 +455,12 @@ def _require_id(arguments: Mapping[str, Any]) -> str:
         The validated entry ID string
 
     Raises:
-        ExtensionError: If id is missing or not a valid string
+        _InvalidParams: If id is missing or not a valid string
 
     """
     entry_id = arguments.get("id")
     if not isinstance(entry_id, str) or not entry_id.strip():
-        raise ExtensionError("id is required")
+        raise _InvalidParams("id is required")
     return entry_id
 
 

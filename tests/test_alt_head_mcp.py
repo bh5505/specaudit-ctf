@@ -523,7 +523,7 @@ def test_run_range_huge_document_stays_bounded(
     server, _fake = _server()
     document = {"pad": "x" * (_MAX_BYTES + 1)}
     monkeypatch.setattr(
-        "extension.dispatch.run_range",
+        "extension.range.runner.run_range",
         lambda **_kwargs: document,
     )
     response = _call(server, "run_range", {})
@@ -638,3 +638,16 @@ def test_range_cli_arm_ids_whitespace_matches_mcp_shape(
     assert mcp_payload["schema"] == "specaudit.ctf.execution-result.v1"
     for field in ("status", "transport_ok", "limitations", "coverage"):
         assert mcp_payload[field] == cli_payload[field], field
+
+
+def test_mcp_missing_required_id_is_invalid_params() -> None:
+    """A missing or non-string id is a shape error (-32602) on both
+    transports: the CLI's argparse refuses the missing positional with a
+    usage error and no envelope; MCP answers -32602 without dispatch."""
+    server, fake = _server()
+    for bad in ({}, {"id": 7}, {"id": "  "}):
+        arguments = {"action": "list_tools", **bad}
+        response = _call(server, "invoke", arguments)
+        assert response["error"]["code"] == -32602, bad
+        assert "id" in response["error"]["message"].lower()
+    assert fake.calls == []

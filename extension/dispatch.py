@@ -36,7 +36,6 @@ from .encode import (
     utc_now,
 )
 from .invoke_profiles import invoke_profile
-from .range.runner import RangeError, run_range
 
 STATUS_COMPLETE = "complete"
 
@@ -136,6 +135,11 @@ def dispatch_range(
     artifact_dir: str | None = None,
 ) -> DispatchOutcome:
     """Run the synthetic range and encode its execution-result.v1 envelope."""
+    # Imported here, not at module top: the sealed CLI-JSON invocation never
+    # touches the range runner, and the measured runtime bundle's producer
+    # closure is exactly what that invocation imports (runtime/_tracer.py).
+    from .range.runner import RangeError, run_range
+
     sink: ArtifactSink | None = None
     try:
         try:
