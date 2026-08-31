@@ -1,7 +1,7 @@
 {
   "capability_manifest": {
     "path": "tests/goldens/capability-manifest/agent-wiz.list_tools.json",
-    "sha256": "5b4cd591151b4ccc64b67afd1697954b1bab27061941d3dbba7ec82497e32d3e"
+    "sha256": "5bbb55e6c8cb8ceb143f4a72740802b31e451375b3f1e780ca94a5ca6b76efcc"
   },
   "cpython": {
     "asset": "cpython-3.11.16+20260825-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
@@ -888,11 +888,11 @@
     "extension/arms/zgrab2/arm.py": "1f03abec0d2c36dac9440f7220211e9370f0d0867773a95b46a143947d147e2e",
     "extension/arms/zgrab2/policy.py": "0bee264c5fbefa59a0da6b2a0056d4a864528eb8078283a20e993066114abb15",
     "extension/contract.py": "ea9fe6481330ca8cabd2271f4aab89e2ca3565e9a28b4628da65d541e49de38c",
-    "extension/coverage.yaml": "6c154f604613ee012207b0c1ff46400bf06a70a5c5da7304a949b6ea854920f6",
+    "extension/coverage.yaml": "3faa14b5f486d7ba87e39bcfbf64e0499eda918df3e08b628fb09f1c62fad961",
     "extension/dispatch.py": "957775c81e7d0202071b47db4cc6aa952d8ab5ed3e4239b5612f1eb008bd595f",
-    "extension/encode.py": "df4926d64a057dff9f26a6b53f0ecf6277486191173630636b7f8476256867c6",
+    "extension/encode.py": "f5a3097d2ddead611c36d9ba7f936cde60478f3b1849084d414b2e505f446b46",
     "extension/envelopes.py": "5a83fdcca537a3d2e68d3f2536956cfdd13b1b47d493c40749c2ecdbc21a3abc",
-    "extension/invoke_profiles.py": "7ad236e4a8e47c874e5eb0f2041f0000837c3f5905064aee6d13fb434442e93a",
+    "extension/invoke_profiles.py": "2d92660f30a5ff76526bc23ade2d4417a8f8965f1523e020ded134b958d20d61",
     "extension/transports/__init__.py": "c5afd05b12fd804b399e5e8ba2f3e874288e3d30ac1ccc1633d7bb3ffe150722",
     "extension/transports/cli.py": "d4cded661df4bb000c6e5fe89e3bc36cc22396a48535ac5b3d7bd44cb4c9e8e1",
     "extension/transports/mcp.py": "fbf1ea760edf63c5e6a2b6f5447debf231ff8a26b4b79824e06cbcf8059969e2"
