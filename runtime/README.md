@@ -84,7 +84,7 @@ by this producer. Re-measure before changing the platform or dependency lock.
 
 `lock.json` fixes input URLs, names, versions, sizes and SHA-256s, the ELF
 launcher digest, the full traced module/file closure with per-file SHA-256s,
-all 93 producer source files, license/metadata bytes, and the public
+all 96 producer source files, license/metadata bytes, and the public
 `agent-wiz.list_tools` capability-manifest bytes. The lock and runtime
 metadata stay outside the measured tree to avoid self-reference.
 

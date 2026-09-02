@@ -44,9 +44,11 @@ import sys
 CLI_TRACE_ARGV = ["invoke", "agent-wiz", "list_tools", "{}"]
 _IGNORED_NAMES = frozenset({"__main__"})
 
-# The fixed, read-only MCP handshake the tracer drives through the real
-# serve() loop. Single-line ndjson, exactly like the Rust X4-VAL transport
-# writes; EOF after tools/list ends the session cleanly.
+# The handshake script and its response contract are single-sourced from
+# the server under test where possible: the advertised tool set and the
+# supported protocol revisions are imported lazily (the tracer subprocess
+# only puts the repo on sys.path in _main), so this file can never drift
+# from extension.mcp_server's own constants.
 MCP_TRACE_STDIN = (
     '{"jsonrpc":"2.0","id":1,"method":"initialize","params":'
     '{"protocolVersion":"2025-11-25","capabilities":{},'
@@ -55,14 +57,17 @@ MCP_TRACE_STDIN = (
     '{"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}\n'
 )
 
-#: The complete advertised tool surface; the traced tools/list response
-#: must name exactly these and nothing else.
-EXPECTED_MCP_TOOLS = ("describe", "invoke", "list", "run_range")
 
-#: Supported protocol revisions, newest first (mirrors extension.mcp_server).
-SUPPORTED_PROTOCOL_REVISIONS = ("2025-11-25", "2024-11-05", "2024-10-07")
+def _expected_mcp_tools() -> tuple[str, ...]:
+    from extension.mcp_server import TOOLS
 
-INVOCATIONS = ("cli-json-invoke", "stdio-mcp-server")
+    return tuple(TOOLS)
+
+
+def _supported_protocol_revisions() -> tuple[str, ...]:
+    from extension.mcp_server import _SUPPORTED_PROTOCOL_VERSIONS
+
+    return tuple(_SUPPORTED_PROTOCOL_VERSIONS)
 
 
 def classify(name: str) -> str | None:
@@ -200,7 +205,7 @@ def validate_mcp_exchange(stdout_text: str) -> list[dict]:
     if not isinstance(initialize_result, dict):
         raise RuntimeError(f"traced MCP initialize has no result object: {responses[0]!r}")
     protocol = initialize_result.get("protocolVersion")
-    if protocol not in SUPPORTED_PROTOCOL_REVISIONS:
+    if protocol not in _supported_protocol_revisions():
         raise RuntimeError(
             f"traced MCP initialize echoed unsupported protocol revision: {protocol!r}"
         )
@@ -210,9 +215,10 @@ def validate_mcp_exchange(stdout_text: str) -> list[dict]:
         if isinstance(tools_result, dict)
         else None
     )
-    if names != sorted(EXPECTED_MCP_TOOLS):
+    expected_tools = _expected_mcp_tools()
+    if names != sorted(expected_tools):
         raise RuntimeError(
-            f"traced MCP tools/list does not name exactly {EXPECTED_MCP_TOOLS}: {names!r}"
+            f"traced MCP tools/list does not name exactly {expected_tools}: {names!r}"
         )
     return responses
 
