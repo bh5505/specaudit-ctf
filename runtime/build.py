@@ -699,8 +699,9 @@ def _remove_existing_tree(path: Path) -> None:
     if stat.S_ISLNK(info.st_mode) or not stat.S_ISDIR(info.st_mode):
         raise BuildError(f"refusing to replace a linked/non-directory output: {path}")
     # A prior successful build is intentionally 0555/0444. Restore write
-    # permission only on real directories so an unprivileged owner can replace
-    # that exact output on the next run. Files need no write bit to be unlinked.
+    # permission on real directories (and, on Windows, on regular files:
+    # POSIX may unlink a non-writable file, Win32 may not) so an
+    # unprivileged owner can replace that exact output on the next run.
     for dirpath, dirnames, filenames in os.walk(path, topdown=True, followlinks=False):
         directory = Path(dirpath)
         for name in [*dirnames, *filenames]:
@@ -713,6 +714,9 @@ def _remove_existing_tree(path: Path) -> None:
             if name in filenames and not stat.S_ISREG(child_info.st_mode):
                 raise BuildError(f"refusing to remove non-regular output: {child}")
         os.chmod(directory, 0o700)
+        if os.name == "nt":
+            for name in filenames:
+                os.chmod(directory / name, 0o600)
     shutil.rmtree(path)
 
 
@@ -750,9 +754,11 @@ def _write_licenses(out_dir: Path, staged_cpython: Path, staged_yaml: Path) -> N
 
 
 def assemble(out_dir: Path) -> dict:
-    _require_supported_platform()
+    # Argument validation precedes environment gating: a relative output
+    # path is a usage error on every host, not a platform error.
     if not out_dir.is_absolute():
         raise BuildError("bundle output path must be absolute")
+    _require_supported_platform()
     lock, lock_sha256 = _load_lock_snapshot()
     source_revision = _git_source_revision()
     _verify_locked_cache(lock)
@@ -925,7 +931,12 @@ def smoke(out_dir: Path, *, timeout: float = 30.0) -> dict:
             info = os.lstat(path)
             if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
                 raise BuildError(f"smoke produced a non-regular artifact: {name}")
-            if stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1:
+            if os.name == "posix" and (
+                stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1
+            ):
+                # Windows cannot represent 0600/nlink=1; the Linux
+                # deployment (the only supported bundle target) enforces
+                # the full mode/link contract.
                 raise BuildError(f"smoke artifact mode/link contract failed: {name}")
             artifact_details.append(
                 {"name": name, "size": info.st_size, "sha256": tree_hash.hash_file(path)}

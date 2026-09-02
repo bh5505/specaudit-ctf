@@ -309,7 +309,10 @@ def test_tree_v1_vector_matches_cross_language_contract(tmp_path: Path) -> None:
 
 
 def test_tree_hash_rejects_rust_control_and_invalid_utf8_names(tmp_path: Path) -> None:
-    for raw_name in ("c1-\u0085", b"invalid-\xff"):
+    raw_names: list[str | bytes] = ["c1-\u0085"]
+    if os.name == "posix":
+        raw_names.append(b"invalid-\xff")
+    for raw_name in raw_names:
         root = tmp_path / ("unicode" if isinstance(raw_name, str) else "bytes")
         root.mkdir()
         try:
