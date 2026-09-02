@@ -611,6 +611,33 @@ class Extension:
             raise NotAnArmError(entry.id, entry.kind)
         return ArmSpec.from_entry(entry)
 
+    def availability(self) -> list[dict]:
+        """Read-only per-arm availability report.
+
+        One row per curated arm: id, tier, held flag, and whether the
+        arm's own install probe (binary/endpoint resolution) succeeds on
+        this host. This is a report, not a dispatch path: nothing is
+        invoked, no scope is consulted, and the result never changes
+        catalog JSON (`list`/`describe` stay survey facts).
+        """
+        rows: list[dict] = []
+        for entry in self.list_entries():
+            if entry.kind != CATALOG_KIND_ARM or not entry.curated:
+                continue
+            spec = ArmSpec.from_entry(entry)
+            handler = self.arms.get(spec.id)
+            rows.append(
+                {
+                    "id": entry.id,
+                    "tier": entry.tier,
+                    "held": entry.tier == TIER_HELD,
+                    "installed": bool(
+                        handler is not None and handler.installed(spec)
+                    ),
+                }
+            )
+        return rows
+
     def head_spec(self, entry_id: str) -> HeadSpec:
         """Get the head specification for a catalog entry.
 

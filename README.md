@@ -253,6 +253,39 @@ no usable built-in REST API and no project-file persistence, so the
 honest CE automation story is the official BApp above; until the
 transport gate lands, use `zaproxy` for driven web testing.
 
+## On Kali
+
+The suite is OS-agnostic Python; Kali contributes **binaries and
+endpoints**, and `python -m extension availability` is the one-command
+answer to "what lights up on this host":
+
+```text
+python -m extension availability
+```
+
+It prints a read-only report — host profile (Kali is detected via the
+canonical `/etc/os-release` `ID=kali`), the `*_DISPATCH_SCOPE` env vars
+currently armed, and one row per curated arm: tier, held flag, and
+whether the arm's own install probe resolves a binary/endpoint. Nothing
+is invoked.
+
+Install on Kali (PEP 668 blocks system pip; use a venv or pipx):
+
+```text
+sudo apt update && sudo apt install -y python3-venv nmap
+python3 -m venv ~/.venvs/ctf && ~/.venvs/ctf/bin/pip install -e .
+~/.venvs/ctf/bin/python -m extension availability
+```
+
+What Kali gives you out of the box (default amd64 image):
+`nmap` ships in `kali-linux-headless` (every default image) and
+`burpsuite` (Community-grade) ships in `kali-tools-top10`. For the
+first-class DAST lane install `zaproxy` (`sudo apt install zaproxy`)
+and start ZAP with its API enabled, then point `ZAP_API_ENDPOINT` at
+it. `zgrab2` is not packaged by Kali — install it separately or leave
+the row dark. Every dispatch-class action still requires its explicit
+`*_DISPATCH_SCOPE`; installing a binary never arms anything by itself.
+
 ## Dispatch doctrine
 
 Read-only (or unarmed-default) is the first tier. Dispatch-class
