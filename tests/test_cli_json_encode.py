@@ -359,17 +359,31 @@ def test_unmanifested_dispatch_is_refused_before_extension_invoke(
     assert "unknown-capability" in parsed.reasons
 
 
-def test_manifest_profiles_are_static_read_only_policy_actions() -> None:
+def test_manifest_profiles_carry_honest_class_truth() -> None:
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     assert PACKAGE_VERSION == project["project"]["version"]
     assert INVOKE_PROFILES
+    dispatch_class = {
+        "nmap.scan",
+        "zaproxy.ascan_scan",
+        "zaproxy.spider_scan",
+    }
     for capability_id, profile in INVOKE_PROFILES.items():
-        assert capability_id == f"{profile.arm_id}.list_tools"
-        assert profile.action == "list_tools"
-        assert profile.safety_class == "R0"
-        assert profile.side_effects == ("local-read",)
+        assert capability_id == f"{profile.arm_id}.{profile.action}"
         assert profile.cleanup_required is False
         assert profile.max_spend is None
+        if capability_id in dispatch_class:
+            # 2026-09-01 dispatch admission: R1, declared side effects,
+            # default-off, not synthetic-only, approval + RoE named.
+            assert profile.safety_class == "R1"
+            assert profile.side_effects
+            assert profile.default_off is True
+            assert profile.synthetic_only is False
+            assert profile.approval_ref and profile.roe_ref
+        else:
+            assert profile.action == "list_tools"
+            assert profile.safety_class == "R0"
+            assert profile.side_effects == ("local-read",)
 
 
 def test_module_invoke_cli_emits_v1_subprocess() -> None:

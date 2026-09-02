@@ -88,13 +88,24 @@ python -m extension invoke agent-wiz list_tools
   (no result envelope). Omit both flags for Mode B (portable; no
   `attempt_id`, no artifact files).
 
-X2-PUB admits only the explicit in-process `list_tools` profiles for
+X2-PUB admits the explicit in-process `list_tools` profiles for
 `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `pyrit`,
-`routersploit`, `sniper`, `vvah`, and `zgrab2`. These profiles read static
-policy metadata and do not spawn the upstream binary. Every other CLI invoke
-action—including local scanner subprocesses and dispatch-class actions—is
-refused before `Extension.invoke` until it has authoritative per-action
-safety, scope, side-effect, budget, cleanup, and tool-version metadata.
+`routersploit`, `sniper`, `vvah`, `zgrab2`, and `nmap`. These profiles
+read static policy metadata and do not spawn the upstream binary. Every
+other CLI invoke action is refused before `Extension.invoke` until it has
+authoritative per-action safety, scope, side-effect, budget, cleanup, and
+tool-version metadata.
+
+Dispatch-class admission (2026-09-01) adds exactly three scope-gated
+profiles — `nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan` —
+carrying honest manifest truth: safety class **R1**, declared side
+effects (`subprocess`+`network-egress` for nmap; `network-egress` for
+the ZAP API), `default_off` with `approval_ref` naming the operator's
+`*_DISPATCH_SCOPE` gate and `roe_ref` naming the dispatch doctrine, and
+`synthetic_only: false` (the operator arms a real lab target). Admission
+is metadata, not authority: each arm's own scope gate, audit line, and
+stamp remain the enforcement point, and an unarmed or out-of-scope
+dispatch is a typed evaluated failure — never an all-clear.
 
 Unknown ids, unmanifested actions, methodology-only rows, heads, held arms,
 non-curated arms, and uninstalled curated arms are hard errors. Do not invent
