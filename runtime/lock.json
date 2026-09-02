@@ -1338,7 +1338,7 @@
     "extension/arms/zgrab2/policy.py": "0bee264c5fbefa59a0da6b2a0056d4a864528eb8078283a20e993066114abb15",
     "extension/contract.py": "ea9fe6481330ca8cabd2271f4aab89e2ca3565e9a28b4628da65d541e49de38c",
     "extension/coverage.yaml": "3faa14b5f486d7ba87e39bcfbf64e0499eda918df3e08b628fb09f1c62fad961",
-    "extension/dispatch.py": "957775c81e7d0202071b47db4cc6aa952d8ab5ed3e4239b5612f1eb008bd595f",
+    "extension/dispatch.py": "4f6b56e2d63efbe33b6b4995a2554d2ef0b5c2ab01ad9fad53742e840a4dd5b3",
     "extension/encode.py": "5c62caa6043e53b974738625d48dd41e4341cb7f6f09a7af9ca68fcf3a483ef5",
     "extension/envelopes.py": "5a83fdcca537a3d2e68d3f2536956cfdd13b1b47d493c40749c2ecdbc21a3abc",
     "extension/invoke_profiles.py": "2d92660f30a5ff76526bc23ade2d4417a8f8965f1523e020ded134b958d20d61",

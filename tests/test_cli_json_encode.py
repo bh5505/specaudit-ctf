@@ -491,3 +491,23 @@ def test_encode_range_ignores_inner_compatibility_ok() -> None:
     assert "ok" not in payload
     assert payload["status"] == "failed"
     assert parsed.status == "failed"
+
+
+def test_run_range_without_runner_is_a_typed_failed_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The sealed bundle ships no extension/range/*: that must be an
+    evaluated non-success envelope on both transports, never a traceback."""
+    from extension import dispatch as dispatch_mod
+    from extension.contract import Extension
+
+    def _unavailable() -> tuple[type[Exception], object]:
+        raise ImportError("extension.range.runner is not in this runtime")
+
+    monkeypatch.setattr(dispatch_mod, "_load_range_runner", _unavailable)
+    outcome = dispatch_mod.dispatch_range(Extension(), arm_ids=[])
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "failed"
+    assert "range runner unavailable" in (outcome.stderr_line or "")
+    assert outcome.exit_code == 1
+    assert outcome.contract_error is None

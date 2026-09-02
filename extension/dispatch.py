@@ -40,6 +40,16 @@ from .invoke_profiles import invoke_profile
 STATUS_COMPLETE = "complete"
 
 
+class RangeRunnerUnavailable(Exception):
+    """The range runner module is absent from this runtime.
+
+    The sealed runtime bundle deliberately excludes ``extension/range/*``
+    (the sealed invocations never run a range), so a ``run_range`` request
+    against it is an evaluated non-success, carried as a typed failed
+    execution-result envelope — never a raw import traceback on the wire.
+    """
+
+
 @dataclass(frozen=True)
 class DispatchOutcome:
     """One dispatch result shared by both transports.
@@ -126,6 +136,15 @@ def dispatch_invoke(
             sink.close()
 
 
+def _load_range_runner() -> tuple[type[Exception], Any]:
+    # Imported here, not at module top: the sealed CLI-JSON invocation never
+    # touches the range runner, and the measured runtime bundle's producer
+    # closure is exactly what that invocation imports (runtime/_tracer.py).
+    from .range.runner import RangeError, run_range
+
+    return RangeError, run_range
+
+
 def dispatch_range(
     extension: Extension,
     *,
@@ -135,11 +154,6 @@ def dispatch_range(
     artifact_dir: str | None = None,
 ) -> DispatchOutcome:
     """Run the synthetic range and encode its execution-result.v1 envelope."""
-    # Imported here, not at module top: the sealed CLI-JSON invocation never
-    # touches the range runner, and the measured runtime bundle's producer
-    # closure is exactly what that invocation imports (runtime/_tracer.py).
-    from .range.runner import RangeError, run_range
-
     sink: ArtifactSink | None = None
     try:
         try:
@@ -147,6 +161,22 @@ def dispatch_range(
             sink = bind_artifact_dir(artifact_dir, attempt_id=parsed_attempt)
         except AttemptContractError as exc:
             return DispatchOutcome(None, 2, str(exc), exc)
+        try:
+            RangeError, run_range = _load_range_runner()
+        except ImportError as exc:
+            # The sealed runtime bundle deliberately excludes range/* (the
+            # sealed invocations never run a range). A run_range request
+            # against such a runtime is an evaluated non-success with a typed
+            # failed envelope — never a raw import traceback on the wire.
+            message = f"range runner unavailable in this runtime: {exc}"
+            envelope = encode_range_failure(
+                RangeRunnerUnavailable(message),
+                started_at=utc_now(),
+                finished_at=utc_now(),
+                attempt_id=parsed_attempt,
+                artifact_dir=sink,
+            )
+            return DispatchOutcome(envelope, 1, message)
         if arm_ids is not None:
             curated = {
                 entry.id

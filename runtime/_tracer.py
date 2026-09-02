@@ -210,11 +210,13 @@ def validate_mcp_exchange(stdout_text: str) -> list[dict]:
             f"traced MCP initialize echoed unsupported protocol revision: {protocol!r}"
         )
     tools_result = responses[1].get("result")
-    names = (
-        sorted(tool["name"] for tool in tools_result.get("tools", []))
-        if isinstance(tools_result, dict)
-        else None
-    )
+    tools = tools_result.get("tools", []) if isinstance(tools_result, dict) else None
+    try:
+        names = (
+            sorted(tool["name"] for tool in tools) if tools is not None else None
+        )
+    except (TypeError, KeyError) as exc:
+        raise RuntimeError(f"traced MCP tools/list has malformed entries: {exc}") from exc
     expected_tools = _expected_mcp_tools()
     if names != sorted(expected_tools):
         raise RuntimeError(
@@ -256,8 +258,13 @@ def trace_stdio_mcp_server() -> dict[str, list[dict[str, str]]]:
             f"traced MCP server exited {code}: "
             f"{buf_err.getvalue()!r} / {buf_out.getvalue()!r}"
         )
+    # Classify BEFORE validating the exchange: validation lazily imports
+    # extension.mcp_server for its contract constants, and runpy has already
+    # removed the __main__-bound module from sys.modules — classifying after
+    # validation would re-import it and pollute the per-invocation record.
+    buckets = _classify_final_modules()
     validate_mcp_exchange(buf_out.getvalue())
-    return _classify_final_modules()
+    return buckets
 
 
 TRACE_FUNCTIONS = {
