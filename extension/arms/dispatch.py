@@ -106,7 +106,15 @@ def target_in_scope(target: str, scope: Scope) -> bool:
     candidate = target.strip()
     if "@" in candidate and "://" not in candidate:
         return False  # bare user@host discards userinfo silently; refuse
-    parsed = urllib_parse.urlparse(candidate if "://" in candidate else "//" + candidate)
+    try:
+        parsed = urllib_parse.urlparse(
+            candidate if "://" in candidate else "//" + candidate
+        )
+    except ValueError:
+        # Malformed targets (bracketed IPv4, unmatched brackets, bad IPv6
+        # URL forms) are out of scope by construction — containment is
+        # False, never an unhandled crash on the security seam.
+        return False
     host = (parsed.hostname or "").lower().rstrip(".")
     path = (parsed.path or "") + (("?" + parsed.query) if parsed.query else "")
     if not host:

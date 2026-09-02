@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Arms**: 26 specialized adapters. HTTP MCP rows are held; remaining
+- **Arms**: 27 specialized adapters. HTTP MCP rows are held; remaining
   arm rows are research except the agent-wiz read tier
   (`agent-wiz.list_tools`), the sole maintained capability (X5-PROMOTE).
   A specialized handler is
@@ -18,7 +18,7 @@
 frozen order). It is a **survey map**, not a ship list: a row is not
 a promise that an adapter exists. Every row has a support tier
 (`research` | `experimental` | `maintained` | `held`). In this cut
-every arm row is curated (26 handlers) and every methodology-only
+every arm row is curated (27 handlers) and every methodology-only
 row stays uncurated (19). `curated` is not `maintained`.
 
 Per-arm caveats (composite egress, exploitation, LLM spend, source
@@ -291,6 +291,7 @@ Shared gate: `extension/arms/dispatch.py`. Caveats:
 | `ROUTERSPLOIT_BIN` / `ROUTERSPLOIT_DISPATCH_SCOPE` | routersploit | binary; host-scoped `run` |
 | `SNIPER_BIN` / `SNIPER_DISPATCH_SCOPE` | sniper | binary; host-scoped `scan` |
 | `ZGRAB2_BIN` / `ZGRAB2_DISPATCH_SCOPE` | zgrab2 | binary; host-scoped stdin scan |
+| `NMAP_BIN` / `NMAP_DISPATCH_SCOPE` | nmap | binary; single-host `scan` (closed flags, XML on stdout) |
 | `DARK_MOON_BIN` / `DARK_MOON_DISPATCH_SCOPE` | dark-moon | shell launcher; host-scoped `campaign`/`run` |
 | `PYRIT_BIN` / `PYRIT_DISPATCH_SCOPE` | pyrit | `pyrit_scan`; host/URL-scoped `scan` |
 | `DEEPSEC_BIN` / `DEEPSEC_SCAN_ROOT` / `DEEPSEC_DISPATCH_SCOPE` | deepsec | real `deepsec` binary (**not** npx/pnpm/npm/yarn); workspace dir with config (cwd); arm `DEEPSEC_DISPATCH_SCOPE=localhost` |

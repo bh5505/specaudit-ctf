@@ -48,6 +48,7 @@ _STATIC_POLICY_ARMS = (
     "ai-deep-sast",
     "dark-moon",
     "deepsec",
+    "nmap",
     "pyrit",
     "routersploit",
     "sniper",

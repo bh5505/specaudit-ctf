@@ -1,0 +1,204 @@
+"""Curated nmap arm: closed-flag single-host scans, XML on stdout."""
+
+from __future__ import annotations
+
+import subprocess
+from typing import Any, Mapping
+
+from ...contract import (
+    TRANSPORT_CLI,
+    ArmSpec,
+    NotInstalledError,
+    Result,
+)
+from ..dispatch import authorize, load_scope, log_dispatch, stamp
+from ..mcp_client import redact
+from .policy import (
+    ALLOWED_ACTIONS,
+    ARM_ID,
+    CAVEATS,
+    DISPATCH_ACTIONS,
+    ENV_DISPATCH_SCOPE,
+    LIST_ACTIONS,
+    MAX_OUTPUT_CHARS,
+    MODES,
+    TIMEOUT_SECONDS,
+    argv_for,
+    extra_scan_keys,
+    host_refusal,
+    mode_refusal,
+    ports_refusal,
+    resolve_binary,
+)
+
+
+class NmapArm:
+    """Specialized transport for catalog id nmap.
+
+    list_tools is a static allowlist. scan dispatches one single-host
+    nmap run with a closed flag set (connect/version modes, fixed -T4,
+    explicit top-ports default, XML on stdout) and is refused by default
+    until NMAP_DISPATCH_SCOPE names the target.
+    """
+
+    ARM_ID = ARM_ID
+    protocol = TRANSPORT_CLI
+
+    def __init__(self, timeout: float = TIMEOUT_SECONDS) -> None:
+        self.timeout = timeout
+
+    def installed(self, spec: ArmSpec) -> bool:
+        return spec.id == ARM_ID and resolve_binary() is not None
+
+    def invoke(
+        self, spec: ArmSpec, action: str, args: Mapping[str, Any]
+    ) -> Result:
+        if spec.id != ARM_ID:
+            raise NotInstalledError(spec.id)
+        binary = resolve_binary()
+        if binary is None:
+            raise NotInstalledError(spec.id)
+        payload = dict(args)
+        if action in LIST_ACTIONS:
+            return self._list_tools(spec, action, payload)
+        if action in ALLOWED_ACTIONS:
+            return self._static_read(spec, action, payload)
+        if action not in DISPATCH_ACTIONS:
+            return Result(
+                ok=False,
+                arm_id=spec.id,
+                action=action,
+                output=None,
+                error=f"action {action!r} is not on the allowlist "
+                "(list_tools is a read; 'scan' is scope-gated dispatch)",
+            )
+        extra = extra_scan_keys(payload)
+        if extra:
+            return Result(
+                ok=False,
+                arm_id=spec.id,
+                action=action,
+                output=None,
+                error="nmap scan takes only args.target, optional args.mode "
+                "and args.ports (fixed argv)",
+            )
+        for refusal in (
+            host_refusal(payload),
+            mode_refusal(payload),
+            ports_refusal(payload),
+        ):
+            if refusal:
+                return Result(
+                    ok=False, arm_id=spec.id, action=action, output=None, error=refusal
+                )
+        target = str(payload["target"]).strip()
+        mode = payload.get("mode")
+        ports = payload.get("ports")
+        scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, target)
+        if scope is None:
+            return Result(
+                ok=False,
+                arm_id=spec.id,
+                action=action,
+                output=None,
+                error=f"{refusal} Caveat: {CAVEATS}",
+            )
+        log_dispatch(ARM_ID, action, scope, target)
+        try:
+            proc = subprocess.run(
+                argv_for(binary, target, mode, ports),
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=self.timeout,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            return Result(
+                ok=False,
+                arm_id=spec.id,
+                action=action,
+                output=None,
+                error=f"{action} timed out after {self.timeout}s",
+            )
+        except OSError as exc:
+            return Result(
+                ok=False,
+                arm_id=spec.id,
+                action=action,
+                output=None,
+                error=redact(str(exc)),
+            )
+        output = _parse_output(proc.stdout)
+        stamped = {"dispatch": stamp(scope, target), "output": output}
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or f"{action} failed").strip()
+            return Result(
+                ok=False,
+                arm_id=spec.id,
+                action=action,
+                output=stamped,
+                error=redact(detail[:MAX_OUTPUT_CHARS]),
+            )
+        return Result(
+            ok=True,
+            arm_id=spec.id,
+            action=action,
+            output=stamped,
+            error=None,
+        )
+
+    def _list_tools(self, spec: ArmSpec, action: str, payload: dict) -> Result:
+        if payload:
+            return Result(
+                ok=False,
+                arm_id=spec.id,
+                action=action,
+                output=None,
+                error="list_tools takes no arguments (fixed argv)",
+            )
+        scope, _ = load_scope(ENV_DISPATCH_SCOPE)
+        return Result(
+            ok=True,
+            arm_id=spec.id,
+            action=action,
+            output={
+                "read_actions": sorted(LIST_ACTIONS | ALLOWED_ACTIONS),
+                "dispatch_actions": sorted(DISPATCH_ACTIONS),
+                "dispatch_armed": scope is not None,
+                "caveats": CAVEATS,
+                "modes": sorted(MODES),
+            },
+            error=None,
+        )
+
+    def _static_read(
+        self, spec: ArmSpec, action: str, payload: dict
+    ) -> Result:
+        if payload:
+            return Result(
+                ok=False,
+                arm_id=spec.id,
+                action=action,
+                output=None,
+                error=f"{action} takes no arguments (static allowlist)",
+            )
+        return Result(
+            ok=True,
+            arm_id=spec.id,
+            action=action,
+            output={"modes": sorted(MODES)},
+            error=None,
+        )
+
+
+def _parse_output(stdout: str) -> str:
+    """Cap and keyword-redact the tool's text output.
+
+    nmap emits XML (-oX -), which is free text under this arm's doctrine:
+    every byte passes the redactor. There is deliberately no XML/JSON
+    parser in this arm's trust path, so no structured path can bypass
+    redaction.
+    """
+    return redact((stdout or "")[:MAX_OUTPUT_CHARS])

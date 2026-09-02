@@ -464,7 +464,7 @@ def test_range_encoder_spends_one_step_under_freeze_budget(
     no_curated_tools: None,
 ) -> None:
     inner = run_range()
-    assert len(inner["coverage"]["attempted"]) == 26
+    assert len(inner["coverage"]["attempted"]) == 27
     payload = encode_range_document(
         inner,
         started_at="2026-08-25T12:00:00Z",

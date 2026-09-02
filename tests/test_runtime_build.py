@@ -73,11 +73,11 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
         "b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d"
     )
     assert lock["pyyaml"]["size"] == 806638
-    # 96 since the stdio-MCP server joined the measured surface: the two
-    # sealed invocations share the X4-PUB closure (94 then, incl.
-    # extension/dispatch.py) plus extension/mcp_server.py and the
-    # execution-result schema it reads at module level.
-    assert len(lock["producer_source_files"]) == 96
+    # 99 after the nmap arm joined the catalog (96 for the stdio-MCP
+    # surface: the X4-PUB closure plus extension/mcp_server.py, the
+    # execution-result schema it reads at module level, and the DAST-role
+    # note refresh; +3 for the nmap arm package files).
+    assert len(lock["producer_source_files"]) == 99
     assert len(lock["included_stdlib_files"]) == 107
     assert len(lock["included_yaml_files"]) == 18
     assert lock["capability_manifest"] == {
