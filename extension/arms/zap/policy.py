@@ -23,7 +23,9 @@ ALLOWED_VIEWS = {
     "pscan_records": "/JSON/pscan/view/recordsToScan/",
     "ascan_status": "/JSON/ascan/view/status/",
     "ascan_policies": "/JSON/ascan/view/scanPolicies/",
+    "ascan_results": "/JSON/ascan/view/results/",
     "spider_status": "/JSON/spider/view/status/",
+    "spider_results": "/JSON/spider/view/results/",
     "contexts": "/JSON/context/view/contextList/",
 }
 
@@ -35,6 +37,8 @@ VIEW_PARAMS = {
     "messages": ("start", "count"),
     "hosts": ("start", "count"),
     "urls": ("start", "count"),
+    "ascan_results": ("scanId",),
+    "spider_results": ("scanId",),
 }
 
 # Dispatch tier: scan launches against a target URL.
@@ -49,6 +53,13 @@ DISPATCH_ACTIONS = {
 MAX_RESPONSE_CHARS = 512 * 1024
 CALL_TIMEOUT = 30.0
 SCAN_TIMEOUT = 120.0
+
+CAVEATS = (
+    "First-party DAST role on the free ZAP native API (Community-grade "
+    "edition suffices). Read tier is the exact /JSON/*/view/ allowlist; "
+    "ascan/spider dispatch defaults refused until ZAP_DISPATCH_SCOPE "
+    "names the target. Passive results surface via alerts/alerts_summary."
+)
 
 
 def endpoint_url() -> str | None:
@@ -68,7 +79,7 @@ def clean_view_params(action: str, args: dict) -> tuple[dict | None, str | None]
     for key, value in args.items():
         if key not in allowed:
             return None, f"parameter {key!r} is not allowed for {action!r}"
-        if key in ("start", "count"):
+        if key in ("start", "count", "scanId"):
             if not isinstance(value, int) or isinstance(value, bool) or value < 0:
                 return None, f"parameter {key!r} must be a non-negative integer"
             cleaned[key] = str(value)

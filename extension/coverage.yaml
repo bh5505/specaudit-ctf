@@ -107,7 +107,7 @@ entries:
     curated: true
     tier: held
     held_reason: HTTP MCP is held on this public cut until OAuth resource and audience binding, no token passthrough, HTTPS, PKCE, Origin validation, DNS-rebinding controls, and localhost binding are evidenced.
-    notes: Burp Suite MCP. The first curated specialized arm in this cut. HTTP MCP is held on this public cut.
+    notes: Burp Suite MCP. PortSwigger's official MCP Server BApp runs on Community Edition (proxy history, request send, Repeater, codecs; scanner-issues and Collaborator are Pro-gated), but the arm's HTTP MCP transport stays held on this public cut pending the OAuth resource and audience-binding gate. For the first-class DAST role use the zaproxy arm (free native API).
 
   - id: agent-wiz
     kind: arm
@@ -257,7 +257,7 @@ entries:
     protocols: [cli, mcp, http]
     curated: true
     tier: research
-    notes: Intercepting-proxy DAST. Curated native-API arm; allowlisted view reads, scan dispatch gated by ZAP_DISPATCH_SCOPE.
+    notes: Intercepting-proxy DAST and this suite's first-class DAST role (the Burp-role substitute; free native API, no Pro features required). Allowlisted view reads incl. spider/ascan results; ascan/spider dispatch gated by ZAP_DISPATCH_SCOPE; passive results via alerts/alerts_summary.
 
   - id: wapiti
     kind: arm

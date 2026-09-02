@@ -221,6 +221,27 @@ may exit 1 with a valid degraded execution-result envelope. MCP
 JSON-RPC success is transport-only; the MCP content document is still
 `range.lifecycle.v2`.
 
+## Web testing (DAST) role
+
+The first-class web/DAST lane is the **zaproxy** arm: Zed Attack
+Proxy's native JSON API is a first-party automation surface and the
+free edition needs no license for it. Read tier covers the exact
+`/JSON/*/view/` allowlist (`sites`, alerts, messages, spider and
+active-scan status **and results**); `ascan_scan`/`spider_scan` are
+dispatch-class and stay refused until `ZAP_DISPATCH_SCOPE` names the
+target. Passive findings surface through `alerts`/`alerts_summary`
+without any dispatch.
+
+**Burp** (`burp-mcp`) is the curated-but-held row on this lane:
+PortSwigger's official MCP Server BApp runs on Community Edition for
+proxy history, request sending, Repeater, and codecs (scanner-issues
+and Collaborator tools are Pro-gated), but this suite's HTTP MCP
+client transport stays held pending the OAuth resource and audience-binding gate —
+see the row notes in `extension/coverage.yaml`. Community Edition has
+no usable built-in REST API and no project-file persistence, so the
+honest CE automation story is the official BApp above; until the
+transport gate lands, use `zaproxy` for driven web testing.
+
 ## Dispatch doctrine
 
 Read-only (or unarmed-default) is the first tier. Dispatch-class
