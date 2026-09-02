@@ -79,7 +79,7 @@ verification 0.197 s / 0.196 s, cold and repeat Mode-A CLI launch 0.484 s /
 0.435 s, cold and repeat sealed stdio-MCP server launch 0.410 s / 0.410 s.
 The resulting launcher, tree, and normalized-archive SHA-256 values are
 respectively `bba9c526…8c94` (unchanged — same locked CPython input),
-`4e667bb0…a5fb`, and `e698293a…4b73` (2026-09-01: DAST-role notes, the nmap arm, dispatch-class admission, the availability surface + review fixes). A 5 s cold startup
+`a933752c…3c91`, and `ec83c86f…bec3` (2026-09-02: dispatch admission wave A — zgrab2.scan, wapiti.scan, zdns.lookup). A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
 by this producer. Re-measure before changing the platform or dependency lock.

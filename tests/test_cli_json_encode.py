@@ -367,6 +367,9 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
         "nmap.scan",
         "zaproxy.ascan_scan",
         "zaproxy.spider_scan",
+        "zgrab2.scan",
+        "wapiti.scan",
+        "zdns.lookup",
     }
     for capability_id, profile in INVOKE_PROFILES.items():
         assert capability_id == f"{profile.arm_id}.{profile.action}"

@@ -96,16 +96,21 @@ other CLI invoke action is refused before `Extension.invoke` until it has
 authoritative per-action safety, scope, side-effect, budget, cleanup, and
 tool-version metadata.
 
-Dispatch-class admission (2026-09-01) adds exactly three scope-gated
-profiles — `nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan` —
+Dispatch-class admission (2026-09-01, continued 2026-09-02) adds exactly
+six scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
+`zaproxy.spider_scan`, `zgrab2.scan`, `wapiti.scan`, `zdns.lookup` —
 carrying honest manifest truth: safety class **R1**, declared side
-effects (`subprocess`+`network-egress` for nmap; `network-egress` for
-the ZAP API), `default_off` with `approval_ref` naming the operator's
-`*_DISPATCH_SCOPE` gate and `roe_ref` naming the dispatch doctrine, and
-`synthetic_only: false` (the operator arms a real lab target). Admission
-is metadata, not authority: each arm's own scope gate, audit line, and
-stamp remain the enforcement point, and an unarmed or out-of-scope
-dispatch is a typed evaluated failure — never an all-clear.
+effects (`subprocess`+`network-egress` for the CLI arms;
+`network-egress` for the ZAP API), `default_off` with `approval_ref`
+naming the operator's `*_DISPATCH_SCOPE` gate and `roe_ref` naming the
+dispatch doctrine, and `synthetic_only: false` (the operator arms a real
+lab target). Admission is metadata, not authority: each arm's own scope
+gate, audit line, and stamp remain the enforcement point, and an unarmed
+or out-of-scope dispatch is a typed evaluated failure — never an
+all-clear. `wapiti` has no read-only mode upstream, so `wapiti.scan` is
+that arm's whole admitted surface; `zdns.lookup` likewise — live
+resolution is its entire surface. `zgrab2.scan` joins its existing
+`list_tools`/`list_modules` reads as the arm's active sibling.
 
 Unknown ids, unmanifested actions, methodology-only rows, heads, held arms,
 non-curated arms, and uninstalled curated arms are hard errors. Do not invent

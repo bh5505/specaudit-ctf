@@ -93,17 +93,21 @@ _POLICY_ARM_TIERS = {arm_id: "research" for arm_id in _STATIC_POLICY_ARMS}
 _POLICY_ARM_TIERS["agent-wiz"] = "maintained"
 
 # Dispatch-class admission (2026-09-01 operator directive: expand the MVP
-# functional CTF tools). These profiles carry the honest manifest truth for
-# scope-gated live actions: safety class R1, declared side effects,
-# default-off (the arm's <ARM>_DISPATCH_SCOPE gate refuses until the
-# operator names the target), NOT synthetic-only. The arms' own refusals,
-# audit lines, and stamps remain the enforcement point; the profile is the
-# admission + metadata contract.
+# functional CTF tools; 2026-09-02 continuation wave). These profiles carry
+# the honest manifest truth for scope-gated live actions: safety class R1,
+# declared side effects, default-off (the arm's <ARM>_DISPATCH_SCOPE gate
+# refuses until the operator names the target), NOT synthetic-only. The
+# arms' own refusals, audit lines, and stamps remain the enforcement point;
+# the profile is the admission + metadata contract. Timeouts mirror each
+# arm's policy TIMEOUT_SECONDS.
 _DISPATCH_PROFILES = (
     # (arm_id, action, side_effects, timeout_ms, scope_env)
     ("nmap", "scan", ("subprocess", "network-egress"), 180_000, "NMAP_DISPATCH_SCOPE"),
     ("zaproxy", "ascan_scan", ("network-egress",), 120_000, "ZAP_DISPATCH_SCOPE"),
     ("zaproxy", "spider_scan", ("network-egress",), 120_000, "ZAP_DISPATCH_SCOPE"),
+    ("zgrab2", "scan", ("subprocess", "network-egress"), 60_000, "ZGRAB2_DISPATCH_SCOPE"),
+    ("wapiti", "scan", ("subprocess", "network-egress"), 600_000, "WAPITI_DISPATCH_SCOPE"),
+    ("zdns", "lookup", ("subprocess", "network-egress"), 60_000, "ZDNS_DISPATCH_SCOPE"),
 )
 
 

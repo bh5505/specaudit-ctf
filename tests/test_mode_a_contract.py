@@ -485,11 +485,11 @@ def test_agent_wiz_golden_matches_encoder_and_is_admitted() -> None:
     assert enabled.manifest.synthetic_only is True
 
 
-def test_all_nine_manifests_are_deterministic_and_admitted() -> None:
-    # 13 since dispatch-class admission (2026-09-01): 10 static read
-    # profiles (nmap joined with its arm) + 3 scope-gated dispatch
-    # profiles (nmap.scan, zaproxy.ascan_scan, zaproxy.spider_scan).
-    assert len(INVOKE_PROFILES) == 13
+def test_capability_manifests_are_deterministic_and_admitted() -> None:
+    # 16 since the 2026-09-02 continuation wave: 10 static read profiles
+    # + 6 scope-gated dispatch profiles (nmap.scan, zaproxy.ascan_scan,
+    # zaproxy.spider_scan, zgrab2.scan, wapiti.scan, zdns.lookup).
+    assert len(INVOKE_PROFILES) == 16
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
