@@ -485,7 +485,7 @@ def test_agent_wiz_golden_matches_encoder_and_is_admitted() -> None:
     assert enabled.manifest.synthetic_only is True
 
 
-def test_all_nine_manifests_are_deterministic_and_admitted() -> None:
+def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 16 since the 2026-09-02 continuation wave: 10 static read profiles
     # + 6 scope-gated dispatch profiles (nmap.scan, zaproxy.ascan_scan,
     # zaproxy.spider_scan, zgrab2.scan, wapiti.scan, zdns.lookup).

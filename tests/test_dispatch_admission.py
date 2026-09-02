@@ -144,6 +144,7 @@ def test_zgrab2_scan_unarmed_is_an_evaluated_failure(
     assert outcome.envelope["status"] == "failed"
     assert outcome.envelope["capability_id"] == "zgrab2.scan"
     assert "ZGRAB2_DISPATCH_SCOPE" in (outcome.stderr_line or "")
+    assert "zgrab2.scan" in (outcome.stderr_line or "")
 
 
 def test_zgrab2_scan_armed_completes(
@@ -180,6 +181,7 @@ def test_wapiti_scan_unarmed_is_an_evaluated_failure(
     assert outcome.envelope["status"] == "failed"
     assert outcome.envelope["capability_id"] == "wapiti.scan"
     assert "WAPITI_DISPATCH_SCOPE" in (outcome.stderr_line or "")
+    assert "wapiti.scan" in (outcome.stderr_line or "")
 
 
 def test_wapiti_scan_armed_completes(
@@ -216,6 +218,7 @@ def test_zdns_lookup_unarmed_is_an_evaluated_failure(
     assert outcome.envelope["status"] == "failed"
     assert outcome.envelope["capability_id"] == "zdns.lookup"
     assert "ZDNS_DISPATCH_SCOPE" in (outcome.stderr_line or "")
+    assert "zdns.lookup" in (outcome.stderr_line or "")
 
 
 def test_zdns_lookup_armed_completes(
@@ -234,6 +237,29 @@ def test_zdns_lookup_armed_completes(
     assert outcome.envelope is not None
     assert outcome.envelope["status"] == "complete"
     assert outcome.envelope["capability_id"] == "zdns.lookup"
+
+
+def test_dispatch_timeouts_mirror_arm_policy() -> None:
+    # Admission metadata must not drift from arm reality: each dispatch
+    # profile's timeout mirrors its arm's policy timeout (zaproxy uses
+    # SCAN_TIMEOUT for its scan-class API calls).
+    from extension.arms.nmap.policy import TIMEOUT_SECONDS as NMAP_T
+    from extension.arms.wapiti.policy import TIMEOUT_SECONDS as WAPITI_T
+    from extension.arms.zap.policy import SCAN_TIMEOUT as ZAP_SCAN_T
+    from extension.arms.zdns.policy import TIMEOUT_SECONDS as ZDNS_T
+    from extension.arms.zgrab2.policy import TIMEOUT_SECONDS as ZGRAB2_T
+
+    expected_ms = {
+        "nmap.scan": NMAP_T,
+        "zaproxy.ascan_scan": ZAP_SCAN_T,
+        "zaproxy.spider_scan": ZAP_SCAN_T,
+        "zgrab2.scan": ZGRAB2_T,
+        "wapiti.scan": WAPITI_T,
+        "zdns.lookup": ZDNS_T,
+    }
+    for capability_id, seconds in expected_ms.items():
+        profile = INVOKE_PROFILES[capability_id]
+        assert profile.timeout_ms == int(seconds * 1000), capability_id
 
 
 def test_unadmitted_dispatch_actions_still_refused(

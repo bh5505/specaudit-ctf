@@ -107,9 +107,10 @@ dispatch doctrine, and `synthetic_only: false` (the operator arms a real
 lab target). Admission is metadata, not authority: each arm's own scope
 gate, audit line, and stamp remain the enforcement point, and an unarmed
 or out-of-scope dispatch is a typed evaluated failure — never an
-all-clear. `wapiti.scan` is the offensive family's first admitted
-profile (dispatch-only upstream: there is no read-only mode to admit);
-`zgrab2.scan`/`zdns.lookup` are bounded recon reads' active siblings.
+all-clear. `wapiti` has no read-only mode upstream, so `wapiti.scan` is
+that arm's whole admitted surface; `zdns.lookup` likewise — live
+resolution is its entire surface. `zgrab2.scan` joins its existing
+`list_tools`/`list_modules` reads as the arm's active sibling.
 
 Unknown ids, unmanifested actions, methodology-only rows, heads, held arms,
 non-curated arms, and uninstalled curated arms are hard errors. Do not invent
