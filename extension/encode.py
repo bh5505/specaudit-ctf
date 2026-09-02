@@ -136,19 +136,7 @@ class ArtifactSink:
 
     @classmethod
     def open(cls, path: str) -> ArtifactSink:
-        if not isinstance(path, str) or not os.path.isabs(path):
-            raise ArtifactDirError("artifact directory must be an absolute path")
-        normalized = path.rstrip("/") or "/"
-        try:
-            info = os.lstat(normalized)
-        except FileNotFoundError as exc:
-            raise ArtifactDirError("artifact directory does not exist") from exc
-        except OSError as exc:
-            raise ArtifactDirError("artifact directory is not usable") from exc
-        if stat.S_ISLNK(info.st_mode):
-            raise ArtifactDirError("artifact directory must not be a symlink")
-        if not stat.S_ISDIR(info.st_mode):
-            raise ArtifactDirError("artifact directory must be a directory")
+        normalized, info = cls.validate_path(path)
         flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW
         try:
             fd = os.open(normalized, flags)
@@ -170,6 +158,30 @@ class ArtifactSink:
             os.close(fd)
             raise ArtifactDirError("artifact directory is not usable") from exc
         return cls(fd)
+
+
+    @staticmethod
+    def validate_path(path: str) -> tuple[str, os.stat_result]:
+        # Platform-neutral admission contract for the artifact directory,
+        # split from open() so non-Unix hosts reject a *bad path* with the
+        # path error rather than the platform error: argument validation
+        # precedes environment gating everywhere in this contract.
+        if not isinstance(path, str) or not os.path.isabs(path):
+            raise ArtifactDirError("artifact directory must be an absolute path")
+        normalized = path.rstrip("/") or "/"
+        try:
+            info = os.lstat(normalized)
+        except FileNotFoundError as exc:
+            raise ArtifactDirError("artifact directory does not exist") from exc
+        except OSError as exc:
+            raise ArtifactDirError("artifact directory is not usable") from exc
+        if stat.S_ISLNK(info.st_mode):
+            raise ArtifactDirError("artifact directory must not be a symlink")
+        if not stat.S_ISDIR(info.st_mode):
+            raise ArtifactDirError("artifact directory must be a directory")
+        if [name for name in os.listdir(normalized) if name not in (".", "..")]:
+            raise ArtifactDirError("artifact directory must be empty")
+        return normalized, info
 
     def write(self, digest: str, blob: bytes) -> None:
         if self._dir_fd < 0:
@@ -246,6 +258,7 @@ def bind_artifact_dir(
     if attempt_id is None:
         raise ArtifactDirError("--artifact-dir requires --attempt-id")
     if not mode_a_supported():
+        ArtifactSink.validate_path(value)
         raise ArtifactDirError("Mode A artifact custody is Unix-only")
     return ArtifactSink.open(value)
 
