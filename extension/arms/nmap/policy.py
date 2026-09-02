@@ -81,11 +81,25 @@ def host_refusal(payload: dict) -> str | None:
     # CIDR/range targets are refused BEFORE the scope gate: the shared
     # target_in_scope check is host-granular and would only see the
     # network address of a CIDR target.
-    stripped = host.strip("[]")
+    # Brackets are legal ONLY as a full [IPv6] literal. Anything else
+    # bracketed (IPv4-in-brackets, hostnames, unmatched brackets) must be
+    # a clean refusal here: the shared target_in_scope parser raises on
+    # those forms, and this arm's doctrine is refusal, never a crash.
+    import ipaddress
+    import re
+
+    if "[" in host or "]" in host:
+        inner = re.fullmatch(r"\[([^\[\]]+)\]", host)
+        if inner is None:
+            return "scan target brackets are only valid around an IPv6 literal"
+        try:
+            ipaddress.IPv6Address(inner.group(1))
+            return None
+        except ValueError:
+            return "scan target brackets are only valid around an IPv6 literal"
+    stripped = host
     if stripped.startswith("-"):
         return "scan target must not be flag-shaped"
-    import ipaddress
-
     try:
         ipaddress.ip_address(stripped)
         return None

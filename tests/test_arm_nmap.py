@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 import sys
@@ -119,6 +120,11 @@ def test_scan_refused_out_of_scope(armed: Path) -> None:
         "a b",                  # whitespace
         "http://10.10.0.5",     # URL
         "scanme.nmap.org,10.10.0.5",  # host list
+        "lab@10.10.0.5",        # userinfo
+        "10.10.0.5;id",         # control chars
+        "[10.10.0.5]",          # bracketed IPv4 crashes urlparse upstream
+        "[lab.internal]",       # bracketed hostname
+        "[10.10.0.5",           # unmatched bracket
     ],
 )
 def test_scan_refuses_non_single_host_targets(armed: Path, target: str) -> None:
@@ -161,8 +167,9 @@ def test_scan_happy_path_argv_and_stamp(
         {"target": "10.10.0.5", "mode": "version", "ports": [22, 80]},
     )
     assert result.ok
-    # The fake binary echoes sys.argv[1:]; argv[0] is the resolved binary.
-    argv = result.output["output"]["argv"]
+    # Output is redacted text; the fake binary's JSON echo survives
+    # redaction, so parse it back out for the exact-argv assertion.
+    argv = json.loads(result.output["output"])["argv"]
     assert argv == ["-sT", "-sV", "-T4", "-oX", "-", "-p", "22,80", "10.10.0.5"]
     stamp = result.output["dispatch"]
     assert stamp == {
@@ -177,7 +184,7 @@ def test_scan_happy_path_argv_and_stamp(
 def test_scan_default_top_ports_argv(armed: Path) -> None:
     result = NmapArm().invoke(_spec(), "scan", {"target": "lab.internal"})
     assert result.ok
-    argv = result.output["output"]["argv"]
+    argv = json.loads(result.output["output"])["argv"]
     assert argv == ["-sT", "-T4", "-oX", "-", "--top-ports", "100", "lab.internal"]
 
 
@@ -220,3 +227,20 @@ def test_argv_for_is_closed() -> None:
     assert argv_for("nmap", "10.0.0.1", None, [443]) == [
         "nmap", "-sT", "-T4", "-oX", "-", "-p", "443", "10.0.0.1",
     ]
+
+
+def test_bracketed_ipv6_literal_is_allowed() -> None:
+    from extension.arms.nmap.policy import host_refusal
+
+    assert host_refusal({"target": "[::1]"}) is None
+
+
+def test_shared_scope_check_fails_closed_on_malformed_targets() -> None:
+    """target_in_scope returns False (never raises) for urlparse-hostile
+    forms — the security seam refuses by construction."""
+    from extension.arms.dispatch import Scope, parse_scope, target_in_scope
+
+    scope, _ = parse_scope("10.10.0.0/16")
+    assert scope is not None
+    for target in ("[10.10.0.5]", "[lab.internal]", "[10.10.0.5", "10.10.0.5]"):
+        assert target_in_scope(target, scope) is False

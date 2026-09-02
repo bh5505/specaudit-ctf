@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import subprocess
 from typing import Any, Mapping
 
@@ -131,7 +130,7 @@ class NmapArm:
                 output=None,
                 error=redact(str(exc)),
             )
-        output: Any = _parse_output(proc.stdout)
+        output = _parse_output(proc.stdout)
         stamped = {"dispatch": stamp(scope, target), "output": output}
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or f"{action} failed").strip()
@@ -194,17 +193,12 @@ class NmapArm:
         )
 
 
-def _parse_output(stdout: str) -> Any:
-    """Parse JSON tool output when valid; redacted raw text otherwise.
+def _parse_output(stdout: str) -> str:
+    """Cap and keyword-redact the tool's text output.
 
-    nmap XML stays text (capped, keyword-redacted): there is deliberately
-    no XML parser in this arm's trust path.
+    nmap emits XML (-oX -), which is free text under this arm's doctrine:
+    every byte passes the redactor. There is deliberately no XML/JSON
+    parser in this arm's trust path, so no structured path can bypass
+    redaction.
     """
-    text = (stdout or "")[:MAX_OUTPUT_CHARS]
-    stripped = text.strip()
-    if stripped:
-        try:
-            return json.loads(stripped)
-        except json.JSONDecodeError:
-            pass
-    return redact(text)
+    return redact((stdout or "")[:MAX_OUTPUT_CHARS])
