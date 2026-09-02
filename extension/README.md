@@ -136,8 +136,9 @@ profiles (`nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan`,
 `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`, `pyrit.scan`,
 `routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`) with honest
 manifest truth: default-off behind the arm's `*_DISPATCH_SCOPE`,
-`synthetic_only: false`, declared `subprocess`/`network-egress` side
-effects. Any action without an admitted profile is still refused before
+`synthetic_only: false`, declared side effects (`subprocess`+
+`network-egress` for the CLI arms; `network-egress` only for the ZAP
+API profiles). Any action without an admitted profile is still refused before
 `Extension.invoke`; nothing may borrow fabricated R0/local-read
 metadata. Since X4-PUB the stdio MCP
 `invoke` tool enforces the same registry through the shared

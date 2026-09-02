@@ -53,8 +53,8 @@ def argv_for(binary: str, action: str, payload: dict) -> list[str] | None:
     follows, the name's resolution at fetch time, and third-party
     subresource fetches during rendering are NOT re-checked — an armed
     scope must be considered reachable from anything its hosts redirect
-    or reference to, including metadata IPs. Scope metadata/private IPs
-    only deliberately.
+    or reference to, including metadata IPs. Private and metadata hosts
+    are allowed only when deliberately scoped.
     """
     target = payload.get("url")
     if not isinstance(target, str) or not target.strip():
