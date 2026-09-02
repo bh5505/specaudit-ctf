@@ -2,15 +2,18 @@
 
 Produces one self-contained, relocatable Linux x86-64 GNU/glibc Python
 runtime tree containing: the real ``python3.11`` launcher, exactly the
-standard-library modules the sealed invocation
+standard-library modules the two sealed invocations
 
     python -S -m extension invoke agent-wiz list_tools {}
+    python -S -m extension.mcp_server            (X4-VAL stdio MCP)
 
-actually imports, the PyYAML ``yaml``/``_yaml`` package it imports, this
-producer's own source for that same invocation, and licenses. Every
-included file is discovered by *tracing the real invocation* under the
-locked CPython build (see ``_tracer.py``), never by guesswork — the build
-fails closed if that trace imports anything unexpected.
+actually import, the PyYAML ``yaml``/``_yaml`` package they import, this
+producer's own source for those invocations, and licenses. Every included
+file is discovered by *tracing the real invocations* under the locked
+CPython build (see ``_tracer.py``), never by guesswork — the build fails
+closed if a trace imports anything unexpected. The locked file closure is
+the union of both invocations; ``lock.json`` also records each
+invocation's own module names so per-invocation drift stays visible.
 
 No third-party dependency: only the standard library, and never invokes
 ``pip``. Network is used solely to fetch the two locked inputs (into
@@ -61,7 +64,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from runtime import tree_hash  # noqa: E402
+from runtime import _tracer, tree_hash  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_DIR = Path(__file__).resolve().parent
@@ -71,13 +74,6 @@ TRACER_PATH = RUNTIME_DIR / "_tracer.py"
 CAPABILITY_MANIFEST_PATH = (
     REPO_ROOT / "tests" / "goldens" / "capability-manifest" / "agent-wiz.list_tools.json"
 )
-TRACE_ARGV = ("invoke", "agent-wiz", "list_tools", "{}")
-INVOKE_ARGV = ("agent-wiz", "list_tools", "{}")
-REQUIRED_BUNDLE_FILES = ("extension/__init__.py", "yaml/__init__.py")
-# runpy removes the temporary `extension.__main__` module after `-m` exits,
-# so the trace cannot observe that entrypoint in final sys.modules. It and
-# coverage.yaml are explicit non-module/source-data roots of the invocation.
-EXTRA_PRODUCER_FILES = ("extension/__main__.py", "extension/coverage.yaml")
 LICENSE_OUTPUTS = (
     "licenses/specaudit-ctf-LICENSE.txt",
     "licenses/cpython-LICENSE.txt",
@@ -87,6 +83,20 @@ LICENSE_OUTPUTS = (
 CAPABILITY_ID = "agent-wiz.list_tools"
 SUPPORTED_PLATFORM = ("Linux", "x86_64")
 LAUNCHER_RELPATH = "bin/python3.11"
+# Each sealed invocation is traced in its own fresh subprocess (see
+# _tracer.py) and the locked closure is the union of their imports.
+TRACE_INVOCATIONS = ("cli-json-invoke", "stdio-mcp-server")
+INVOKE_ARGV = ("agent-wiz", "list_tools", "{}")
+REQUIRED_BUNDLE_FILES = ("extension/__init__.py", "yaml/__init__.py")
+# runpy removes the temporary `__main__`-bound entrypoints after `-m`
+# exits, so the trace cannot observe either in final sys.modules. The CLI
+# entrypoint, the stdio-MCP server entrypoint, and coverage.yaml are
+# explicit non-module/source-data roots of the sealed invocations.
+EXTRA_PRODUCER_FILES = (
+    "extension/__main__.py",
+    "extension/mcp_server.py",
+    "extension/coverage.yaml",
+)
 _ATTEMPT_ID = "attempt-" + ("0" * 64)
 
 
@@ -263,7 +273,12 @@ def _require_real_launcher(path: Path) -> None:
 # --------------------------------------------------------------------------
 
 
-def run_tracer(staged_cpython: Path, staged_yaml: Path) -> dict:
+def run_tracer(
+    staged_cpython: Path, staged_yaml: Path, invocation: str
+) -> dict:
+    """Run exactly one sealed invocation's trace in a fresh subprocess."""
+    if invocation not in TRACE_INVOCATIONS:
+        raise BuildError(f"unknown sealed invocation: {invocation!r}")
     launcher = _launcher_path(staged_cpython)
     _require_real_launcher(launcher)
     with tempfile.TemporaryDirectory(prefix="ctf-runtime-trace-") as tmp:
@@ -284,6 +299,7 @@ def run_tracer(staged_cpython: Path, staged_yaml: Path) -> dict:
                 str(REPO_ROOT),
                 str(staged_yaml),
                 str(out_path),
+                invocation,
             ],
             cwd=str(REPO_ROOT),
             env=env,
@@ -293,9 +309,51 @@ def run_tracer(staged_cpython: Path, staged_yaml: Path) -> dict:
         )
         if proc.returncode != 0:
             raise BuildError(
-                f"tracer subprocess exited {proc.returncode}: {proc.stderr.strip()}"
+                f"{invocation} tracer subprocess exited {proc.returncode}: "
+                f"{proc.stderr.strip()}"
             )
         return json.loads(out_path.read_text(encoding="utf-8"))
+
+
+def run_tracers(staged_cpython: Path, staged_yaml: Path) -> dict[str, dict]:
+    """Trace every sealed invocation; returns one bucket set per profile."""
+    return {
+        invocation: run_tracer(staged_cpython, staged_yaml, invocation)
+        for invocation in TRACE_INVOCATIONS
+    }
+
+
+def merge_traces(traces: dict[str, dict]) -> dict[str, list[dict[str, str]]]:
+    """Union every invocation's per-module records into one closure.
+
+    The bundle must serve *both* sealed invocations, so its file set is the
+    union; a module imported by only one profile is still required. Records
+    are de-duplicated by (name, file) and re-sorted for deterministic
+    locking. One module name resolving to two different files across
+    invocations (or within one) is a hard error: the bundle could not
+    ship both and still have a truthful module identity.
+    """
+    merged: dict[str, dict[tuple[str, str], dict[str, str]]] = {}
+    for invocation, buckets in traces.items():
+        for bucket, records in buckets.items():
+            by_key = merged.setdefault(bucket, {})
+            names: dict[str, str] = {
+                rec["name"]: rec["file"] for rec in by_key.values()
+            }
+            for record in records:
+                key = (record["name"], record["file"])
+                by_key.setdefault(key, record)
+                previous_file = names.setdefault(record["name"], record["file"])
+                if previous_file != record["file"]:
+                    raise BuildError(
+                        f"traced module {record['name']!r} resolves to two files "
+                        f"({previous_file!r} and {record['file']!r}); cannot merge "
+                        f"invocation {invocation!r} into one bundle closure"
+                    )
+    return {
+        bucket: sorted(records.values(), key=lambda rec: (rec["name"], rec["file"]))
+        for bucket, records in sorted(merged.items())
+    }
 
 
 def _traced_producer_relpaths(traced: dict) -> list[str]:
@@ -453,9 +511,21 @@ def _producer_source_problems(lock: dict) -> list[str]:
     return problems
 
 
+def _invocation_records(buckets: dict) -> dict[str, list[str]]:
+    """Per-invocation summary recorded in lock.json for drift visibility."""
+    return {
+        "stdlib_module_names": sorted(rec["name"] for rec in buckets["stdlib"]),
+        "yaml_module_names": sorted(rec["name"] for rec in buckets["yaml"]),
+        "extension_paths": sorted(
+            os.path.relpath(rec["file"], REPO_ROOT) for rec in buckets["extension"]
+        ),
+    }
+
+
 def _validate_locked_sources(
-    lock: dict, staged_cpython: Path, staged_yaml: Path, traced: dict
+    lock: dict, staged_cpython: Path, staged_yaml: Path, traces: dict[str, dict]
 ) -> tuple[int, int, int]:
+    traced = merge_traces(traces)
     producer_files: dict[str, str] = lock["producer_source_files"]
     problems = _producer_source_problems(lock)
     traced_relpaths = _traced_producer_relpaths(traced)
@@ -467,6 +537,23 @@ def _validate_locked_sources(
             "producer source FILE SET drift (run `lock-write` after review): "
             f"added={added} removed={removed}"
         )
+
+    locked_invocations = lock.get("invocations")
+    if not isinstance(locked_invocations, dict) or sorted(
+        locked_invocations
+    ) != sorted(TRACE_INVOCATIONS):
+        problems.append(
+            "sealed-invocation provenance drift: lock.json does not record exactly "
+            f"{TRACE_INVOCATIONS} (run `lock-write` after review)"
+        )
+    else:
+        for invocation, buckets in sorted(traces.items()):
+            if _invocation_records(buckets) != locked_invocations[invocation]:
+                problems.append(
+                    f"sealed invocation {invocation!r} module-set drift: the trace "
+                    "no longer matches lock.json's per-invocation record "
+                    "(run `lock-write` after review)"
+                )
 
     traced_stdlib = sorted(rec["name"] for rec in traced["stdlib"])
     if traced_stdlib != lock["included_stdlib_module_names"]:
@@ -526,14 +613,15 @@ def lock_check(*, full: bool = False) -> None:
     # confined to the explicit `fetch` command.
     _verify_locked_cache(lock)
     with staged_inputs() as (staged_cpython, staged_yaml):
-        traced = run_tracer(staged_cpython, staged_yaml)
-        counts = _validate_locked_sources(lock, staged_cpython, staged_yaml, traced)
+        traces = run_tracers(staged_cpython, staged_yaml)
+        counts = _validate_locked_sources(lock, staged_cpython, staged_yaml, traces)
         # Detect a cache replacement during extraction/trace, after source
         # bytes have been selected but before reporting success.
         _verify_locked_cache(lock)
     log(
         f"lock-check (full): {counts[0]} producer files, "
         f"{counts[1]} stdlib modules, {counts[2]} yaml modules "
+        f"across {len(TRACE_INVOCATIONS)} sealed invocations "
         "all match lock.json"
     )
 
@@ -543,7 +631,8 @@ def lock_write() -> None:
     # Fetching/updating those inputs is a separate reviewed action.
     fetch(offline=True)
     with staged_inputs() as (staged_cpython, staged_yaml):
-        traced = run_tracer(staged_cpython, staged_yaml)
+        traces = run_tracers(staged_cpython, staged_yaml)
+        traced = merge_traces(traces)
 
         producer_files = {
             os.path.relpath(rec["file"], REPO_ROOT): _sha256_file_hex(Path(rec["file"]))
@@ -554,6 +643,10 @@ def lock_write() -> None:
 
         lock = _load_lock()
         lock["producer_source_files"] = dict(sorted(producer_files.items()))
+        lock["invocations"] = {
+            invocation: _invocation_records(buckets)
+            for invocation, buckets in sorted(traces.items())
+        }
         lock["included_stdlib_module_names"] = sorted(
             rec["name"] for rec in traced["stdlib"]
         )
@@ -576,7 +669,8 @@ def lock_write() -> None:
     log(
         f"lock.json updated: {len(producer_files)} producer files, "
         f"{len(lock['included_stdlib_module_names'])} stdlib modules, "
-        f"{len(lock['included_yaml_module_names'])} yaml modules"
+        f"{len(lock['included_yaml_module_names'])} yaml modules across "
+        f"{len(traces)} sealed invocations"
     )
 
 
@@ -661,8 +755,9 @@ def assemble(out_dir: Path) -> dict:
     source_revision = _git_source_revision()
     _verify_locked_cache(lock)
     with staged_inputs() as (staged_cpython, staged_yaml):
-        traced = run_tracer(staged_cpython, staged_yaml)
-        _validate_locked_sources(lock, staged_cpython, staged_yaml, traced)
+        traces = run_tracers(staged_cpython, staged_yaml)
+        traced = merge_traces(traces)
+        _validate_locked_sources(lock, staged_cpython, staged_yaml, traces)
         _verify_locked_cache(lock)
 
         # Keep the previous complete output intact until all locked sources
@@ -719,8 +814,19 @@ def _require_supported_platform() -> None:
 
 
 # --------------------------------------------------------------------------
-# verify / smoke
+# smoke (sealed CLI invocation + sealed stdio-MCP server)
 # --------------------------------------------------------------------------
+
+
+def _sealed_env(out_dir: Path) -> dict[str, str]:
+    # Exactly the three env vars the trusted Rust spawner sets after
+    # env_clear(): no PATH, no HOME, no PYTHONPATH, no inherited user/system
+    # site authority.
+    return {
+        "PYTHONHOME": str(out_dir),
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONDONTWRITEBYTECODE": "1",
+    }
 
 
 def verify(out_dir: Path, *, lock: dict | None = None) -> dict:
@@ -786,14 +892,7 @@ def _verify_layout(out_dir: Path, expected_files: set[str]) -> None:
 def smoke(out_dir: Path, *, timeout: float = 30.0) -> dict:
     launcher = out_dir / "bin" / "python3.11"
     _require_real_launcher(launcher)
-    # Exactly the three env vars the trusted Rust spawner sets after
-    # env_clear(): no PATH, no HOME, no PYTHONPATH, no inherited user/system
-    # site authority.
-    env = {
-        "PYTHONHOME": str(out_dir),
-        "PYTHONNOUSERSITE": "1",
-        "PYTHONDONTWRITEBYTECODE": "1",
-    }
+    env = _sealed_env(out_dir)
     started = time.monotonic()
     with tempfile.TemporaryDirectory(prefix="ctf-runtime-custody-") as tmp:
         artifact_dir = Path(tmp) / "attempt"
@@ -856,6 +955,52 @@ def smoke(out_dir: Path, *, timeout: float = 30.0) -> dict:
         "artifact_count": len(artifact_details),
         "artifact_digests": observed,
         "envelope": payload,
+    }
+
+
+def smoke_mcp(out_dir: Path, *, timeout: float = 30.0) -> dict:
+    """Drive the sealed stdio-MCP server through its real ndjson serve loop.
+
+    This is the X4-VAL deployment shape: the same launcher and bundle as
+    the CLI smoke, the same sealed environment, but the
+    ``-m extension.mcp_server`` entrypoint talking JSON-RPC over stdio.
+    The fixed read-only handshake (initialize, notifications/initialized,
+    tools/list, EOF) is written to the child's pipe; the child must answer
+    both requests per the shared exchange contract and exit 0 on EOF.
+    """
+    launcher = out_dir / "bin" / "python3.11"
+    _require_real_launcher(launcher)
+    started = time.monotonic()
+    with subprocess.Popen(
+        [str(launcher), "-S", "-m", "extension.mcp_server"],
+        cwd=str(out_dir),
+        env=_sealed_env(out_dir),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    ) as proc:
+        try:
+            stdout_text, stderr_text = proc.communicate(
+                input=_tracer.MCP_TRACE_STDIN, timeout=timeout
+            )
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            raise BuildError("smoke MCP server did not exit within the timeout") from None
+    elapsed_s = time.monotonic() - started
+    if proc.returncode != 0:
+        raise BuildError(
+            f"smoke MCP server exited {proc.returncode}: {stderr_text.strip()}"
+        )
+    try:
+        responses = _tracer.validate_mcp_exchange(stdout_text)
+    except RuntimeError as exc:
+        raise BuildError(f"smoke MCP exchange failed its contract: {exc}") from exc
+    return {
+        "elapsed_s": elapsed_s,
+        "response_count": len(responses),
+        "protocol_version": responses[0]["result"]["protocolVersion"],
     }
 
 
@@ -1038,6 +1183,13 @@ def build(out_dir: Path) -> dict:
     smoke(reextracted)
     timings["repeat_launch_s"] = time.monotonic() - t0
 
+    t0 = time.monotonic()
+    smoke_mcp_result = smoke_mcp(reextracted)
+    timings["mcp_cold_launch_s"] = time.monotonic() - t0
+    t0 = time.monotonic()
+    smoke_mcp(reextracted)
+    timings["mcp_repeat_launch_s"] = time.monotonic() - t0
+
     manifest = manifest_for(
         digests,
         lock=info["lock"],
@@ -1059,6 +1211,7 @@ def build(out_dir: Path) -> dict:
         "manifest_sha256": manifest_sha256,
         "timings_path": timings_path,
         "smoke": smoke_result,
+        "smoke_mcp": smoke_mcp_result,
     }
 
 
