@@ -87,8 +87,16 @@ def test_availability_is_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
                 AssertionError("availability invoked an arm")
             )
         )
+        monkeypatch.setattr(
+            handler, "installed", lambda *a, **k: (_ for _ in ()).throw(
+                RuntimeError("probe exploded")
+            )
+        )
     rows = ext.availability()
-    assert len(rows) == 27  # the report completed without dispatching
+    # The report completed without dispatching, and one exploding probe
+    # degrades to a row instead of killing the report.
+    assert len(rows) == 27
+    assert all(row["installed"] is False for row in rows)
 
 
 def test_cli_availability_subcommand(

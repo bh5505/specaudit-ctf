@@ -61,7 +61,11 @@ site, ambient credentials, or network bootstrap.
 `selfcheck` discards staged extractions between two assemblies and requires
 identical launcher digest, canonical tree digest, and archive bytes. The
 archive fixes gzip/tar ordering, timestamps, uid/gid, owner/group names, and
-modes. The tree digest is the cross-language
+modes. The `availability` host command is deliberately NOT part of the sealed
+bundle: it is a read-only operator report, not a sealed invocation, so
+`extension/availability.py` stays outside the traced producer closure.
+
+The tree digest is the cross-language
 `specaudit.ctf.producer-tree.v1` algorithm in `tree_hash.py`; the committed
 `tree-v1-vector.json` is the handoff vector for the Rust consumer.
 
@@ -75,7 +79,7 @@ verification 0.197 s / 0.196 s, cold and repeat Mode-A CLI launch 0.484 s /
 0.435 s, cold and repeat sealed stdio-MCP server launch 0.410 s / 0.410 s.
 The resulting launcher, tree, and normalized-archive SHA-256 values are
 respectively `bba9c526…8c94` (unchanged — same locked CPython input),
-`380996a7…d91f`, and `242fc148…4b073` (2026-09-01: DAST-role notes, the nmap arm, dispatch-class admission, then the availability surface). A 5 s cold startup
+`4e667bb0…a5fb`, and `e698293a…4b73` (2026-09-01: DAST-role notes, the nmap arm, dispatch-class admission, the availability surface + review fixes). A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
 by this producer. Re-measure before changing the platform or dependency lock.

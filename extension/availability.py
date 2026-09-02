@@ -33,16 +33,15 @@ def _parse_os_release(path: str) -> dict[str, str]:
     return fields
 
 
-def host_profile(
-    *os_release_paths: str, environ: dict[str, str] | None = None
-) -> dict[str, Any]:
+def host_profile(*os_release_paths: str) -> dict[str, Any]:
     """Return a read-only host profile.
 
     On Linux hosts the os-release fields are parsed from the first
     readable candidate (override the candidates for tests). `is_kali` is
-    the canonical `ID=kali` check.
+    the canonical `ID=kali` check. Note: multi-line quoted continuations
+    (freedesktop spec) are not joined — none of the fields read here
+    (ID/VERSION_ID/PRETTY_NAME) use them.
     """
-    environ = environ if environ is not None else os.environ
     candidates = os_release_paths or OS_RELEASE_CANDIDATES
     release = {}
     for candidate in candidates:

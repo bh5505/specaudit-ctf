@@ -626,14 +626,18 @@ class Extension:
                 continue
             spec = ArmSpec.from_entry(entry)
             handler = self.arms.get(spec.id)
+            try:
+                installed = bool(
+                    handler is not None and handler.installed(spec)
+                )
+            except Exception:  # noqa: BLE001 - one broken probe degrades to a row
+                installed = False
             rows.append(
                 {
                     "id": entry.id,
                     "tier": entry.tier,
                     "held": entry.tier == TIER_HELD,
-                    "installed": bool(
-                        handler is not None and handler.installed(spec)
-                    ),
+                    "installed": installed,
                 }
             )
         return rows
