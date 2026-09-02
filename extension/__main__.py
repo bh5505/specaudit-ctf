@@ -1,4 +1,4 @@
-"""CLI: python -m extension list|describe|invoke."""
+"""CLI: python -m extension list|describe|invoke|availability."""
 
 from __future__ import annotations
 
@@ -16,6 +16,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("list", help="list catalog entries")
+
+    sub.add_parser(
+        "availability",
+        help="read-only host + arm availability report (nothing is invoked)",
+    )
 
     describe_parser = sub.add_parser("describe", help="describe one catalog entry")
     describe_parser.add_argument("id", help="catalog entry identifier (e.g., burp-mcp)")
@@ -52,6 +57,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         ext = Extension()
         if ns.cmd == "list":
             _emit([entry.to_dict() for entry in ext.list_entries()])
+            return 0
+        if ns.cmd == "availability":
+            from .availability import build_report
+
+            _emit(build_report(ext))
             return 0
         if ns.cmd == "describe":
             try:

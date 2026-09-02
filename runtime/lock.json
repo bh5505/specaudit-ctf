@@ -1258,7 +1258,7 @@
   },
   "producer_source_files": {
     "extension/__init__.py": "c3eef999fb386405cfb5a343bf25289017a61c67962df9c24ad04fb2f0a9fa80",
-    "extension/__main__.py": "ab1b0c5db5ad1761c4ca01d2af07a9ae54b159f42ba5b33ac7d1ddef375d74cc",
+    "extension/__main__.py": "3f2d9d8b59b05cbe5b695797d6bcc4ada3c0d8443d442dcf083d77628d78dd01",
     "extension/arms/__init__.py": "f4beef2cf2d1d56588cad877fddcdc945d750a64ec0133ca30b773fc2fc89410",
     "extension/arms/agentwiz/__init__.py": "12e8cd127de0c65955f518780ec0bb008eba587ee8ca6d55e06ea75454452ea2",
     "extension/arms/agentwiz/arm.py": "46aa28cad7bcd53a08977e0560ec9a6c08a6d6e6db584beac535fe76ab62ad7a",
@@ -1345,7 +1345,7 @@
     "extension/arms/zgrab2/__init__.py": "f2b6d0a7dbdc0c957982ae7a6c1633e61b74da2aa3dc265ae637aba126270451",
     "extension/arms/zgrab2/arm.py": "1f03abec0d2c36dac9440f7220211e9370f0d0867773a95b46a143947d147e2e",
     "extension/arms/zgrab2/policy.py": "0bee264c5fbefa59a0da6b2a0056d4a864528eb8078283a20e993066114abb15",
-    "extension/contract.py": "be0f8c6ba06f5d1f44d1ed2d93f294177e4a4c565fd730a6ff4e2dd3563d5d97",
+    "extension/contract.py": "51f233c3ff9d350261c4e0d54389911924ebedce1a53b05cf8f0d006898da00f",
     "extension/coverage.yaml": "19ab45e846fbf41e07a63d22c41c5f73681f2061a001f18aa2211a4ff8730d44",
     "extension/dispatch.py": "4f6b56e2d63efbe33b6b4995a2554d2ef0b5c2ab01ad9fad53742e840a4dd5b3",
     "extension/encode.py": "a3159368eb512c2005803109728717fa695a0d3ad70630ba0b8bc5e375125349",
