@@ -21,6 +21,7 @@ from .policy import (
     ALLOWED_VIEWS,
     ARM_ID,
     CALL_TIMEOUT,
+    CAVEATS,
     DISPATCH_ACTIONS,
     ENV_API_KEY,
     ENV_DISPATCH_SCOPE,
@@ -88,6 +89,7 @@ class ZapArm:
                     "dispatch_actions": sorted(DISPATCH_ACTIONS),
                     "dispatch_armed": os.environ.get(ENV_DISPATCH_SCOPE, "").strip()
                     != "",
+                    "caveats": CAVEATS,
                 },
                 error=None,
             )

@@ -181,3 +181,33 @@ def test_api_key_header_sent(monkeypatch: pytest.MonkeyPatch) -> None:
     result = _arm(urlopen).invoke(_spec(), "version", {})
     assert result.ok is True
     assert urlopen.calls[0]["headers"].get("X-zap-api-key") == "secret-key-1"
+
+
+def test_result_views_are_allowlisted_and_digit_scoped() -> None:
+    urlopen = _Urlopen()
+    arm = _arm(urlopen)
+    spec = _spec()
+
+    ok = arm.invoke(spec, "spider_results", {"scanId": 0})
+    assert ok.ok and ok.output == {"ok": True}
+    assert "spider/view/results/?scanId=0" in urlopen.calls[-1]["url"]
+
+    ok = arm.invoke(spec, "ascan_results", {"scanId": 2})
+    assert ok.ok
+    assert "ascan/view/results/?scanId=2" in urlopen.calls[-1]["url"]
+
+    bad = arm.invoke(spec, "spider_results", {"scanId": -1})
+    assert not bad.ok and "non-negative" in bad.error
+    refused = arm.invoke(spec, "ascan_results", {"url": "http://x/"})
+    assert not refused.ok and "not allowed" in refused.error
+
+    assert "spider_results" in ALLOWED_VIEWS
+    assert "ascan_results" in ALLOWED_VIEWS
+
+
+def test_list_tools_carries_the_dast_role_caveat() -> None:
+    result = _arm().invoke(_spec(), "list_tools", {})
+    assert result.ok
+    assert "spider_results" in result.output["read_views"]
+    assert "ascan_results" in result.output["read_views"]
+    assert "DAST" in result.output["caveats"]
