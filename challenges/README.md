@@ -7,9 +7,11 @@ and this checkout** (plus, optionally, any agent CLI that speaks stdio MCP
 for the attachment exercises). No internal trees, no product binaries, no
 live cloud accounts, and no real credentials are involved.
 
-Everything is deterministic: the range runs with a fixed seed, so the
-planted violations and their finding rows are reproducible byte-for-byte
-on every host.
+Everything is deterministic per host: the range runs with a fixed seed,
+so on a given host the planted violations and the range-report digest
+are reproducible byte-for-byte. Arm rows, limitations, and the
+range-report digest vary with the host's installed state — the planted
+fixture ground truth does not.
 
 | Challenge | Lane | Fixtures |
 |---|---|---|

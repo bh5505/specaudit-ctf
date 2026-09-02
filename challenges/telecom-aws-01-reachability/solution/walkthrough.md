@@ -17,20 +17,25 @@ survey tiers. The point of the objective is the reading discipline:
 - `maintained` was granted to exactly one read-only action through the
   public evidence gate, and no content exercise may create another.
 
-## 2 — Manifest before result
+## 2 — The capability surface before the result
 
-`describe agent-wiz` shows the arm row: `list_tools` is the maintained
-read-tier action; `extract` / `visualize` are path-contained local
-reads; `analyze` is egress-gated. Invoking
-`invoke agent-wiz list_tools {}` returns a `complete` envelope whose
-`artifacts` claim the tool enumeration the action produces; with
-`--artifact-dir` the claimed bytes land as digest-named
+`describe agent-wiz` prints the catalog row: `tier`, `curated`,
+`protocols`, and the notes — the catalog layer. The full pre-dispatch
+claims are the committed capability manifest
+(`tests/goldens/capability-manifest/agent-wiz.list_tools.json`):
+`list_tools` is the maintained read-tier action; `extract` /
+`visualize` are path-contained local reads; `analyze` is egress-gated;
+budget, cleanup, safety class, and authorized scope are all stated
+there. Invoking `invoke agent-wiz list_tools {}` returns a `complete`
+envelope whose `artifacts` claim the tool enumeration the action
+produces; with `--artifact-dir` the claimed bytes land as digest-named
 (`sha256-<hex>`) files you can re-hash yourself. In
-`manifest-vs-result.md` the interesting
-split is: capability id, action, and side-effect class are claims you
-verified from both sides; the attempt id, artifact digests, and the
-budget/cleanup sections are observable *only* in the result envelope —
-which is exactly why the manifest describes and the result reports.
+`manifest-vs-result.md` the interesting split is three-layered: the
+catalog row tells you *what exists and at what tier*; the manifest
+tells you *what dispatch is allowed to do*; the envelope tells you
+*what actually happened* — attempt id, artifact digests, and the
+outcome status exist only in the result, while budget/cleanup are
+stated in the manifest and echoed in the report.
 
 If you passed `--attempt-id` / `--artifact-dir` you also saw the Mode-A
 handoff contract: fresh private directory, digest-named canonical
@@ -38,18 +43,25 @@ bytes, artifact claims the producer cannot fake.
 
 ## 3 — The honest range
 
-On a host with no optional tools installed the range reports
-`status: "degraded"` with limitations like `optional arm is not
-installed` / `arm status=error`, and the `coverage.complete` bucket is
-empty. That is the contract working: the range refuses to present an
-unachieved all-clear. Installing any curated arm's binary moves that
-arm's row from `failed` to `complete`-eligible on the next run without
-changing any fixture.
+The range reports `status: "degraded"` — on every host, including ones
+with scanners installed. That is not a bug to fix but the documented
+invariant (see `tests/goldens/transport-parity/matrix.json`): held
+curated arms force at least one error row everywhere, and the range
+dispatches an `observe` action that no curated arm currently admits, so
+their rows carry action errors. On a scanner-less host you also see
+`optional arm is not installed` limitations — those arms are *skipped*
+rows. The range refuses to present an unachieved all-clear; `complete`
+stays empty until an arm actually admits and completes the dispatched
+action. Installing a curated arm's binary changes its row from a
+not-installed skip to an `observe`-action error — honest, and still not
+an all-clear.
 
-Determinism: identical seed → identical range-report artifact digest.
-`--seed 456` changes the digest (the seed is hashed into the artifact)
-while the planted fixture violations stay the same — the seed controls
-synthesis, not the planted ground truth.
+Determinism: same host + same seed → byte-identical range-report
+artifact digest; `--seed 456` changes the digest (the seed is hashed
+into the artifact) while the planted fixture violations stay the same —
+the seed controls synthesis, not the planted ground truth. Which arms
+were attempted, their row reasons, and the limitations list vary with
+the host's installed state; the fixture ground truth does not.
 
 ## 4 — Reading the planted exposure
 

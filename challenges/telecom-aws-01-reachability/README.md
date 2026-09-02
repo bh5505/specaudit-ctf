@@ -28,32 +28,43 @@ Work through the objectives in order. Each ends in a concrete artifact.
    that? Write your answer as `catalog-summary.json` mapping each tier
    to the count of rows carrying it.
 
-2. **Read the capability manifest before dispatch.**
-   Run `python -m extension describe agent-wiz`. From that row, state
-   which action is the maintained capability, what its side effects and
-   safety class are, and what "read tier" means for a rehearsal. Then
+2. **Read the capability surface before dispatch.**
+   Run `python -m extension describe agent-wiz`: the catalog row carries
+   `tier`, `curated`, `protocols`, and the honest notes. The full
+   pre-dispatch claims live in the committed capability manifest at
+   `tests/goldens/capability-manifest/agent-wiz.list_tools.json` —
+   safety class, side effects, budget, cleanup, authorized scope. Then
    run `python -m extension invoke agent-wiz list_tools {}` and capture
    the `specaudit.ctf.execution-result.v1` envelope. Record in
-   `manifest-vs-result.md`: which manifest claims the result actually
-   exercised, and which (e.g. budget, cleanup) you can verify only from
-   the envelope.
+   `manifest-vs-result.md`: which manifest claims the result exercised,
+   which the envelope echoes back (budget, cleanup), and which fields
+   exist *only* in the result (attempt id, artifact digests, outcome
+   status) — the describe/report split is the lesson.
 
 3. **Run the synthetic reachability range.**
    Run `python -m extension.range`. The range evaluates the synthetic
    Terraform fixtures (`extension/range/tf_s3_public_access/`) and
-   invokes the curated arms it can. From the envelope, produce
+   attempts the curated arms. From the envelope, produce
    `range-report.md` answering:
-   - What is the overall `status`, and which limitations explain it on
-     your host (optional arms not installed is the expected cause —
-     that is the honest-degradation contract working, not a failure to
-     hide)?
+   - What is the overall `status`, and why is it `degraded` on **every**
+     host — including one with scanners installed? (The repo's own
+     transport-parity goldens document the invariant: held curated arms
+     force at least one error row everywhere, and the range dispatches
+     an `observe` action that no curated arm currently admits. On a
+     host without optional binaries you will additionally see
+     `optional arm is not installed` limitations — skipped rows, not
+     failures.) That is the honest-degradation contract working, not a
+     failure to hide.
    - In the `coverage` buckets (`complete` / `failed` / `skipped` /
-     `unsupported` / `attempted` / `required`), why is `complete` empty
-     on a host with no optional tools installed? What would change if
-     one curated arm's binary were present?
+     `unsupported` / `attempted` / `required`), where do the curated
+     arms land on your host, and what exact reason does each row
+     carry? What would change if one curated arm's binary were present
+     — and what would *not* change?
    - The range-report artifact carries a digest. Re-run with the same
-     seed and confirm the digest is byte-stable; re-run with
-     `--seed 456` and confirm it changes.
+     seed on the same host and confirm the digest is byte-stable;
+     re-run with `--seed 456` and confirm it changes. Note which parts
+     of the envelope are host-dependent (per-arm rows, limitations)
+     and which are not.
 
 4. **Read the planted exposure like an auditor.**
    Open `extension/range/tf_s3_public_access/input/main.tf`. Identify

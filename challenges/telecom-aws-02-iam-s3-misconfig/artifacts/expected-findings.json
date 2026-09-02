@@ -1,7 +1,10 @@
 {
   "track": "telecom-aws-02-iam-s3-misconfig",
   "seed": 123,
-  "fixtures": ["tf_iam_open"],
+  "fixtures": [
+    "tf_iam_open",
+    "tf_s3_public_access (cross-fixture trace only, challenge 01's fixture)"
+  ],
   "total": 3,
   "findings": [
     {
