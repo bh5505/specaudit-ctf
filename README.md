@@ -124,7 +124,7 @@ non-curated arms, and uninstalled curated arms are hard errors. Do not invent
 a fallback. `list` / `describe` include `tier`.
 
 `invoke <id> list_tools` returns static JSON (no binary spawn) on
-non-held surfaces that implement it (the nine lifted CLIs). Catalog
+non-held surfaces that implement it (the ten lifted CLIs). Catalog
 `invoke` of held HTTP MCP rows (`burp-mcp`, `semgrep-mcp`,
 `prowler-mcp`, `google-mcp-security`, `metasploit-mcp`) is refused
 even if an endpoint is configured; handler-level `list_tools` is not

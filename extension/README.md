@@ -254,7 +254,7 @@ One-liners. Full notes live on the catalog row (`describe <id>`).
 - `sniper` — scoping `-t` does **not** bound 90+ sub-tools; community binary is root-only and phones home when armed. Composite egress.
 - `zgrab2` — L7 handshake scanner; one host on stdin; closed modules plus optional `--port`.
 - `dark-moon` — autonomous multi-agent pentest; MCP gateway still launches Nuclei/sqlmap/NetExec inside Docker (composite egress). CLI only.
-- `pyrit` — first-party `pyrit_scan` only; requires operator PyRIT config (`~/.pyrit`). CoPyRIT GUI is out of scope.
+- `pyrit` — first-party `pyrit_scan` only; requires operator PyRIT config (`~/.pyrit`); scan spends model tokens on the operator-configured endpoints. CoPyRIT GUI is out of scope.
 - `deepsec` — operator runs init out of band; cwd is the `.deepsec` workspace; unarmed `scan` writes matcher state; `process` is agentic and can cost thousands of dollars. Binary must not be npx/pnpm/npm/yarn.
 - `vvah` — 11-stage agentic pipeline; `doctor` live-probes configured
   backends (may spend tokens); `estimate` spends nothing; `scan` is
