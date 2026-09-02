@@ -53,6 +53,7 @@ _STATIC_POLICY_ARMS = (
     "sniper",
     "vvah",
     "zgrab2",
+    "nmap",
 )
 
 

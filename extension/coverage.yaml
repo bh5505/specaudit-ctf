@@ -287,6 +287,13 @@ entries:
     tier: research
     notes: Application-layer handshake scanner. Curated CLI arm; list_modules is a static allowlist; scan feeds one host on stdin with a closed module set and optional --port. Gated by ZGRAB2_DISPATCH_SCOPE.
 
+  - id: nmap
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Network service discovery. Curated CLI arm over the user's own nmap (NPSL; never bundled); single-host targets, closed flag sets (connect/version, fixed -T4, top-ports default), XML on stdout capped and redacted; scan dispatch gated by NMAP_DISPATCH_SCOPE.
+
   - id: page-fetch
     kind: arm
     protocols: [cli]

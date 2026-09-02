@@ -489,6 +489,8 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.sniper import SniperArm
     from .arms.zgrab2 import ARM_ID as ZGRAB2_ARM_ID
     from .arms.zgrab2 import Zgrab2Arm
+    from .arms.nmap import ARM_ID as NMAP_ARM_ID
+    from .arms.nmap import NmapArm
     from .arms.darkmoon import ARM_ID as DARK_MOON_ARM_ID
     from .arms.darkmoon import DarkMoonArm
     from .arms.pyrit import ARM_ID as PYRIT_ARM_ID
@@ -523,6 +525,7 @@ def _default_arms() -> dict[str, Transport]:
         ROUTERSPLOIT_ARM_ID: RoutersploitArm(),
         SNIPER_ARM_ID: SniperArm(),
         ZGRAB2_ARM_ID: Zgrab2Arm(),
+        NMAP_ARM_ID: NmapArm(),
         DARK_MOON_ARM_ID: DarkMoonArm(),
         PYRIT_ARM_ID: PyritArm(),
         DEEPSEC_ARM_ID: DeepsecArm(),

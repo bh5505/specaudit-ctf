@@ -486,7 +486,8 @@ def test_agent_wiz_golden_matches_encoder_and_is_admitted() -> None:
 
 
 def test_all_nine_manifests_are_deterministic_and_admitted() -> None:
-    assert len(INVOKE_PROFILES) == 9
+    # 10 since the nmap arm joined the static policy profiles.
+    assert len(INVOKE_PROFILES) == 10
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.

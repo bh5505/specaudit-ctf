@@ -390,7 +390,7 @@ def test_uninstalled_curated_arm_is_skipped_held_is_error(
         if entry.kind == CATALOG_KIND_ARM and entry.curated and entry.tier == "held"
     ]
     skipped_ids = [arm_id for arm_id in curated_ids if arm_id not in held_ids]
-    assert len(curated_ids) == 26
+    assert len(curated_ids) == 27
     assert CURATED_ARM_ID in curated_ids
     assert CURATED_ARM_ID in held_ids
     # RED lock: matching lifecycle plus one unavailable auto-discovered
