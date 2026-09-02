@@ -108,6 +108,14 @@ _DISPATCH_PROFILES = (
     ("zgrab2", "scan", ("subprocess", "network-egress"), 60_000, "ZGRAB2_DISPATCH_SCOPE"),
     ("wapiti", "scan", ("subprocess", "network-egress"), 600_000, "WAPITI_DISPATCH_SCOPE"),
     ("zdns", "lookup", ("subprocess", "network-egress"), 60_000, "ZDNS_DISPATCH_SCOPE"),
+    # Wave B (offensive/pyrit families; doc-20 dispositions): pyrit spends
+    # model tokens on operator-configured endpoints (caveat + catalog note,
+    # not a side-effect enum value); routersploit's run always executes the
+    # module upstream (no check-only path); osmedeus scan is the documented
+    # alias of run.
+    ("pyrit", "scan", ("subprocess", "network-egress"), 600_000, "PYRIT_DISPATCH_SCOPE"),
+    ("routersploit", "run", ("subprocess", "network-egress"), 120_000, "ROUTERSPLOIT_DISPATCH_SCOPE"),
+    ("osmedeus", "scan", ("subprocess", "network-egress"), 600_000, "OSMEDEUS_DISPATCH_SCOPE"),
 )
 
 

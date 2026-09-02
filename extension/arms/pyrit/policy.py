@@ -23,7 +23,8 @@ SCENARIO_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,63}$")
 
 CAVEATS = (
     "Requires operator PyRIT config (~/.pyrit). Community MCP wrappers "
-    "are unused. First-party pyrit_scan only."
+    "are unused. First-party pyrit_scan only. Scan spends model tokens "
+    "on the operator-configured endpoints."
 )
 
 
