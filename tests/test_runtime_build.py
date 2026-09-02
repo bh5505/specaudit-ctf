@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import stat
@@ -11,7 +12,7 @@ from pathlib import Path
 
 import pytest
 
-from runtime import build, tree_hash
+from runtime import _tracer, build, tree_hash
 
 ROOT = Path(__file__).resolve().parents[1]
 VECTOR = ROOT / "runtime" / "tree-v1-vector.json"
@@ -72,9 +73,11 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
         "b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d"
     )
     assert lock["pyyaml"]["size"] == 806638
-    # 94 since X4-PUB: the traced sealed invocation imports
-    # extension/dispatch.py (the shared transport dispatch) at module top.
-    assert len(lock["producer_source_files"]) == 94
+    # 96 since the stdio-MCP server joined the measured surface: the two
+    # sealed invocations share the X4-PUB closure (94 then, incl.
+    # extension/dispatch.py) plus extension/mcp_server.py and the
+    # execution-result schema it reads at module level.
+    assert len(lock["producer_source_files"]) == 96
     assert len(lock["included_stdlib_files"]) == 107
     assert len(lock["included_yaml_files"]) == 18
     assert lock["capability_manifest"] == {
@@ -108,6 +111,159 @@ def test_offline_fetch_refuses_missing_cache_without_network(
     )
     with pytest.raises(build.BuildError, match="--offline"):
         build.fetch(offline=True)
+
+
+def test_merged_trace_is_deduplicated_union_of_invocations() -> None:
+    shared = {"name": "json", "file": "/repo/extension/__init__.py"}
+    cli_only = {"name": "extension.dispatch", "file": "/repo/extension/dispatch.py"}
+    mcp_only = {"name": "extension.range", "file": "/repo/extension/range/__init__.py"}
+    merged = build.merge_traces(
+        {
+            "cli-json-invoke": {
+                "stdlib": [shared],
+                "yaml": [],
+                "extension": [cli_only, shared],
+            },
+            "stdio-mcp-server": {
+                "stdlib": [shared],
+                "yaml": [],
+                "extension": [mcp_only],
+            },
+        }
+    )
+    assert merged["extension"] == sorted(
+        [cli_only, shared, mcp_only], key=lambda rec: (rec["name"], rec["file"])
+    )
+    assert merged["stdlib"] == [shared]
+
+
+def test_merged_trace_rejects_disagreeing_records() -> None:
+    with pytest.raises(build.BuildError, match="resolves to two files"):
+        build.merge_traces(
+            {
+                "cli-json-invoke": {
+                    "stdlib": [{"name": "json", "file": "/a/json.py"}],
+                    "yaml": [],
+                    "extension": [],
+                },
+                "stdio-mcp-server": {
+                    "stdlib": [{"name": "json", "file": "/b/json.py"}],
+                    "yaml": [],
+                    "extension": [],
+                },
+            }
+        )
+
+
+def test_mcp_server_entrypoints_are_locked_producer_roots() -> None:
+    lock = json.loads(build.LOCK_PATH.read_text())
+    for relpath in (
+        "extension/__main__.py",
+        "extension/mcp_server.py",
+        "extension/schema/execution-result.v1.schema.json",
+    ):
+        assert relpath in build.EXTRA_PRODUCER_FILES
+        assert relpath in lock["producer_source_files"]
+    # The stdio-MCP sealed invocation has its own per-invocation record.
+    assert sorted(lock["invocations"]) == sorted(build.TRACE_INVOCATIONS)
+    for invocation in build.TRACE_INVOCATIONS:
+        record = lock["invocations"][invocation]
+        assert sorted(record) == [
+            "extension_paths",
+            "stdlib_module_names",
+            "yaml_module_names",
+        ]
+
+
+def test_tracer_handshake_drives_real_server_serve_loop() -> None:
+    stdout = io.StringIO()
+    from extension import mcp_server
+
+    saved_stdin = mcp_server.sys.stdin
+    mcp_server.sys.stdin = io.StringIO(_tracer.MCP_TRACE_STDIN)
+    try:
+        code = mcp_server.McpServer().serve(stdout=stdout)
+    finally:
+        mcp_server.sys.stdin = saved_stdin
+    assert code == 0
+    _tracer.validate_mcp_exchange(stdout.getvalue())
+
+
+def test_validate_mcp_exchange_rejects_contract_violations() -> None:
+    good = (
+        '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25",'
+        '"capabilities":{},"serverInfo":{"name":"x","version":"0"}}}\n'
+        '{"jsonrpc":"2.0","id":2,"result":{"tools":['
+        '{"name":"list"},{"name":"describe"},{"name":"invoke"},'
+        '{"name":"run_range"}]}}\n'
+    )
+    _tracer.validate_mcp_exchange(good)
+    bad_exchanges = [
+        good.replace('"name":"run_range"', '"name":"other"'),
+        good.replace("2025-11-25", "1999-01-01"),
+        good.replace(
+            '"id":1,"result":{"protocolVersion":"2025-11-25","capabilities":{},'
+            '"serverInfo":{"name":"x","version":"0"}}',
+            '"id":1,"error":{"code":-32000,"message":"x"}',
+        ),
+        good.splitlines()[0] + "\n",
+    ]
+    for text in bad_exchanges:
+        with pytest.raises(RuntimeError):
+            _tracer.validate_mcp_exchange(text)
+
+
+def test_smoke_mcp_fail_closed_on_bad_child_behavior(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    bundle = tmp_path / "bundle"
+    monkeypatch.setattr(build, "_require_real_launcher", lambda _path: None)
+
+    class _FakeProc:
+        def __init__(self, returncode: int, stdout: str) -> None:
+            self.returncode = returncode
+            self._stdout = stdout
+
+        def communicate(self, input: str, timeout: float | None = None):
+            return self._stdout, ""
+
+        def kill(self) -> None:
+            return
+
+        def wait(self) -> int:
+            return self.returncode
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc: object):
+            return False
+
+    good_stdout = (
+        '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25"}}\n'
+        '{"jsonrpc":"2.0","id":2,"result":{"tools":['
+        '{"name":"list"},{"name":"describe"},{"name":"invoke"},'
+        '{"name":"run_range"}]}}\n'
+    )
+    monkeypatch.setattr(
+        build.subprocess,
+        "Popen",
+        lambda *_a, **_k: _FakeProc(0, good_stdout),
+    )
+    result = build.smoke_mcp(bundle)
+    assert result["response_count"] == 2
+
+    monkeypatch.setattr(
+        build.subprocess, "Popen", lambda *_a, **_k: _FakeProc(1, good_stdout)
+    )
+    with pytest.raises(build.BuildError, match="exited 1"):
+        build.smoke_mcp(bundle)
+
+    monkeypatch.setattr(
+        build.subprocess, "Popen", lambda *_a, **_k: _FakeProc(0, "garbage\n")
+    )
+    with pytest.raises(build.BuildError, match="contract"):
+        build.smoke_mcp(bundle)
 
 
 def test_smoke_rejects_claimed_observed_custody_digest_mismatch(
