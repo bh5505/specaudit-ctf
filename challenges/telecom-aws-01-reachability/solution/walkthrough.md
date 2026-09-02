@@ -20,13 +20,13 @@ survey tiers. The point of the objective is the reading discipline:
 ## 2 — The capability surface before the result
 
 `describe agent-wiz` prints the catalog row: `tier`, `curated`,
-`protocols`, and the notes — the catalog layer. The full pre-dispatch
-claims are the committed capability manifest
-(`tests/goldens/capability-manifest/agent-wiz.list_tools.json`):
-`list_tools` is the maintained read-tier action; `extract` /
-`visualize` are path-contained local reads; `analyze` is egress-gated;
-budget, cleanup, safety class, and authorized scope are all stated
-there. Invoking `invoke agent-wiz list_tools {}` returns a `complete`
+`protocols`, and the notes — the catalog layer, and the notes are where
+the action surface is documented (`list_tools` is the maintained
+read-tier action; `extract` / `visualize` are path-contained local
+reads; `analyze` is egress-gated). The manifest golden covers the
+maintained dispatch itself: `tests/goldens/capability-manifest/agent-wiz.list_tools.json` states the safety class, side effects,
+budget, cleanup, and authorized scope for `list_tools`. Invoking
+`invoke agent-wiz list_tools {}` returns a `complete`
 envelope whose `artifacts` claim the tool enumeration the action
 produces; with `--artifact-dir` the claimed bytes land as digest-named
 (`sha256-<hex>`) files you can re-hash yourself. In
