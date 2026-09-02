@@ -226,7 +226,7 @@ JSON-RPC success is transport-only; the MCP content document is still
 The first-class web/DAST lane is the **zaproxy** arm: Zed Attack
 Proxy's native JSON API is a first-party automation surface and the
 free edition needs no license for it. Read tier covers the exact
-`/JSON/*/view/` allowlist (site map, alerts, messages, spider and
+`/JSON/*/view/` allowlist (`sites`, alerts, messages, spider and
 active-scan status **and results**); `ascan_scan`/`spider_scan` are
 dispatch-class and stay refused until `ZAP_DISPATCH_SCOPE` names the
 target. Passive findings surface through `alerts`/`alerts_summary`
