@@ -90,12 +90,14 @@ INVOKE_ARGV = ("agent-wiz", "list_tools", "{}")
 REQUIRED_BUNDLE_FILES = ("extension/__init__.py", "yaml/__init__.py")
 # runpy removes the temporary `__main__`-bound entrypoints after `-m`
 # exits, so the trace cannot observe either in final sys.modules. The CLI
-# entrypoint, the stdio-MCP server entrypoint, and coverage.yaml are
-# explicit non-module/source-data roots of the sealed invocations.
+# entrypoint, the stdio-MCP server entrypoint, coverage.yaml, and the
+# execution-result schema the server reads at module level are explicit
+# non-module/source-data roots of the sealed invocations.
 EXTRA_PRODUCER_FILES = (
     "extension/__main__.py",
     "extension/mcp_server.py",
     "extension/coverage.yaml",
+    "extension/schema/execution-result.v1.schema.json",
 )
 _ATTEMPT_ID = "attempt-" + ("0" * 64)
 

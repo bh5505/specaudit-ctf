@@ -228,7 +228,9 @@ def trace_stdio_mcp_server() -> dict[str, list[dict[str, str]]]:
     ``extension/__main__.py`` for the CLI invocation.
     """
     saved_stdin = sys.stdin
+    saved_argv = sys.argv
     sys.stdin = io.StringIO(MCP_TRACE_STDIN)
+    sys.argv = ["-m"]
     try:
         buf_out, buf_err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(buf_out), contextlib.redirect_stderr(buf_err):
@@ -242,6 +244,7 @@ def trace_stdio_mcp_server() -> dict[str, list[dict[str, str]]]:
                 code = 0
     finally:
         sys.stdin = saved_stdin
+        sys.argv = saved_argv
     if code != 0:
         raise RuntimeError(
             f"traced MCP server exited {code}: "

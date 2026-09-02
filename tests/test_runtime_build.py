@@ -73,9 +73,11 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
         "b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d"
     )
     assert lock["pyyaml"]["size"] == 806638
-    # 94 since X4-PUB: the traced sealed invocation imports
-    # extension/dispatch.py (the shared transport dispatch) at module top.
-    assert len(lock["producer_source_files"]) == 94
+    # 96 since the stdio-MCP server joined the measured surface: the two
+    # sealed invocations share the X4-PUB closure (94 then, incl.
+    # extension/dispatch.py) plus extension/mcp_server.py and the
+    # execution-result schema it reads at module level.
+    assert len(lock["producer_source_files"]) == 96
     assert len(lock["included_stdlib_files"]) == 107
     assert len(lock["included_yaml_files"]) == 18
     assert lock["capability_manifest"] == {
@@ -155,7 +157,11 @@ def test_merged_trace_rejects_disagreeing_records() -> None:
 
 def test_mcp_server_entrypoints_are_locked_producer_roots() -> None:
     lock = json.loads(build.LOCK_PATH.read_text())
-    for relpath in ("extension/__main__.py", "extension/mcp_server.py"):
+    for relpath in (
+        "extension/__main__.py",
+        "extension/mcp_server.py",
+        "extension/schema/execution-result.v1.schema.json",
+    ):
         assert relpath in build.EXTRA_PRODUCER_FILES
         assert relpath in lock["producer_source_files"]
     # The stdio-MCP sealed invocation has its own per-invocation record.

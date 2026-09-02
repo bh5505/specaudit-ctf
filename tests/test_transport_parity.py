@@ -249,6 +249,8 @@ def test_artifact_dir_handoff_parity(
             "cli": [
                 "--seed",
                 "7",
+                "--arm-ids",
+                "",
                 "--attempt-id",
                 attempt,
                 "--artifact-dir",

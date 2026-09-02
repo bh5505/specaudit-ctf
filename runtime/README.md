@@ -7,7 +7,11 @@ scope of the capability the validator may invoke.
 
 The bundle contains a real CPython 3.11.16 ELF launcher, the exact eager
 standard-library import closure, PyYAML 6.0.3, the complete eagerly imported
-`extension` source closure, and their licenses. The external Agent Wiz binary
+`extension` source closure, and their licenses. Since the stdio-MCP rebuild
+the measured closure is the **union of both sealed invocations** — the CLI
+one-shot (`-S -m extension invoke agent-wiz list_tools {}`) and the X4-VAL
+stdio-MCP server (`-S -m extension.mcp_server`) — with `lock.json` recording
+each invocation's own module names under `invocations`. The external Agent Wiz binary
 is deliberately absent: `list_tools` reads bundled policy/catalog data, while
 `extract`, `visualize`, and `analyze` remain unavailable without that binary.
 
@@ -64,9 +68,14 @@ modes. The tree digest is the cross-language
 Measured on the 2026-08-26 build host with verified inputs already cached:
 offline build wall time was 10.49 s, cold and warm full-tree verification were
 0.271 s and 0.270 s, cold and repeat Mode-A launch were 0.570 s and 0.568 s,
-and the two archive-backed selfcheck was 17.06 s. The resulting launcher,
-tree, and normalized-archive SHA-256 values were respectively
-`bba9c526…8c94`, `6e3c966a…f92e`, and `20d28318…a63`. A 5 s cold startup
+and the two archive-backed selfcheck was 17.06 s. Re-measured 2026-09-01 on
+the WSL Ubuntu 26.04 rebuild host after the stdio-MCP closure landed (96
+producer files): assemble 2.61 s, pack 4.09 s, cold/warm full-tree
+verification 0.197 s / 0.196 s, cold and repeat Mode-A CLI launch 0.484 s /
+0.435 s, cold and repeat sealed stdio-MCP server launch 0.410 s / 0.410 s.
+The resulting launcher, tree, and normalized-archive SHA-256 values are
+respectively `bba9c526…8c94` (unchanged — same locked CPython input),
+`e19780b4…0291`, and `9ed712bf…4fcc`. A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
 by this producer. Re-measure before changing the platform or dependency lock.

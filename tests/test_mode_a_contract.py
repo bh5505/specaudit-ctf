@@ -862,7 +862,11 @@ def test_unsupported_mode_a_platform_fails_before_dispatch(
     tmp_path: Path,
 ) -> None:
     calls = _forbid_invoke(monkeypatch)
-    monkeypatch.setattr("extension.encode.os.name", "nt")
+    # Patch the support probe, not os.name: under Python 3.13+ pathlib picks
+    # the concrete Path flavor from os.name dynamically, so poisoning os.name
+    # makes every later Path() a WindowsPath and crashes on POSIX hosts
+    # before the gate under test is reached.
+    monkeypatch.setattr("extension.encode.mode_a_supported", lambda: False)
     code = invoke_main(
         [
             "invoke",
