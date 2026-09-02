@@ -23,7 +23,7 @@
       "control": "defense-in-depth: identity-to-exposure chain",
       "severity": "high",
       "rationale": "Cross-fixture reasoning: combined with the public-read ACL planted in tf_s3_public_access, an identity holding this policy can read every object in that bucket. Neither finding alone shows the chain; the audit must.",
-      "traces_to": "tf_iam_open Statement[0] (Action/Resource \"*\") chained with tf_s3_public_access bucket-policy Principal \"*\""
+      "traces_to": "tf_iam_open Statement[0] (Action/Resource \"*\") chained with tf_s3_public_access aws_s3_bucket.public_bucket acl = \"public-read\""
     }
   ]
 }

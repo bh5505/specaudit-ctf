@@ -15,9 +15,9 @@ end to end.
 
 - The capability catalog: arms, methodology-only rows, and survey rows.
   A row is coverage information, not a promise of support.
-- Support tiers — `research`, `experimental`, `maintained`, `held` — and
-  what each tier honestly claims. Promotion to `maintained` is an
-  evidence-gated decision, never a bulk edit.
+- Support tiers — `research`, `experimental` (currently empty),
+  `maintained`, `held` — and what each tier honestly claims. Promotion
+  to `maintained` is an evidence-gated decision, never a bulk edit.
 - Envelopes: `capability-manifest.v1` describes a capability before
   dispatch; `execution-result.v1` reports what actually happened, with
   `complete` / `degraded` / `failed` as the only outcome states. `ok` is

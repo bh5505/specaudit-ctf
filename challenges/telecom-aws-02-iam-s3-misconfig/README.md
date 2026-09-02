@@ -25,8 +25,8 @@ seed, planted violations only.
    `Resource` wildcard are two separate control violations, not one —
    and write, for each, what an attacker gains and what the correct
    boundary would be (`iam-boundary.md`). Then reason across fixtures:
-   what does this identity grant imply when combined with the public
-   bucket policy planted in `tf_s3_public_access` (challenge 01's
+   what does this identity grant imply when combined with the
+   `public-read` ACL planted in `tf_s3_public_access` (challenge 01's
    fixture)? The chain is the audit insight; neither fixture shows it
    alone.
 

@@ -22,8 +22,11 @@ survey tiers. The point of the objective is the reading discipline:
 `describe agent-wiz` shows the arm row: `list_tools` is the maintained
 read-tier action; `extract` / `visualize` are path-contained local
 reads; `analyze` is egress-gated. Invoking
-`invoke agent-wiz list_tools {}` returns a `complete` envelope with an
-`agentwiz-tools.json` artifact. In `manifest-vs-result.md` the interesting
+`invoke agent-wiz list_tools {}` returns a `complete` envelope whose
+`artifacts` claim the tool enumeration the action produces; with
+`--artifact-dir` the claimed bytes land as digest-named
+(`sha256-<hex>`) files you can re-hash yourself. In
+`manifest-vs-result.md` the interesting
 split is: capability id, action, and side-effect class are claims you
 verified from both sides; the attempt id, artifact digests, and the
 budget/cleanup sections are observable *only* in the result envelope —
