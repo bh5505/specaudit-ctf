@@ -13,6 +13,14 @@ from typing import Any
 import jsonschema
 import pytest
 
+# Windows hosts: the seven admission-contract tests that assert a specific
+# path error (absolute / does-not-exist / not-a-symlink / not-a-directory /
+# must-be-empty) pass only once the Mode-A admission-reorder commit lands
+# (agents/20260901-p1-mcp-bundle-surface; it is producer-locked and rides the
+# locked-bundle rebuild PR). Before that reorder, the Unix-only gate shadows
+# the path error on Windows -- those failures are the stacking signal, not
+# regressions in this packet.
+
 from extension.__main__ import main as invoke_main
 from extension.contract import Result
 from extension.encode import (
