@@ -1,0 +1,32 @@
+{
+  "track": "telecom-aws-02-iam-s3-misconfig",
+  "seed": 123,
+  "fixtures": [
+    "tf_iam_open",
+    "tf_s3_public_access (cross-fixture trace only, challenge 01's fixture)"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-iam-wildcard-action",
+      "control": "least-privilege: action scope",
+      "severity": "critical",
+      "rationale": "The policy statement allows Action \"*\": every action in the account is grantable through this policy, so any holder can escalate beyond any intended boundary.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action"
+    },
+    {
+      "finding_key": "demo-iam-wildcard-resource",
+      "control": "least-privilege: resource containment",
+      "severity": "high",
+      "rationale": "The statement applies to Resource \"*\": the grant is not contained to any resource boundary, so action scope aside, no scoping defense remains.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Resource"
+    },
+    {
+      "finding_key": "demo-iam-to-exposure-chain",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "Cross-fixture reasoning: combined with the public-read ACL planted in tf_s3_public_access, an identity holding this policy can read every object in that bucket. Neither finding alone shows the chain; the audit must.",
+      "traces_to": "tf_iam_open Statement[0] (Action/Resource \"*\") chained with tf_s3_public_access aws_s3_bucket.public_bucket acl = \"public-read\""
+    }
+  ]
+}
