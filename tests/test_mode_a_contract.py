@@ -13,9 +13,18 @@ from typing import Any
 import jsonschema
 import pytest
 
+# Windows hosts: the seven admission-contract tests that assert a specific
+# path error (absolute / does-not-exist / not-a-symlink / not-a-directory /
+# must-be-empty) pass only once the Mode-A admission-reorder commit lands
+# (agents/20260901-p1-mcp-bundle-surface; it is producer-locked and rides the
+# locked-bundle rebuild PR). Before that reorder, the Unix-only gate shadows
+# the path error on Windows -- those failures are the stacking signal, not
+# regressions in this packet.
+
 from extension.__main__ import main as invoke_main
 from extension.contract import Result
 from extension.encode import (
+    mode_a_supported,
     ArtifactHandoffError,
     artifact_filename,
     bind_artifact_dir,
@@ -165,6 +174,11 @@ def test_invalid_attempt_id_shapes_fail_closed(
     assert capsys.readouterr().out == ""
 
 
+@pytest.mark.skipif(
+    not mode_a_supported(),
+    reason="Mode A custody writes are Unix-only (dirfd-bound 0600 digest "
+    "files); the Windows host contract is fail-before-dispatch",
+)
 def test_artifact_bytes_hash_to_envelope_digest(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -364,6 +378,11 @@ def test_non_empty_artifact_dir_rejected_before_dispatch(
     assert list(tmp_path.iterdir()) == [planted]
 
 
+@pytest.mark.skipif(
+    not mode_a_supported(),
+    reason="Mode A custody writes are Unix-only (dirfd-bound 0600 digest "
+    "files); the Windows host contract is fail-before-dispatch",
+)
 def test_exclusive_collision_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -528,6 +547,11 @@ def test_forged_profile_is_not_manifest_authority() -> None:
         encode_capability_manifest(forged)
 
 
+@pytest.mark.skipif(
+    not mode_a_supported(),
+    reason="Mode A custody writes are Unix-only (dirfd-bound 0600 digest "
+    "files); the Windows host contract is fail-before-dispatch",
+)
 def test_range_echoes_attempt_id_and_writes_artifact(
     no_curated_tools: None,
     capsys: pytest.CaptureFixture[str],
@@ -614,6 +638,11 @@ def test_range_mode_b_omits_attempt_id(
     assert code == 1
 
 
+@pytest.mark.skipif(
+    not mode_a_supported(),
+    reason="Mode A custody writes are Unix-only (dirfd-bound 0600 digest "
+    "files); the Windows host contract is fail-before-dispatch",
+)
 def test_range_complete_encoder_artifact_bytes_match_digest(tmp_path: Path) -> None:
     inner = run_range(arm_ids=())
     sink = bind_artifact_dir(str(tmp_path), attempt_id=ATTEMPT_ID)
@@ -644,6 +673,11 @@ def test_range_complete_encoder_artifact_bytes_match_digest(tmp_path: Path) -> N
     assert info.st_mode & 0o777 == 0o600
 
 
+@pytest.mark.skipif(
+    not mode_a_supported(),
+    reason="Mode A custody writes are Unix-only (dirfd-bound 0600 digest "
+    "files); the Windows host contract is fail-before-dispatch",
+)
 def test_range_exclusive_collision_fails_closed(tmp_path: Path) -> None:
     inner = run_range(arm_ids=())
     blob = _canonical_bytes(dict(inner))
@@ -722,6 +756,11 @@ def test_range_non_empty_artifact_dir_rejected_before_execution(
     assert (tmp_path / "stale").read_text(encoding="utf-8") == "nope\n"
 
 
+@pytest.mark.skipif(
+    not mode_a_supported(),
+    reason="Mode A custody writes are Unix-only (dirfd-bound 0600 digest "
+    "files); the Windows host contract is fail-before-dispatch",
+)
 def test_artifact_dir_replacement_after_admission_does_not_redirect(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -772,6 +811,11 @@ def test_artifact_dir_replacement_after_admission_does_not_redirect(
     assert parsed.result.artifacts[0].digest == digest
 
 
+@pytest.mark.skipif(
+    not mode_a_supported(),
+    reason="Mode A custody writes are Unix-only (dirfd-bound 0600 digest "
+    "files); the Windows host contract is fail-before-dispatch",
+)
 def test_successful_handoff_writes_exactly_one_regular_0600_digest_file(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -813,6 +857,11 @@ def test_successful_handoff_writes_exactly_one_regular_0600_digest_file(
     assert parsed.result.artifacts[0].digest == digest
 
 
+@pytest.mark.skipif(
+    not mode_a_supported(),
+    reason="Mode A custody writes are Unix-only (dirfd-bound 0600 digest "
+    "files); the Windows host contract is fail-before-dispatch",
+)
 def test_handoff_failure_clears_artifact_claims_unowned_evidence(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
