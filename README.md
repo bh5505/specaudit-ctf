@@ -97,27 +97,34 @@ authoritative per-action safety, scope, side-effect, budget, cleanup, and
 tool-version metadata.
 
 Dispatch-class admission (2026-09-01, continued 2026-09-02) adds exactly
-six scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
-`zaproxy.spider_scan`, `zgrab2.scan`, `wapiti.scan`, `zdns.lookup` —
-carrying honest manifest truth: safety class **R1**, declared side
-effects (`subprocess`+`network-egress` for the CLI arms;
-`network-egress` for the ZAP API), `default_off` with `approval_ref`
-naming the operator's `*_DISPATCH_SCOPE` gate and `roe_ref` naming the
-dispatch doctrine, and `synthetic_only: false` (the operator arms a real
-lab target). Admission is metadata, not authority: each arm's own scope
-gate, audit line, and stamp remain the enforcement point, and an unarmed
-or out-of-scope dispatch is a typed evaluated failure — never an
-all-clear. `wapiti` has no read-only mode upstream, so `wapiti.scan` is
-that arm's whole admitted surface; `zdns.lookup` likewise — live
-resolution is its entire surface. `zgrab2.scan` joins its existing
-`list_tools`/`list_modules` reads as the arm's active sibling.
+nine scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
+`zaproxy.spider_scan`, `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`,
+`pyrit.scan`, `routersploit.run`, `osmedeus.scan` — carrying honest
+manifest truth: safety class **R1**, declared side effects
+(`subprocess`+`network-egress` for the CLI arms; `network-egress` for
+the ZAP API), `default_off` with `approval_ref` naming the operator's
+`*_DISPATCH_SCOPE` gate and `roe_ref` naming the dispatch doctrine, and
+`synthetic_only: false` (the operator arms a real lab target).
+Admission is metadata, not authority: each arm's own scope gate, audit
+line, and stamp remain the enforcement point, and an unarmed or
+out-of-scope dispatch is a typed evaluated failure — never an
+all-clear. Three admitted actions deserve their caveats read aloud:
+`pyrit.scan` spends model tokens on the operator-configured endpoints
+(the manifest's `network-egress` names the transport, not the spend);
+`routersploit.run` **always executes the module** upstream — there is
+no check-only path; `osmedeus.scan` composes many external tools whose
+egress is not bounded by the named target (the operator arming the
+scope accepts that composite egress). `wapiti` and `zdns` have no
+read-only mode upstream — their dispatch action is the arm's whole
+surface; `sniper` stays deliberately unadmitted (root-only community
+binary, phones home when armed, unbounded sub-tool egress).
 
 Unknown ids, unmanifested actions, methodology-only rows, heads, held arms,
 non-curated arms, and uninstalled curated arms are hard errors. Do not invent
 a fallback. `list` / `describe` include `tier`.
 
 `invoke <id> list_tools` returns static JSON (no binary spawn) on
-non-held surfaces that implement it (the nine lifted CLIs). Catalog
+non-held surfaces that implement it (the ten lifted CLIs). Catalog
 `invoke` of held HTTP MCP rows (`burp-mcp`, `semgrep-mcp`,
 `prowler-mcp`, `google-mcp-security`, `metasploit-mcp`) is refused
 even if an endpoint is configured; handler-level `list_tools` is not
@@ -288,8 +295,14 @@ What Kali gives you out of the box (default amd64 image):
 first-class DAST lane install `zaproxy` (`sudo apt install zaproxy`)
 and start ZAP with its API enabled, then point `ZAP_API_ENDPOINT` at
 it. `zgrab2` is not packaged by Kali — install it separately or leave
-the row dark. Every dispatch-class action still requires its explicit
-`*_DISPATCH_SCOPE`; installing a binary never arms anything by itself.
+the row dark. Among the dispatch-admitted CLI arms, `wapiti` and
+`routersploit` ship in Kali's tool metapackages; `zdns` and `osmedeus`
+are not packaged (install separately). One naming trap: Kali once
+shipped an unrelated WPA-PSK cracker also called `pyrit` — the AI
+red-team framework here is Microsoft's PyRIT (`pyrit_scan`, installed
+as a Python package), not that tool. Every dispatch-class action still
+requires its explicit `*_DISPATCH_SCOPE`; installing a binary never
+arms anything by itself.
 
 ## Dispatch doctrine
 

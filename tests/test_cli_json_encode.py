@@ -370,6 +370,9 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
         "zgrab2.scan",
         "wapiti.scan",
         "zdns.lookup",
+        "pyrit.scan",
+        "routersploit.run",
+        "osmedeus.scan",
     }
     for capability_id, profile in INVOKE_PROFILES.items():
         assert capability_id == f"{profile.arm_id}.{profile.action}"

@@ -159,7 +159,7 @@ entries:
     protocols: [cli]
     curated: true
     tier: research
-    notes: Multi-turn generative-AI red-team framework. Curated CLI arm wrapping first-party pyrit_scan only. list_scenarios is the read tier; scan is gated by PYRIT_DISPATCH_SCOPE. Requires operator PyRIT config. CoPyRIT GUI is out of scope.
+    notes: Multi-turn generative-AI red-team framework. Curated CLI arm wrapping first-party pyrit_scan only. list_scenarios is the read tier; scan is gated by PYRIT_DISPATCH_SCOPE and spends model tokens on the operator-configured endpoints. Requires operator PyRIT config. CoPyRIT GUI is out of scope.
 
   - id: mitre-atlas
     kind: methodology-only

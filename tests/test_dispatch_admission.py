@@ -42,6 +42,9 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         "zgrab2.scan",
         "wapiti.scan",
         "zdns.lookup",
+        "pyrit.scan",
+        "routersploit.run",
+        "osmedeus.scan",
     }
     admitted = {
         capability_id
@@ -55,12 +58,15 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
     assert profile.default_off is True and profile.synthetic_only is False
     assert profile.approval_ref == "operator://dispatch-scope/NMAP_DISPATCH_SCOPE"
     assert profile.roe_ref == "doc://README#dispatch-doctrine"
-    # 2026-09-02 continuation wave: same honest truth, timeouts mirroring
+    # 2026-09-02 continuation waves: same honest truth, timeouts mirroring
     # each arm's policy TIMEOUT_SECONDS.
     for capability_id, scope_env, timeout_ms in (
         ("zgrab2.scan", "ZGRAB2_DISPATCH_SCOPE", 60_000),
         ("wapiti.scan", "WAPITI_DISPATCH_SCOPE", 600_000),
         ("zdns.lookup", "ZDNS_DISPATCH_SCOPE", 60_000),
+        ("pyrit.scan", "PYRIT_DISPATCH_SCOPE", 600_000),
+        ("routersploit.run", "ROUTERSPLOIT_DISPATCH_SCOPE", 120_000),
+        ("osmedeus.scan", "OSMEDEUS_DISPATCH_SCOPE", 600_000),
     ):
         wave = INVOKE_PROFILES[capability_id]
         assert wave.safety_class == "R1"
@@ -239,6 +245,137 @@ def test_zdns_lookup_armed_completes(
     assert outcome.envelope["capability_id"] == "zdns.lookup"
 
 
+def test_pyrit_scan_unarmed_is_an_evaluated_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(
+        "PYRIT_BIN", str(_fake_binary(tmp_path, "print('x')\n", stem="pyrit"))
+    )
+    monkeypatch.delenv("PYRIT_DISPATCH_SCOPE", raising=False)
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="pyrit",
+        action="scan",
+        args={"scenario": "airt.cyber", "target": "lab.example.com"},
+    )
+    assert outcome.contract_error is None
+    assert outcome.exit_code == 1
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "failed"
+    assert outcome.envelope["capability_id"] == "pyrit.scan"
+    assert "PYRIT_DISPATCH_SCOPE" in (outcome.stderr_line or "")
+    assert "pyrit.scan" in (outcome.stderr_line or "")
+
+
+def test_pyrit_scan_armed_completes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    body = "import json, sys\nprint(json.dumps({'argv': sys.argv[1:]}))\n"
+    monkeypatch.setenv("PYRIT_BIN", str(_fake_binary(tmp_path, body, stem="pyrit")))
+    monkeypatch.setenv("PYRIT_DISPATCH_SCOPE", "lab.example.com")
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="pyrit",
+        action="scan",
+        args={"scenario": "airt.cyber", "target": "lab.example.com"},
+    )
+    assert outcome.exit_code == 0
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "complete"
+    assert outcome.envelope["capability_id"] == "pyrit.scan"
+
+
+def test_routersploit_run_unarmed_is_an_evaluated_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(
+        "ROUTERSPLOIT_BIN",
+        str(_fake_binary(tmp_path, "print('x')\n", stem="routersploit")),
+    )
+    monkeypatch.delenv("ROUTERSPLOIT_DISPATCH_SCOPE", raising=False)
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="routersploit",
+        action="run",
+        args={
+            "module": "scanners/routers/http_basic_brute",
+            "target": "10.10.0.5",
+        },
+    )
+    assert outcome.contract_error is None
+    assert outcome.exit_code == 1
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "failed"
+    assert outcome.envelope["capability_id"] == "routersploit.run"
+    assert "ROUTERSPLOIT_DISPATCH_SCOPE" in (outcome.stderr_line or "")
+    assert "routersploit.run" in (outcome.stderr_line or "")
+
+
+def test_routersploit_run_armed_completes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    body = "import json, sys\nprint(json.dumps({'argv': sys.argv[1:]}))\n"
+    monkeypatch.setenv(
+        "ROUTERSPLOIT_BIN", str(_fake_binary(tmp_path, body, stem="routersploit"))
+    )
+    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "10.10.0.0/16")
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="routersploit",
+        action="run",
+        args={
+            "module": "scanners/routers/http_basic_brute",
+            "target": "10.10.0.5",
+        },
+    )
+    assert outcome.exit_code == 0
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "complete"
+    assert outcome.envelope["capability_id"] == "routersploit.run"
+
+
+def test_osmedeus_scan_unarmed_is_an_evaluated_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(
+        "OSMEDEUS_BIN", str(_fake_binary(tmp_path, "print('x')\n", stem="osmedeus"))
+    )
+    monkeypatch.delenv("OSMEDEUS_DISPATCH_SCOPE", raising=False)
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="osmedeus",
+        action="scan",
+        args={"target": "lab.example.com"},
+    )
+    assert outcome.contract_error is None
+    assert outcome.exit_code == 1
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "failed"
+    assert outcome.envelope["capability_id"] == "osmedeus.scan"
+    assert "OSMEDEUS_DISPATCH_SCOPE" in (outcome.stderr_line or "")
+    assert "osmedeus.scan" in (outcome.stderr_line or "")
+
+
+def test_osmedeus_scan_armed_completes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    body = "import json, sys\nprint(json.dumps({'argv': sys.argv[1:]}))\n"
+    monkeypatch.setenv(
+        "OSMEDEUS_BIN", str(_fake_binary(tmp_path, body, stem="osmedeus"))
+    )
+    monkeypatch.setenv("OSMEDEUS_DISPATCH_SCOPE", "lab.example.com")
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="osmedeus",
+        action="scan",
+        args={"target": "lab.example.com"},
+    )
+    assert outcome.exit_code == 0
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "complete"
+    assert outcome.envelope["capability_id"] == "osmedeus.scan"
+
+
 def test_dispatch_timeouts_mirror_arm_policy() -> None:
     # Admission metadata must not drift from arm reality: each dispatch
     # profile's timeout mirrors its arm's policy timeout (zaproxy uses
@@ -248,6 +385,9 @@ def test_dispatch_timeouts_mirror_arm_policy() -> None:
     from extension.arms.zap.policy import SCAN_TIMEOUT as ZAP_SCAN_T
     from extension.arms.zdns.policy import TIMEOUT_SECONDS as ZDNS_T
     from extension.arms.zgrab2.policy import TIMEOUT_SECONDS as ZGRAB2_T
+    from extension.arms.pyrit.policy import TIMEOUT_SECONDS as PYRIT_T
+    from extension.arms.routersploit.policy import TIMEOUT_SECONDS as RSF_T
+    from extension.arms.osmedeus.policy import TIMEOUT_SECONDS as OSM_T
 
     expected_ms = {
         "nmap.scan": NMAP_T,
@@ -256,6 +396,9 @@ def test_dispatch_timeouts_mirror_arm_policy() -> None:
         "zgrab2.scan": ZGRAB2_T,
         "wapiti.scan": WAPITI_T,
         "zdns.lookup": ZDNS_T,
+        "pyrit.scan": PYRIT_T,
+        "routersploit.run": RSF_T,
+        "osmedeus.scan": OSM_T,
     }
     for capability_id, seconds in expected_ms.items():
         profile = INVOKE_PROFILES[capability_id]
