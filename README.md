@@ -97,24 +97,30 @@ authoritative per-action safety, scope, side-effect, budget, cleanup, and
 tool-version metadata.
 
 Dispatch-class admission (2026-09-01, continued 2026-09-02) adds exactly
-nine scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
+ten scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
 `zaproxy.spider_scan`, `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`,
-`pyrit.scan`, `routersploit.run`, `osmedeus.scan` — carrying honest
-manifest truth: safety class **R1**, declared side effects
-(`subprocess`+`network-egress` for the CLI arms; `network-egress` for
-the ZAP API), `default_off` with `approval_ref` naming the operator's
-`*_DISPATCH_SCOPE` gate and `roe_ref` naming the dispatch doctrine, and
-`synthetic_only: false` (the operator arms a real lab target).
-Admission is metadata, not authority: each arm's own scope gate, audit
-line, and stamp remain the enforcement point, and an unarmed or
-out-of-scope dispatch is a typed evaluated failure — never an
-all-clear. Three admitted actions deserve their caveats read aloud:
+`pyrit.scan`, `routersploit.run`, `osmedeus.scan`, `page-fetch.fetch` —
+carrying honest manifest truth: safety class **R1**, declared side
+effects (`subprocess`+`network-egress` for the CLI arms;
+`network-egress` for the ZAP API), `default_off` with `approval_ref`
+naming the operator's `*_DISPATCH_SCOPE` gate and `roe_ref` naming the
+dispatch doctrine, and `synthetic_only: false` (the operator arms a real
+lab target). Admission is metadata, not authority: each arm's own scope
+gate, audit line, and stamp remain the enforcement point, and an unarmed
+or out-of-scope dispatch is a typed evaluated failure — never an
+all-clear. Four admitted actions deserve their caveats read aloud:
 `pyrit.scan` spends model tokens on the operator-configured endpoints
 (the manifest's `network-egress` names the transport, not the spend);
 `routersploit.run` **always executes the module** upstream — there is
 no check-only path; `osmedeus.scan` composes many external tools whose
 egress is not bounded by the named target (the operator arming the
-scope accepts that composite egress). `wapiti` and `zdns` have no
+scope accepts that composite egress); `page-fetch.fetch` scope-checks
+**only the initial URL** — redirects, the name's resolution at fetch
+time, and rendering-time subresources are not re-checked, so an armed
+scope must be considered reachable from anything its hosts redirect or
+reference to (including metadata IPs), the fetcher may write browser
+state in its default location, and the Result stamp records the armed
+target, not the effective egress set. `wapiti` and `zdns` have no
 read-only mode upstream — their dispatch action is the arm's whole
 surface; `sniper` stays deliberately unadmitted (root-only community
 binary, phones home when armed, unbounded sub-tool egress).
@@ -132,7 +138,7 @@ reachable through catalog/CLI/MCP invoke. Pyrit scenario discovery is a
 separate `list_scenarios` action, which runs `pyrit_scan
 --list-scenarios`. Original fixed-argv CLIs (checkov, garak,
 mitreattack-python, wapiti, commix, zdns, vuls, stratus-red-team,
-osmedeus) have no `list_tools`; their actions are in `describe` and
+osmedeus, page-fetch) have no `list_tools`; their actions are in `describe` and
 [extension/README.md](extension/README.md).
 
 ## MCP

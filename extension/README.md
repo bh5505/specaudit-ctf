@@ -128,11 +128,19 @@ non-empty artifact directories, and unsupported Mode-A platforms fail
 before execution and may report only on stderr (no result envelope).
 Omit both flags for portable Mode B.
 
-The X2-PUB CLI manifest admits only in-process `list_tools` policy reads for
-`agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `pyrit`,
-`routersploit`, `sniper`, `vvah`, and `zgrab2`. Other actions are refused
-before `Extension.invoke`; no subprocess, network, spend, or mutation action
-may borrow fabricated R0/local-read metadata. Since X4-PUB the stdio MCP
+The X2-PUB CLI manifest admits the in-process `list_tools` policy reads
+for `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `nmap`,
+`pyrit`, `routersploit`, `sniper`, `vvah`, and `zgrab2`, plus — since
+the 2026-09-01/02 dispatch-class admissions — the scope-gated R1
+profiles (`nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan`,
+`zgrab2.scan`, `wapiti.scan`, `zdns.lookup`, `pyrit.scan`,
+`routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`) with honest
+manifest truth: default-off behind the arm's `*_DISPATCH_SCOPE`,
+`synthetic_only: false`, declared side effects (`subprocess`+
+`network-egress` for the CLI arms; `network-egress` only for the ZAP
+API profiles). Any action without an admitted profile is still refused before
+`Extension.invoke`; nothing may borrow fabricated R0/local-read
+metadata. Since X4-PUB the stdio MCP
 `invoke` tool enforces the same registry through the shared
 `extension.dispatch` and returns the same `execution-result.v1`
 envelope as the CLI (timestamps differ per run); the direct library
@@ -246,7 +254,11 @@ One-liners. Full notes live on the catalog row (`describe <id>`).
 - `zdns` — live resolution is the whole surface.
 - `page-fetch` — http(s) URL with a hostname, then host-scope via
   `PAGE_FETCH_DISPATCH_SCOPE`. Private, metadata, and localhost hosts
-  are allowed if in scope; redirects are not re-checked.
+  are allowed if in scope; only the initial URL is scope-checked —
+  redirects, name resolution at fetch time, and rendering subresources
+  are not re-checked (treat the scope as reachable from anything its
+  hosts redirect or reference to, including metadata IPs), and the
+  fetcher may write browser state in its default location.
 - `caldera` — GET reads unarmed; scheduling an operation is dispatch.
 - `google-mcp-security` — lookups only.
 - `metasploit-mcp` — execution tools are dispatch; session commands cannot prove the session host.

@@ -48,9 +48,13 @@ def resolve_binary() -> str | None:
 def argv_for(binary: str, action: str, payload: dict) -> list[str] | None:
     """Fixed argv per action; no caller-controlled fragment.
 
-    Residual risk: only the initial URL is scope-checked; the upstream
-    binary may follow redirects or same-host chains that are not
-    re-verified. Operators scope accordingly.
+    Scope truth: only the initial URL is scope-checked (host + scheme are
+    the effective control; URI path prefixes are best-effort). Redirect
+    follows, the name's resolution at fetch time, and third-party
+    subresource fetches during rendering are NOT re-checked — an armed
+    scope must be considered reachable from anything its hosts redirect
+    or reference to, including metadata IPs. Private and metadata hosts
+    are allowed only when deliberately scoped.
     """
     target = payload.get("url")
     if not isinstance(target, str) or not target.strip():

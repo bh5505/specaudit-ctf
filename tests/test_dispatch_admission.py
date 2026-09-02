@@ -45,6 +45,7 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         "pyrit.scan",
         "routersploit.run",
         "osmedeus.scan",
+        "page-fetch.fetch",
     }
     admitted = {
         capability_id
@@ -67,6 +68,7 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         ("pyrit.scan", "PYRIT_DISPATCH_SCOPE", 600_000),
         ("routersploit.run", "ROUTERSPLOIT_DISPATCH_SCOPE", 120_000),
         ("osmedeus.scan", "OSMEDEUS_DISPATCH_SCOPE", 600_000),
+        ("page-fetch.fetch", "PAGE_FETCH_DISPATCH_SCOPE", 60_000),
     ):
         wave = INVOKE_PROFILES[capability_id]
         assert wave.safety_class == "R1"
@@ -376,6 +378,49 @@ def test_osmedeus_scan_armed_completes(
     assert outcome.envelope["capability_id"] == "osmedeus.scan"
 
 
+def test_page_fetch_unarmed_is_an_evaluated_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(
+        "PAGE_FETCH_BIN",
+        str(_fake_binary(tmp_path, "print('x')\n", stem="page-fetch")),
+    )
+    monkeypatch.delenv("PAGE_FETCH_DISPATCH_SCOPE", raising=False)
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="page-fetch",
+        action="fetch",
+        args={"url": "http://10.10.0.5/"},
+    )
+    assert outcome.contract_error is None
+    assert outcome.exit_code == 1
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "failed"
+    assert outcome.envelope["capability_id"] == "page-fetch.fetch"
+    assert "PAGE_FETCH_DISPATCH_SCOPE" in (outcome.stderr_line or "")
+    assert "page-fetch.fetch" in (outcome.stderr_line or "")
+
+
+def test_page_fetch_armed_completes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    body = "import json, sys\nprint(json.dumps({'argv': sys.argv[1:]}))\n"
+    monkeypatch.setenv(
+        "PAGE_FETCH_BIN", str(_fake_binary(tmp_path, body, stem="page-fetch"))
+    )
+    monkeypatch.setenv("PAGE_FETCH_DISPATCH_SCOPE", "10.10.0.0/16")
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="page-fetch",
+        action="fetch",
+        args={"url": "http://10.10.0.5/"},
+    )
+    assert outcome.exit_code == 0
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "complete"
+    assert outcome.envelope["capability_id"] == "page-fetch.fetch"
+
+
 def test_dispatch_timeouts_mirror_arm_policy() -> None:
     # Admission metadata must not drift from arm reality: each dispatch
     # profile's timeout mirrors its arm's policy timeout (zaproxy uses
@@ -388,6 +433,7 @@ def test_dispatch_timeouts_mirror_arm_policy() -> None:
     from extension.arms.pyrit.policy import TIMEOUT_SECONDS as PYRIT_T
     from extension.arms.routersploit.policy import TIMEOUT_SECONDS as RSF_T
     from extension.arms.osmedeus.policy import TIMEOUT_SECONDS as OSM_T
+    from extension.arms.pagefetch.policy import TIMEOUT_SECONDS as PF_T
 
     expected_ms = {
         "nmap.scan": NMAP_T,
@@ -399,6 +445,7 @@ def test_dispatch_timeouts_mirror_arm_policy() -> None:
         "pyrit.scan": PYRIT_T,
         "routersploit.run": RSF_T,
         "osmedeus.scan": OSM_T,
+        "page-fetch.fetch": PF_T,
     }
     for capability_id, seconds in expected_ms.items():
         profile = INVOKE_PROFILES[capability_id]

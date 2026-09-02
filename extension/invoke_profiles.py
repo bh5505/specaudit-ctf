@@ -1,10 +1,11 @@
 """Authoritative X2-PUB profiles for the bounded CLI invoke surface.
 
-Only actions listed here may run through ``python -m extension invoke`` while
-X2-PUB is limited to in-process, read-only policy discovery.  In particular,
-the registry intentionally excludes every action that spawns a subprocess,
-touches a caller-selected path, reaches a network, spends model tokens, or
-mutates state.
+Only actions listed here may run through ``python -m extension invoke``:
+in-process, read-only policy discovery (``list_tools``) plus the
+scope-gated dispatch-class actions admitted since 2026-09-01 under the
+honest R1 manifest recipe. Every action that spawns a subprocess,
+reaches a network, spends model tokens, or mutates state still requires
+its own admitted dispatch profile; anything unlisted is refused.
 
 Capability manifests for these profiles are encoded from this registry.
 A child-returned or caller-constructed document is not authority.
@@ -116,6 +117,12 @@ _DISPATCH_PROFILES = (
     ("pyrit", "scan", ("subprocess", "network-egress"), 600_000, "PYRIT_DISPATCH_SCOPE"),
     ("routersploit", "run", ("subprocess", "network-egress"), 120_000, "ROUTERSPLOIT_DISPATCH_SCOPE"),
     ("osmedeus", "scan", ("subprocess", "network-egress"), 600_000, "OSMEDEUS_DISPATCH_SCOPE"),
+    # page-fetch (doc-20 disposition): the redirect caveat rides the
+    # admission — only the initial URL is scope-checked; the fetcher may
+    # follow redirects and render third-party subresources (egress beyond
+    # the named scope, including metadata IPs reachable via redirect) and
+    # may write browser state in its default location.
+    ("page-fetch", "fetch", ("subprocess", "network-egress"), 60_000, "PAGE_FETCH_DISPATCH_SCOPE"),
 )
 
 

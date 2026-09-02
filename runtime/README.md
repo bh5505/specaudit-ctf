@@ -79,7 +79,7 @@ verification 0.197 s / 0.196 s, cold and repeat Mode-A CLI launch 0.484 s /
 0.435 s, cold and repeat sealed stdio-MCP server launch 0.410 s / 0.410 s.
 The resulting launcher, tree, and normalized-archive SHA-256 values are
 respectively `bba9c526…8c94` (unchanged — same locked CPython input),
-`ce79817f…2071`, and `1e56f09c…f40e` (2026-09-02: dispatch admission waves A+B — nine admitted profiles, pyrit spend caveat). A 5 s cold startup
+`e09fef70…2451`, and `68e41710…7d58` (2026-09-02: page-fetch.fetch admission — ten dispatch profiles; catalog-note caveat; registry + X2-PUB docstring repairs). A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
 by this producer. Re-measure before changing the platform or dependency lock.

@@ -344,14 +344,16 @@ def test_unmanifested_dispatch_is_refused_before_extension_invoke(
         raise AssertionError("unmanifested action reached Extension.invoke")
 
     monkeypatch.setattr("extension.__main__.Extension.invoke", forbidden_invoke)
+    # commix.scan is the standing unadmitted example (doc-20 disposition);
+    # page-fetch.fetch joined the admitted set and can no longer play it.
     code = invoke_main(
-        ["invoke", "page-fetch", "fetch", '{"url":"https://example.com"}']
+        ["invoke", "commix", "scan", '{"url":"https://example.com"}']
     )
     payload = _stdout_json(capsys)
     parsed = _assert_execution_result(payload)
     assert calls == []
     assert code == 2
-    assert payload["capability_id"] == "page-fetch.fetch"
+    assert payload["capability_id"] == "commix.scan"
     assert payload["status"] == "failed"
     assert payload["transport_ok"] is False
     assert payload["side_effects"] == ["none"]
@@ -373,6 +375,7 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
         "pyrit.scan",
         "routersploit.run",
         "osmedeus.scan",
+        "page-fetch.fetch",
     }
     for capability_id, profile in INVOKE_PROFILES.items():
         assert capability_id == f"{profile.arm_id}.{profile.action}"
