@@ -236,7 +236,7 @@ without any dispatch.
 PortSwigger's official MCP Server BApp runs on Community Edition for
 proxy history, request sending, Repeater, and codecs (scanner-issues
 and Collaborator tools are Pro-gated), but this suite's HTTP MCP
-client transport stays held pending the OAuth resource/token gate —
+client transport stays held pending the OAuth resource and audience-binding gate —
 see the row notes in `extension/coverage.yaml`. Community Edition has
 no usable built-in REST API and no project-file persistence, so the
 honest CE automation story is the official BApp above; until the
