@@ -486,8 +486,10 @@ def test_agent_wiz_golden_matches_encoder_and_is_admitted() -> None:
 
 
 def test_all_nine_manifests_are_deterministic_and_admitted() -> None:
-    # 10 since the nmap arm joined the static policy profiles.
-    assert len(INVOKE_PROFILES) == 10
+    # 13 since dispatch-class admission (2026-09-01): 10 static read
+    # profiles (nmap joined with its arm) + 3 scope-gated dispatch
+    # profiles (nmap.scan, zaproxy.ascan_scan, zaproxy.spider_scan).
+    assert len(INVOKE_PROFILES) == 13
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -497,6 +499,20 @@ def test_all_nine_manifests_are_deterministic_and_admitted() -> None:
         if profile.tier == "maintained"
     )
     assert maintained == ["agent-wiz.list_tools"]
+    for capability_id, profile in INVOKE_PROFILES.items():
+        if profile.action == "list_tools":
+            assert profile.safety_class == "R0"
+            assert profile.side_effects == ("local-read",)
+            assert profile.synthetic_only is True
+        else:
+            # Dispatch-class admission: R1, declared side effects,
+            # default-off, and NOT synthetic-only (the operator arms a
+            # real lab target through <ARM>_DISPATCH_SCOPE).
+            assert profile.safety_class == "R1"
+            assert profile.side_effects
+            assert profile.default_off is True
+            assert profile.synthetic_only is False
+            assert profile.tier == "research"
     first = encode_capability_manifests()
     second = encode_capability_manifests()
     assert first == second
@@ -519,10 +535,16 @@ def test_all_nine_manifests_are_deterministic_and_admitted() -> None:
         if profile.arm_id == "agent-wiz":
             assert payload["tier"] == "maintained"
         assert payload["kind"] == "arm"
-        assert payload["safety_class"] == "R0"
-        assert payload["side_effects"] == ["local-read"]
         assert payload["default_off"] is True
-        assert payload["synthetic_only"] is True
+        if profile.action == "list_tools":
+            assert payload["safety_class"] == "R0"
+            assert payload["side_effects"] == ["local-read"]
+            assert payload["synthetic_only"] is True
+        else:
+            # Dispatch-class manifests carry their honest R1 truth.
+            assert payload["safety_class"] == "R1"
+            assert payload["side_effects"] == list(profile.side_effects)
+            assert payload["synthetic_only"] is False
         assert payload["authorized_scope"] == list(profile.authorized_scope)
         assert payload["budget"]["timeout_ms"] == profile.timeout_ms
         assert payload["budget"]["max_output_bytes"] == profile.max_output_bytes

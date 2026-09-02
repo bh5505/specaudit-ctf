@@ -41,6 +41,12 @@ class InvokeProfile:
     # Support tier carried into the capability manifest. X5-PROMOTE: the
     # agent-wiz read tier is the catalog's only maintained capability.
     tier: str = "research"
+    # Manifest truth carried per profile. Read profiles are static metadata
+    # (default-off in the validator sense, synthetic-only by construction).
+    # Dispatch profiles stay default-off (the <ARM>_DISPATCH_SCOPE gate)
+    # but are NOT synthetic-only: the operator arms a real lab target.
+    default_off: bool = True
+    synthetic_only: bool = True
 
 
 _STATIC_POLICY_ARMS = (
@@ -86,11 +92,69 @@ def _policy_profile(arm_id: str, tier: str = "research") -> InvokeProfile:
 _POLICY_ARM_TIERS = {arm_id: "research" for arm_id in _STATIC_POLICY_ARMS}
 _POLICY_ARM_TIERS["agent-wiz"] = "maintained"
 
+# Dispatch-class admission (2026-09-01 operator directive: expand the MVP
+# functional CTF tools). These profiles carry the honest manifest truth for
+# scope-gated live actions: safety class R1, declared side effects,
+# default-off (the arm's <ARM>_DISPATCH_SCOPE gate refuses until the
+# operator names the target), NOT synthetic-only. The arms' own refusals,
+# audit lines, and stamps remain the enforcement point; the profile is the
+# admission + metadata contract.
+_DISPATCH_PROFILES = (
+    # (arm_id, action, side_effects, timeout_ms, scope_env)
+    ("nmap", "scan", ("subprocess", "network-egress"), 180_000, "NMAP_DISPATCH_SCOPE"),
+    ("zaproxy", "ascan_scan", ("network-egress",), 120_000, "ZAP_DISPATCH_SCOPE"),
+    ("zaproxy", "spider_scan", ("network-egress",), 120_000, "ZAP_DISPATCH_SCOPE"),
+)
+
+
+def _dispatch_profile(
+    arm_id: str,
+    action: str,
+    side_effects: tuple[str, ...],
+    timeout_ms: int,
+    scope_env: str,
+    tier: str = "research",
+) -> InvokeProfile:
+    capability_id = f"{arm_id}.{action}"
+    scope = (f"policy://extension/arms/{arm_id}",)
+    return InvokeProfile(
+        arm_id=arm_id,
+        action=action,
+        capability_id=capability_id,
+        tool_name=PACKAGE_NAME,
+        tool_version=PACKAGE_VERSION,
+        authorized_scope=scope,
+        touched_scope=scope,
+        safety_class="R1",
+        side_effects=side_effects,
+        timeout_ms=timeout_ms,
+        max_output_bytes=1_048_576,
+        max_tool_steps=1,
+        max_spend=None,
+        cleanup_required=False,
+        # The manifest names its authorities honestly: the operator's
+        # arming decision (the scope env gate) is the approval; the
+        # repository's dispatch doctrine is the rules of engagement. The
+        # arm's runtime scope check enforces both.
+        approval_ref=f"operator://dispatch-scope/{scope_env}",
+        roe_ref="doc://README#dispatch-doctrine",
+        tier=tier,
+        default_off=True,
+        synthetic_only=False,
+    )
+
+
 INVOKE_PROFILES = {
     profile.capability_id: profile
     for profile in (
-        _policy_profile(arm_id, tier)
-        for arm_id, tier in _POLICY_ARM_TIERS.items()
+        *(
+            _policy_profile(arm_id, tier)
+            for arm_id, tier in _POLICY_ARM_TIERS.items()
+        ),
+        *(
+            _dispatch_profile(arm_id, action, side_effects, timeout_ms, scope_env)
+            for arm_id, action, side_effects, timeout_ms, scope_env in _DISPATCH_PROFILES
+        ),
     )
 }
 INVOKE_CAPABILITY_IDS = frozenset(INVOKE_PROFILES)
