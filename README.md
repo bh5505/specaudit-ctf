@@ -301,8 +301,10 @@ What Kali gives you out of the box (default amd64 image):
 `burpsuite` (Community-grade) ships in `kali-tools-top10`. For the
 first-class DAST lane install `zaproxy` (`sudo apt install zaproxy`)
 and start ZAP with its API enabled, then point `ZAP_API_ENDPOINT` at
-it. `zgrab2` is not packaged by Kali — install it separately or leave
-the row dark. Among the dispatch-admitted CLI arms, `wapiti` and
+it. `zgrab2` is not packaged by Kali — install it separately
+(`lab/install-zgrab2.sh` builds a pinned upstream tag into the dev
+instance) or leave the row dark. Among the dispatch-admitted CLI
+arms, `wapiti` and
 `routersploit` ship in Kali's tool metapackages; `zdns` and `osmedeus`
 are not packaged (install separately). One naming trap: Kali once
 shipped an unrelated WPA-PSK cracker also called `pyrit` — the AI
