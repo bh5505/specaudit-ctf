@@ -8,6 +8,12 @@ a PATH containing no binaries. Tests that need a binary point *_BIN at
 a fixture (absolute path) or set their own PATH, exactly as the suite
 always has; a scanner-equipped host now behaves like the validated
 scanner-less hosts.
+
+Two deliberate consequences: subprocesses spawned with an explicit
+``env=`` override the fixture's PATH by design (do not "simplify" those
+sites away), and test-built runtime manifests record an "unknown"
+source revision because runtime.build's bare ``git`` lookup no longer
+resolves — independent of ambient repo state, which is the point.
 """
 
 from __future__ import annotations
