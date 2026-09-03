@@ -13,10 +13,12 @@
 # cloned from this tar shares them — acceptable for a lab target, never
 # for anything real.
 set -euo pipefail
+# Keep Git Bash from rewriting POSIX-looking paths in wsl.exe argv.
+export MSYS_NO_PATHCONV=1
 
 GOLDEN="${LAB_GOLDEN_NAME:-Debian}"
-TAR="${LAB_TAR:-$(cygpath -w "$PWD/lab/ctf-target-base.tar")}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+TAR="${LAB_TAR:-$(cygpath -w "$HERE/ctf-target-base.tar")}"
 
 echo "[lab] configuring golden distro: $GOLDEN"
 wsl -d "$GOLDEN" -u root -e bash -seu <<'EOF'

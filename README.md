@@ -310,12 +310,13 @@ as a Python package), not that tool. Every dispatch-class action still
 requires its explicit `*_DISPATCH_SCOPE`; installing a binary never
 arms anything by itself.
 
-Measured on a real Kali instance (WSL `kali-linux` 2026.2, 2026-09-03):
-the full suite passes hermetically (the test runner strips PATH, so a
-scanner-equipped host behaves like a scanner-less one — see
-[lab/README.md](lab/README.md)); `python -m extension availability`
-reports `is_kali: true` with the nmap/wapiti/routersploit/commix rows
-resolved from PATH; and against a spawned lab target, armed
+Measured on a real Kali instance (WSL `kali-linux` 2026.2, 2026-09-03,
+default lab package set): the full suite passes hermetically (the test
+runner strips PATH, so a scanner-equipped host behaves like a
+scanner-less one — see [lab/README.md](lab/README.md)); `python -m
+extension availability` reports `is_kali: true` with the
+nmap/wapiti/routersploit/commix rows resolved from PATH; and against a
+spawned lab target, armed
 `nmap.scan` and `wapiti.scan` invocations returned `complete`
 execution-result envelopes with the `[dispatch]` audit line on stderr
 and digested artifacts — end-to-end proof of the gate → audit →

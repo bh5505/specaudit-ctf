@@ -12,21 +12,27 @@ set -euo pipefail
 
 NAME="${LAB_TARGET_NAME:-ctf-target}"
 TAR="${LAB_TAR:-$(cygpath -w "$(dirname "$0")/ctf-target-base.tar")}"
-STATE="${LAB_STATE_DIR:-$(cygpath -w "$(dirname "$0")/instances/$NAME")}"
+HERE="$(cd "$(dirname "$0")" && pwd)"
+STATE="${LAB_STATE_DIR:-$(cygpath -w "$HERE/instances/$NAME")}"
 
-if wsl -l -q 2>/dev/null | tr -d '\0' | grep -qx "$NAME"; then
+if wsl -l -q 2>/dev/null | tr -d '\0\r' | grep -qx "$NAME"; then
   echo "[lab] instance '$NAME' already registered (teardown first for a fresh one)" >&2
   exit 1
 fi
 
 echo "[lab] importing $NAME from $TAR"
-STATE_POSIX="$(cygpath -u "$STATE")"
-mkdir -p "$STATE_POSIX"
+mkdir -p "$(cygpath -u "$STATE")"
 wsl --import "$NAME" "$STATE" "$TAR" --version 2
 
 echo "[lab] starting services"
 IP=$(MSYS_NO_PATHCONV=1 wsl -d "$NAME" -u root -e /usr/local/lab/start-services.sh \
-  | tr -d '\0' | tail -n1 | awk '{print $1}')
+  | tr -d '\0\r' | tail -n1 | awk '{print $1}')
+if [[ -z "${IP//[[:space:]]/}" ]]; then
+  echo "[lab] services did not report an IP; tearing the broken instance down" >&2
+  wsl --unregister "$NAME" >/dev/null 2>&1 || true
+  rm -rf -- "$(cygpath -u "$STATE")"
+  exit 1
+fi
 
 cat <<EOF
 

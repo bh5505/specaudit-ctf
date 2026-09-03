@@ -20,12 +20,13 @@ set -euo pipefail
 export MSYS_NO_PATHCONV=1
 
 NAME="${LAB_KALI_NAME:-kali-linux}"
+# Default clone URL is upstream; override for forks/mirrors.
 REPO="${LAB_KALI_REPO:-https://github.com/bh5505/specaudit-ctf.git}"
 HOME_DIR="${LAB_KALI_HOME:-/root/ctf}"
 VENV="${LAB_KALI_VENV:-/opt/ctf}"
 PKGS="${LAB_KALI_PKGS:-python3-venv python3-pip git nmap wapiti routersploit commix}"
 
-if ! wsl -l -q 2>/dev/null | tr -d '\0' | grep -qx "$NAME"; then
+if ! wsl -l -q 2>/dev/null | tr -d '\0\r' | grep -qx "$NAME"; then
   echo "[lab] installing WSL distro: $NAME"
   wsl --install -d "$NAME" --no-launch
 else
@@ -54,11 +55,11 @@ echo "[lab] venv: $VENV   repo: $HOME_DIR"
 EOF
 
 echo "[lab] collecting the test suite (fast validation)"
-wsl -d "$NAME" -u root -e bash -c "cd $HOME_DIR && $VENV/bin/python -m pytest tests/ -q --co -q 2>&1 | grep -E "tests collected|error" | tail -1" | tr -d '\0'
+wsl -d "$NAME" -u root -e bash -c "cd $HOME_DIR && $VENV/bin/python -m pytest tests/ --co -q 2>&1 | grep -E 'tests collected|error' | tail -1" | tr -d '\0\r'
 
 if [[ "${LAB_KALI_FULL_TEST:-0}" == "1" ]]; then
   echo "[lab] running the full suite"
-  wsl -d "$NAME" -u root -e bash -c "cd $HOME_DIR && $VENV/bin/python -m pytest tests/ -q 2>&1 | tail -1" | tr -d '\0'
+  wsl -d "$NAME" -u root -e bash -c "cd $HOME_DIR && $VENV/bin/python -m pytest tests/ -q 2>&1 | tail -1" | tr -d '\0\r'
 fi
 
 cat <<EOF
