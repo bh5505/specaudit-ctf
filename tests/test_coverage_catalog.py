@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -203,9 +204,18 @@ def test_language_bar_on_catalog_ids_and_notes(entries: list[dict]) -> None:
             assert token not in haystack, f"{row['id']} contains banned token"
 
 
+# Resolve at import time: the suite's autouse hermetic-path fixture
+# strips PATH for every test, and git must never come from a
+# test-controlled directory regardless. A checkout without git cannot
+# run the tree walk at all — skip honestly rather than fail opaquely.
+_GIT = shutil.which("git")
+if _GIT is None:
+    pytest.skip("git not available for the language-bar tree walk", allow_module_level=True)
+
+
 def _tracked_text_files() -> list[Path]:
     listed = subprocess.check_output(
-        ["git", "ls-files", "-z"],
+        [_GIT, "ls-files", "-z"],
         cwd=ROOT,
     ).split(b"\0")
     paths: list[Path] = []
