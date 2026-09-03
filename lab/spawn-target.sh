@@ -11,8 +11,8 @@
 set -euo pipefail
 
 NAME="${LAB_TARGET_NAME:-ctf-target}"
-TAR="${LAB_TAR:-$(cygpath -w "$(dirname "$0")/ctf-target-base.tar")}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
+TAR="${LAB_TAR:-$(cygpath -w "$HERE/ctf-target-base.tar")}"
 STATE="${LAB_STATE_DIR:-$(cygpath -w "$HERE/instances/$NAME")}"
 
 if wsl -l -q 2>/dev/null | tr -d '\0\r' | grep -qx "$NAME"; then
@@ -30,7 +30,15 @@ IP=$(MSYS_NO_PATHCONV=1 wsl -d "$NAME" -u root -e /usr/local/lab/start-services.
 if [[ -z "${IP//[[:space:]]/}" ]]; then
   echo "[lab] services did not report an IP; tearing the broken instance down" >&2
   wsl --unregister "$NAME" >/dev/null 2>&1 || true
-  rm -rf -- "$(cygpath -u "$STATE")"
+  _cleanup="$(cygpath -u "$STATE")"
+  # Same refusal as teardown-target.sh: operator foot-gun protection,
+  # not a security boundary (the operator owns this variable).
+  if [[ "$_cleanup" == /*/instances/* ]]; then
+    echo "[lab] removing state dir: $_cleanup"
+    rm -rf -- "$_cleanup"
+  else
+    echo "[lab] NOT removing suspicious state dir: '$_cleanup'" >&2
+  fi
   exit 1
 fi
 
