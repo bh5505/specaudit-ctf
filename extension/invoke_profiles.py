@@ -94,7 +94,7 @@ _POLICY_ARM_TIERS = {arm_id: "research" for arm_id in _STATIC_POLICY_ARMS}
 _POLICY_ARM_TIERS["agent-wiz"] = "maintained"
 
 # Dispatch-class admission (2026-09-01 operator directive: expand the MVP
-# functional CTF tools; 2026-09-02 continuation wave). These profiles carry
+# functional CTF tools; 2026-09-02/03 continuation waves). These profiles carry
 # the honest manifest truth for scope-gated live actions: safety class R1,
 # declared side effects, default-off (the arm's <ARM>_DISPATCH_SCOPE gate
 # refuses until the operator names the target), NOT synthetic-only. The

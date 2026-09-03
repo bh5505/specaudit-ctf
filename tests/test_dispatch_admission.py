@@ -1,5 +1,5 @@
 """Dispatch-class invoke admission: scope-gated profiles (2026-09-01 wave
-plus the 2026-09-02 continuation).
+plus the 2026-09-02/03 continuations).
 
 Admission is the manifest/metadata event; the arms' own scope gates
 remain the enforcement point. All hermetic (fake binary, fake endpoint).
