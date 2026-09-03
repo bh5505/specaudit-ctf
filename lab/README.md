@@ -13,6 +13,8 @@ All scripts run from **Windows (Git Bash)** and orchestrate `wsl.exe`.
 | Script | Purpose |
 |---|---|
 | `setup-kali.sh` | Provision the Kali dev/test WSL instance (idempotent): distro, apt packages, repo clone, venv, editable install. |
+| `install-zgrab2.sh` | Build zgrab2 into the dev instance from a pinned upstream tag (`go install`; Kali does not package it). |
+| `install-zgrab2.sh` | Build zgrab2 into the dev instance from a pinned upstream tag (`go install`; Kali does not package it). |
 | `build-golden.sh` | One-time: configure a fresh Debian WSL distro into the golden lab-target rootfs and export it to a tar. |
 | `spawn-target.sh` | Register a **disposable** target instance from the golden tar, start its services, print its IP + arming commands. |
 | `teardown-target.sh` | Unregister the instance and drop its state dir. |
