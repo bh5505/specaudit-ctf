@@ -42,16 +42,17 @@ def test_complete_golden_passes_every_gate() -> None:
 def test_required_arm_skipped_is_never_success() -> None:
     # Mutate the complete golden so a required arm sits in skipped: the
     # parser forces failed and the gate names the skipped requirement.
-    import copy
-
     payload = json.loads(
         (_golden("complete-synthetic-readonly.json")).read_text(encoding="utf-8")
     )
     coverage = payload.setdefault("coverage", {})
-    complete = [c for c in coverage.get("complete", []) if c != "fixture.range-observe"]
-    coverage["complete"] = complete
     coverage["required"] = ["fixture.range-observe"]
     coverage["skipped"] = ["fixture.range-observe"]
+    # Keep attempted a superset so coverage-inconsistent stays out of
+    # the picture: the skipped requirement is the only reason.
+    coverage["attempted"] = sorted(
+        set(coverage.get("attempted", [])) | {"fixture.range-observe"}
+    )
     parsed = parse_execution_result(payload)
     entry = score_envelope(parsed)
     assert entry["passed"] is False

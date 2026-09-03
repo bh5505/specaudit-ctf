@@ -58,7 +58,7 @@ _STRUCTURAL_REASONS = frozenset(
 )
 
 # gate name -> parser reasons that fail it. Three of the structural
-# reasons (unknown-tier, capability-mismatch, cleanup-policy-mismatch)
+# gate reasons (unknown-tier, capability-mismatch, cleanup-policy-mismatch)
 # are currently emitted only by the manifest/pair paths, not by
 # parse_execution_result; they stay listed as forward-defensive so a
 # future parser widening lights the gate instead of slipping past it.
