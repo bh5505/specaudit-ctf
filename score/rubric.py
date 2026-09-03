@@ -1,7 +1,8 @@
 """Strict rubric loading for the public scorer.
 
-A rubric can require capabilities and waive exactly one gate
-(``limitations_empty``) for named degraded envelopes. It can never
+A rubric can require capabilities and allow named envelopes to pass
+AS DEGRADED — waiving exactly the status/limitations gate pair
+(``status_complete`` and ``limitations_empty``) for them. It can never
 relax evidence, cleanup, budget, scope, approval, or required-arm
 gates, and it can never turn ``failed`` into a pass.
 """

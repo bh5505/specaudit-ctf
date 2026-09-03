@@ -57,7 +57,11 @@ _STRUCTURAL_REASONS = frozenset(
     }
 )
 
-# gate name -> parser reasons that fail it
+# gate name -> parser reasons that fail it. Three of the structural
+# reasons (unknown-tier, capability-mismatch, cleanup-policy-mismatch)
+# are currently emitted only by the manifest/pair paths, not by
+# parse_execution_result; they stay listed as forward-defensive so a
+# future parser widening lights the gate instead of slipping past it.
 _GATE_REASONS: dict[str, frozenset[str]] = {
     "envelope_valid": frozenset(_STRUCTURAL_REASONS),
     "status_complete": frozenset(),  # judged on the parsed status below
@@ -158,7 +162,8 @@ def score_run(
 
     aggregate: dict[str, dict[str, Any]] = {}
     for gate in GATE_NAMES:
-        ok = all(e["gates"][gate]["ok"] for e in entries)
+        # Empty input fails closed: no envelope, no all-ok aggregate.
+        ok = bool(entries) and all(e["gates"][gate]["ok"] for e in entries)
         aggregate[gate] = {"ok": ok}
 
     missing_required: list[str] = []
