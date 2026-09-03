@@ -283,6 +283,12 @@ for both `0` and `1` — CI can gate on either. The package is a
 checkout teaching-path deliverable (outside the sealed `extension`
 surface; not in the wheel build).
 
+A companion drift guard, `python -m score.drift`, cross-references
+every shared verdict vocabulary (status, side effects, safety class,
+tier, kind, protocols, cleanup proof) between the versioned JSON schemas and the enforcing code
+constants, failing closed and naming what each side is missing — a
+repository self-check, never a live-engagement gate.
+
 ## Web testing (DAST) role
 
 The first-class web/DAST lane is the **zaproxy** arm: Zed Attack
