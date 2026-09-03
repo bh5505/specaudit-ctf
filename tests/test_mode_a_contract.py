@@ -486,9 +486,9 @@ def test_agent_wiz_golden_matches_encoder_and_is_admitted() -> None:
 
 
 def test_capability_manifests_are_deterministic_and_admitted() -> None:
-    # 20 since page-fetch.fetch admission (2026-09-02): 10 static read
-    # profiles + 10 scope-gated dispatch profiles.
-    assert len(INVOKE_PROFILES) == 20
+    # 21 since commix.scan admission (2026-09-03): 10 static read
+    # profiles + 11 scope-gated dispatch profiles.
+    assert len(INVOKE_PROFILES) == 21
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.

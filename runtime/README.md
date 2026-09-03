@@ -79,7 +79,7 @@ verification 0.197 s / 0.196 s, cold and repeat Mode-A CLI launch 0.484 s /
 0.435 s, cold and repeat sealed stdio-MCP server launch 0.410 s / 0.410 s.
 The resulting launcher, tree, and normalized-archive SHA-256 values are
 respectively `bba9c526…8c94` (unchanged — same locked CPython input),
-`64cf07d0…8545`, and `04363766…5dab` (2026-09-03: caldera read closure — v2 GET tier, KEY auth, caveats). A 5 s cold startup
+`3d181edb…38be`, and `22a8f629…a633` (2026-09-03: commix.scan admission — eleventh dispatch profile). A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
 by this producer. Re-measure before changing the platform or dependency lock.
@@ -88,7 +88,7 @@ by this producer. Re-measure before changing the platform or dependency lock.
 
 `lock.json` fixes input URLs, names, versions, sizes and SHA-256s, the ELF
 launcher digest, the full traced module/file closure with per-file SHA-256s,
-all 96 producer source files, license/metadata bytes, and the public
+all 99 producer source files, license/metadata bytes, and the public
 `agent-wiz.list_tools` capability-manifest bytes. The lock and runtime
 metadata stay outside the measured tree to avoid self-reference.
 
