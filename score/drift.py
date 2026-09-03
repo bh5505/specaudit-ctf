@@ -45,7 +45,6 @@ def _schema_enum(path: Path, pointer: str) -> list[str] | None:
 
 
 def _check(
-    name: str,
     schema_path: Path,
     pointer: str,
     code_values: list[str],
@@ -54,7 +53,7 @@ def _check(
     if schema_values is None:
         return {
             "ok": False,
-            "detail": f"schema side unreadable or missing enum at {pointer}",
+            "detail": f"schema side unreadable or missing enum at {pointer} in {schema_path.name}",
             "schema_only": [],
             "code_only": [],
         }
@@ -81,28 +80,39 @@ def drift_check() -> dict[str, Any]:
 
     checks = {
         "status_domain": _check(
-            "status_domain",
             _EXECUTION_SCHEMA,
             "/properties/status",
             list(envelopes.ALLOWED_STATUSES),
         ),
         "side_effects_domain": _check(
-            "side_effects_domain",
             _EXECUTION_SCHEMA,
             "/definitions/side_effects/items",
             sorted(envelopes.ALLOWED_SIDE_EFFECTS),
         ),
         "safety_class_domain": _check(
-            "safety_class_domain",
             _EXECUTION_SCHEMA,
             "/definitions/safety_class",
-            sorted(envelopes._SAFETY_RANK),
+            sorted(envelopes.ALLOWED_SAFETY),
         ),
         "tier_domain": _check(
-            "tier_domain",
             _MANIFEST_SCHEMA,
             "/properties/tier",
             sorted(contract.ALLOWED_TIERS),
+        ),
+        "kind_domain": _check(
+            _MANIFEST_SCHEMA,
+            "/properties/kind",
+            sorted(envelopes.ALLOWED_KINDS),
+        ),
+        "protocols_domain": _check(
+            _MANIFEST_SCHEMA,
+            "/properties/protocols/items",
+            sorted(envelopes.ALLOWED_PROTOCOLS),
+        ),
+        "cleanup_proof_domain": _check(
+            _MANIFEST_SCHEMA,
+            "/properties/cleanup/properties/proof",
+            sorted(envelopes.CLEANUP_PROOFS),
         ),
     }
     return {
@@ -112,12 +122,17 @@ def drift_check() -> dict[str, Any]:
     }
 
 
-def main(argv: list[str] | None = None) -> int:
+def main() -> int:
+    """No arguments; prints the JSON report and exits 0/1."""
     try:
         report = drift_check()
-    except (OSError, ValueError) as exc:
-        print(f"drift: {exc}", file=sys.stderr)
-        return 1
+    except Exception as exc:  # noqa: BLE001 — fail closed with a report
+        report = {
+            "schema": "specaudit.ctf.score-drift.v1",
+            "ok": False,
+            "checks": {},
+            "error": f"{type(exc).__name__}: {exc}",
+        }
     json.dump(report, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
     return 0 if report["ok"] else 1
