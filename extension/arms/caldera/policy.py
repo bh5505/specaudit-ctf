@@ -63,9 +63,11 @@ SCAN_TIMEOUT = 60.0
 
 
 def endpoint_url() -> str | None:
-    from ..mcp_client import configured_http_url
+    from ..mcp_client import HttpTransportPolicy, configured_http_url
 
-    return configured_http_url(os.environ.get(ENV_ENDPOINT))
+    return configured_http_url(
+        os.environ.get(ENV_ENDPOINT), HttpTransportPolicy.general_http()
+    )
 
 
 def api_key() -> str | None:

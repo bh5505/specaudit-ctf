@@ -65,7 +65,7 @@ def _factory(session: FakeSession):
     return factory
 
 
-def _arm(session: FakeSession, endpoint: str = "http://127.0.0.1:9") -> ProwlerArm:
+def _arm(session: FakeSession, endpoint: str = "https://prowler.example.invalid:9") -> ProwlerArm:
     return ProwlerArm(endpoint=endpoint, session_factory=_factory(session))
 
 
@@ -103,7 +103,7 @@ def test_not_installed_without_endpoint(monkeypatch: pytest.MonkeyPatch) -> None
 def test_endpoint_without_credentials_not_installed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(ENV_ENDPOINT, "http://127.0.0.1:8899")
+    monkeypatch.setenv(ENV_ENDPOINT, "https://prowler.example.invalid:8899")
     monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
     monkeypatch.delenv("AWS_PROFILE", raising=False)
     arm = ProwlerArm()
@@ -113,7 +113,7 @@ def test_endpoint_without_credentials_not_installed(
 
 
 def test_endpoint_and_credentials_install(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ENV_ENDPOINT, "http://127.0.0.1:8899")
+    monkeypatch.setenv(ENV_ENDPOINT, "https://prowler.example.invalid:8899")
     arm = ProwlerArm()
     assert arm.installed(_spec()) is True
 

@@ -429,8 +429,10 @@ class FakeGtiSession:
 
 
 def _gti(session: FakeGtiSession) -> GtiArm:
+    # Validation-only stand-in (the factory replaces the session); the
+    # arm is remote-https so the endpoint must be https non-loopback.
     return GtiArm(
-        endpoint="http://127.0.0.1:9",
+        endpoint="https://gti-front.example.invalid:9",
         session_factory=lambda url, timeout=10.0: session,
     )
 

@@ -76,7 +76,7 @@ def _factory(session: FakeSession):
     return factory
 
 
-def _arm(session: FakeSession, endpoint: str = "http://127.0.0.1:9") -> SemgrepArm:
+def _arm(session: FakeSession, endpoint: str = "https://semgrep.example.invalid:9") -> SemgrepArm:
     return SemgrepArm(endpoint=endpoint, session_factory=_factory(session))
 
 
@@ -93,9 +93,9 @@ def test_not_installed_without_endpoint(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_env_endpoint_installs(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ENV_ENDPOINT, "http://127.0.0.1:8899/")
+    monkeypatch.setenv(ENV_ENDPOINT, "https://semgrep.example.invalid:8899/")
     arm = SemgrepArm()
-    assert arm.endpoint_url() == "http://127.0.0.1:8899/"
+    assert arm.endpoint_url() == "https://semgrep.example.invalid:8899/"
     assert arm.installed(_spec()) is True
 
 
@@ -237,7 +237,7 @@ def test_default_extension_wires_semgrep(monkeypatch: pytest.MonkeyPatch) -> Non
 
 
 def test_extension_invoke_with_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ENV_ENDPOINT, "http://127.0.0.1:8899")
+    monkeypatch.setenv(ENV_ENDPOINT, "https://semgrep.example.invalid:8899")
     ext = Extension(arms={ARM_ID: _arm(FakeSession())})
     with pytest.raises(NotHeldError) as err:
         ext.invoke(ARM_ID, "supported_languages", {})

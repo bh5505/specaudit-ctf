@@ -12,6 +12,7 @@ import pytest
 from extension.arms.burp import sse as burp_sse
 from extension.arms.mcp_client import (
     MAX_MCP_BYTES,
+    HttpTransportPolicy,
     SseMcpSession,
     StreamableHttpClient,
     redact,
@@ -147,7 +148,7 @@ def test_streamable_client_json_roundtrip_and_session_echo(
     streamable_server: tuple[str, dict[str, Any]],
 ) -> None:
     url, state = streamable_server
-    client = StreamableHttpClient(url, timeout=5)
+    client = StreamableHttpClient(url, timeout=5, policy=HttpTransportPolicy.loopback())
     client.connect()
     assert client._session_id == "sess-1"
     tools = client.list_tools()
@@ -167,7 +168,7 @@ def test_streamable_client_parses_sse_response(
     streamable_server: tuple[str, dict[str, Any]],
 ) -> None:
     url, _state = streamable_server
-    client = StreamableHttpClient(url, timeout=5)
+    client = StreamableHttpClient(url, timeout=5, policy=HttpTransportPolicy.loopback())
     client.connect()
     assert client.call_tool("sse_reply") == {"content": []}
 
@@ -176,7 +177,7 @@ def test_streamable_client_http_error_redacted(
     streamable_server: tuple[str, dict[str, Any]],
 ) -> None:
     url, _state = streamable_server
-    client = StreamableHttpClient(url, timeout=5)
+    client = StreamableHttpClient(url, timeout=5, policy=HttpTransportPolicy.loopback())
     client.connect()
     with pytest.raises(RuntimeError) as err:
         client.call_tool("boom")
@@ -188,7 +189,7 @@ def test_streamable_client_oversize_response_rejected(
     streamable_server: tuple[str, dict[str, Any]],
 ) -> None:
     url, _state = streamable_server
-    client = StreamableHttpClient(url, timeout=5)
+    client = StreamableHttpClient(url, timeout=5, policy=HttpTransportPolicy.loopback())
     client.connect()
     with pytest.raises(RuntimeError, match="exceeds MAX_MCP_BYTES"):
         client.call_tool("huge")
@@ -198,7 +199,7 @@ def test_streamable_client_tool_iserror_raises(
     streamable_server: tuple[str, dict[str, Any]],
 ) -> None:
     url, _state = streamable_server
-    client = StreamableHttpClient(url, timeout=5)
+    client = StreamableHttpClient(url, timeout=5, policy=HttpTransportPolicy.loopback())
     client.connect()
     with pytest.raises(RuntimeError, match="tools/call error"):
         client.call_tool("tool_error")

@@ -64,9 +64,11 @@ CAVEATS = (
 
 def endpoint_url() -> str | None:
     """Return a validated http(s) base URL, else None."""
-    from ..mcp_client import configured_http_url
+    from ..mcp_client import HttpTransportPolicy, configured_http_url
 
-    return configured_http_url(os.environ.get(ENV_ENDPOINT))
+    return configured_http_url(
+        os.environ.get(ENV_ENDPOINT), HttpTransportPolicy.general_http()
+    )
 
 
 def clean_view_params(action: str, args: dict) -> tuple[dict | None, str | None]:

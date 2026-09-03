@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from ..mcp_client import HttpTransportPolicy
 from ..policy_base import DEFAULT_TOOL_PATTERN, ToolPolicy
 
 ARM_ID = "burp-mcp"
 ENV_ENDPOINT = "BURP_MCP_ENDPOINT"
+# The upstream BApp serves SSE on a literal loopback address; this arm
+# accepts only literal 127.0.0.1/[::1] endpoints (http or https).
+TRANSPORT_POLICY = HttpTransportPolicy.loopback()
 ALLOWED_TOOL_PATTERN = DEFAULT_TOOL_PATTERN
 
 ALLOWED_TOOLS = frozenset(
