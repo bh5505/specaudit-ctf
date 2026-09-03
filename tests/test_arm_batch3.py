@@ -280,14 +280,19 @@ def test_caldera_needs_endpoint_and_key(monkeypatch: pytest.MonkeyPatch) -> None
     assert CalderaArm().installed(_spec(CALDERA_ID)) is False
 
 
+_OP_UUID = "01234567-89ab-cdef-0123-456789abcdef"
+
+
 def test_caldera_read_views(monkeypatch: pytest.MonkeyPatch) -> None:
     urlopen = _Urlopen()
     result = _caldera(urlopen).invoke(_spec(CALDERA_ID), "abilities", {})
     assert result.ok is True
     call = urlopen.calls[0]
     assert call["method"] == "GET"
-    assert call["url"].endswith("/api/abilities")
-    assert call["headers"].get("Api-key")
+    assert call["url"].endswith("/api/v2/abilities")
+    # Upstream auth_svc reads the literal header name KEY (urllib
+    # capitalizes header keys in its captured Request.headers).
+    assert call["headers"].get("Key")
 
 
 def test_caldera_read_args_refused(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -296,6 +301,74 @@ def test_caldera_read_args_refused(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert result.ok is False
     assert "no arguments" in result.error
+
+
+def test_caldera_operation_views_take_one_uuid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    urlopen = _Urlopen()
+    for action, suffix in (
+        ("operation", f"/api/v2/operations/{_OP_UUID}"),
+        ("operation_links", f"/api/v2/operations/{_OP_UUID}/links"),
+        ("operation_facts", f"/api/v2/facts/{_OP_UUID}"),
+    ):
+        key = "operation_id" if action == "operation_facts" else "id"
+        result = _caldera(urlopen).invoke(
+            _spec(CALDERA_ID), action, {key: _OP_UUID}
+        )
+        assert result.ok is True, action
+        assert urlopen.calls[-1]["url"].endswith(suffix), action
+
+
+def test_caldera_operation_views_refuse_bad_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    urlopen = _Urlopen()
+    for bad in ("not-a-uuid", "../../etc", "", "01234567-89ab-cdef-0123"):
+        result = _caldera(urlopen).invoke(
+            _spec(CALDERA_ID), "operation", {"id": bad}
+        )
+        assert result.ok is False, bad
+        assert "UUID" in result.error
+    # Extra keys refuse even alongside a valid UUID; wrong key name and
+    # non-string values refuse on the sibling views too.
+    result = _caldera(urlopen).invoke(
+        _spec(CALDERA_ID), "operation", {"id": _OP_UUID, "x": 1}
+    )
+    assert result.ok is False
+    assert (
+        _caldera(urlopen).invoke(
+            _spec(CALDERA_ID), "operation_facts", {"id": _OP_UUID}
+        ).ok
+        is False
+    )
+    assert (
+        _caldera(urlopen).invoke(
+            _spec(CALDERA_ID), "operation_links", {"id": 1234}
+        ).ok
+        is False
+    )
+    assert urlopen.calls == []
+
+
+def test_caldera_results_view_retired(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The legacy /api/results path matched no documented upstream route;
+    # it is refused, superseded by the per-operation views.
+    urlopen = _Urlopen()
+    result = _caldera(urlopen).invoke(_spec(CALDERA_ID), "results", {})
+    assert result.ok is False
+    assert "not on any tier" in result.error
+    assert urlopen.calls == []
+
+
+def test_caldera_list_tools_carries_caveats(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _caldera().invoke(_spec(CALDERA_ID), "list_tools", {})
+    assert result.ok is True
+    assert "operation_facts" in result.output["read_views"]
+    assert "results" not in result.output["read_views"]
+    assert "report is POST-only" in result.output["caveats"]
 
 
 def test_caldera_schedule_dispatch(

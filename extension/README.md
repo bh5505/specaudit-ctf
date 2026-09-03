@@ -79,8 +79,9 @@ handlers preserved; specialized session, not a generic transport):
   gated by `STRATUS_DISPATCH_SCOPE`
 - `osmedeus` — local asset reads; scan gated by
   `OSMEDEUS_DISPATCH_SCOPE`
-- `caldera` — allowlisted GET reads; `schedule_operation` gated by
-  `CALDERA_DISPATCH_SCOPE`
+- `caldera` — allowlisted v2 GET reads (incl. per-operation
+  chain); `schedule_operation` gated by `CALDERA_DISPATCH_SCOPE`
+  (path provisional upstream)
 - `routersploit` — dispatch-only `run`
 - `sniper` — dispatch-only `scan`
 - `zgrab2` — `list_modules` read; stdin `scan`
@@ -259,7 +260,9 @@ One-liners. Full notes live on the catalog row (`describe <id>`).
   are not re-checked (treat the scope as reachable from anything its
   hosts redirect or reference to, including metadata IPs), and the
   fetcher may write browser state in its default location.
-- `caldera` — GET reads unarmed; scheduling an operation is dispatch.
+- `caldera` — v2 GET reads unarmed (per-operation chain for
+  post-run inspection); scheduling an operation is dispatch (path
+  provisional upstream).
 - `google-mcp-security` — lookups only.
 - `metasploit-mcp` — execution tools are dispatch; session commands cannot prove the session host.
 - `routersploit` — non-interactive `run` **always executes the module** (not check). Default unarmed.

@@ -20,6 +20,7 @@ from .policy import (
     ALLOWED_VIEWS,
     ARM_ID,
     CALL_TIMEOUT,
+    CAVEATS,
     DISPATCH_ACTIONS,
     ENV_API_KEY,
     ENV_DISPATCH_SCOPE,
@@ -28,17 +29,21 @@ from .policy import (
     api_key,
     endpoint_url,
     operation_refusal,
+    view_params,
 )
 
 
 class CalderaArm:
     """Specialized transport for catalog id caldera.
 
-    Read tier: exact allowlisted GET endpoints with the API-Key header.
+    Read tier: exact allowlisted v2 GET endpoints with the documented
+    `KEY` auth header; the three {id} views take one UUID argument.
     Dispatch tier: POST /api/operations/<name>/schedule, authorized by
     CALDERA_DISPATCH_SCOPE presence (targets are operation-internal),
     logged and stamped. The POST body is an empty JSON object and the
-    schedule semantics are provisional pending upstream docs.
+    schedule endpoint form is provisional: it matches neither verified
+    official write route (PATCH /api/v2/operations/{id}, legacy PUT
+    /api/rest index schedule), pending live-server verification.
     """
 
     ARM_ID = ARM_ID
@@ -78,15 +83,16 @@ class CalderaArm:
             raise NotInstalledError(spec.id)
         payload = dict(args)
         if action in ALLOWED_VIEWS:
-            if payload:
+            params, refusal = view_params(action, payload)
+            if refusal is not None:
                 return Result(
                     ok=False,
                     arm_id=spec.id,
                     action=action,
                     output=None,
-                    error="view actions take no arguments (fixed endpoints)",
+                    error=refusal,
                 )
-            return self._get(spec, action, base, payload)
+            return self._get(spec, action, base, params)
         if action in DISPATCH_ACTIONS:
             extra = {k: v for k, v in payload.items() if k != "operation"}
             if extra:
@@ -123,6 +129,7 @@ class CalderaArm:
                         ENV_DISPATCH_SCOPE, ""
                     ).strip()
                     != "",
+                    "caveats": CAVEATS,
                 },
                 error=None,
             )
@@ -139,16 +146,20 @@ class CalderaArm:
         headers = {
             "User-Agent": "specaudit-ctf-extension/1.0",
             "Accept": "application/json",
-            "API-Key": api_key() or "",
+            # Upstream auth_svc reads the literal header name KEY.
+            "KEY": api_key() or "",
         }
         if content_type:
             headers["Content-Type"] = content_type
         return headers
 
     def _get(
-        self, spec: ArmSpec, action: str, base: str, payload: dict
+        self, spec: ArmSpec, action: str, base: str, params: dict[str, str]
     ) -> Result:
-        url = base.rstrip("/") + ALLOWED_VIEWS[action]
+        path = ALLOWED_VIEWS[action]
+        for key, value in params.items():
+            path = path.replace("{" + key + "}", _quote(value))
+        url = base.rstrip("/") + path
         req = urllib_request.Request(
             url, headers=self._headers(), method="GET"
         )
