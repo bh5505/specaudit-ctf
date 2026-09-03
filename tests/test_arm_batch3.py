@@ -330,11 +330,24 @@ def test_caldera_operation_views_refuse_bad_ids(
         )
         assert result.ok is False, bad
         assert "UUID" in result.error
-    # Extra keys refuse even alongside a valid UUID.
+    # Extra keys refuse even alongside a valid UUID; wrong key name and
+    # non-string values refuse on the sibling views too.
     result = _caldera(urlopen).invoke(
         _spec(CALDERA_ID), "operation", {"id": _OP_UUID, "x": 1}
     )
     assert result.ok is False
+    assert (
+        _caldera(urlopen).invoke(
+            _spec(CALDERA_ID), "operation_facts", {"id": _OP_UUID}
+        ).ok
+        is False
+    )
+    assert (
+        _caldera(urlopen).invoke(
+            _spec(CALDERA_ID), "operation_links", {"id": 1234}
+        ).ok
+        is False
+    )
     assert urlopen.calls == []
 
 
