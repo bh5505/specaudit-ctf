@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 from pathlib import Path
 
@@ -203,9 +204,15 @@ def test_language_bar_on_catalog_ids_and_notes(entries: list[dict]) -> None:
             assert token not in haystack, f"{row['id']} contains banned token"
 
 
+# Resolve at import time: the suite's autouse hermetic-path fixture
+# strips PATH for every test, and git must never come from a
+# test-controlled directory regardless.
+_GIT = shutil.which("git") or "git"
+
+
 def _tracked_text_files() -> list[Path]:
     listed = subprocess.check_output(
-        ["git", "ls-files", "-z"],
+        [_GIT, "ls-files", "-z"],
         cwd=ROOT,
     ).split(b"\0")
     paths: list[Path] = []
