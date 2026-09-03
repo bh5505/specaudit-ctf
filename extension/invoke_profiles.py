@@ -123,6 +123,10 @@ _DISPATCH_PROFILES = (
     # the named scope, including metadata IPs reachable via redirect) and
     # may write browser state in its default location.
     ("page-fetch", "fetch", ("subprocess", "network-egress"), 60_000, "PAGE_FETCH_DISPATCH_SCOPE"),
+    # commix (doc-20 standing disposition now exercised via the normal
+    # recipe): active command-injection prober — no read-only mode
+    # upstream, probe is the whole surface.
+    ("commix", "scan", ("subprocess", "network-egress"), 600_000, "COMMIX_DISPATCH_SCOPE"),
 )
 
 

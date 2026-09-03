@@ -96,10 +96,11 @@ other CLI invoke action is refused before `Extension.invoke` until it has
 authoritative per-action safety, scope, side-effect, budget, cleanup, and
 tool-version metadata.
 
-Dispatch-class admission (2026-09-01, continued 2026-09-02) adds exactly
-ten scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
+Dispatch-class admission (2026-09-01, continued through 2026-09-03) adds
+exactly eleven scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
 `zaproxy.spider_scan`, `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`,
-`pyrit.scan`, `routersploit.run`, `osmedeus.scan`, `page-fetch.fetch` —
+`pyrit.scan`, `routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`,
+`commix.scan` —
 carrying honest manifest truth: safety class **R1**, declared side
 effects (`subprocess`+`network-egress` for the CLI arms;
 `network-egress` for the ZAP API), `default_off` with `approval_ref`
@@ -120,8 +121,8 @@ time, and rendering-time subresources are not re-checked, so an armed
 scope must be considered reachable from anything its hosts redirect or
 reference to (including metadata IPs), the fetcher may write browser
 state in its default location, and the Result stamp records the armed
-target, not the effective egress set. `wapiti` and `zdns` have no
-read-only mode upstream — their dispatch action is the arm's whole
+target, not the effective egress set. `wapiti`, `zdns`, and `commix` have
+no read-only mode upstream — the dispatch action is the arm's whole
 surface; `sniper` stays deliberately unadmitted (root-only community
 binary, phones home when armed, unbounded sub-tool egress).
 
