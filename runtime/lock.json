@@ -1350,7 +1350,7 @@
     "extension/dispatch.py": "4f6b56e2d63efbe33b6b4995a2554d2ef0b5c2ab01ad9fad53742e840a4dd5b3",
     "extension/encode.py": "a3159368eb512c2005803109728717fa695a0d3ad70630ba0b8bc5e375125349",
     "extension/envelopes.py": "5a83fdcca537a3d2e68d3f2536956cfdd13b1b47d493c40749c2ecdbc21a3abc",
-    "extension/invoke_profiles.py": "4beaa78d9ac95a8d88f1e4fa63faf67151fbe7d1171b83337cba812198d6d222",
+    "extension/invoke_profiles.py": "95dcee3983ee5e03eb549bc22a707c38909764e80d309b8494f9eda800260d89",
     "extension/mcp_server.py": "c84ac4de49c8c0f7f067919903a5faa874db2640c42752d5afebfbf11c9a4558",
     "extension/schema/execution-result.v1.schema.json": "b5a928b2481944cd3040057934208dcb913077f31e9b0fc2ed6ab83d48b245cc",
     "extension/transports/__init__.py": "c5afd05b12fd804b399e5e8ba2f3e874288e3d30ac1ccc1633d7bb3ffe150722",
