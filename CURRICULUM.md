@@ -46,6 +46,11 @@ end to end.
 - Honest degradation: what `degraded` means when optional tools are
   absent, and why the extension refuses to report an all-clear it did
   not achieve.
+- Grading captured runs with `python -m score`: reading
+  execution-result envelopes as the only evidence, the two structural
+  rules (transport success is never a verdict; a skipped or failed
+  required arm is never success), and what a rubric may and may not
+  waive.
 
 ## D — Agentic security practice
 

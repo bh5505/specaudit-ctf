@@ -251,6 +251,38 @@ may exit 1 with a valid degraded execution-result envelope. MCP
 JSON-RPC success is transport-only; the MCP content document is still
 `range.lifecycle.v2`.
 
+## Scoring runs
+
+`python -m score` grades one or more `specaudit.ctf.execution-result.v1`
+envelope files (CLI stdout captures, `--out` files) and answers
+`passed` with per-gate detail:
+
+```text
+python -m score range-result.json
+python -m score run1.json run2.json --rubric score/rubrics/rehearsal.yaml
+```
+
+Two rules are structural. **Transport success is never a verdict**:
+`transport_ok` is echoed per envelope, labelled informational, and
+participates in no pass decision. **A skipped or failed required arm is
+never success**: the `required_arms_complete` gate fails closed on it.
+The nine gates (`envelope_valid`, `status_complete`,
+`required_arms_complete`, `owned_evidence`, `limitations_empty`,
+`cleanup_proven`, `budget_respected`, `scope_contained`,
+`approval_present`) are thin projections over the repository's own
+envelope parser — the scorer never reimplements envelope semantics,
+never reads inner range lifecycle documents, and never follows
+artifact digests to disk. A strict optional rubric can require
+capabilities and explicitly allow named envelopes to pass **as
+degraded** (waiving exactly the status/limitations gates for them);
+evidence, cleanup, budget, scope, approval, and required-arm gates are
+never waivable. Exit codes: `0` passed, `1` scored-but-failed
+(including unreadable/invalid envelope files, scored as failed
+entries), `2` usage errors. The score document on stdout is valid JSON
+for both `0` and `1` — CI can gate on either. The package is a
+checkout teaching-path deliverable (outside the sealed `extension`
+surface; not in the wheel build).
+
 ## Web testing (DAST) role
 
 The first-class web/DAST lane is the **zaproxy** arm: Zed Attack
