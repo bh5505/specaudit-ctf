@@ -6,7 +6,9 @@
 #
 # Environment (all optional; see lab/local.example.conf):
 #   LAB_KALI_NAME     registered distro name (kali-linux)
-#   LAB_ZGRAB2_TAG    upstream tag to build (v1.0.0)
+#   LAB_ZGRAB2_TAG    upstream tag to build (v1.0.0). The pin applies at
+#                     first install; to re-pin, remove /usr/local/bin/
+#                     zgrab2 inside the instance and re-run.
 set -euo pipefail
 # Keep Git Bash from rewriting POSIX-looking paths in wsl.exe argv.
 export MSYS_NO_PATHCONV=1
@@ -16,7 +18,7 @@ TAG="${LAB_ZGRAB2_TAG:-v1.0.0}"
 
 echo "[lab] installing zgrab2 ($TAG) into $NAME (apt golang + go install)"
 wsl -d "$NAME" -u root -e bash -seu "$TAG" <<'EOF'
-set -eu
+set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 TAG="$1"
 if ! command -v zgrab2 >/dev/null 2>&1; then
@@ -28,7 +30,7 @@ fi
 # "block nothing" (the suite's scope gate is the actual control).
 mkdir -p /root/.config/zgrab2
 [ -f /root/.config/zgrab2/blocklist.conf ] || : > /root/.config/zgrab2/blocklist.conf
-zgrab2 --version 2>/dev/null || zgrab2 2>&1 | head -1
+command -v zgrab2 >/dev/null || { echo "[lab] zgrab2 install failed" >&2; exit 1; }
 echo "[lab] zgrab2 at: $(command -v zgrab2)"
 EOF
 
