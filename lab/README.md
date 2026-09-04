@@ -14,6 +14,8 @@ All scripts run from **Windows (Git Bash)** and orchestrate `wsl.exe`.
 |---|---|
 | `setup-kali.sh` | Provision the Kali dev/test WSL instance (idempotent): distro, apt packages, repo clone, venv, editable install. |
 | `install-zgrab2.sh` | Build zgrab2 into the dev instance from a pinned upstream tag (`go install`; Kali does not package it). |
+| `install-zdns.sh` | Build zdns into the dev instance from a pinned upstream tag (`go install`, /v2 module path) + apt dnsmasq for the loopback lab zone. |
+| `zdns-measure.sh` | Measure the admitted `zdns lookup` against a loopback lab zone under a namespace-scoped resolver overlay (host resolver untouched). |
 | `build-golden.sh` | One-time: configure a fresh Debian WSL distro into the golden lab-target rootfs and export it to a tar. |
 | `spawn-target.sh` | Register a **disposable** target instance from the golden tar, start its services, print its IP + arming commands. |
 | `teardown-target.sh` | Unregister the instance and drop its state dir. |
@@ -138,6 +140,39 @@ honest empty success shape (`{"status": "success", "sessions": {},
 "count": 0}`). Execution tools stay an unadmitted dispatch tier:
 `METASPLOIT_DISPATCH_SCOPE` gates the handler, but no registry
 profile exists for them.
+
+### zdns — measured against a loopback lab zone (namespace-scoped resolver)
+
+The zdns arm's argv is fixed (`[zdns, <rtype>, <domain>]` — no
+`--name-servers` passthrough, by the same no-caller-fragments policy
+as every fixed-argv arm), so the resolver is whatever the system
+resolver config names. `lab/zdns-measure.sh` gives the measured
+lookup a lab authority without touching the distro's resolver:
+
+- dnsmasq binds one **unoccupied loopback IP** (default `127.0.0.2`;
+  `127.0.0.53`/`127.0.0.54` are typically held by systemd-resolved)
+  authoritative for `lab.ctf` only, with `--no-resolv` — no upstream
+  forwarding, so a public name queried under the overlay is REFUSED
+  (verified as a containment control: the overlay cannot leak to the
+  internet);
+- the armed invoke runs inside a **private mount namespace** with a
+  `resolv.conf` overlay bind-mounted over `/etc/resolv.conf`, so only
+  the measurement's process tree resolves through the lab zone — the
+  distro's own resolver is never modified (verified after each run);
+  a trap-guarded global swap to the loopback resolver is the fallback
+  if `unshare -m` is unavailable.
+
+Measured 2026-09-04 (zdns v2.1.1 built by `install-zdns.sh`, dnsmasq
+on `127.0.0.2:53`, zone `lab.ctf`): `ZDNS_DISPATCH_SCOPE=probe.lab.ctf`,
+`python -m extension invoke zdns lookup '{"domain": "probe.lab.ctf",
+"record_type": "A"}'` returned a `complete` envelope with the
+`[dispatch]` audit line and a materialized policy-report artifact
+answering `probe.lab.ctf A 192.0.2.10` from resolver `127.0.0.2:53`
+(NOERROR). Honesty note the script exists to preserve:
+`ZDNS_DISPATCH_SCOPE` authorizes the **queried name** (the dispatch
+target), not the resolver transport — where the packets actually go
+is decided by resolv.conf, which is why the script pins the resolver,
+runs it on loopback, and reports which one answered.
 
 ### Operator-gated rows — validation runbooks (never run from the lab)
 
