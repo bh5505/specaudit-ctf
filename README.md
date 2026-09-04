@@ -415,10 +415,11 @@ validation runbooks, and the lab never spends operator credentials.
 The `zdns` arm's lookup — the last dispatch arm with no executable
 lab path — got its measurement through a loopback lab zone:
 `lab/zdns-measure.sh` runs dnsmasq authoritative for `lab.ctf` on an
-unoccupied loopback IP (no upstream, so the overlay cannot leak to
-the internet) and executes the armed invoke inside a private mount
-namespace whose resolv.conf overlay points at it (host resolver
-untouched, verified). Measured 2026-09-04 as a `complete` envelope
+unoccupied loopback IP (no upstream — the script proves per run that
+an outside-zone query under the overlay is REFUSED) and executes the
+armed invoke inside a private mount namespace whose resolv.conf
+overlay points at it (host resolver asserted unchanged by a
+before/after hash). Measured 2026-09-04 as a `complete` envelope
 with the `[dispatch]` audit line answering `probe.lab.ctf A
 192.0.2.10` from `127.0.0.2:53` — with the honest note that the
 dispatch scope authorizes the queried name, not the resolver

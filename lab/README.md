@@ -153,14 +153,15 @@ lookup a lab authority without touching the distro's resolver:
   `127.0.0.53`/`127.0.0.54` are typically held by systemd-resolved)
   authoritative for `lab.ctf` only, with `--no-resolv` — no upstream
   forwarding, so a public name queried under the overlay is REFUSED
-  (verified as a containment control: the overlay cannot leak to the
-  internet);
+  (the script asserts this with a negative-control query inside the
+  overlay: the containment property is proven per run, not assumed);
 - the armed invoke runs inside a **private mount namespace** with a
   `resolv.conf` overlay bind-mounted over `/etc/resolv.conf`, so only
   the measurement's process tree resolves through the lab zone — the
-  distro's own resolver is never modified (verified after each run);
-  a trap-guarded global swap to the loopback resolver is the fallback
-  if `unshare -m` is unavailable.
+  distro's own resolver is never modified (asserted by a
+  before/after sha256 of `/etc/resolv.conf`, which the script fails
+  on if it changes); a trap-guarded global swap to the loopback
+  resolver is the fallback if `unshare -m` is unavailable.
 
 Measured 2026-09-04 (zdns v2.1.1 built by `install-zdns.sh`, dnsmasq
 on `127.0.0.2:53`, zone `lab.ctf`): `ZDNS_DISPATCH_SCOPE=probe.lab.ctf`,

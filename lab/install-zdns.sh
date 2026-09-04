@@ -18,7 +18,7 @@ NAME="${LAB_KALI_NAME:-kali-linux}"
 TAG="${LAB_ZDNS_TAG:-v2.1.1}"
 
 echo "[lab] installing zdns ($TAG) + dnsmasq into $NAME"
-wsl -d "$NAME" -u root -e bash -seu "$TAG" <<'EOF'
+wsl -d "$NAME" -u root -e bash -seu -- "$TAG" <<'EOF'
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 TAG="$1"
