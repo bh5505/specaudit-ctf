@@ -25,8 +25,7 @@ from tests.test_contract import FakeCliTransport
 from tests.test_coverage_catalog import _load_catalog, _load_schema
 
 ALLOWED_TIERS = frozenset({"research", "experimental", "maintained", "held"})
-HTTP_MCP_ARM_IDS = (
-    "burp-mcp",
+HELD_HTTP_MCP_ARM_IDS = (
     "semgrep-mcp",
     "prowler-mcp",
     "google-mcp-security",
@@ -273,9 +272,14 @@ def test_curated_true_does_not_imply_maintained(entries: list[dict]) -> None:
     assert PINNED_CURATED_NOT_MAINTAINED in curated_not_maintained
 
 
+def test_exactly_four_http_mcp_arms_are_held(entries: list[dict]) -> None:
+    held_rows = [row for row in entries if row["tier"] == "held"]
+    assert {row["id"] for row in held_rows} == set(HELD_HTTP_MCP_ARM_IDS)
+
+
 def test_http_mcp_arms_are_held_with_reason(entries: list[dict]) -> None:
     by_id = {row["id"]: row for row in entries}
-    for arm_id in HTTP_MCP_ARM_IDS:
+    for arm_id in HELD_HTTP_MCP_ARM_IDS:
         row = by_id[arm_id]
         assert row["kind"] == "arm"
         assert row["curated"] is True
@@ -286,11 +290,11 @@ def test_http_mcp_arms_are_held_with_reason(entries: list[dict]) -> None:
 
 
 def test_held_cannot_be_invoked_even_if_curated_and_installed() -> None:
-    fake = FakeCliTransport(installed_ids={"burp-mcp"})
-    ext = Extension(transports={"mcp": fake}, arms={"burp-mcp": fake})
+    fake = FakeCliTransport(installed_ids={"semgrep-mcp"})
+    ext = Extension(transports={"mcp": fake}, arms={"semgrep-mcp": fake})
     with pytest.raises(NotHeldError) as err:
-        ext.invoke("burp-mcp", "list_tools", {})
-    assert err.value.entry_id == "burp-mcp"
+        ext.invoke("semgrep-mcp", "list_tools", {})
+    assert err.value.entry_id == "semgrep-mcp"
     assert "held" in str(err.value).lower()
     assert fake.calls == []
 
@@ -332,8 +336,11 @@ def test_describe_includes_tier() -> None:
     assert described["tier"] in ALLOWED_TIERS
     assert described["tier"] != "maintained"
     burp = describe("burp-mcp").to_dict()
-    assert burp["tier"] == "held"
-    assert burp.get("held_reason")
+    assert burp["tier"] == "research"
+    assert not burp.get("held_reason")
+    held = describe("semgrep-mcp").to_dict()
+    assert held["tier"] == "held"
+    assert held.get("held_reason")
 
 
 def test_cli_list_and_describe_include_tier(
@@ -349,7 +356,7 @@ def test_cli_list_and_describe_include_tier(
     assert described["tier"] in ALLOWED_TIERS
     assert main(["describe", "burp-mcp"]) == 0
     burp = json.loads(capsys.readouterr().out)
-    assert burp["tier"] == "held"
+    assert burp["tier"] == "research"
 
 
 def test_mcp_list_and_describe_include_tier() -> None:
@@ -363,14 +370,14 @@ def test_mcp_list_and_describe_include_tier() -> None:
     )
     assert described["tier"] in ALLOWED_TIERS
     burp = _content_json(_call(server, "describe", {"id": "burp-mcp"}))
-    assert burp["tier"] == "held"
+    assert burp["tier"] == "research"
 
 
 def test_mcp_invoke_held_is_tool_error_even_when_installed() -> None:
-    fake = FakeCliTransport(installed_ids={"burp-mcp"})
-    ext = Extension(transports={"mcp": fake}, arms={"burp-mcp": fake})
+    fake = FakeCliTransport(installed_ids={"semgrep-mcp"})
+    ext = Extension(transports={"mcp": fake}, arms={"semgrep-mcp": fake})
     server = McpServer(extension=ext)
-    response = _call(server, "invoke", {"id": "burp-mcp", "action": "list_tools"})
+    response = _call(server, "invoke", {"id": "semgrep-mcp", "action": "list_tools"})
     assert response["result"]["isError"] is True
     assert "held" in _content_text(response).lower()
     assert fake.calls == []
@@ -379,6 +386,6 @@ def test_mcp_invoke_held_is_tool_error_even_when_installed() -> None:
 def test_cli_invoke_held_is_hard_error(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    assert main(["invoke", "burp-mcp", "list_tools"]) == 2
+    assert main(["invoke", "semgrep-mcp", "list_tools"]) == 2
     err = capsys.readouterr().err
     assert "held" in err.lower()

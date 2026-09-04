@@ -149,7 +149,7 @@
       }
     },
     {
-      "id": "invoke_held_burp_mcp",
+      "id": "invoke_unadmitted_burp_mcp",
       "kind": "envelope",
       "cli": [
         "invoke",
@@ -169,7 +169,7 @@
           "status": "failed",
           "transport_ok": false,
           "limitations": [
-            "held capability is never invocable"
+            "unknown capability"
           ],
           "artifacts_empty": true
         }

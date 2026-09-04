@@ -74,7 +74,7 @@ def test_build_report_shape_and_install_probe(
         "held": False,
         "installed": True,
     }
-    assert by_id["burp-mcp"]["held"] is True
+    assert by_id["burp-mcp"]["held"] is False
     assert by_id["agent-wiz"]["tier"] == "maintained"
 
 

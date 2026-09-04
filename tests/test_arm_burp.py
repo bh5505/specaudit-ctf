@@ -187,9 +187,9 @@ def test_default_invoke_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
     monkeypatch.setattr("extension.contract._DEFAULT", None)
     ext = Extension()
-    with pytest.raises(NotHeldError):
+    with pytest.raises(NotInstalledError):
         ext.invoke(ARM_ID, "list_tools", {})
-    with pytest.raises(NotHeldError):
+    with pytest.raises(NotInstalledError):
         invoke(ARM_ID, "list_tools", {})
 
 
@@ -376,13 +376,15 @@ def test_paginated_defaults_applied() -> None:
     assert session.calls == [("get_proxy_http_history", {"count": 200, "offset": 0})]
 
 
-def test_extension_invoke_refuses_held_burp_arm() -> None:
+def test_extension_invoke_reaches_research_burp_arm() -> None:
+    """Un-held (doc-21 dossier, 2026-09-03): handler-level reads are
+    reachable through the hardened transport; no tier refusal stands."""
     session = FakeSession()
     ext = Extension(arms={ARM_ID: _arm(session)})
-    with pytest.raises(NotHeldError) as err:
-        ext.invoke(ARM_ID, "list_tools", {})
-    assert err.value.entry_id == ARM_ID
-    assert session.calls == []
+    result = ext.invoke(ARM_ID, "list_tools", {})
+    assert result.ok is True
+    assert result.arm_id == ARM_ID
+    assert session.tools  # the handler enumerated the (fake) server
 
 
 def test_env_endpoint_installs_arm(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -569,9 +571,9 @@ def test_extension_invoke_against_stub_sse(
 ) -> None:
     url, _state = stub_sse
     ext = Extension(arms={ARM_ID: BurpArm(endpoint=url, timeout=5)})
-    with pytest.raises(NotHeldError) as err:
-        ext.invoke(ARM_ID, "url_encode", {"content": "a b"})
-    assert err.value.entry_id == ARM_ID
+    result = ext.invoke(ARM_ID, "url_encode", {"content": "a b"})
+    assert result.ok is True
+    assert "a+b" in json.dumps(result.output)  # the stub's encoded reply
 
 
 def test_community_stub_refuses_tool_call(
@@ -822,6 +824,12 @@ def test_main_invoke_with_stub(
 ) -> None:
     url, _state = stub_sse
     monkeypatch.setenv(ENV_ENDPOINT, url)
+    # Research tier: the held refusal is gone; the capability-registry
+    # gate stands (admission is not coupled to the un-hold).
     assert main(["invoke", ARM_ID, "list_tools"]) == 2
-    err = capsys.readouterr().err
-    assert "held" in err.lower()
+    captured = capsys.readouterr()
+    assert "held" not in captured.err.lower()
+    payload = json.loads(captured.out)
+    assert payload["capability_id"] == "burp-mcp.list_tools"
+    assert payload["status"] == "failed"
+    assert payload["limitations"] == ["unknown capability"]

@@ -2,7 +2,9 @@
 
 ## Overview
 
-- **Arms**: 27 specialized adapters. HTTP MCP rows are held; remaining
+- **Arms**: 27 specialized adapters. Four HTTP MCP rows are held; the
+  burp-mcp row is research on the hardened transport (loopback-only
+  endpoint policy); remaining
   arm rows are research except the agent-wiz read tier
   (`agent-wiz.list_tools`), the sole maintained capability (X5-PROMOTE).
   A specialized handler is
@@ -132,10 +134,12 @@ a fallback. `list` / `describe` include `tier`.
 
 `invoke <id> list_tools` returns static JSON (no binary spawn) on
 non-held surfaces that implement it (the ten lifted CLIs). Catalog
-`invoke` of held HTTP MCP rows (`burp-mcp`, `semgrep-mcp`,
+`invoke` of held HTTP MCP rows (`semgrep-mcp`,
 `prowler-mcp`, `google-mcp-security`, `metasploit-mcp`) is refused
-even if an endpoint is configured; handler-level `list_tools` is not
-reachable through catalog/CLI/MCP invoke. Pyrit scenario discovery is a
+even if an endpoint is configured. `burp-mcp` is research on the
+hardened transport: handler-level reads are reachable through the
+transport, while CLI/MCP `invoke` still requires a registered
+capability profile (admission is separate from the tier move). Pyrit scenario discovery is a
 separate `list_scenarios` action, which runs `pyrit_scan
 --list-scenarios`. Original fixed-argv CLIs (checkov, garak,
 mitreattack-python, wapiti, commix, zdns, vuls, stratus-red-team,
@@ -300,15 +304,16 @@ dispatch-class and stay refused until `ZAP_DISPATCH_SCOPE` names the
 target. Passive findings surface through `alerts`/`alerts_summary`
 without any dispatch.
 
-**Burp** (`burp-mcp`) is the curated-but-held row on this lane:
+**Burp** (`burp-mcp`) is the research-tier SSE row on this lane:
 PortSwigger's official MCP Server BApp runs on Community Edition for
 proxy history, request sending, Repeater, and codecs (scanner-issues
-and Collaborator tools are Pro-gated), but this suite's HTTP MCP
-client transport stays held pending the OAuth resource and audience-binding gate —
-see the row notes in `extension/coverage.yaml`. Community Edition has
+and Collaborator tools are Pro-gated). The arm rides the hardened
+shared transport: the endpoint policy is literal-loopback only
+(`BURP_MCP_ENDPOINT` must name `127.0.0.1` or `[::1]`) and the client
+sends no credential. Community Edition has
 no usable built-in REST API and no project-file persistence, so the
-honest CE automation story is the official BApp above; until the
-transport gate lands, use `zaproxy` for driven web testing.
+honest CE automation story is the official BApp above; for the
+first-class DAST role use `zaproxy` for driven web testing.
 
 ## On Kali
 
