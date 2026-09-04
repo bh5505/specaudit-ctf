@@ -26,6 +26,11 @@ TRANSPORT_POLICY = HttpTransportPolicy.remote_https()
 # Install also requires cloud credentials in the environment. AWS is the
 # documented first cloud; add more when upstream surfaces them.
 CREDENTIAL_ENVS = ("AWS_ACCESS_KEY_ID", "AWS_PROFILE")
+# Hosted endpoint credential: the operator's Prowler API key, surfaced
+# as an explicit per-arm Bearer credential (value redacted end-to-end
+# by the shared transport). The AWS envs remain for self-hosted
+# deployments whose reads hit a local Prowler API.
+ENV_API_KEY = "PROWLER_API_KEY"
 
 ALLOWED_PREFIXES = ("prowler_", "prowler_docs_", "prowler_hub_")
 
@@ -47,7 +52,25 @@ LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 def credentials_present() -> bool:
     import os
 
+    if os.environ.get(ENV_API_KEY, "").strip():
+        return True
     return any(os.environ.get(name) for name in CREDENTIAL_ENVS)
+
+
+def api_credential():
+    """The operator's explicit per-arm credential, or None.
+
+    Read here in the ARM layer (never inside the transport); the value
+    is registered in the session redaction set by the shared client.
+    """
+    import os
+
+    from ..mcp_client import ArmCredential
+
+    key = os.environ.get(ENV_API_KEY, "").strip()
+    if not key:
+        return None
+    return ArmCredential.bearer(key)
 
 
 def refuse_reason(tool: str, available: set[str]) -> str | None:

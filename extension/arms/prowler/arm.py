@@ -15,7 +15,7 @@ from ..mcp_client import (
     MAX_MCP_BYTES,
     MAX_MCP_ROWS,
     MCP_CALL_TIMEOUT,
-    SseMcpSession,
+    StreamableHttpClient,
     configured_http_url,
     redact,
 )
@@ -24,6 +24,7 @@ from .policy import (
     ENV_ENDPOINT,
     LIST_ACTIONS,
     TRANSPORT_POLICY,
+    api_credential,
     credentials_present,
     refuse_reason,
 )
@@ -32,7 +33,11 @@ SessionFactory = Callable[..., Any]
 
 
 def _default_session_factory(url: str, timeout: float = MCP_CALL_TIMEOUT) -> Any:
-    return SseMcpSession(url, timeout=timeout, policy=TRANSPORT_POLICY)
+    # The hosted endpoint (mcp.prowler.com/mcp) speaks the streamable
+    # HTTP dialect; self-hosted deployments ride the same client.
+    return StreamableHttpClient(
+        url, timeout=timeout, policy=TRANSPORT_POLICY, credential=api_credential()
+    )
 
 
 class ProwlerArm:

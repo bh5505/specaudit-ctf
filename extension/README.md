@@ -49,8 +49,12 @@ handlers preserved; specialized session, not a generic transport):
   no edition gating (unavailable tools refused by the server surface)
 - `semgrep-mcp` — held; streamable HTTP; scan/findings/AST reads; inline
   rule pack required (no registry `p/` or URL rules)
-- `prowler-mcp` — held; HTTP+SSE; read-only `prowler_` / `prowler_docs_` /
-  `prowler_hub_` prefixes; `prowler_cloud_*` blocked; credential-gated
+- `prowler-mcp` — research; streamable HTTP on the hardened transport
+  (hosted endpoint or self-hosted); the Prowler API key is the explicit
+  per-arm Bearer credential (value redacted); read-only `prowler_` /
+  `prowler_docs_` / `prowler_hub_` prefixes; `prowler_cloud_*` and
+  mutation keywords blocked; discovery admitted, read tools
+  handler-level (upstream documents namespaces, not tool names)
 - `google-mcp-security` — research; GTI lookups over the official
   gti-mcp server at an operator-configured https endpoint via the
   hardened transport; all 11 allowlisted tools are reads (verified
@@ -153,10 +157,10 @@ metadata. Since X4-PUB the stdio MCP
 envelope as the CLI (timestamps differ per run); the direct library
 surface keeps its existing gates.
 
-Catalog `invoke` of held HTTP MCP arms (`semgrep-mcp`,
-`prowler-mcp`, `metasploit-mcp`) is refused
-even when an endpoint is configured. `burp-mcp` and
-`google-mcp-security` are research on the hardened transport: handler-level
+Catalog `invoke` of the held HTTP MCP arm (`metasploit-mcp`) is
+refused even when an endpoint is configured. `burp-mcp`,
+`google-mcp-security`, `semgrep-mcp`, and `prowler-mcp` are admitted
+research integrations: handler-level
 `list_tools` / `tools/list` go through the shared client, while CLI
 and MCP `invoke` still require a registered capability profile.
 Burp is not installed unless
