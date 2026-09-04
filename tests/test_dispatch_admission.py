@@ -51,7 +51,8 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
     admitted = {
         capability_id
         for capability_id, profile in INVOKE_PROFILES.items()
-        if profile.action != "list_tools"
+        # burp-mcp read admissions are R0 read-tier profiles, not dispatch
+        if profile.action != "list_tools" and profile.arm_id != "burp-mcp"
     }
     assert admitted == expected
     profile = invoke_profile("nmap", "scan")

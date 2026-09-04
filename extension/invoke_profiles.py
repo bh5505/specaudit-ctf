@@ -93,6 +93,59 @@ def _policy_profile(arm_id: str, tier: str = "research") -> InvokeProfile:
 _POLICY_ARM_TIERS = {arm_id: "research" for arm_id in _STATIC_POLICY_ARMS}
 _POLICY_ARM_TIERS["agent-wiz"] = "maintained"
 
+
+def _mcp_read_profile(arm_id: str, action: str, tier: str = "research") -> InvokeProfile:
+    """Read-tier admission for an MCP-backed arm action.
+
+    Unlike the static policy arms, these dial the operator-configured
+    MCP endpoint (default-off until the env names one; not synthetic
+    once configured). Loopback-armed arms (burp, metasploit) stay
+    local-read; remote-https arms use the dispatch-shaped builder below.
+    """
+    capability_id = f"{arm_id}.{action}"
+    scope = (f"policy://extension/arms/{arm_id}",)
+    return InvokeProfile(
+        arm_id=arm_id,
+        action=action,
+        capability_id=capability_id,
+        tool_name=PACKAGE_NAME,
+        tool_version=PACKAGE_VERSION,
+        authorized_scope=scope,
+        touched_scope=scope,
+        safety_class="R0",
+        side_effects=("local-read",),
+        timeout_ms=30_000,
+        max_output_bytes=1_048_576,
+        max_tool_steps=1,
+        max_spend=None,
+        cleanup_required=False,
+        approval_ref=None,
+        roe_ref=None,
+        tier=tier,
+        default_off=True,
+        synthetic_only=False,
+    )
+
+
+# Burp read admission (functional-unhold packet, 2026-09-03): the
+# Community-usable surface of the official BApp - discovery, codecs,
+# random text, proxy/WebSocket history, Organizer. No edition gating:
+# tools the connected Burp does not list are refused as unavailable by
+# the arm itself. get_scanner_issues / Collaborator tools are not
+# admitted (they require a paid Burp edition; the arm's allowlist-miss
+# refusal covers them without any gating machinery).
+_BURP_READ_ACTIONS = (
+    "list_tools",
+    "url_encode",
+    "url_decode",
+    "base64_encode",
+    "base64_decode",
+    "generate_random_string",
+    "get_proxy_http_history",
+    "get_proxy_websocket_history",
+    "get_organizer_items",
+)
+
 # Dispatch-class admission (2026-09-01 operator directive: expand the MVP
 # functional CTF tools; 2026-09-02/03 continuation waves). These profiles carry
 # the honest manifest truth for scope-gated live actions: safety class R1,
@@ -178,6 +231,7 @@ INVOKE_PROFILES = {
             _dispatch_profile(arm_id, action, side_effects, timeout_ms, scope_env)
             for arm_id, action, side_effects, timeout_ms, scope_env in _DISPATCH_PROFILES
         ),
+        *(_mcp_read_profile("burp-mcp", action) for action in _BURP_READ_ACTIONS),
     )
 }
 INVOKE_CAPABILITY_IDS = frozenset(INVOKE_PROFILES)

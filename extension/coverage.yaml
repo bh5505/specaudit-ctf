@@ -106,7 +106,7 @@ entries:
     protocols: [mcp, http]
     curated: true
     tier: research
-    notes: Burp Suite MCP over PortSwigger's official MCP Server BApp (SSE mode, default 127.0.0.1:9876; Community Edition covers proxy history, request send, Repeater, codecs; scanner-issues and Collaborator are Pro-gated). Curated SSE arm on the hardened shared transport; endpoint policy is literal-loopback only (BURP_MCP_ENDPOINT must name 127.0.0.1 or [::1]) and the client sends no credential. For the first-class DAST role use the zaproxy arm (free native API).
+    notes: Burp Suite MCP over PortSwigger's official MCP Server BApp (SSE mode, default 127.0.0.1:9876), fully usable on the free Community Edition - proxy/WebSocket history, codecs, Organizer, and random-text reads are admitted capabilities with no edition gating (tools the connected Burp does not list are refused as unavailable by the arm). Curated SSE arm on the hardened shared transport; endpoint policy is literal-loopback only (BURP_MCP_ENDPOINT must name 127.0.0.1 or [::1]) and the client sends no credential. For the first-class DAST role use the zaproxy arm (free native API).
 
   - id: agent-wiz
     kind: arm

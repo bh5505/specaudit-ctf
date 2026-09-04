@@ -1,4 +1,4 @@
-"""Allowlist, blocked class, and edition rules for the Burp arm."""
+"""Allowlist and blocked-class rules for the Burp arm."""
 
 from __future__ import annotations
 
@@ -68,10 +68,9 @@ TOOL_DEFAULT_ARGS: dict[str, dict] = {
 }
 
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
-COMMUNITY_REFUSED = "Burp Community edition is not supported"
-EDITION_REFUSED = "Burp Professional edition is required"
 
-# Shared name-shape/blocklist/allowlist checks; edition gating layers on top.
+# Shared name-shape/blocklist/allowlist checks plus the server-surface
+# availability check; edition is output metadata only.
 _TOOL_POLICY = ToolPolicy(allowed=ALLOWED_TOOLS, blocked=BLOCKED_TOOLS)
 
 
@@ -93,14 +92,14 @@ def merge_tool_args(tool: str, args: dict) -> dict:
     return merged
 
 
-def refuse_reason(tool: str, edition: str, available: set[str]) -> str | None:
+def refuse_reason(tool: str, available: set[str]) -> str | None:
+    """Allowlist policy + the connected server's own surface. There is no
+    edition gating: tools the connected Burp does not expose are refused
+    as unavailable (a Community server simply does not list the
+    scanner/Collaborator tools)."""
     reason = _TOOL_POLICY.refuse_reason(tool)
     if reason is not None:
         return reason
-    if edition == "community":
-        return COMMUNITY_REFUSED
-    if edition != "professional":
-        return EDITION_REFUSED
-    if tool in PROFESSIONAL_ONLY and tool not in available:
-        return f"Professional-only tool not available: {tool}"
+    if tool not in available:
+        return f"tool {tool!r} is not available on the server"
     return None

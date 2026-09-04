@@ -304,15 +304,16 @@ dispatch-class and stay refused until `ZAP_DISPATCH_SCOPE` names the
 target. Passive findings surface through `alerts`/`alerts_summary`
 without any dispatch.
 
-**Burp** (`burp-mcp`) is the research-tier SSE row on this lane:
-PortSwigger's official MCP Server BApp runs on Community Edition for
-proxy history, request sending, Repeater, and codecs (scanner-issues
-and Collaborator tools are Pro-gated). The arm rides the hardened
-shared transport: the endpoint policy is literal-loopback only
-(`BURP_MCP_ENDPOINT` must name `127.0.0.1` or `[::1]`) and the client
-sends no credential. Community Edition has
-no usable built-in REST API and no project-file persistence, so the
-honest CE automation story is the official BApp above; for the
+**Burp** (`burp-mcp`) is a research-tier, fully usable SSE integration:
+PortSwigger's official MCP Server BApp on the free Community Edition
+admits proxy/WebSocket history, codec, Organizer, and random-text reads
+as catalog capabilities - no edition gating anywhere (a tool the
+connected Burp does not list is refused as unavailable, which is the
+server's own surface). The arm rides the hardened shared transport:
+endpoint policy is literal-loopback only (`BURP_MCP_ENDPOINT` must name
+`127.0.0.1` or `[::1]`) and the client sends no credential. Community
+Edition has no usable built-in REST API and no project-file persistence,
+so the honest CE automation story is the official BApp above; for the
 first-class DAST role use `zaproxy` for driven web testing.
 
 ## On Kali

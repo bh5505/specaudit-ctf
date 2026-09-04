@@ -488,7 +488,10 @@ def test_agent_wiz_golden_matches_encoder_and_is_admitted() -> None:
 def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 21 since commix.scan admission (2026-09-03): 10 static read
     # profiles + 11 scope-gated dispatch profiles.
-    assert len(INVOKE_PROFILES) == 21
+    # 30 after the burp read admission (9 MCP read profiles; the arm
+    # blocklists the three _regex search variants, so they stay
+    # unadmitted).
+    assert len(INVOKE_PROFILES) == 30
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -499,7 +502,13 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     )
     assert maintained == ["agent-wiz.list_tools"]
     for capability_id, profile in INVOKE_PROFILES.items():
-        if profile.action == "list_tools":
+        if profile.arm_id == "burp-mcp":
+            # MCP read admission: dials the operator endpoint once armed,
+            # so not synthetic-only.
+            assert profile.safety_class == "R0"
+            assert profile.side_effects == ("local-read",)
+            assert profile.synthetic_only is False
+        elif profile.action == "list_tools":
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.synthetic_only is True
@@ -535,7 +544,13 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["tier"] == "maintained"
         assert payload["kind"] == "arm"
         assert payload["default_off"] is True
-        if profile.action == "list_tools":
+        if profile.arm_id == "burp-mcp":
+            # MCP read manifests: R0 local-read, synthetic_only False
+            # (they dial the operator-configured endpoint once armed).
+            assert payload["safety_class"] == "R0"
+            assert payload["side_effects"] == ["local-read"]
+            assert payload["synthetic_only"] is False
+        elif profile.action == "list_tools":
             assert payload["safety_class"] == "R0"
             assert payload["side_effects"] == ["local-read"]
             assert payload["synthetic_only"] is True

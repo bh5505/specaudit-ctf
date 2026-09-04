@@ -87,7 +87,7 @@ class BurpArm:
                     output={"edition": edition, "tools": tools},
                     error=None,
                 )
-            reason = refuse_reason(action, edition, names)
+            reason = refuse_reason(action, names)
             if reason:
                 return Result(
                     ok=False,
