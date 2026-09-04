@@ -84,10 +84,16 @@ def _duplicate_check(pointer: str) -> dict[str, Any]:
 
     ``safety_class`` and ``side_effects`` are defined in the
     execution-result schema AND copied into the capability-manifest
-    schema; the per-side checks above compare each copy against the
-    enforcing code constants only. This check catches drift BETWEEN
-    the two schema copies, with the execution-result schema as the
-    reference side (it is already code-checked in the same run).
+    schema. The execution copy is directly code-checked in the same
+    run; the manifest copy is pinned transitively through this check
+    (equality is transitive), so drift between the two schema copies
+    cannot hide behind either side's code agreement.
+
+    Result keys are renamed for the cross-schema context:
+    ``manifest_only`` (values only the capability-manifest copy lists)
+    and ``reference_only`` (values only the execution-result copy
+    lists) — never ``schema_only``/``code_only``, which would mislabel
+    schema-vs-schema drift as schema-vs-code.
     """
     reference = _schema_enum(_EXECUTION_SCHEMA, pointer)
     if reference is None:
@@ -95,17 +101,41 @@ def _duplicate_check(pointer: str) -> dict[str, Any]:
             "ok": False,
             "detail": (
                 "reference enum unreadable or missing at "
-                f"{pointer} in {_EXECUTION_SCHEMA.name}"
+                f"{pointer} in the execution-result schema "
+                f"({_EXECUTION_SCHEMA.name})"
             ),
-            "schema_only": [],
-            "code_only": [],
+            "manifest_only": [],
+            "reference_only": [],
         }
-    return _check(
+    check = _check(
         _MANIFEST_SCHEMA,
         pointer,
         reference,
         code_label="execution-result schema",
     )
+    manifest_only = list(check["schema_only"])
+    reference_only = list(check["code_only"])
+    if not check["ok"] and not manifest_only and not reference_only:
+        # Unreadable manifest side: keep _check's fail-closed detail
+        # (it names the manifest file).
+        return {
+            "ok": False,
+            "detail": check["detail"],
+            "manifest_only": [],
+            "reference_only": [],
+        }
+    detail = "ok" if check["ok"] else (
+        "capability-manifest schema has values the execution-result "
+        f"schema does not list: {manifest_only}; execution-result "
+        f"schema has values the capability-manifest schema does not "
+        f"list: {reference_only}"
+    )
+    return {
+        "ok": check["ok"],
+        "detail": detail,
+        "manifest_only": manifest_only,
+        "reference_only": reference_only,
+    }
 
 
 def drift_check() -> dict[str, Any]:
@@ -149,8 +179,9 @@ def drift_check() -> dict[str, Any]:
             sorted(envelopes.CLEANUP_PROOFS),
         ),
         # Cross-schema duplicates: safety_class and side_effects are
-        # defined in BOTH schemas; each copy is code-checked above, and
-        # these checks catch the two schema copies drifting apart.
+        # defined in BOTH schemas. The execution copy is directly
+        # code-checked above; these checks pin the manifest copy to
+        # it, so the two schema copies cannot drift apart.
         "safety_class_schema_dup": _duplicate_check(
             "/definitions/safety_class"
         ),

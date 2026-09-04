@@ -74,8 +74,11 @@ def test_schema_duplicate_drift_fails_closed_naming_both_sides(
     monkeypatch.setattr(drift_mod, "_MANIFEST_SCHEMA", manifest_side)
     check = _duplicate_check("/definitions/safety_class")
     assert check["ok"] is False
-    assert check["schema_only"] == ["R9"]
-    assert check["code_only"] == ["R1"]
+    # Cross-schema results must NOT reuse the schema-vs-code keys.
+    assert "schema_only" not in check and "code_only" not in check
+    assert check["manifest_only"] == ["R9"]
+    assert check["reference_only"] == ["R1"]
+    assert "capability-manifest schema" in check["detail"]
     assert "execution-result schema" in check["detail"]
 
 
@@ -94,7 +97,27 @@ def test_unreadable_reference_side_fails_closed(
     check = _duplicate_check("/definitions/safety_class")
     assert check["ok"] is False
     assert "reference enum unreadable" in check["detail"]
-    assert check["schema_only"] == [] and check["code_only"] == []
+    assert "execution-result schema" in check["detail"]
+    assert check["manifest_only"] == [] and check["reference_only"] == []
+
+
+def test_unreadable_manifest_side_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    exec_side = tmp_path / "execution-result.v1.schema.json"
+    exec_side.write_text(
+        json.dumps(
+            {"definitions": {"safety_class": {"type": "string", "enum": ["R0"]}}}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(drift_mod, "_EXECUTION_SCHEMA", exec_side)
+    monkeypatch.setattr(drift_mod, "_MANIFEST_SCHEMA", tmp_path / "missing.json")
+    check = _duplicate_check("/definitions/safety_class")
+    assert check["ok"] is False
+    assert "unreadable" in check["detail"]
+    assert "missing.json" in check["detail"]
+    assert check["manifest_only"] == [] and check["reference_only"] == []
 
 
 def test_drift_fails_closed_naming_both_sides() -> None:
