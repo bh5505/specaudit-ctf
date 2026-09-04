@@ -1,4 +1,4 @@
-"""Curated Prowler arm: allowlisted MCP tools over HTTP+SSE."""
+"""Curated Prowler arm: allowlisted MCP tools over Streamable HTTP."""
 
 from __future__ import annotations
 
@@ -43,7 +43,7 @@ def _default_session_factory(url: str, timeout: float = MCP_CALL_TIMEOUT) -> Any
 class ProwlerArm:
     """Specialized transport for catalog id prowler-mcp.
 
-    Near-clone of the Burp arm's HTTP+SSE shape, with the highest
+    Streamable-HTTP client shape (hosted endpoint or self-hosted), with the highest
     credential burden of any curated arm: install requires both an
     endpoint and cloud credentials in the environment, and every output
     path runs through the shared redaction before it leaves the arm.

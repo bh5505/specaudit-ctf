@@ -86,6 +86,7 @@ def _names() -> set[str]:
 @pytest.fixture(autouse=True)
 def _creds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AWS_PROFILE", raising=False)
+    monkeypatch.delenv("PROWLER_API_KEY", raising=False)
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIA-fixture")
 
 

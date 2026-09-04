@@ -47,8 +47,10 @@ handlers preserved; specialized session, not a generic transport):
   loopback endpoints only (`127.0.0.1`/`[::1]`, http or https);
   history/codec/Organizer/random-text reads admitted as capabilities;
   no edition gating (unavailable tools refused by the server surface)
-- `semgrep-mcp` — held; streamable HTTP; scan/findings/AST reads; inline
-  rule pack required (no registry `p/` or URL rules)
+- `semgrep-mcp` — research; first-party CLI scans (inline rule pack
+  required - no registry `p/` or URL rules; `SEMGREP_SCAN_ROOT`
+  containment) admitted as `semgrep_scan`, plus MCP reads over an
+  operator-configured https endpoint on the hardened transport
 - `prowler-mcp` — research; streamable HTTP on the hardened transport
   (hosted endpoint or self-hosted); the Prowler API key is the explicit
   per-arm Bearer credential (value redacted); read-only `prowler_` /
