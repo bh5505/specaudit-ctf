@@ -42,7 +42,9 @@ Schema: [schema/coverage.schema.json](schema/coverage.schema.json).
 **MCP** (`tier: held` on this public cut; catalog invoke refused;
 handlers preserved; specialized session, not a generic transport):
 
-- `burp-mcp` — held; HTTP+SSE; allowlisted reads/utilities; Community edition
+- `burp-mcp` — research; HTTP+SSE on the hardened transport; literal
+  loopback endpoints only (`127.0.0.1`/`[::1]`, http or https);
+  allowlisted reads/utilities; Community edition
   refused
 - `semgrep-mcp` — held; streamable HTTP; scan/findings/AST reads; inline
   rule pack required (no registry `p/` or URL rules)
@@ -147,13 +149,15 @@ metadata. Since X4-PUB the stdio MCP
 envelope as the CLI (timestamps differ per run); the direct library
 surface keeps its existing gates.
 
-Catalog `invoke` of HTTP MCP arms (`burp-mcp` and the other held
-rows) is refused even when an endpoint is configured. The specialized
-handler is preserved for later un-hold and for direct unit tests;
-handler-level `list_tools` / `tools/list` are not reachable through
-catalog, CLI, or MCP `invoke`. Burp is not installed unless
-`BURP_MCP_ENDPOINT` is set to a scheme- and host-validated HTTP+SSE
-MCP URL; a configured endpoint that is unreachable fails the handler
+Catalog `invoke` of held HTTP MCP arms (`semgrep-mcp`,
+`prowler-mcp`, `google-mcp-security`, `metasploit-mcp`) is refused
+even when an endpoint is configured. `burp-mcp` is research on the
+hardened transport (doc-21 dossier): handler-level
+`list_tools` / `tools/list` go through the shared client, while CLI
+and MCP `invoke` still require a registered capability profile.
+Burp is not installed unless
+`BURP_MCP_ENDPOINT` is set to a literal-loopback (`127.0.0.1` or
+`[::1]`) HTTP+SSE MCP URL; a configured endpoint that is unreachable fails the handler
 with an error. Community edition is refused for tool calls. Only
 allowlisted read or utility actions run once un-held. SSE endpoint
 with CR/LF is refused, oversized SSE frames are rejected, and error

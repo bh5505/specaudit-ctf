@@ -124,7 +124,7 @@ def test_list_entries_reads_coverage_catalog() -> None:
     burp = next(row for row in rows if row.id == CURATED_ARM_ID)
     assert burp.kind == "arm"
     assert burp.curated is True
-    assert burp.tier == "held"
+    assert burp.tier == "research"
     checkov = next(row for row in rows if row.id == RESEARCH_ARM_ID)
     assert checkov.curated is True
     assert checkov.tier != "maintained"
@@ -135,8 +135,8 @@ def test_describe_known_and_unknown() -> None:
     row = describe(CURATED_ARM_ID)
     assert row.id == CURATED_ARM_ID
     assert row.kind == "arm"
-    assert row.tier == "held"
-    assert row.held_reason
+    assert row.tier == "research"
+    assert not row.held_reason
     with pytest.raises(UnknownIdError) as err:
         describe(UNKNOWN_ID)
     assert err.value.entry_id == UNKNOWN_ID
@@ -200,11 +200,12 @@ def test_invoke_curated_arm_not_installed(
 
 
 def test_invoke_held_arm_refused_even_if_curated() -> None:
-    fake = FakeCliTransport(installed_ids={CURATED_ARM_ID})
-    ext = Extension(transports={"mcp": fake}, arms={CURATED_ARM_ID: fake})
+    held_id = "semgrep-mcp"
+    fake = FakeCliTransport(installed_ids={held_id})
+    ext = Extension(transports={"mcp": fake}, arms={held_id: fake})
     with pytest.raises(NotHeldError) as err:
-        ext.invoke(CURATED_ARM_ID, "list_tools", {})
-    assert err.value.entry_id == CURATED_ARM_ID
+        ext.invoke(held_id, "list_tools", {})
+    assert err.value.entry_id == held_id
     assert fake.calls == []
 
 
@@ -347,7 +348,7 @@ def test_main_list_and_describe(capsys: pytest.CaptureFixture[str]) -> None:
     described = json.loads(capsys.readouterr().out)
     assert described["id"] == CURATED_ARM_ID
     assert described["curated"] is True
-    assert described["tier"] == "held"
+    assert described["tier"] == "research"
 
 
 def test_main_invoke_unknown_id_is_hard_error(

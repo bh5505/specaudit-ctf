@@ -83,30 +83,28 @@ def test_head_lists_and_describes_curated_burp_without_dialing(
     burp = next(row for row in rows if row["id"] == ARM_ID)
     assert burp["kind"] == "arm"
     assert burp["curated"] is True
-    assert burp["tier"] == "held"
+    assert burp["tier"] == "research"
     described = _content_json(_call(server, "describe", {"id": ARM_ID}))
     assert described["id"] == ARM_ID
     assert described["curated"] is True
-    assert described["tier"] == "held"
+    assert described["tier"] == "research"
     assert state.http_hits == 0
     assert state.calls == []
 
 
-def test_head_refuses_held_burp_stub(
+def test_head_invoke_gates_on_capability_registry_not_tier(
     stub_sse: tuple[str, _HitState],
 ) -> None:
+    """Research tier (doc-21 dossier, 2026-09-03): the held refusal is
+    gone; what still stands is the capability-registry gate (admission is
+    deliberately not coupled to the un-hold). No dialing happens - the
+    registry fires before the handler."""
     url, state = stub_sse
     server = _head(url)
     listed = _call(server, "invoke", {"id": ARM_ID, "action": "list_tools"})
     assert listed["result"]["isError"] is True
-    assert "held" in _content_text(listed).lower()
-    encoded = _call(
-        server,
-        "invoke",
-        {"id": ARM_ID, "action": "url_encode", "args": {"content": "a b"}},
-    )
-    assert encoded["result"]["isError"] is True
-    assert "held" in _content_text(encoded).lower()
+    assert "unknown capability" in _content_text(listed).lower()
+    assert "held" not in _content_text(listed).lower()
     assert state.http_hits == 0
     assert state.calls == []
 
@@ -149,14 +147,15 @@ def test_head_stdio_list_and_invoke_burp_stub(
     assert len(lines) == 2
     rows = json.loads(json.loads(lines[0])["result"]["content"][0]["text"])
     assert any(
-        row["id"] == ARM_ID and row["curated"] is True and row["tier"] == "held"
+        row["id"] == ARM_ID and row["curated"] is True and row["tier"] == "research"
         for row in rows
     )
     invoked = json.loads(lines[1])
     assert invoked["result"]["isError"] is True
-    assert "held" in invoked["result"]["content"][0]["text"].lower()
+    assert "unknown capability" in invoked["result"]["content"][0]["text"].lower()
+    assert "held" not in invoked["result"]["content"][0]["text"].lower()
     assert state.http_hits == 0
-    assert state.calls == []
+    assert state.calls == []  # registry gate precedes the handler
 
 
 def test_head_default_extension_uses_env_stub(
@@ -168,8 +167,9 @@ def test_head_default_extension_uses_env_stub(
     server = McpServer(extension=Extension())
     response = _call(server, "invoke", {"id": ARM_ID, "action": "list_tools"})
     assert response["result"]["isError"] is True
-    assert "held" in _content_text(response).lower()
-    assert state.http_hits == 0
+    assert "unknown capability" in _content_text(response).lower()
+    assert "held" not in _content_text(response).lower()
+    assert state.http_hits == 0  # the registry gate fires before dialing
 
 
 def test_head_invoke_unknown_id_does_not_dial_stub(

@@ -156,9 +156,12 @@ def test_range_with_burp_stub_stays_mode_b_loadable(
         by_id = {item["arm_id"]: item for item in row["arms"]}
         assert set(by_id) == set(curated_ids)
         burp_row = by_id[ARM_ID]
+        # Research tier (doc-21 dossier): the stub is really dialed
+        # (edition detection succeeded through the hardened transport);
+        # the non-allowlisted observe action still fails closed.
         assert burp_row["status"] == "error"
-        assert burp_row["output"] is None
-        assert "held" in (burp_row.get("error") or "").lower()
+        assert burp_row["output"] == {"edition": "professional"}
+        assert "not on the allowlist" in (burp_row.get("error") or "")
         for arm_id in curated_ids:
             if arm_id != ARM_ID:
                 # Curated but unhandled in this wiring: fail-closed error row.

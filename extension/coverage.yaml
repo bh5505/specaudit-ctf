@@ -105,9 +105,8 @@ entries:
     kind: arm
     protocols: [mcp, http]
     curated: true
-    tier: held
-    held_reason: HTTP MCP is held on this public cut until OAuth resource and audience binding, no token passthrough, HTTPS, PKCE, Origin validation, DNS-rebinding controls, and localhost binding are evidenced.
-    notes: Burp Suite MCP. PortSwigger's official MCP Server BApp runs on Community Edition (proxy history, request send, Repeater, codecs; scanner-issues and Collaborator are Pro-gated), but the arm's HTTP MCP transport stays held on this public cut pending the OAuth resource and audience-binding gate. For the first-class DAST role use the zaproxy arm (free native API).
+    tier: research
+    notes: Burp Suite MCP over PortSwigger's official MCP Server BApp (SSE mode, default 127.0.0.1:9876; Community Edition covers proxy history, request send, Repeater, codecs; scanner-issues and Collaborator are Pro-gated). Curated SSE arm on the hardened shared transport; endpoint policy is literal-loopback only (BURP_MCP_ENDPOINT must name 127.0.0.1 or [::1]) and the client sends no credential. For the first-class DAST role use the zaproxy arm (free native API).
 
   - id: agent-wiz
     kind: arm

@@ -143,11 +143,11 @@ def test_mcp_invoke_methodology_only_does_not_call_transport() -> None:
 
 
 def test_mcp_invoke_held_arm_is_failed_envelope() -> None:
-    # The fixture catalog has no held rows; the live catalog holds
-    # HTTP-MCP arms (G-15), and the held refusal fires before the X2
-    # profile lookup.
+    # The fixture catalog has no held rows; the live catalog still holds
+    # four HTTP-MCP arms (G-15, doc 21), and the held refusal fires
+    # before the X2 profile lookup. burp-mcp un-held 2026-09-03.
     server = McpServer()
-    response = _call(server, "invoke", {"id": CURATED_ARM_ID, "action": "ping"})
+    response = _call(server, "invoke", {"id": "semgrep-mcp", "action": "ping"})
     assert response["result"]["isError"] is True
     result = _content_json(response)
     assert result["status"] == "failed"
@@ -292,7 +292,7 @@ def test_module_mcp_invoke_live_catalog_held() -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "invoke",
-                    "arguments": {"id": CURATED_ARM_ID, "action": "list_tools"},
+                    "arguments": {"id": "semgrep-mcp", "action": "list_tools"},
                 },
             }
         )
