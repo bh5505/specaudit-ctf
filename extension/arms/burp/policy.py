@@ -1,4 +1,4 @@
-"""Allowlist, blocked class, and edition rules for the Burp arm."""
+"""Allowlist and blocked-class rules for the Burp arm."""
 
 from __future__ import annotations
 
@@ -69,7 +69,8 @@ TOOL_DEFAULT_ARGS: dict[str, dict] = {
 
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 
-# Shared name-shape/blocklist/allowlist checks; edition gating layers on top.
+# Shared name-shape/blocklist/allowlist checks plus the server-surface
+# availability check; edition is output metadata only.
 _TOOL_POLICY = ToolPolicy(allowed=ALLOWED_TOOLS, blocked=BLOCKED_TOOLS)
 
 

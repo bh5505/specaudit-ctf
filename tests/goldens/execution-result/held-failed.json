@@ -28,7 +28,7 @@
     "required": [],
     "skipped": [],
     "unsupported": [
-      "burp-mcp.list_tools"
+      "fixture.local-read"
     ]
   },
   "finished_at": "2026-08-25T12:00:00Z",

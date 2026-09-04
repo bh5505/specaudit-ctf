@@ -142,11 +142,8 @@ _BURP_READ_ACTIONS = (
     "base64_decode",
     "generate_random_string",
     "get_proxy_http_history",
-    "get_proxy_http_history_regex",
     "get_proxy_websocket_history",
-    "get_proxy_websocket_history_regex",
     "get_organizer_items",
-    "get_organizer_items_regex",
 )
 
 # Dispatch-class admission (2026-09-01 operator directive: expand the MVP
