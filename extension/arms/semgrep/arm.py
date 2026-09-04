@@ -34,7 +34,6 @@ from .policy import (
     ARMING,
     CAVEATS,
     ENV_ENDPOINT,
-    ENV_SCAN_ROOT,
     LIST_ACTIONS,
     MAX_FINDINGS,
     TIMEOUT_SECONDS,
@@ -90,10 +89,13 @@ class SemgrepArm:
         if spec.id != ARM_ID:
             raise NotInstalledError(spec.id)
         endpoint = self.endpoint_url()
-        if endpoint is None and action in ("semgrep_scan", *LIST_ACTIONS):
-            # No MCP endpoint: the first-party CLI is the surface.
-            if action in LIST_ACTIONS:
-                return self._cli_list_tools(spec, action)
+        # Deterministic routing, matching the admitted profiles exactly:
+        # list_tools and semgrep_scan ALWAYS run on the first-party CLI
+        # (subprocess, scan-root contained); an MCP endpoint serves the
+        # read tools only.
+        if action in LIST_ACTIONS:
+            return self._cli_list_tools(spec, action)
+        if action == "semgrep_scan":
             return self._cli_scan(spec, action, dict(args))
         if endpoint is None:
             if resolve_binary() is None:
@@ -104,8 +106,8 @@ class SemgrepArm:
                 action=action,
                 output=None,
                 error=(
-                    "MCP reads require SEMGREP_MCP_ENDPOINT; only "
-                    "list_tools and semgrep_scan run on the CLI"
+                    "MCP reads require SEMGREP_MCP_ENDPOINT; list_tools "
+                    "and semgrep_scan run on the CLI"
                 ),
             )
         payload = dict(args)
@@ -214,6 +216,9 @@ class SemgrepArm:
         try:
             with os.fdopen(config_fd, "w", encoding="utf-8") as fh:
                 fh.write(str(payload["config"]))
+            scan_env = dict(os.environ)
+            scan_env["SEMGREP_DISABLE_VERSION_CHECK"] = "1"
+            scan_env["SEMGREP_SEND_METRICS"] = "off"
             try:
                 proc = subprocess.run(
                     argv,
@@ -223,6 +228,7 @@ class SemgrepArm:
                     errors="replace",
                     timeout=TIMEOUT_SECONDS,
                     check=False,
+                    env=scan_env,
                 )
             except subprocess.TimeoutExpired:
                 return Result(
@@ -230,7 +236,7 @@ class SemgrepArm:
                     arm_id=spec.id,
                     action=action,
                     output=None,
-                    error="semgrep_scan timed out after %ss" % TIMEOUT_SECONDS,
+                    error="semgrep_scan timed out after %ds" % int(TIMEOUT_SECONDS),
                 )
             except OSError as exc:
                 return Result(
@@ -259,6 +265,14 @@ class SemgrepArm:
                     action=action,
                     output=None,
                     error="semgrep produced invalid JSON output",
+                )
+            if not isinstance(report, dict):
+                return Result(
+                    ok=False,
+                    arm_id=spec.id,
+                    action=action,
+                    output=None,
+                    error="semgrep produced a non-object JSON report",
                 )
             results = report.get("results") or []
             return Result(

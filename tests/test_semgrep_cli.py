@@ -71,6 +71,7 @@ def cli_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
 
 def test_cli_list_tools_static(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
+    monkeypatch.delenv(ENV_SCAN_ROOT, raising=False)
     monkeypatch.setenv(ENV_BIN, str(tmp_path / "missing"))
     result = SemgrepArm().invoke(_spec(), "list_tools", {})
     assert result.ok is True
