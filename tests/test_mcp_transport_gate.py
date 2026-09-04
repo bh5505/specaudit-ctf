@@ -467,7 +467,7 @@ def _hit_url(url: str) -> None:
     time.sleep(0.1)
     try:
         urllib_request.urlopen(url, timeout=5.0)
-    except Exception:  # noqa: BLE001 - the receiver replies 200; any error is a test failure signal
+    except Exception:  # noqa: BLE001 - surfacing happens via the wait/timeout assertions
         pass
 
 
@@ -540,6 +540,57 @@ def test_p3_sse_repeat_challenge_is_terminal(gate_sse_server) -> None:
             session.connect()
     finally:
         session.close()
+
+
+def test_p3_as_metadata_endpoints_must_be_https() -> None:
+    """Server-controlled AS metadata can name an http authorize/token
+    endpoint; both are refused before the browser or the exchange ever
+    sees them (auto-review CRITICAL fix, PR #30 sweep)."""
+    def fetch(url: str, timeout: float) -> dict[str, Any]:
+        if url.endswith("oauth-protected-resource"):
+            return {"resource": "https://mcp.example.com", "authorization_servers": ["https://as.example.com"]}
+        return {
+            "authorization_endpoint": "http://attacker.example/authorize",
+            "token_endpoint": "https://as.example.com/token",
+        }
+
+    manager = OAuthAuthorizationManager(
+        OAuthConfig(arm_id="test-arm", client_id="client-1", fetch_json=fetch)
+    )
+    with pytest.raises(RuntimeError, match="authorization_endpoint must be https"):
+        manager.authorize(
+            "https://as.example.com/.well-known/oauth-protected-resource",
+            "https://mcp.example.com",
+            1.0,
+        )
+
+
+def test_p3_resource_origin_comparison_is_case_insensitive() -> None:
+    """RFC 6454 hosts compare case-insensitively: a server declaring
+    https://MCP.Example.com matches the lowercase origin (PR #30 sweep)."""
+    calls: list[str] = []
+
+    def fetch(url: str, timeout: float) -> dict[str, Any]:
+        calls.append(url)
+        if url.endswith("oauth-protected-resource"):
+            return {"resource": "https://MCP.Example.com", "authorization_servers": ["https://as.example.com"]}
+        return {
+            "authorization_endpoint": "https://as.example.com/authorize",
+            "token_endpoint": "https://as.example.com/token",
+        }
+
+    manager = OAuthAuthorizationManager(
+        OAuthConfig(arm_id="test-arm", client_id="client-1", fetch_json=fetch)
+    )
+    # No on_authorization handler: the case-normalized resource passes
+    # the origin check and fails at the honest operator-step refusal
+    # (not at the origin mismatch).
+    with pytest.raises(OAuthRequiredError, match="on_authorization"):
+        manager.authorize(
+            "https://as.example.com/.well-known/oauth-protected-resource",
+            "https://mcp.example.com",
+            1.0,
+        )
 
 
 def test_p3_manager_requires_on_authorization() -> None:
