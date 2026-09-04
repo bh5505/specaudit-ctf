@@ -146,6 +146,60 @@ _BURP_READ_ACTIONS = (
     "get_organizer_items",
 )
 
+
+def _remote_read_profile(arm_id: str, action: str, endpoint_env: str, tier: str = "research") -> InvokeProfile:
+    """Read admission for a remote-https MCP arm action.
+
+    The action is a lookup (no mutation), but it egresses to the
+    operator-configured https endpoint once armed, so the profile carries
+    the dispatch-class grammar: R1, network-egress, default-off, and the
+    endpoint env as the operator's arming/approval decision
+    (operator://endpoint/<ENV>, the remote-read analog of the dispatch
+    scope envs). Timeout mirrors the shared MCP_CALL_TIMEOUT the client
+    applies to every call.
+    """
+    capability_id = f"{arm_id}.{action}"
+    scope = (f"policy://extension/arms/{arm_id}",)
+    return InvokeProfile(
+        arm_id=arm_id,
+        action=action,
+        capability_id=capability_id,
+        tool_name=PACKAGE_NAME,
+        tool_version=PACKAGE_VERSION,
+        authorized_scope=scope,
+        touched_scope=scope,
+        safety_class="R1",
+        side_effects=("network-egress",),
+        timeout_ms=10_000,
+        max_output_bytes=1_048_576,
+        max_tool_steps=1,
+        max_spend=None,
+        cleanup_required=False,
+        approval_ref=f"operator://endpoint/{endpoint_env}",
+        roe_ref="doc://README#remote-read-doctrine",
+        tier=tier,
+        default_off=True,
+        synthetic_only=False,
+    )
+
+
+# GTI read admission (2026-09-03): discovery plus the 11 verified
+# read-only lookups against the official gti-mcp tool inventory.
+_GTI_READ_ACTIONS = (
+    "list_tools",
+    "search_iocs",
+    "get_domain_report",
+    "get_ip_address_report",
+    "get_url_report",
+    "get_file_report",
+    "get_hunting_ruleset",
+    "get_entities_related_to_a_hunting_ruleset",
+    "get_file_behavior_report",
+    "get_file_behavior_summary",
+    "get_entities_related_to_a_domain",
+    "get_entities_related_to_an_url",
+)
+
 # Dispatch-class admission (2026-09-01 operator directive: expand the MVP
 # functional CTF tools; 2026-09-02/03 continuation waves). These profiles carry
 # the honest manifest truth for scope-gated live actions: safety class R1,
@@ -232,6 +286,10 @@ INVOKE_PROFILES = {
             for arm_id, action, side_effects, timeout_ms, scope_env in _DISPATCH_PROFILES
         ),
         *(_mcp_read_profile("burp-mcp", action) for action in _BURP_READ_ACTIONS),
+        *(
+            _remote_read_profile("google-mcp-security", action, "GTI_MCP_ENDPOINT")
+            for action in _GTI_READ_ACTIONS
+        ),
     )
 }
 INVOKE_CAPABILITY_IDS = frozenset(INVOKE_PROFILES)

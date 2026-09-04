@@ -142,9 +142,8 @@ entries:
     kind: arm
     protocols: [mcp, http]
     curated: true
-    tier: held
-    held_reason: HTTP MCP is held on this public cut until OAuth resource and audience binding, no token passthrough, HTTPS, PKCE, Origin validation, DNS-rebinding controls, and localhost binding are evidenced.
-    notes: Google security MCP family for threat-intel and SecOps enrichment. Curated GTI MCP arm; all 11 upstream tools are read-only lookups, no dispatch tier. HTTP MCP is held on this public cut.
+    tier: research
+    notes: Google Threat Intelligence lookups over the official gti-mcp server (Google's google/mcp-security GTI server; FastMCP-based, stdio by default, HTTP-capable by construction) deployed at an operator-configured https endpoint via the hardened shared client. All 11 allowlisted tools are read-only lookups verified against the current official tool inventory (36 tools; the collection create/update family stays off the allowlist); no client credential is sent - the upstream holds the VT/Google API key server-side. No dispatch tier.
 
   - id: garak
     kind: arm

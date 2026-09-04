@@ -51,8 +51,13 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
     admitted = {
         capability_id
         for capability_id, profile in INVOKE_PROFILES.items()
-        # burp-mcp read admissions are R0 read-tier profiles, not dispatch
-        if profile.action != "list_tools" and profile.arm_id != "burp-mcp"
+        # Only genuine dispatch-class profiles count: the marker is the
+        # operator://dispatch-scope/ approval scheme (read admissions
+        # carry operator://endpoint/ or none), so a future dispatch
+        # profile on a read-admitted arm still counts.
+        if profile.action != "list_tools" and (
+            profile.approval_ref or ""
+        ).startswith("operator://dispatch-scope/")
     }
     assert admitted == expected
     profile = invoke_profile("nmap", "scan")
