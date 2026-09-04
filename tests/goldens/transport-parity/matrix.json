@@ -149,6 +149,33 @@
       }
     },
     {
+      "id": "invoke_gti_admitted_but_unconfigured",
+      "kind": "envelope",
+      "cli": [
+        "invoke",
+        "google-mcp-security",
+        "get_domain_report",
+        "{\"domain\": \"example.com\"}"
+      ],
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "google-mcp-security",
+        "action": "get_domain_report",
+        "args": {"domain": "example.com"}
+      },
+      "expect": {
+        "exit_code": 2,
+        "is_error": true,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "failed",
+          "transport_ok": false,
+          "limitations": ["arm is not installed"],
+          "artifacts_empty": true
+        }
+      }
+    },
+    {
       "id": "invoke_burp_admitted_but_unconfigured",
       "kind": "envelope",
       "cli": [

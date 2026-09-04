@@ -51,8 +51,12 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
     admitted = {
         capability_id
         for capability_id, profile in INVOKE_PROFILES.items()
-        # burp-mcp read admissions are R0 read-tier profiles, not dispatch
-        if profile.action != "list_tools" and profile.arm_id != "burp-mcp"
+        # burp-mcp / google-mcp-security read admissions are read-tier
+        # profiles (R0 loopback / R1 remote-lookup), not dispatch-class
+        if (
+            profile.action != "list_tools"
+            and profile.arm_id not in ("burp-mcp", "google-mcp-security")
+        )
     }
     assert admitted == expected
     profile = invoke_profile("nmap", "scan")
