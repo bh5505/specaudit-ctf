@@ -420,8 +420,8 @@ an outside-zone query under the overlay is REFUSED) and executes the
 armed invoke inside a private mount namespace whose resolv.conf
 overlay points at it (host resolver asserted unchanged by a
 before/after hash). Measured 2026-09-04 as a `complete` envelope
-with the `[dispatch]` audit line answering `probe.lab.ctf A
-192.0.2.10` from `127.0.0.2:53` — with the honest note that the
+with the `[dispatch]` audit line answering
+`probe.lab.ctf A 192.0.2.10` from `127.0.0.2:53` — with the honest note that the
 dispatch scope authorizes the queried name, not the resolver
 transport, which is why the script pins and reports the resolver.
 

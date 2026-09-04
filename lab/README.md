@@ -71,7 +71,7 @@ operator credentials in a lab run.
 
 ### semgrep-mcp — validated in the dev instance (first-party CLI)
 
-semgrep 1.176.1 into the dev venv (`/opt/ctf/bin/pip install semgrep`),
+Install semgrep 1.176.1 into the dev venv (`/opt/ctf/bin/pip install semgrep`),
 a scan root with a planted finding (`vuln.py` containing an `eval`
 call) and a clean file, then the admitted dispatch through the CLI:
 
@@ -164,9 +164,9 @@ lookup a lab authority without touching the distro's resolver:
   resolver is the fallback if `unshare -m` is unavailable.
 
 Measured 2026-09-04 (zdns v2.1.1 built by `install-zdns.sh`, dnsmasq
-on `127.0.0.2:53`, zone `lab.ctf`): `ZDNS_DISPATCH_SCOPE=probe.lab.ctf`,
-`python -m extension invoke zdns lookup '{"domain": "probe.lab.ctf",
-"record_type": "A"}'` returned a `complete` envelope with the
+on `127.0.0.2:53`, zone `lab.ctf`): with `ZDNS_DISPATCH_SCOPE=probe.lab.ctf`,
+the armed invoke `zdns lookup '{"domain": "probe.lab.ctf", "record_type": "A"}'`
+returned a `complete` envelope with the
 `[dispatch]` audit line and a materialized policy-report artifact
 answering `probe.lab.ctf A 192.0.2.10` from resolver `127.0.0.2:53`
 (NOERROR). Honesty note the script exists to preserve:
