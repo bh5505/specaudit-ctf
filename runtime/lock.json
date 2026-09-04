@@ -1348,7 +1348,7 @@
     "extension/arms/gti/__init__.py": "33ac4baa988d63e8d7ec95f9edc7a70f47449250c5f7e8eb1d6a7a32cb466310",
     "extension/arms/gti/arm.py": "33f87a97a2366b84f58c779ad20e0ff6ba49986c8a3b92ab10b2cc661d6404d2",
     "extension/arms/gti/policy.py": "5a15129b44c862d0ee073f20ec2f3ad649f52a8fb85335d6c1f0a6936a9e3ba2",
-    "extension/arms/mcp_client.py": "0e091f2c54d23f3808099838b946683ddfef85d3fa13eed1f145e50ff934067b",
+    "extension/arms/mcp_client.py": "693a09e0ae61b3dac5a19b83bf2c5f2b3bd9297577a766bef6f61b01ee12c25b",
     "extension/arms/metasploit/__init__.py": "a1410b88a1b5d7a5ee3b5ed4f27f39a55a4f1a3883e6bd1a5789e6ac6e394102",
     "extension/arms/metasploit/arm.py": "32be16056b17d323138c0b18b5242f48cb2d2eb378a25bf12fdd9872aacc47ff",
     "extension/arms/metasploit/policy.py": "273135683fc01c1f90fced9b5fcbaa1b11cf2d01beba7f49d2be10be0535b143",
