@@ -302,7 +302,8 @@ INVOKE_PROFILES = {
             for action in _GTI_READ_ACTIONS
         ),
         # Prowler read admission (2026-09-04): discovery over the
-        # operator-configured HTTP+SSE endpoint (AWS-credential-gated
+        # operator-configured https endpoint speaking HTTP+SSE (the
+        # arm's explicit remote-https policy; AWS-credential-gated
         # install; egress-capable, so the remote-read grammar applies).
         # Only list_tools is admitted - upstream documents namespaces,
         # not pinned tool names, so the hub/docs read tools stay

@@ -51,7 +51,11 @@ LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 def credentials_present() -> bool:
     import os
 
-    return any(os.environ.get(name) for name in CREDENTIAL_ENVS)
+    # Whitespace-only values are absent (automatic-review sweep 5): a
+    # stray space must not mark the arm installed.
+    return any(
+        (os.environ.get(name) or "").strip() for name in CREDENTIAL_ENVS
+    )
 
 
 def refuse_reason(tool: str, available: set[str]) -> str | None:

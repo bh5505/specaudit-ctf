@@ -127,7 +127,7 @@ entries:
     protocols: [mcp, http]
     curated: true
     tier: research
-    notes: First-party CSPM MCP over an operator-configured HTTP+SSE endpoint, on the hardened shared client. Credential-gated install requires AWS credentials in the environment (AWS_ACCESS_KEY_ID or AWS_PROFILE); read-only namespaces only - cloud scan orchestration and mutation keywords blocked. Tool names are not individually documented upstream, so only discovery is admitted; the read tools stay handler-level behind the prefix allowlist.
+    notes: First-party CSPM MCP over an operator-configured https endpoint speaking HTTP+SSE (remote-https policy; plain-http and loopback refused), on the hardened shared client. Credential-gated install requires AWS credentials in the environment (AWS_ACCESS_KEY_ID or AWS_PROFILE); read-only namespaces only - cloud scan orchestration and mutation keywords blocked. Tool names are not individually documented upstream, so only discovery is admitted; the read tools stay handler-level behind the prefix allowlist.
 
   - id: semgrep-mcp
     kind: arm

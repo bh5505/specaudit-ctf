@@ -515,6 +515,29 @@ def test_p3_resource_metadata_mismatch_refused() -> None:
     assert calls == ["https://as.example.com/.well-known/oauth-protected-resource"]
 
 
+def test_p3_mismatch_refusal_redacts_configured_origin() -> None:
+    """Automatic-review sweep 5: the configured origin is interpolated
+    into the refusal message and must be keyword-redacted like the
+    declared one — a userinfo-bearing origin cannot leak its password
+    fragment into logs."""
+
+    def fetch(url: str, timeout: float) -> dict[str, Any]:
+        return {"resource": "https://attacker.example", "authorization_servers": ["https://as.example.com"]}
+
+    manager = OAuthAuthorizationManager(
+        OAuthConfig(arm_id="test-arm", client_id="client-1", fetch_json=fetch)
+    )
+    with pytest.raises(RuntimeError) as excinfo:
+        manager.authorize(
+            "https://as.example.com/.well-known/oauth-protected-resource",
+            "https://user:secret-password@target.example.com",
+            1.0,
+        )
+    message = str(excinfo.value)
+    assert "secret-password" not in message
+    assert "[redacted]" in message
+
+
 def test_p3_sse_repeat_challenge_is_terminal(gate_sse_server) -> None:
     """SSE path: a server that keeps demanding OAuth after a completed
     flow terminates with a public error, never an internal exception."""

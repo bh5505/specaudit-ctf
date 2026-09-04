@@ -11,6 +11,7 @@ from extension.arms.prowler import ARM_ID, ProwlerArm
 from extension.arms.prowler.policy import (
     CREDENTIAL_ENVS,
     ENV_ENDPOINT,
+    credentials_present,
     refuse_reason,
 )
 from extension.contract import ArmSpec, Extension, NotHeldError, NotInstalledError
@@ -110,6 +111,19 @@ def test_endpoint_without_credentials_not_installed(
     assert arm.installed(_spec()) is False
     with pytest.raises(NotInstalledError):
         arm.invoke(_spec(), "prowler_findings_analyze", {})
+
+
+def test_whitespace_credentials_do_not_install(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Automatic-review sweep 5: a whitespace-only credential value is
+    # absent — a stray space must not mark the arm installed.
+    monkeypatch.setenv(ENV_ENDPOINT, "https://prowler.example.invalid:8899")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "   ")
+    monkeypatch.delenv("AWS_PROFILE", raising=False)
+    assert credentials_present() is False
+    arm = ProwlerArm()
+    assert arm.installed(_spec()) is False
 
 
 def test_endpoint_and_credentials_install(monkeypatch: pytest.MonkeyPatch) -> None:
