@@ -290,6 +290,24 @@ class TestDispatchOnlyArms:
 # --- wiring -------------------------------------------------------------
 
 
+def test_commix_argv_disables_stdin_target_parsing() -> None:
+    # commix >= 4 parses TARGETS from stdin when stdin is not a tty and
+    # then ignores -u; a subprocess-captured scan would exit 0 having
+    # scanned nothing. --ignore-stdin (hidden upstream option, verified
+    # against commix 4.1-0kali1 source 2026-09-04) restores argv-only
+    # targeting. Pinned after the lab measurement caught the silent
+    # no-scan exit.
+    from extension.arms.commix.policy import argv_for
+
+    assert argv_for("/usr/bin/commix", "http://10.10.0.1/f") == [
+        "/usr/bin/commix",
+        "--batch",
+        "--ignore-stdin",
+        "-u",
+        "http://10.10.0.1/f",
+    ]
+
+
 def test_default_extension_wires_new_arms(monkeypatch: pytest.MonkeyPatch) -> None:
     for env in (
         "MITREATTACK_BIN",

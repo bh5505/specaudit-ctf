@@ -100,6 +100,11 @@ class CommixArm:
                 errors="replace",
                 timeout=self.timeout,
                 check=False,
+                # Defense-in-depth beside --ignore-stdin: the child
+                # never sees ambient stdin, so an upstream rename or
+                # regression of that hidden flag cannot re-open an
+                # inherited-stdin target path.
+                stdin=subprocess.DEVNULL,
             )
         except subprocess.TimeoutExpired:
             return Result(
