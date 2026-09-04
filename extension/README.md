@@ -54,7 +54,9 @@ session per arm, not a generic transport):
   containment) admitted as `semgrep_scan`, plus MCP reads over an
   operator-configured https endpoint on the hardened transport
 - `prowler-mcp` — research; HTTP+SSE on the hardened transport
-  (operator-configured endpoint); install is credential-gated on AWS
+  (operator-configured https endpoint — the arm's explicit
+  remote-https policy refuses loopback and plain-http endpoints);
+  install is credential-gated on AWS
   envs (`AWS_ACCESS_KEY_ID` / `AWS_PROFILE`); read-only `prowler_` /
   `prowler_docs_` / `prowler_hub_` prefixes; `prowler_cloud_*` and
   mutation keywords blocked; discovery admitted, read tools

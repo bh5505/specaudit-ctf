@@ -728,12 +728,12 @@ class OAuthAuthorizationManager:
             raise RuntimeError(
                 "protected-resource metadata or configured origin is not a "
                 "parsable http(s) origin: %r vs %r - refusing"
-                % (redact(str(declared)), resource_origin)
+                % (redact(str(declared)), redact(str(resource_origin)))
             )
         if declared_origin != expected_origin:
             raise RuntimeError(
                 "protected-resource metadata names resource %r, not %r - refusing"
-                % (redact(str(declared)), resource_origin)
+                % (redact(str(declared)), redact(str(resource_origin)))
             )
         servers = metadata.get("authorization_servers")
         if not isinstance(servers, list) or not servers:
