@@ -1366,7 +1366,7 @@
     "extension/arms/pagefetch/policy.py": "6451dd1764d110a741dec8cd5932972a50bdd6ab2431821a296713acf4b8e797",
     "extension/arms/policy_base.py": "ee2a78d029e6e518958029e7421f7182caae498430e46c8722fae41f25e50c8d",
     "extension/arms/prowler/__init__.py": "c0332cf0da9ef1f2d6883d762f3abe4208392d86c889e7e1fceb6ccf857180cc",
-    "extension/arms/prowler/arm.py": "b0b3c1c83f53b2bcc1ffb57ddbe85605e71537b9daa3e7b5a10c6c03ed1d387f",
+    "extension/arms/prowler/arm.py": "f20d072960aeb2373336589e5719c12b4202114f9e28bc542181372541b93197",
     "extension/arms/prowler/policy.py": "1615720d6574a8f4a6acf33733cf579d29daedaaf03000dd1bd2043e1c5e5534",
     "extension/arms/pyrit/__init__.py": "15f363d9b813e6ee78aed493e5d626e6a19c9af14bf4b475bb07f45547187f0d",
     "extension/arms/pyrit/arm.py": "d7e1f8366ea70e88426184610aba9adfd4f943534b2111cd65333930054b10b1",
