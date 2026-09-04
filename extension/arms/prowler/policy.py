@@ -15,10 +15,17 @@ from __future__ import annotations
 
 import re
 
+from ..mcp_client import HttpTransportPolicy
 from ..policy_base import DEFAULT_TOOL_PATTERN
 
 ARM_ID = "prowler-mcp"
 ENV_ENDPOINT = "PROWLER_MCP_ENDPOINT"
+# Remote-https endpoint, stated EXPLICITLY (the shared client defaults
+# to the same policy when none is passed — the arm does not rely on
+# that default). Loopback and plain-http endpoints are refused
+# fail-closed by the shared gate; Prowler reads surface cloud findings,
+# so the arm is treated as an egress-capable remote surface.
+TRANSPORT_POLICY = HttpTransportPolicy.remote_https()
 
 # Install also requires cloud credentials in the environment. AWS is the
 # documented first cloud; add more when upstream surfaces them.
