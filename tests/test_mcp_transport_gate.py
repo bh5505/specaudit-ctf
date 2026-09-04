@@ -301,6 +301,17 @@ def test_p1_remote_arms_refuse_loopback_and_http(monkeypatch: pytest.MonkeyPatch
     assert GtiArm().endpoint_url() is None
     monkeypatch.setenv("GTI_MCP_ENDPOINT", "https://front.example.invalid/")
     assert GtiArm().endpoint_url() == "https://front.example.invalid/"
+    # Prowler rides the same remote-https policy EXPLICITLY (not via the
+    # shared client's implicit default) — pin it so a defaults change
+    # can neither open nor close the arm silently.
+    from extension.arms.prowler import ProwlerArm
+
+    monkeypatch.setenv("PROWLER_MCP_ENDPOINT", "http://127.0.0.1:9999")
+    assert ProwlerArm().endpoint_url() is None
+    monkeypatch.setenv("PROWLER_MCP_ENDPOINT", "http://prowler.example.invalid/")
+    assert ProwlerArm().endpoint_url() is None
+    monkeypatch.setenv("PROWLER_MCP_ENDPOINT", "https://prowler.example.invalid/")
+    assert ProwlerArm().endpoint_url() == "https://prowler.example.invalid/"
 
 
 # --- P2: no token passthrough ---------------------------------------------
@@ -315,7 +326,6 @@ def test_p2_no_credentials_on_the_wire_without_configuration(
         "SEMGREP_APP_TOKEN",
         "VT_APIKEY",
         "AWS_ACCESS_KEY_ID",
-        "PROWLER_API_KEY",
         "MCP_AUTH_TOKEN",
         "NETRC",
     ):

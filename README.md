@@ -141,7 +141,7 @@ even if an endpoint is configured. `burp-mcp` (loopback reads),
 `google-mcp-security` (lookups), and `semgrep-mcp` (CLI scans + reads)
 are admitted research integrations invocable through CLI/MCP `invoke`;
 `prowler-mcp` is research with discovery admitted (`list_tools` over
-the hosted endpoint) - its read tools stay handler-level until upstream
+the operator-configured https endpoint) - its read tools stay handler-level until upstream
 documents tool names. Pyrit scenario discovery is a
 separate `list_scenarios` action, which runs `pyrit_scan
 --list-scenarios`. Original fixed-argv CLIs (checkov, garak,

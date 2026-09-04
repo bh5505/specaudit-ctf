@@ -301,11 +301,13 @@ INVOKE_PROFILES = {
             _remote_read_profile("google-mcp-security", action, "GTI_MCP_ENDPOINT")
             for action in _GTI_READ_ACTIONS
         ),
-        # Prowler read admission (2026-09-04): discovery over the hosted
-        # streamable-HTTP endpoint. Only list_tools is admitted - upstream
-        # documents namespaces, not pinned tool names, so the hub/docs
-        # read tools stay handler-level (prefix allowlist + mutation
-        # keyword refusals) until names are documentable.
+        # Prowler read admission (2026-09-04): discovery over the
+        # operator-configured HTTP+SSE endpoint (AWS-credential-gated
+        # install; egress-capable, so the remote-read grammar applies).
+        # Only list_tools is admitted - upstream documents namespaces,
+        # not pinned tool names, so the hub/docs read tools stay
+        # handler-level (prefix allowlist + mutation keyword refusals)
+        # until names are documentable.
         _remote_read_profile("prowler-mcp", "list_tools", "PROWLER_MCP_ENDPOINT"),
         # Metasploit read admission (2026-09-04): the exploit/payload/
         # session/listener listings over the operator-run loopback SSE server

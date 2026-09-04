@@ -53,9 +53,9 @@ session per arm, not a generic transport):
   required - no registry `p/` or URL rules; `SEMGREP_SCAN_ROOT`
   containment) admitted as `semgrep_scan`, plus MCP reads over an
   operator-configured https endpoint on the hardened transport
-- `prowler-mcp` — research; streamable HTTP on the hardened transport
-  (hosted endpoint or self-hosted); the Prowler API key is the explicit
-  per-arm Bearer credential (value redacted); read-only `prowler_` /
+- `prowler-mcp` — research; HTTP+SSE on the hardened transport
+  (operator-configured endpoint); install is credential-gated on AWS
+  envs (`AWS_ACCESS_KEY_ID` / `AWS_PROFILE`); read-only `prowler_` /
   `prowler_docs_` / `prowler_hub_` prefixes; `prowler_cloud_*` and
   mutation keywords blocked; discovery admitted, read tools
   handler-level (upstream documents namespaces, not tool names)
