@@ -272,6 +272,11 @@ def test_curated_true_does_not_imply_maintained(entries: list[dict]) -> None:
     assert PINNED_CURATED_NOT_MAINTAINED in curated_not_maintained
 
 
+def test_exactly_four_http_mcp_arms_are_held(entries: list[dict]) -> None:
+    held_rows = [row for row in entries if row["tier"] == "held"]
+    assert {row["id"] for row in held_rows} == set(HELD_HTTP_MCP_ARM_IDS)
+
+
 def test_http_mcp_arms_are_held_with_reason(entries: list[dict]) -> None:
     by_id = {row["id"]: row for row in entries}
     for arm_id in HELD_HTTP_MCP_ARM_IDS:

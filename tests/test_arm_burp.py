@@ -573,7 +573,7 @@ def test_extension_invoke_against_stub_sse(
     ext = Extension(arms={ARM_ID: BurpArm(endpoint=url, timeout=5)})
     result = ext.invoke(ARM_ID, "url_encode", {"content": "a b"})
     assert result.ok is True
-    assert result.output is not None
+    assert "a+b" in json.dumps(result.output)  # the stub's encoded reply
 
 
 def test_community_stub_refuses_tool_call(

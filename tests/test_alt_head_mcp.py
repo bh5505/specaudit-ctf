@@ -15,7 +15,6 @@ from extension.contract import Extension
 from extension.mcp_server import TOOLS, _MAX_BYTES, McpServer, main
 from extension.range import SCHEMA_ID
 from tests.test_contract import (
-    CURATED_ARM_ID,
     FIXTURE_ARM_ID,
     METHODOLOGY_ID,
     UNKNOWN_ID,

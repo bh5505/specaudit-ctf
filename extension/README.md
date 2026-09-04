@@ -152,7 +152,7 @@ surface keeps its existing gates.
 Catalog `invoke` of held HTTP MCP arms (`semgrep-mcp`,
 `prowler-mcp`, `google-mcp-security`, `metasploit-mcp`) is refused
 even when an endpoint is configured. `burp-mcp` is research on the
-hardened transport (doc-21 dossier): handler-level
+hardened transport (per the authorizing dossier): handler-level
 `list_tools` / `tools/list` go through the shared client, while CLI
 and MCP `invoke` still require a registered capability profile.
 Burp is not installed unless
