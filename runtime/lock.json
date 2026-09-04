@@ -1375,7 +1375,7 @@
     "extension/arms/routersploit/arm.py": "1ca55ab077c27e0138bd4230ce72cfe8373a9908eea8a7d0ccc52ba40bc674c6",
     "extension/arms/routersploit/policy.py": "d3f37e564559c7c69664bf1ad5fbda3f1895611a6fa4cb45ee9dd2f86c801338",
     "extension/arms/semgrep/__init__.py": "0d393799b329114753d9a468cf9159bf906219b8feb18f512f5f9d61b3f6cbbc",
-    "extension/arms/semgrep/arm.py": "291f91b2478533d9089accf8b674772bafd0770ed3b02f4023ad0c7d3b24a1f0",
+    "extension/arms/semgrep/arm.py": "54001fa4b35425572283898b1a881f2e74d467c5bd26041b1ae34193e79d0a81",
     "extension/arms/semgrep/policy.py": "4117769f452ae14f3617ee2d489a05f85444c722072beaea60d58069178bcbda",
     "extension/arms/sniper/__init__.py": "13106bca07307f3f2d81de791bb6031d965aff93526819c77a10a8d8f855da19",
     "extension/arms/sniper/arm.py": "40090015fff6259069cf6a8e6045519ddb20a491f7cddf75f1c231c571ef1e21",
