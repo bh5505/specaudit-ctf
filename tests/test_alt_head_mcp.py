@@ -141,7 +141,7 @@ def test_mcp_invoke_methodology_only_does_not_call_transport() -> None:
     assert fake.calls == []
 
 
-def test_mcp_invoke_held_arm_is_failed_envelope() -> None:
+def test_mcp_invoke_unadmitted_action_is_failed_envelope() -> None:
     # Zero live held rows remain: an UNADMITTED action on a research arm
     # is the honest refusal shape now (the held-tier envelope rule stays
     # pinned by the goldens in test_ctf_envelopes and the fixture tests

@@ -276,18 +276,6 @@ def test_no_http_mcp_arms_are_held(entries: list[dict]) -> None:
     assert set(HELD_HTTP_MCP_ARM_IDS) == set()
 
 
-def test_http_mcp_arms_are_held_with_reason(entries: list[dict]) -> None:
-    by_id = {row["id"]: row for row in entries}
-    for arm_id in HELD_HTTP_MCP_ARM_IDS:
-        row = by_id[arm_id]
-        assert row["kind"] == "arm"
-        assert row["curated"] is True
-        assert row["tier"] == "held", arm_id
-        reason = row.get("held_reason")
-        assert isinstance(reason, str) and reason.strip(), arm_id
-        assert "http mcp" in reason.lower(), arm_id
-
-
 def test_held_cannot_be_invoked_even_if_curated_and_installed() -> None:
     """The live catalog has no held rows anymore; the fixture catalog
     pins the held gate itself (see also the fixture-row test below)."""
@@ -410,7 +398,7 @@ def test_mcp_invoke_held_is_tool_error_even_when_installed() -> None:
     assert fake.calls == []
 
 
-def test_cli_invoke_held_is_hard_error(
+def test_cli_invoke_unconfigured_admitted_is_failed_envelope(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     assert main(["invoke", "metasploit-mcp", "list_tools"]) == 2

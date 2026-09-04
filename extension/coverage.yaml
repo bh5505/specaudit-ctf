@@ -2,7 +2,8 @@
 # Classifies each surveyed product. Not a ship list of adapters.
 # Support tier is research | experimental | maintained | held.
 # curated is a deprecated compatibility flag for specialized handlers;
-# it is not equivalent to maintained. HTTP MCP arms are held.
+# it is not equivalent to maintained. No rows are held on this cut
+# (the HTTP-MCP held set closed 2026-09-04).
 # Methodology-only rows are never curated and never maintained.
 # research/experimental presence is not a validator support promise.
 
