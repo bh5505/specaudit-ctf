@@ -7,6 +7,10 @@ the parser/catalog constants (what the code enforces). When those two
 sides drift, an envelope can be schema-valid yet semantically refused
 — or the reverse. This guard cross-references every shared vocabulary
 and fails closed on any mismatch, naming what each side is missing.
+Two vocabularies (``safety_class``, ``side_effects``) are additionally
+duplicated BETWEEN the execution-result and capability-manifest
+schemas; those copies are checked against each other too, so a schema
+edit on one side cannot silently diverge from its twin.
 
 Domain mismatch fails closed; this is a repository self-check, never a
 live-engagement gate. Exit codes: ``0`` all domains agree, ``1`` drift
@@ -48,6 +52,7 @@ def _check(
     schema_path: Path,
     pointer: str,
     code_values: list[str],
+    code_label: str = "code",
 ) -> dict[str, Any]:
     schema_values = _schema_enum(schema_path, pointer)
     if schema_values is None:
@@ -62,8 +67,8 @@ def _check(
     code_only = sorted(code_set - schema_set)
     ok = not schema_only and not code_only
     detail = "ok" if ok else (
-        "schema has values the code does not enforce: "
-        f"{schema_only}; code enforces values the schema does not list: "
+        f"schema has values the {code_label} does not enforce: "
+        f"{schema_only}; {code_label} enforces values the schema does not list: "
         f"{code_only}"
     )
     return {
@@ -72,6 +77,35 @@ def _check(
         "schema_only": schema_only,
         "code_only": code_only,
     }
+
+
+def _duplicate_check(pointer: str) -> dict[str, Any]:
+    """Schema-vs-schema check for an enum duplicated across both schemas.
+
+    ``safety_class`` and ``side_effects`` are defined in the
+    execution-result schema AND copied into the capability-manifest
+    schema; the per-side checks above compare each copy against the
+    enforcing code constants only. This check catches drift BETWEEN
+    the two schema copies, with the execution-result schema as the
+    reference side (it is already code-checked in the same run).
+    """
+    reference = _schema_enum(_EXECUTION_SCHEMA, pointer)
+    if reference is None:
+        return {
+            "ok": False,
+            "detail": (
+                "reference enum unreadable or missing at "
+                f"{pointer} in {_EXECUTION_SCHEMA.name}"
+            ),
+            "schema_only": [],
+            "code_only": [],
+        }
+    return _check(
+        _MANIFEST_SCHEMA,
+        pointer,
+        reference,
+        code_label="execution-result schema",
+    )
 
 
 def drift_check() -> dict[str, Any]:
@@ -113,6 +147,15 @@ def drift_check() -> dict[str, Any]:
             _MANIFEST_SCHEMA,
             "/properties/cleanup/properties/proof",
             sorted(envelopes.CLEANUP_PROOFS),
+        ),
+        # Cross-schema duplicates: safety_class and side_effects are
+        # defined in BOTH schemas; each copy is code-checked above, and
+        # these checks catch the two schema copies drifting apart.
+        "safety_class_schema_dup": _duplicate_check(
+            "/definitions/safety_class"
+        ),
+        "side_effects_schema_dup": _duplicate_check(
+            "/definitions/side_effects/items"
         ),
     }
     return {
