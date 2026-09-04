@@ -167,7 +167,7 @@ Measured 2026-09-04 (zdns v2.1.1 built by `install-zdns.sh`, dnsmasq
 on `127.0.0.2:53`, zone `lab.ctf`): with `ZDNS_DISPATCH_SCOPE=probe.lab.ctf`,
 the armed invoke (recorded exactly as `lab/zdns-measure.sh` runs it
 inside the namespace)
-`python -m extension invoke zdns lookup '{"domain": "probe.lab.ctf", "record_type": "A"}' --attempt-id <attempt> --artifact-dir <dir>`
+`/opt/ctf/bin/python -m extension invoke zdns lookup '{"domain": "probe.lab.ctf", "record_type": "A"}' --attempt-id <attempt> --artifact-dir <dir>`
 returned a `complete` envelope with the
 `[dispatch]` audit line and a materialized policy-report artifact
 answering `probe.lab.ctf A 192.0.2.10` from resolver `127.0.0.2:53`
