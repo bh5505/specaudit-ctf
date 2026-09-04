@@ -395,6 +395,23 @@ nothing; the fixed argv now carries the hidden `--ignore-stdin`
 option (verified against the installed 4.1-0kali1 source), pinned by
 a hermetic argv test.
 
+In the same 2026-09-04 session the two lab-executable HTTP-MCP rows
+were measured end-to-end (executable templates in
+[lab/README.md](lab/README.md)): an armed `semgrep_scan` (semgrep
+1.176.1 in the dev venv, inline rule pack, `SEMGREP_SCAN_ROOT`
+containment, a planted `eval` in a synthetic scan root) returned a
+`complete` envelope whose materialized report carries the finding
+(`tmp.lab-planted-eval` at `vuln.py:3`, severity ERROR); and the five
+admitted `metasploit-mcp` listing reads over the operator-run loopback
+SSE server (GH05TCREW/MetasploitMCP at pinned commit `afc792d`,
+metasploit-framework 6.4.135-dev) all returned `complete` envelopes —
+`list_tools` reporting the upstream 12-tool inventory matching the
+arm's read/dispatch tiers, `list_exploits`/`list_payloads` the
+wrapper's own 100-entry module lists, and the session/listener
+listings the honest empty success shape. The remaining three rows
+(burp, GTI, prowler) are operator-gated: lab/README.md carries their
+validation runbooks, and the lab never spends operator credentials.
+
 ## Remote-read admission
 
 Read-tier capabilities that egress to an operator-configured remote
