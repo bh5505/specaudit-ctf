@@ -79,7 +79,9 @@ verification 0.197 s / 0.196 s, cold and repeat Mode-A CLI launch 0.484 s /
 0.435 s, cold and repeat sealed stdio-MCP server launch 0.410 s / 0.410 s.
 The resulting launcher, tree, and normalized-archive SHA-256 values are
 respectively `bba9c526…8c94` (unchanged — same locked CPython input),
-`3e3b3c14…fd09`, and `3dc007c9…5abb` (2026-09-04: prowler credential correction — invented hosted/API-key story withdrawn). A 5 s cold startup
+`162d2761…7c56`, and `8f614d48…1141` (2026-09-04: commix argv fix +
+automatic-review sweep 5 — producer hashes only, closure unchanged at
+114 stdlib modules). A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
 by this producer. Re-measure before changing the platform or dependency lock.
