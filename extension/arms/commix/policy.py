@@ -56,5 +56,8 @@ def argv_for(binary: str, target: str) -> list[str]:
     switches to parsing TARGETS from stdin and silently ignores -u —
     a subprocess-captured scan would exit 0 having scanned nothing.
     The fixed literal disables that; the target still rides -u only.
+    The flag assumes commix >= 4 (Kali's package pin); an older commix
+    would fail loudly on the unknown option — loud beats the silent
+    no-scan exit this flag exists to prevent.
     """
     return [binary, "--batch", "--ignore-stdin", "-u", target]
