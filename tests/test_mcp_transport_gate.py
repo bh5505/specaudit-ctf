@@ -242,9 +242,16 @@ def test_p1_endpoint_policy_table() -> None:
     # Remote transports refuse loopback endpoints outright.
     assert "refuses loopback" in endpoint_problem("https://127.0.0.1:9876", REMOTE)
     assert "refuses loopback" in endpoint_problem("http://127.0.0.1:9876", REMOTE)
-    # Loopback transports refuse non-literal-loopback (and 127.0.0.2 etc.).
-    assert "literal loopback" in endpoint_problem("http://127.0.0.2:9876", LOOPBACK)
+    # Loopback transports refuse non-literal-loopback hosts; the rest of
+    # 127.0.0.0/8 and encoded loopback forms are refused everywhere and
+    # must be written canonically.
+    assert "written as 127.0.0.1" in endpoint_problem("http://127.0.0.2:9876", LOOPBACK)
     assert "literal loopback" in endpoint_problem("http://example.com:9876", LOOPBACK)
+    assert endpoint_problem("http://2130706433:9876", LOOPBACK)
+    assert endpoint_problem("http://0x7f.0.0.1:9876", LOOPBACK)
+    assert endpoint_problem("http://[::ffff:127.0.0.1]:9876", LOOPBACK)
+    assert endpoint_problem("https://2130706433", REMOTE)
+    assert endpoint_problem("http://127.000.000.001:9876", LOOPBACK)
     # Bind-any, zone IDs, userinfo, control characters, junk ports.
     assert endpoint_problem("http://0.0.0.0:9876", LOOPBACK)
     assert endpoint_problem("http://[::]:9876", LOOPBACK)
@@ -409,11 +416,13 @@ def _fake_metadata_fetch(calls: list[str]) -> Any:
 
 def test_p3_manager_full_flow_and_cross_origin_refusal() -> None:
     calls: list[str] = []
+    posted_fields: list[dict[str, str]] = []
     origin = "https://mcp.example.com"
     token = _make_jwt(origin)
 
     def fetch_post(url: str, fields: dict[str, str], timeout: float) -> dict[str, Any]:
         calls.append(url)
+        posted_fields.append(fields)
         return {"access_token": token, "token_type": "Bearer"}
 
     seen_urls: list[str] = []
@@ -440,6 +449,9 @@ def test_p3_manager_full_flow_and_cross_origin_refusal() -> None:
     assert len(seen_urls) == 1
     assert "resource=https%3A%2F%2Fmcp.example.com" in seen_urls[0]
     assert "code_challenge_method=S256" in seen_urls[0]
+    # And the code exchange actually transmitted the PKCE verifier.
+    assert posted_fields and posted_fields[0]["grant_type"] == "authorization_code"
+    assert "code_verifier" in posted_fields[0] and posted_fields[0]["code_verifier"]
 
 
 def _hit_url(url: str) -> None:
@@ -488,6 +500,46 @@ def test_p3_wrong_audience_token_refused() -> None:
 
     with pytest.raises(RuntimeError, match="audience does not cover"):
         flow.exchange("https://as.example.com/token", "http://127.0.0.1:1/callback", "code-x", fetch_post_form=fetch_post)
+
+
+def test_p3_client_terminates_after_one_oauth_retry(gate_streamable_server) -> None:
+    """A server that keeps challenging OAuth after a completed flow gets
+    exactly one authorized retry, then a terminal error - no loop."""
+    url, state = gate_streamable_server
+    state["mode"] = "always_401_meta"
+    origin = origin_string(urlparse(url))
+    auth_calls: list[str] = []
+
+    def fetch_json(url: str, timeout: float) -> dict[str, Any]:
+        if url.endswith("oauth-protected-resource"):
+            return {"resource": origin, "authorization_servers": ["https://as.example.com"]}
+        return {
+            "authorization_endpoint": "https://as.example.com/authorize",
+            "token_endpoint": "https://as.example.com/token",
+        }
+
+    def fetch_post(url: str, fields: dict[str, str], timeout: float) -> dict[str, Any]:
+        return {"access_token": _make_jwt(origin)}
+
+    def on_authorization(auth_url: str) -> None:
+        auth_calls.append(auth_url)
+        threading.Thread(target=_browser_sim, args=(auth_url,), daemon=True).start()
+
+    client = StreamableHttpClient(
+        url,
+        timeout=5,
+        policy=LOOPBACK,
+        oauth_config=OAuthConfig(
+            arm_id="gate-test",
+            client_id="client-1",
+            on_authorization=on_authorization,
+            fetch_json=fetch_json,
+            fetch_post_form=fetch_post,
+        ),
+    )
+    with pytest.raises(RuntimeError, match="HTTP 401"):
+        client.connect()
+    assert len(auth_calls) == 1  # one flow, one retry, then terminal
 
 
 def test_p3_client_runs_flow_and_retries_with_token(gate_streamable_server) -> None:
@@ -602,6 +654,9 @@ def test_p5_origin_header_emitted_on_sse_requests(gate_sse_server) -> None:
 
 
 def test_p5_session_id_never_crosses_origins(gate_streamable_server) -> None:
+    """Defense-in-depth: base_url is immutable by construction, so the
+    only reachable shape is an internal inconsistency - which the guard
+    must still refuse before any wire IO."""
     url, _state = gate_streamable_server
     client = StreamableHttpClient(url, timeout=5, policy=LOOPBACK)
     client._session_id = "sess-tampered"  # noqa: SLF001 - deliberate tamper
@@ -670,30 +725,43 @@ def test_p6_pinned_dial_uses_pin_not_name() -> None:
     thread.start()
     port = server.server_address[1]
     resolves: list[str] = []
+    dialed: list[tuple[str, int]] = []
+    # The fake DNS resolves the NAME to a NON-loopback address (so the
+    # rebinding refusal stays silent); create_connection records what it
+    # was asked to dial (the pin) and redirects to the real server.
+    pinned_ip = "192.0.2.1"
+
+    def fake_getaddrinfo(host: str, port_: int, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
+        resolves.append(host)
+        if host == "name.example.invalid":
+            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (pinned_ip, port_))]
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (host, port_))]
+
+    original_getaddrinfo = socket.getaddrinfo
+    original_create_connection = socket.create_connection
+
+    def fake_create_connection(address: tuple[str, int], timeout: float = 5.0, source_address: Any = None) -> socket.socket:
+        dialed.append(address)
+        return original_create_connection(("127.0.0.2", address[1]), timeout, source_address)
+
+    socket.getaddrinfo = fake_getaddrinfo  # type: ignore[assignment]
+    socket.create_connection = fake_create_connection  # type: ignore[assignment]
     try:
         pin = DnsPin("http://name.example.invalid:%d" % port)
-        original_getaddrinfo = socket.getaddrinfo
-
-        def fake_getaddrinfo(host: str, port_: int, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
-            resolves.append(host)
-            return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.2", port_))]
-
-        socket.getaddrinfo = fake_getaddrinfo  # type: ignore[assignment]
-        try:
-            conn_class = pin.conn_class(secure=False)
-            conn = conn_class("name.example.invalid", port, timeout=5)
-            conn.request("GET", "/")
-            response = conn.getresponse()
-            assert response.status == 200
-            conn.close()
-        finally:
-            socket.getaddrinfo = original_getaddrinfo  # type: ignore[assignment]
+        conn_class = pin.conn_class(secure=False)
+        conn = conn_class("name.example.invalid", port, timeout=5)
+        conn.request("GET", "/")
+        response = conn.getresponse()
+        assert response.status == 200
+        conn.close()
         assert seen["host"] == "name.example.invalid:%d" % port
-        # The dial used the pin: the NAME was resolved exactly once (the
-        # pin), and the subsequent create_connection saw only the IP.
+        # The dial went to the PINNED address, never the name; the name
+        # was resolved exactly once.
+        assert dialed == [(pinned_ip, port)]
         assert resolves.count("name.example.invalid") == 1
-        assert resolves[-1] == "127.0.0.2"
     finally:
+        socket.getaddrinfo = original_getaddrinfo  # type: ignore[assignment]
+        socket.create_connection = original_create_connection  # type: ignore[assignment]
         server.shutdown()
         server.server_close()
         thread.join(timeout=2.0)
@@ -704,8 +772,9 @@ def test_p6_no_second_resolution_when_dial_fails(monkeypatch: pytest.MonkeyPatch
 
     def fake_getaddrinfo(host: str, port: int, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
         calls.append(host)
-        # A non-loopback literal the OS cannot connect to.
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.2", port))]
+        # A non-loopback, unroutable TEST-NET address (not loopback, so the
+        # rebinding refusal stays out of the way; the dial then fails).
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.1", port))]
 
     monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
     pin = DnsPin("http://name.example.invalid:9/")

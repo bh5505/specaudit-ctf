@@ -30,6 +30,7 @@ import base64
 import hashlib
 import http.client
 import http.server
+import ipaddress
 import json
 import queue
 import re
@@ -65,6 +66,17 @@ def redact(text: str) -> str:
     return _REDACT_RE.sub("[redacted]", text)
 
 
+def _scrub_obj(obj: Any, scrub: Callable[[str], str]) -> Any:
+    """Scrub every string in a JSON-shaped payload (P2 success paths)."""
+    if isinstance(obj, str):
+        return scrub(obj)
+    if isinstance(obj, list):
+        return [_scrub_obj(item, scrub) for item in obj]
+    if isinstance(obj, dict):
+        return {key: _scrub_obj(value, scrub) for key, value in obj.items()}
+    return obj
+
+
 def redact_values(text: str, values: set[str]) -> str:
     """Scrub exact credential values (P2) on top of keyword redaction.
 
@@ -89,10 +101,11 @@ class HttpTransportPolicy:
       name or a misconfigured local front cannot smuggle traffic.
     - general_http(): http or https to any host. NOT part of the
       HTTP-MCP gate - this shape exists for non-MCP REST arms (ZAP,
-      Caldera) whose endpoints are operator-scoped lab resources, so
-      their accepted URL set stays what it was before the gate. Only
-      the shared shape rules apply (no userinfo, bind-any, zone IDs,
-      or control characters).
+      Caldera) whose endpoints are operator-scoped lab resources.
+      Scheme and loopback stay operator-scoped as before the gate;
+      the shared shape rules still apply and are slightly TIGHTER
+      than the pre-gate helper (userinfo, bind-any, zone IDs, junk
+      ports, and non-canonical loopback literals are now refused).
     """
 
     __slots__ = ("name", "loopback_only", "allow_loopback_http")
@@ -147,6 +160,13 @@ def endpoint_problem(url: str | None, policy: HttpTransportPolicy | None = None)
         return "zone-id addresses are not allowed"
     if host in BIND_ANY_IPS:
         return "bind-any addresses are not allowed"
+    host_ip = _host_ip(host)
+    # Exact-spelling allowlist: even loopback-shaped literals must be the
+    # canonical 127.0.0.1/[::1] forms; decimal/hex/mapped encodings and the
+    # rest of 127.0.0.0/8 are refused outright.
+    if host_ip is not None and _is_loopback_ip(host_ip):
+        if host not in LOOPBACK_IPS:
+            return "loopback literals must be written as 127.0.0.1 or [::1]"
     is_loopback = host in LOOPBACK_IPS
     if policy.name == "general-http":
         pass  # non-MCP REST arms: scheme and loopback are operator-scoped
@@ -170,6 +190,34 @@ def configured_http_url(url: str | None, policy: HttpTransportPolicy | None = No
     if endpoint_problem(url, policy) is not None:
         return None
     return url.strip()
+
+
+def _host_ip(host: str) -> "ipaddress.IPv4Address | ipaddress.IPv6Address | None":
+    """Parse *host* as an IP literal (unwrapping IPv4-mapped forms), or None.
+
+    Bare-decimal encodings (http://2130706433/) are literals too. Hex and
+    octal dotted forms are not parseable here; the DNS-layer rebinding
+    refusal (DnsPin.resolve) is the backstop for those.
+    """
+    addr = None
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        if host.isdigit():
+            try:
+                addr = ipaddress.ip_address(int(host))
+            except ValueError:
+                addr = None
+    if addr is None:
+        return None
+    mapped = getattr(addr, "ipv4_mapped", None)
+    if mapped is not None:
+        return mapped
+    return addr
+
+
+def _is_loopback_ip(ip: "ipaddress.IPv4Address | ipaddress.IPv6Address") -> bool:
+    return ip.is_loopback or ip.is_unspecified
 
 
 def _origin(parsed: urllib_parse.ParseResult) -> tuple[str, str, int]:
@@ -217,6 +265,8 @@ def resolve_sse_endpoint(base_url: str, event_data: str) -> str:
         resolved = urllib_parse.urljoin(base_url + "/", ep)
     parsed = urllib_parse.urlparse(resolved)
     base = urllib_parse.urlparse(base_url)
+    if "@" in parsed.netloc or parsed.username is not None:
+        raise RuntimeError("SSE endpoint must not carry userinfo")
     if _origin(parsed) != _origin(base):
         raise RuntimeError("SSE endpoint must be same-origin")
     return resolved
@@ -342,7 +392,7 @@ def parse_resource_metadata_url(www_authenticate: str | None) -> str | None:
     """RFC 9728: extract resource_metadata from a WWW-Authenticate header."""
     if not www_authenticate:
         return None
-    match = re.search(r'resource_metadata="([^"]+)"', www_authenticate, re.IGNORECASE)
+    match = re.search(r'resource_metadata\s*=\s*"([^"]+)"', www_authenticate, re.IGNORECASE)
     return match.group(1) if match else None
 
 
@@ -373,7 +423,8 @@ def token_aud_covers(token: str, resource: str) -> bool:
 
     Opaque tokens cannot be inspected client-side; their binding is
     enforced structurally by per-(arm, resource) token storage that
-    refuses cross-origin reuse.
+    refuses cross-origin reuse (and by the RFC 9728 resource-metadata
+    check binding discovery to the exact origin being served).
     """
     payload = _jwt_payload(token)
     if payload is None:
@@ -450,6 +501,18 @@ class _CallbackRequestHandler(http.server.BaseHTTPRequestHandler):
         self._answer(404, "not found")
 
     def do_DELETE(self) -> None:
+        self._answer(404, "not found")
+
+    def do_HEAD(self) -> None:
+        self._answer(404, "not found")
+
+    def do_OPTIONS(self) -> None:
+        self._answer(404, "not found")
+
+    def do_PATCH(self) -> None:
+        self._answer(404, "not found")
+
+    def do_TRACE(self) -> None:
         self._answer(404, "not found")
 
 
@@ -578,9 +641,7 @@ def _as_metadata_url(authorization_server: str) -> str:
 def _https_json_get(url: str, timeout: float) -> dict[str, Any]:
     if not configured_http_url(url, HttpTransportPolicy.remote_https()):
         raise RuntimeError("OAuth metadata URL must be https: %s" % redact(url))
-    opener = urllib_request.build_opener(
-        _RefuseRedirect(), urllib_request.ProxyHandler({})
-    )
+    opener = DnsPin(url).opener()
     req = urllib_request.Request(url, headers={"Accept": "application/json", "User-Agent": USER_AGENT}, method="GET")
     with opener.open(req, timeout=timeout) as resp:
         raw = resp.read(MAX_MCP_BYTES + 1)
@@ -595,9 +656,7 @@ def _https_json_get(url: str, timeout: float) -> dict[str, Any]:
 def _https_form_post(url: str, fields: dict[str, str], timeout: float) -> dict[str, Any]:
     if not configured_http_url(url, HttpTransportPolicy.remote_https()):
         raise RuntimeError("OAuth token endpoint must be https: %s" % redact(url))
-    opener = urllib_request.build_opener(
-        _RefuseRedirect(), urllib_request.ProxyHandler({})
-    )
+    opener = DnsPin(url).opener()
     body = urllib_parse.urlencode(fields).encode("utf-8")
     req = urllib_request.Request(
         url,
@@ -639,6 +698,14 @@ class OAuthAuthorizationManager:
             return cached
         fetch_json = self._config.fetch_json or _https_json_get
         metadata = fetch_json(resource_metadata_url, timeout)
+        # RFC 9728: the metadata's resource MUST be the origin we are
+        # talking to; anything else is a redirect-to-attacker-AS attempt.
+        declared = metadata.get("resource")
+        if not isinstance(declared, str) or declared.rstrip("/") != resource_origin.rstrip("/"):
+            raise RuntimeError(
+                "protected-resource metadata names resource %r, not %r - refusing"
+                % (redact(str(declared)), resource_origin)
+            )
         servers = metadata.get("authorization_servers")
         if not isinstance(servers, list) or not servers:
             raise RuntimeError("protected-resource metadata lists no authorization_servers")
@@ -701,7 +768,8 @@ class DnsPin:
             raise RuntimeError("endpoint host does not resolve: %s" % self.host)
         _family, _socktype, _proto, _canonname, sockaddr = infos[0]
         ip = sockaddr[0]
-        if self.host not in LOOPBACK_IPS and ip in LOOPBACK_IPS:
+        addr = _host_ip(ip)
+        if self.host not in LOOPBACK_IPS and addr is not None and _is_loopback_ip(addr):
             raise RuntimeError(
                 "hostname %r resolves to a loopback address - DNS-rebinding signature, refusing"
                 % self.host
@@ -821,6 +889,27 @@ class SseMcpSession:
         self._credential = credential
         register_secret_values(credential, self._secret_values)
 
+    def _close_transport(self) -> None:
+        """Drop the SSE socket/reader without touching the message queue."""
+        self._stop.set()
+        if self._resp is not None:
+            try:
+                self._resp.close()
+            except OSError:
+                pass
+            self._resp = None
+        self._body = None
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except OSError:
+                pass
+            self._conn = None
+        if self._reader is not None and self._reader.is_alive():
+            self._reader.join(timeout=1.0)
+        self._reader = None
+        self._stop = threading.Event()
+
     def _ensure_pin(self) -> DnsPin:
         if self._pin is None:
             self._pin = DnsPin(self.base_url)
@@ -856,8 +945,14 @@ class SseMcpSession:
         try:
             self._open_sse()
         except _OAuthChallenge as challenge:
+            self._close_transport()
             self._handle_oauth_challenge(challenge)
-            self._open_sse()
+            try:
+                self._open_sse()
+            except _OAuthChallenge as repeat:
+                raise OAuthRequiredError(
+                    "upstream re-challenged OAuth after authorization - refusing"
+                ) from repeat
         self._wait_endpoint()
         init_result = self._rpc(
             "initialize",
@@ -906,7 +1001,7 @@ class SseMcpSession:
             )
         payload = result.get("result")
         if isinstance(payload, dict):
-            return payload
+            return _scrub_obj(payload, self._scrub)
         return {"content": [], "isError": True}
 
     def close(self) -> None:
@@ -1015,10 +1110,11 @@ class SseMcpSession:
                         self._messages.put(obj)
                 elif event_name == "error":
                     self._messages.put({"_sse_event": "error", "data": data})
-            if self._body is None:
+            body = self._body
+            if body is None:
                 break
             try:
-                chunk = self._body.read(8192)
+                chunk = body.read(8192)
             except (TimeoutError, socket.timeout):
                 continue
             except OSError:
@@ -1244,7 +1340,7 @@ class StreamableHttpClient:
             raise RuntimeError("tools/call returned non-object")
         if result.get("isError"):
             raise RuntimeError("tools/call error: %s" % self._scrub(json.dumps(result)))
-        return result
+        return _scrub_obj(result, self._scrub)
 
     def close(self) -> None:
         # Stateless: each request was a standalone POST.
