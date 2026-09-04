@@ -276,8 +276,11 @@ class SemgrepArm:
                     output=None,
                     error="semgrep produced a non-object JSON report",
                 )
-            results = report.get("results") or []
-            errors = report.get("errors") or []
+            # No `or []` masking: a missing or falsy-but-not-list value
+            # ("" / 0) must fail the shape check below, not silently
+            # become an empty scan.
+            results = report.get("results")
+            errors = report.get("errors")
             if not isinstance(results, list) or not isinstance(errors, list):
                 return Result(
                     ok=False,

@@ -304,7 +304,10 @@ def test_module_mcp_invoke_live_catalog_unconfigured() -> None:
     env = {
         key: value
         for key, value in os.environ.items()
-        if key != "METASPLOIT_MCP_ENDPOINT"
+        # Case-insensitive: Windows env vars ignore case, so a
+        # differently-cased ambient key would still leak through an
+        # exact-match scrub.
+        if key.upper() != "METASPLOIT_MCP_ENDPOINT"
     }
     proc = subprocess.run(
         [sys.executable, "-m", "extension.mcp_server"],

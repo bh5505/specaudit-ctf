@@ -65,7 +65,7 @@ session per arm, not a generic transport):
   against the current official inventory); mutating collection tools
   stay off the allowlist; no dispatch tier
 - `metasploit-mcp` — research; SSE over the operator-run local server
-  (literal-loopback endpoints only); module/payload/session/job
+  (literal-loopback endpoints only); exploit/payload/session/listener
   listings admitted as read capabilities; execution tools gated by
   `METASPLOIT_DISPATCH_SCOPE` at the handler and carrying no registry
   profile

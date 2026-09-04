@@ -399,8 +399,11 @@ def test_mcp_invoke_held_is_tool_error_even_when_installed() -> None:
 
 
 def test_cli_invoke_unconfigured_admitted_is_failed_envelope(
-    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
+    # Now that metasploit-mcp is admitted research, an ambient endpoint
+    # env would make the arm "installed" and the invoke would dial it.
+    monkeypatch.delenv("METASPLOIT_MCP_ENDPOINT", raising=False)
     assert main(["invoke", "metasploit-mcp", "list_tools"]) == 2
     captured = capsys.readouterr()
     assert "arm is not installed" in captured.out
