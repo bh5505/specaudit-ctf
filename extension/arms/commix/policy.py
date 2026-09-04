@@ -51,9 +51,10 @@ def target_refusal(args: dict) -> tuple[str | None, str | None]:
 def argv_for(binary: str, target: str) -> list[str]:
     """Fixed argv: --batch answers every interactive prompt non-interactively.
 
-    NOTE: --batch is the documented non-interactive flag but was not
-    pinned by the 2026-08-23 research pass; verify against the local
-    commix help before live use. Hermetic tests use a fake binary, so
-    the suite does not depend on it.
+    --ignore-stdin (a hidden upstream option, verified against commix
+    4.1-0kali1 source 2026-09-04): when stdin is not a tty, commix
+    switches to parsing TARGETS from stdin and silently ignores -u —
+    a subprocess-captured scan would exit 0 having scanned nothing.
+    The fixed literal disables that; the target still rides -u only.
     """
-    return [binary, "--batch", "-u", target]
+    return [binary, "--batch", "--ignore-stdin", "-u", target]
