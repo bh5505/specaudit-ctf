@@ -546,18 +546,34 @@ def test_p3_as_metadata_endpoints_must_be_https() -> None:
     """Server-controlled AS metadata can name an http authorize/token
     endpoint; both are refused before the browser or the exchange ever
     sees them (auto-review CRITICAL fix, PR #30 sweep)."""
+    state = {"as_calls": 0}
+
     def fetch(url: str, timeout: float) -> dict[str, Any]:
         if url.endswith("oauth-protected-resource"):
             return {"resource": "https://mcp.example.com", "authorization_servers": ["https://as.example.com"]}
+        state["as_calls"] += 1
+        if state["as_calls"] == 1:
+            return {
+                "authorization_endpoint": "http://attacker.example/authorize",
+                "token_endpoint": "https://as.example.com/token",
+            }
         return {
-            "authorization_endpoint": "http://attacker.example/authorize",
-            "token_endpoint": "https://as.example.com/token",
+            "authorization_endpoint": "https://as.example.com/authorize",
+            "token_endpoint": "http://attacker.example/token",
         }
 
     manager = OAuthAuthorizationManager(
         OAuthConfig(arm_id="test-arm", client_id="client-1", fetch_json=fetch)
     )
     with pytest.raises(RuntimeError, match="authorization_endpoint must be https"):
+        manager.authorize(
+            "https://as.example.com/.well-known/oauth-protected-resource",
+            "https://mcp.example.com",
+            1.0,
+        )
+    # The token endpoint gets the same pre-flight refusal (second
+    # discovery round via the stateful fake).
+    with pytest.raises(RuntimeError, match="token_endpoint must be https"):
         manager.authorize(
             "https://as.example.com/.well-known/oauth-protected-resource",
             "https://mcp.example.com",

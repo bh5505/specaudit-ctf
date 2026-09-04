@@ -174,8 +174,9 @@ def test_list_tools_is_cli_static_with_endpoint_set(
     assert result.ok is True
     assert result.output["surface"] == "cli"
     # The MCP tool names are still surfaced as the endpoint-action list.
-    # Only the allowlisted reads; blocked tools are not endpoint actions.
-    assert set(result.output["mcp_endpoint_actions"]) == set(ALLOWED_TOOLS)
+    # Only the endpoint-routed reads: semgrep_scan is CLI-routed (the
+    # dispatch profile), and blocked tools are not endpoint actions.
+    assert set(result.output["mcp_endpoint_actions"]) == set(ALLOWED_TOOLS) - {"semgrep_scan"}
     assert session.calls == []
 
 

@@ -244,6 +244,14 @@ def origin_string(parsed: urllib_parse.ParseResult) -> str:
     return "%s://%s:%d" % (scheme, host, port)
 
 
+def _normalized_origin(url: str) -> tuple[str, str, int] | None:
+    """RFC 6454 origin tuple for an origin string, or None if invalid."""
+    try:
+        return _origin(urllib_parse.urlparse(url))
+    except (RuntimeError, ValueError):
+        return None
+
+
 def resolve_sse_endpoint(base_url: str, event_data: str) -> str:
     """Resolve an SSE endpoint event to a same-origin http(s) POST URL."""
     ep = (event_data or "").strip()
@@ -707,10 +715,13 @@ class OAuthAuthorizationManager:
         # RFC 9728: the metadata's resource MUST be the origin we are
         # talking to; anything else is a redirect-to-attacker-AS attempt.
         declared = metadata.get("resource")
-        # RFC 6454: origin comparison is scheme + case-insensitive host
-        # + port; normalize both sides before the equality test.
-        normalized = declared.rstrip("/").lower() if isinstance(declared, str) else declared
-        if not isinstance(declared, str) or normalized != resource_origin.rstrip("/").lower():
+        # RFC 6454: origin equality is scheme + case-insensitive host +
+        # port (default ports elided). Compare parsed origins, not raw
+        # strings, so https://MCP.Example.com and default-port spellings
+        # compare correctly.
+        if not isinstance(declared, str) or _normalized_origin(declared) != _normalized_origin(
+            resource_origin
+        ):
             raise RuntimeError(
                 "protected-resource metadata names resource %r, not %r - refusing"
                 % (redact(str(declared)), resource_origin)
@@ -726,14 +737,24 @@ class OAuthAuthorizationManager:
         # Server-controlled metadata: both endpoints must pass the same
         # remote-https gate before the operator's browser (authorize URL)
         # or the token exchange ever sees them.
-        if not configured_http_url(authorization_endpoint, HttpTransportPolicy.remote_https()):
+        sanitized_authorize = configured_http_url(
+            authorization_endpoint, HttpTransportPolicy.remote_https()
+        )
+        sanitized_token = configured_http_url(
+            token_endpoint, HttpTransportPolicy.remote_https()
+        )
+        if sanitized_authorize is None:
             raise RuntimeError(
                 "authorization_endpoint must be https: %s" % redact(authorization_endpoint)
             )
-        if not configured_http_url(token_endpoint, HttpTransportPolicy.remote_https()):
+        if sanitized_token is None:
             raise RuntimeError(
                 "token_endpoint must be https: %s" % redact(token_endpoint)
             )
+        # Use the sanitized values from here on: whatever the metadata
+        # carried around the edges never reaches the flow.
+        authorization_endpoint = sanitized_authorize
+        token_endpoint = sanitized_token
         flow = OAuthAuthorizationFlow(self._config.client_id, resource_origin, self._config.scopes)
         receiver = LoopbackCallbackReceiver(timeout=timeout)
         try:
