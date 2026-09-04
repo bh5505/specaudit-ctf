@@ -1334,7 +1334,7 @@
     "extension/arms/checkov/policy.py": "ab4152a79a52d31212309b7bfc5a64adfccf8ccdcafaf8f0be082f308ca6b6f3",
     "extension/arms/commix/__init__.py": "ccf9dd35cd9c66780294030f1425c0cccd077891b09d1bedddae4cbc954fb7b9",
     "extension/arms/commix/arm.py": "83a35e034108ea200a36face7ce80a5c8073b7a59a05635144c7a365d69fdd91",
-    "extension/arms/commix/policy.py": "dbf97daf87af91ff41b0a671128e3806600b6bd9e3b5b571aeba722a01c0cab0",
+    "extension/arms/commix/policy.py": "f9716152121f814a71f374b836bdbd577249cf9f50ec1a134037085725c9e3fd",
     "extension/arms/darkmoon/__init__.py": "ed92c25008e4bfa2e3d25ab14d159cd8e33b85cd86143bd781c6accaa3ce86dd",
     "extension/arms/darkmoon/arm.py": "57289780f658424ecc0ccc880ed31199f2a62990a7c7ab48b574ba65c6961e06",
     "extension/arms/darkmoon/policy.py": "0f933757a034101c1f2a1a1e3f739a6f12485d865141e7a24199894463cc2254",

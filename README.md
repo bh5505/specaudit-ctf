@@ -373,6 +373,21 @@ and digested artifacts — end-to-end proof of the gate → audit →
 stamp → envelope chain on real Kali. The `lab/` directory carries the
 instance and target tooling.
 
+Measured again on 2026-09-04 (same instance and package set): against
+a freshly spawned lab target, an armed `commix.scan`
+(`COMMIX_DISPATCH_SCOPE=<target-ip>`, target
+`http://<target-ip>:8080/form.html?q=1`) returned a `complete`
+envelope with the `[dispatch]` audit line and an ~19 KB digested
+report in which commix probed the form's `q` parameter through its
+technique set and closed with "GET parameter 'q' does not seem to be
+injectable" — the honest inert-form outcome. The measurement also
+caught a real integration defect: commix ≥ 4 switches to parsing
+targets from stdin whenever stdin is not a tty and then ignores
+`-u`, so the arm's original fixed argv exited 0 having scanned
+nothing; the fixed argv now carries the hidden `--ignore-stdin`
+option (verified against the installed 4.1-0kali1 source), pinned by
+a hermetic argv test.
+
 ## Remote-read admission
 
 Read-tier capabilities that egress to an operator-configured remote
