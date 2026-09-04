@@ -270,7 +270,7 @@ def test_curated_true_does_not_imply_maintained(entries: list[dict]) -> None:
     assert PINNED_CURATED_NOT_MAINTAINED in curated_not_maintained
 
 
-def test_no_http_mcp_arms_are_held(entries: list[dict]) -> None:
+def test_no_entries_are_held(entries: list[dict]) -> None:
     held_rows = [row for row in entries if row["tier"] == "held"]
     assert held_rows == []
     assert set(HELD_HTTP_MCP_ARM_IDS) == set()

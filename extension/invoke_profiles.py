@@ -308,7 +308,7 @@ INVOKE_PROFILES = {
         # keyword refusals) until names are documentable.
         _remote_read_profile("prowler-mcp", "list_tools", "PROWLER_MCP_ENDPOINT"),
         # Metasploit read admission (2026-09-04): the module/payload/
-        # session/job listings over the operator-run loopback SSE server
+        # session/listener listings over the operator-run loopback SSE server
         # (GH05TCREW MetasploitMCP). Execution tools stay an unadmitted
         # dispatch tier (METASPLOIT_DISPATCH_SCOPE gates the handler; no
         # registry profile exists for them).

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from io import StringIO
@@ -300,6 +301,11 @@ def test_module_mcp_invoke_live_catalog_unconfigured() -> None:
         )
         + "\n"
     )
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key != "METASPLOIT_MCP_ENDPOINT"
+    }
     proc = subprocess.run(
         [sys.executable, "-m", "extension.mcp_server"],
         cwd=ROOT,
@@ -309,6 +315,7 @@ def test_module_mcp_invoke_live_catalog_unconfigured() -> None:
         encoding="utf-8",
         check=False,
         timeout=15,
+        env=env,
     )
     assert proc.returncode == 0, proc.stderr
     line = next(item for item in proc.stdout.splitlines() if item.strip().startswith("{"))
