@@ -405,10 +405,12 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
             assert profile.side_effects == ("network-egress",)
             assert profile.default_off is True
             assert profile.synthetic_only is False
-            assert profile.approval_ref in (
-                "operator://endpoint/GTI_MCP_ENDPOINT",
-                "operator://endpoint/PROWLER_MCP_ENDPOINT",
+            expected_approval = (
+                "operator://endpoint/PROWLER_MCP_ENDPOINT"
+                if profile.arm_id == "prowler-mcp"
+                else "operator://endpoint/GTI_MCP_ENDPOINT"
             )
+            assert profile.approval_ref == expected_approval
         else:
             assert profile.action == "list_tools"
             assert profile.safety_class == "R0"

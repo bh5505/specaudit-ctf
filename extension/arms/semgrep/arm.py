@@ -176,7 +176,9 @@ class SemgrepArm:
             output={
                 "surface": "cli",
                 "read_actions": sorted(LIST_ACTIONS),
-                "mcp_endpoint_actions": sorted(ALLOWED_TOOLS),
+                "mcp_endpoint_actions": sorted(
+                    name for name in ALLOWED_TOOLS if name != "semgrep_scan"
+                ),
                 "dispatch_actions": ["semgrep_scan"],
                 "dispatch_armed": scan_root() is not None,
                 "caveats": CAVEATS,
@@ -275,6 +277,15 @@ class SemgrepArm:
                     error="semgrep produced a non-object JSON report",
                 )
             results = report.get("results") or []
+            errors = report.get("errors") or []
+            if not isinstance(results, list) or not isinstance(errors, list):
+                return Result(
+                    ok=False,
+                    arm_id=spec.id,
+                    action=action,
+                    output=None,
+                    error="semgrep produced a report with non-list results/errors",
+                )
             return Result(
                 ok=True,
                 arm_id=spec.id,
@@ -283,7 +294,7 @@ class SemgrepArm:
                     "target": target,
                     "total": len(results),
                     "results": results[:MAX_FINDINGS],
-                    "errors": (report.get("errors") or [])[:50],
+                    "errors": errors[:50],
                     "truncated": len(results) > MAX_FINDINGS,
                 },
                 error=None,
