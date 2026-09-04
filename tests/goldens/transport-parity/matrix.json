@@ -149,17 +149,19 @@
       }
     },
     {
-      "id": "invoke_unadmitted_burp_mcp",
+      "id": "invoke_burp_admitted_but_unconfigured",
       "kind": "envelope",
       "cli": [
         "invoke",
         "burp-mcp",
-        "ping"
+        "url_encode",
+        "{\"content\": \"a b\"}"
       ],
       "mcp_tool": "invoke",
       "mcp_arguments": {
         "id": "burp-mcp",
-        "action": "ping"
+        "action": "url_encode",
+        "args": {"content": "a b"}
       },
       "expect": {
         "exit_code": 2,
@@ -168,9 +170,7 @@
           "schema": "specaudit.ctf.execution-result.v1",
           "status": "failed",
           "transport_ok": false,
-          "limitations": [
-            "unknown capability"
-          ],
+          "limitations": ["arm is not installed"],
           "artifacts_empty": true
         }
       }

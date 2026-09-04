@@ -111,7 +111,9 @@ def test_waiver_never_rescues_a_failed_envelope() -> None:
 def test_each_failure_golden_fails_its_named_gate() -> None:
     expectations = {
         "cleanup-unproven-failed.json": "cleanup_proven",
-        "held-failed.json": "envelope_valid",
+        # Schema-valid since the fixture moved to the fixture namespace
+        # (tier held); the failing gate is the non-empty held limitation.
+        "held-failed.json": "limitations_empty",
         "methodology-only-failed.json": "envelope_valid",
         "unknown-capability-failed.json": "envelope_valid",
         "unknown-schema-failed.json": "envelope_valid",

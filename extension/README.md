@@ -42,10 +42,11 @@ Schema: [schema/coverage.schema.json](schema/coverage.schema.json).
 **MCP** (`tier: held` on this public cut; catalog invoke refused;
 handlers preserved; specialized session, not a generic transport):
 
-- `burp-mcp` — research; HTTP+SSE on the hardened transport; literal
+- `burp-mcp` — research, fully usable on the free Community Edition;
+  HTTP+SSE on the hardened transport; literal
   loopback endpoints only (`127.0.0.1`/`[::1]`, http or https);
-  allowlisted reads/utilities; Community edition
-  refused
+  history/codec/Organizer/random-text reads admitted as capabilities;
+  no edition gating (unavailable tools refused by the server surface)
 - `semgrep-mcp` — held; streamable HTTP; scan/findings/AST reads; inline
   rule pack required (no registry `p/` or URL rules)
 - `prowler-mcp` — held; HTTP+SSE; read-only `prowler_` / `prowler_docs_` /

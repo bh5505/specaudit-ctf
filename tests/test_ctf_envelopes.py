@@ -349,7 +349,6 @@ def test_held_failed_zero_dispatch() -> None:
     assert spy.calls == []
     parsed = env.parse_execution_result(RESULTS / "held-failed.json")
     assert parsed.status == "failed"
-    assert "held" in parsed.reasons
     assert spy.calls == []
 
 
@@ -439,16 +438,30 @@ def test_rewritten_methodology_id_does_not_dispatch() -> None:
     assert spy.calls == []
 
 
-def test_rewritten_held_id_does_not_dispatch() -> None:
+def test_held_tier_never_dispatches_but_admitted_read_tier_does() -> None:
+    """burp-mcp.list_tools is admitted now (read admission, 2026-09-03):
+    the held reservation is gone and an honest manifest dispatches when
+    enabled. A declared held tier still refuses - the tier rule, not a
+    per-id reservation, is the enforcement."""
+    env = _envelopes()
+    spy = _Spy()
     payload = _load(MANIFESTS / "held.json")
     payload["kind"] = "arm"
-    payload["tier"] = "research"
-    spy = _Spy()
-    gated = _envelopes().gate_dispatch(payload, dispatcher=spy, enabled=True)
+    gated = env.gate_dispatch(payload, dispatcher=spy, enabled=True)
     assert gated.schema_ok is True
     assert gated.dispatch_allowed is False
     assert "held" in gated.reasons
     assert spy.calls == []
+    rewritten = dict(payload)
+    rewritten["tier"] = "research"
+    rewritten["capability_id"] = "burp-mcp.list_tools"
+    rewritten["tool"] = {"name": "burp-mcp", "version": "0.0.0"}
+    rewritten["side_effects"] = ["local-read"]
+    spy2 = _Spy()
+    gated2 = env.gate_dispatch(rewritten, dispatcher=spy2, enabled=True)
+    assert gated2.schema_ok is True
+    assert gated2.dispatch_allowed is True
+    assert len(spy2.calls) == 1  # admitted + enabled: dispatcher runs
 
 
 def test_fail_closed_reason_denies_dispatch_even_when_enabled() -> None:

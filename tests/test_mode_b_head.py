@@ -92,21 +92,20 @@ def test_head_lists_and_describes_curated_burp_without_dialing(
     assert state.calls == []
 
 
-def test_head_invoke_gates_on_capability_registry_not_tier(
+def test_head_invoke_burp_reads_work_over_loopback(
     stub_sse: tuple[str, _HitState],
 ) -> None:
-    """Research tier (doc-21 dossier, 2026-09-03): the held refusal is
-    gone; what still stands is the capability-registry gate (admission is
-    deliberately not coupled to the un-hold). No dialing happens - the
-    registry fires before the handler."""
+    """Read admission landed: MCP-head invoke of burp reads goes through
+    the hardened transport and actually dials the loopback stub."""
     url, state = stub_sse
     server = _head(url)
     listed = _call(server, "invoke", {"id": ARM_ID, "action": "list_tools"})
-    assert listed["result"]["isError"] is True
-    assert "unknown capability" in _content_text(listed).lower()
-    assert "held" not in _content_text(listed).lower()
-    assert state.http_hits == 0
-    assert state.calls == []
+    assert listed["result"]["isError"] is False
+    assert '"status": "complete"' in _content_text(listed)
+    assert '"capability_id": "burp-mcp.list_tools"' in _content_text(listed)
+    # The SSE endpoint was really dialed (the stub records tools/call
+    # payloads in .calls; tools/list rides the same transport).
+    assert state.http_hits >= 1
 
 
 def test_head_stdio_list_and_invoke_burp_stub(
@@ -151,11 +150,11 @@ def test_head_stdio_list_and_invoke_burp_stub(
         for row in rows
     )
     invoked = json.loads(lines[1])
-    assert invoked["result"]["isError"] is True
-    assert "unknown capability" in invoked["result"]["content"][0]["text"].lower()
-    assert "held" not in invoked["result"]["content"][0]["text"].lower()
-    assert state.http_hits == 0
-    assert state.calls == []  # registry gate precedes the handler
+    assert invoked["result"]["isError"] is False
+    assert '"status": "complete"' in invoked["result"]["content"][0]["text"]
+    assert '"capability_id": "burp-mcp.url_encode"' in invoked["result"]["content"][0]["text"]
+    assert state.http_hits >= 1
+    assert state.calls  # through the hardened transport
 
 
 def test_head_default_extension_uses_env_stub(
@@ -166,10 +165,8 @@ def test_head_default_extension_uses_env_stub(
     monkeypatch.setenv(ENV_ENDPOINT, url)
     server = McpServer(extension=Extension())
     response = _call(server, "invoke", {"id": ARM_ID, "action": "list_tools"})
-    assert response["result"]["isError"] is True
-    assert "unknown capability" in _content_text(response).lower()
-    assert "held" not in _content_text(response).lower()
-    assert state.http_hits == 0  # the registry gate fires before dialing
+    assert response["result"]["isError"] is False
+    assert state.http_hits >= 1  # dialed through the hardened transport
 
 
 def test_head_invoke_unknown_id_does_not_dial_stub(

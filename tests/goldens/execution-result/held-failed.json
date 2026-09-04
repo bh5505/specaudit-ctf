@@ -1,50 +1,58 @@
 {
-  "schema": "specaudit.ctf.execution-result.v1",
-  "schema_version": 1,
-  "capability_id": "burp-mcp.list_tools",
-  "tool": {
-    "name": "burp-mcp",
-    "version": "0.0.0"
-  },
-  "scope": {
-    "authorized": ["file:///extension/range/tf_s3_public_access"],
-    "touched": []
-  },
-  "safety_class": "R0",
-  "side_effects": ["none"],
   "approval_ref": null,
-  "roe_ref": "roe:synthetic-range",
+  "artifacts": [],
   "budget": {
     "reserved": {
-      "timeout_ms": 1000,
       "max_output_bytes": 4096,
+      "max_spend": null,
       "max_tool_steps": 1,
-      "max_spend": null
+      "timeout_ms": 1000
     },
     "spent": {
       "elapsed_ms": 0,
       "output_bytes": 0,
-      "tool_steps": 0,
-      "spend": 0
+      "spend": 0,
+      "tool_steps": 0
     }
   },
-  "started_at": "2026-08-25T12:00:00Z",
-  "finished_at": "2026-08-25T12:00:00Z",
-  "status": "failed",
-  "transport_ok": false,
-  "artifacts": [],
+  "capability_id": "fixture.local-read",
+  "cleanup": {
+    "proof_digest": null,
+    "required": false,
+    "residual": false
+  },
   "coverage": {
     "attempted": [],
     "complete": [],
-    "skipped": [],
-    "unsupported": ["burp-mcp.list_tools"],
     "failed": [],
-    "required": []
+    "required": [],
+    "skipped": [],
+    "unsupported": [
+      "burp-mcp.list_tools"
+    ]
   },
-  "cleanup": {
-    "required": false,
-    "proof_digest": null,
-    "residual": false
+  "finished_at": "2026-08-25T12:00:00Z",
+  "limitations": [
+    "held capability is never invocable"
+  ],
+  "roe_ref": "roe:synthetic-range",
+  "safety_class": "R0",
+  "schema": "specaudit.ctf.execution-result.v1",
+  "schema_version": 1,
+  "scope": {
+    "authorized": [
+      "file:///extension/range/tf_s3_public_access"
+    ],
+    "touched": []
   },
-  "limitations": ["held capability is never invocable"]
+  "side_effects": [
+    "none"
+  ],
+  "started_at": "2026-08-25T12:00:00Z",
+  "status": "failed",
+  "tool": {
+    "name": "fixture",
+    "version": "0.0.0"
+  },
+  "transport_ok": false
 }

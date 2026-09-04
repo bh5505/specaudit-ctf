@@ -22,8 +22,6 @@ from extension.arms.burp import (
     normalize_call_result,
 )
 from extension.arms.burp.policy import (
-    COMMUNITY_REFUSED,
-    EDITION_REFUSED,
     ENV_ENDPOINT,
 )
 from extension.arms.burp.sse import configured_http_url, resolve_sse_endpoint, redact
@@ -289,33 +287,35 @@ def test_allowlisted_tool_call() -> None:
     assert session.closed is True
 
 
-def test_community_edition_refused() -> None:
+def test_community_edition_is_fully_usable() -> None:
+    """No edition gating: allowlisted tools run against Community Burp;
+    tools the server does not list are refused as unavailable."""
     session = FakeSession(tools=[{"name": name} for name in COMMUNITY_TOOLS])
     result = _arm(session).invoke(_spec(), "url_encode", {"content": "x"})
-    assert result.ok is False
-    assert result.error == COMMUNITY_REFUSED
+    assert result.ok is True
     assert result.output["edition"] == "community"
-    assert session.calls == []
-    listed = _arm(FakeSession(tools=[{"name": name} for name in COMMUNITY_TOOLS])).invoke(
-        _spec(), "list_tools", {}
-    )
-    assert listed.ok is True
-    assert listed.output["edition"] == "community"
+    assert session.calls == [("url_encode", {"content": "x"})]
+    missing = _arm(session).invoke(_spec(), "get_scanner_issues", {})
+    assert missing.ok is False
+    assert "not available on the server" in missing.error
+    assert session.calls == [("url_encode", {"content": "x"})]
 
 
-def test_unknown_edition_refuses_tool_call() -> None:
+def test_unavailable_tool_refused_by_server_surface() -> None:
+    """Whatever the server lists is the truth: a tool absent from
+    tools/list is refused as unavailable (no edition inference gates
+    anything)."""
     empty = FakeSession(tools=[])
     result = _arm(empty).invoke(_spec(), "url_encode", {"content": "x"})
     assert result.ok is False
-    assert result.error == EDITION_REFUSED
+    assert "not available on the server" in result.error
     assert result.output["edition"] == "unknown"
     assert empty.calls == []
     partial = FakeSession(
         tools=[{"name": "get_scanner_issues"}, {"name": "url_encode"}]
     )
-    refused = _arm(partial).invoke(_spec(), "url_encode", {"content": "x"})
-    assert refused.ok is False
-    assert refused.error == EDITION_REFUSED
+    ok = _arm(partial).invoke(_spec(), "url_encode", {"content": "x"})
+    assert ok.ok is True
     listed = _arm(FakeSession(tools=[])).invoke(_spec(), "list_tools", {})
     assert listed.ok is True
     assert listed.output["edition"] == "unknown"
@@ -576,7 +576,7 @@ def test_extension_invoke_against_stub_sse(
     assert "a+b" in json.dumps(result.output)  # the stub's encoded reply
 
 
-def test_community_stub_refuses_tool_call(
+def test_community_stub_tool_call_works(
     stub_sse: tuple[str, _StubState],
 ) -> None:
     url, state = stub_sse
@@ -585,10 +585,9 @@ def test_community_stub_refuses_tool_call(
     listed = arm.invoke(_spec(), "list_tools", {})
     assert listed.ok is True
     assert listed.output["edition"] == "community"
-    refused = arm.invoke(_spec(), "url_encode", {"content": "x"})
-    assert refused.ok is False
-    assert refused.error == COMMUNITY_REFUSED
-    assert state.calls == []
+    called = arm.invoke(_spec(), "url_encode", {"content": "x"})
+    assert called.ok is True
+    assert state.calls and state.calls[0][0] == "url_encode"
 
 
 def test_resolve_sse_endpoint_same_origin() -> None:
@@ -824,12 +823,10 @@ def test_main_invoke_with_stub(
 ) -> None:
     url, _state = stub_sse
     monkeypatch.setenv(ENV_ENDPOINT, url)
-    # Research tier: the held refusal is gone; the capability-registry
-    # gate stands (admission is not coupled to the un-hold).
-    assert main(["invoke", ARM_ID, "list_tools"]) == 2
-    captured = capsys.readouterr()
-    assert "held" not in captured.err.lower()
-    payload = json.loads(captured.out)
+    # Read admission landed: list_tools is invocable end-to-end through
+    # the hardened transport against the loopback stub.
+    assert main(["invoke", ARM_ID, "list_tools"]) == 0
+    payload = json.loads(capsys.readouterr().out)
     assert payload["capability_id"] == "burp-mcp.list_tools"
-    assert payload["status"] == "failed"
-    assert payload["limitations"] == ["unknown capability"]
+    assert payload["status"] == "complete"
+    assert payload["transport_ok"] is True

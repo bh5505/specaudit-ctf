@@ -119,7 +119,6 @@ _SAFETY_RANK = {"R0": 0, "R1": 1, "R2": 2, "R3": 3}
 # invocable; methodology-only and held ids are known so they fail closed
 # without being confused with an unknown id.
 METHODOLOGY_ONLY_IDS = frozenset({"vulnhunter.extract"})
-HELD_IDS = frozenset({"burp-mcp.list_tools"})
 KNOWN_CAPABILITY_IDS = frozenset(
     {
         "fixture.local-read",
@@ -127,7 +126,6 @@ KNOWN_CAPABILITY_IDS = frozenset(
         "fixture.cleanup-write",
         *INVOKE_CAPABILITY_IDS,
         *METHODOLOGY_ONLY_IDS,
-        *HELD_IDS,
     }
 )
 
@@ -479,9 +477,7 @@ def parse_capability_manifest(
         isinstance(capability_id, str) and capability_id in METHODOLOGY_ONLY_IDS
     ):
         gate_reasons.append(REASON_METHODOLOGY_ONLY)
-    if tier == TIER_HELD or (
-        isinstance(capability_id, str) and capability_id in HELD_IDS
-    ):
+    if tier == TIER_HELD:
         gate_reasons.append(REASON_HELD)
     if (
         kind in ALLOWED_KINDS
@@ -500,6 +496,7 @@ def parse_capability_manifest(
         and kind in DISPATCHABLE_KINDS
         and isinstance(tier, str)
         and tier in ALLOWED_TIERS
+        and tier != TIER_HELD
         and not any(code in _DISPATCH_DENY_REASONS for code in gate_reasons)
     )
     manifest = _build_manifest(payload) if schema_ok else None
@@ -535,8 +532,6 @@ def parse_execution_result(
             reasons.append(REASON_UNKNOWN_CAPABILITY)
         if capability_id in METHODOLOGY_ONLY_IDS:
             reasons.append(REASON_METHODOLOGY_ONLY)
-        if capability_id in HELD_IDS:
-            reasons.append(REASON_HELD)
     reasons.extend(_semantic_result_reasons(payload))
     reasons = list(_unique(reasons))
     derived = _derive_status(reasons, payload)
