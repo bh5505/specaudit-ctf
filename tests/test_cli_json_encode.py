@@ -96,10 +96,10 @@ def test_invoke_unknown_id_emits_failed_envelope_not_prev1(
 def test_invoke_held_emits_failed_envelope(capsys: pytest.CaptureFixture[str]) -> None:
     """A still-held arm (semgrep-mcp) fails closed end-to-end; burp-mcp
     is admitted now and covered by its own success-path tests."""
-    code = invoke_main(["invoke", "semgrep-mcp", "list_tools"])
+    code = invoke_main(["invoke", "metasploit-mcp", "list_tools"])
     payload = _stdout_json(capsys)
     parsed = _assert_execution_result(payload)
-    assert payload["capability_id"] == "semgrep-mcp.list_tools"
+    assert payload["capability_id"] == "metasploit-mcp.list_tools"
     assert payload["status"] == "failed"
     assert payload["transport_ok"] is False
     # Unadmitted (no profile) + held tier: the honest envelope is the
@@ -379,6 +379,7 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
         "osmedeus.scan",
         "page-fetch.fetch",
         "commix.scan",
+        "semgrep-mcp.semgrep_scan",
     }
     for capability_id, profile in INVOKE_PROFILES.items():
         assert capability_id == f"{profile.arm_id}.{profile.action}"

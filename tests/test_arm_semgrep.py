@@ -226,22 +226,39 @@ def test_rows_capped() -> None:
 # --- extension wiring ---------------------------------------------------
 
 
-def test_default_extension_wires_semgrep(monkeypatch: pytest.MonkeyPatch) -> None:
-    from extension.contract import Extension
+def test_default_extension_wires_semgrep(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from extension.contract import Extension, NotInstalledError
 
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
+    # Deterministic across hosts (Kali ships semgrep on PATH): pin the
+    # binary env at a missing path so neither surface installs the arm.
+    monkeypatch.setenv("SEMGREP_BIN", str(tmp_path / "missing-semgrep"))
     ext = Extension()
     assert "semgrep-mcp" in ext.arms
-    with pytest.raises(NotHeldError):
+    with pytest.raises(NotInstalledError):
         ext.invoke("semgrep-mcp", "semgrep_findings", {})
 
 
-def test_extension_invoke_with_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ENV_ENDPOINT, "https://semgrep.example.invalid:8899")
-    ext = Extension(arms={ARM_ID: _arm(FakeSession())})
-    with pytest.raises(NotHeldError) as err:
-        ext.invoke(ARM_ID, "supported_languages", {})
-    assert err.value.entry_id == ARM_ID
+def test_extension_invoke_with_env() -> None:
+    """Research tier: MCP reads reachable through the arm wiring."""
+    ext = Extension(
+        arms={
+            ARM_ID: type(
+                "Wired",
+                (),
+                {
+                    "ARM_ID": ARM_ID,
+                    "protocol": "mcp",
+                    "installed": lambda self, spec: True,
+                    "invoke": lambda self, spec, action, args: _arm(
+                        FakeSession()
+                    ).invoke(spec, action, dict(args)),
+                },
+            )()
+        }
+    )
+    result = ext.invoke(ARM_ID, "supported_languages", {})
+    assert result.ok is True
 
 
 def test_scan_config_multiline_body_not_prefix_matched() -> None:

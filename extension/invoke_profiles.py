@@ -58,6 +58,7 @@ _STATIC_POLICY_ARMS = (
     "nmap",
     "pyrit",
     "routersploit",
+    "semgrep-mcp",
     "sniper",
     "vvah",
     "zgrab2",
@@ -234,6 +235,11 @@ _DISPATCH_PROFILES = (
     # recipe): active command-injection prober — no read-only mode
     # upstream, probe is the whole surface.
     ("commix", "scan", ("subprocess", "network-egress"), 600_000, "COMMIX_DISPATCH_SCOPE"),
+    # semgrep-mcp (2026-09-03 CLI integration packet): the first-party
+    # CLI is the primary surface; scan runs locally with an inline rule
+    # pack (registry/URL configs refused, --metrics=off), so the spend
+    # is subprocess only. Arming/containment is the scan root env.
+    ("semgrep-mcp", "semgrep_scan", ("subprocess",), 120_000, "SEMGREP_SCAN_ROOT"),
 )
 
 
