@@ -51,8 +51,11 @@ handlers preserved; specialized session, not a generic transport):
   rule pack required (no registry `p/` or URL rules)
 - `prowler-mcp` — held; HTTP+SSE; read-only `prowler_` / `prowler_docs_` /
   `prowler_hub_` prefixes; `prowler_cloud_*` blocked; credential-gated
-- `google-mcp-security` — held; GTI lookups; all 11 tools are reads; no
-  dispatch tier
+- `google-mcp-security` — research; GTI lookups over the official
+  gti-mcp server at an operator-configured https endpoint via the
+  hardened transport; all 11 allowlisted tools are reads (verified
+  against the current official inventory); mutating collection tools
+  stay off the allowlist; no dispatch tier
 - `metasploit-mcp` — held; SSE; module/session listings read; execution
   tools gated by `METASPLOIT_DISPATCH_SCOPE`
 
@@ -151,9 +154,9 @@ envelope as the CLI (timestamps differ per run); the direct library
 surface keeps its existing gates.
 
 Catalog `invoke` of held HTTP MCP arms (`semgrep-mcp`,
-`prowler-mcp`, `google-mcp-security`, `metasploit-mcp`) is refused
-even when an endpoint is configured. `burp-mcp` is research on the
-hardened transport (per the authorizing dossier): handler-level
+`prowler-mcp`, `metasploit-mcp`) is refused
+even when an endpoint is configured. `burp-mcp` and
+`google-mcp-security` are research on the hardened transport: handler-level
 `list_tools` / `tools/list` go through the shared client, while CLI
 and MCP `invoke` still require a registered capability profile.
 Burp is not installed unless

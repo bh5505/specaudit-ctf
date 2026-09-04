@@ -2,9 +2,9 @@
 
 ## Overview
 
-- **Arms**: 27 specialized adapters. Four HTTP MCP rows are held; the
-  burp-mcp row is research on the hardened transport (loopback-only
-  endpoint policy); remaining
+- **Arms**: 27 specialized adapters. Three HTTP MCP rows are held; the
+  burp-mcp and google-mcp-security rows are research on the hardened
+  transport; remaining
   arm rows are research except the agent-wiz read tier
   (`agent-wiz.list_tools`), the sole maintained capability (X5-PROMOTE).
   A specialized handler is
@@ -135,11 +135,12 @@ a fallback. `list` / `describe` include `tier`.
 `invoke <id> list_tools` returns static JSON (no binary spawn) on
 non-held surfaces that implement it (the ten lifted CLIs). Catalog
 `invoke` of held HTTP MCP rows (`semgrep-mcp`,
-`prowler-mcp`, `google-mcp-security`, `metasploit-mcp`) is refused
-even if an endpoint is configured. `burp-mcp` is research on the
-hardened transport: handler-level reads are reachable through the
-transport, while CLI/MCP `invoke` still requires a registered
-capability profile (admission is separate from the tier move). Pyrit scenario discovery is a
+`prowler-mcp`, `metasploit-mcp`) is refused
+even if an endpoint is configured. `burp-mcp` and
+`google-mcp-security` are research on the hardened transport:
+handler-level reads are reachable through the transport, while CLI/MCP
+`invoke` still requires a registered capability profile (admission is
+separate from the tier move). Pyrit scenario discovery is a
 separate `list_scenarios` action, which runs `pyrit_scan
 --list-scenarios`. Original fixed-argv CLIs (checkov, garak,
 mitreattack-python, wapiti, commix, zdns, vuls, stratus-red-team,

@@ -14,9 +14,13 @@ ENV_ENDPOINT = "GTI_MCP_ENDPOINT"
 # HTTP endpoint here names an operator-fronted deployment.
 TRANSPORT_POLICY = HttpTransportPolicy.remote_https()
 
-# All 11 upstream tools are report/lookup reads; none dispatch actions
-# (verified 2026-08-23 from the gti-mcp-server README). There is no
-# dispatch tier for this arm.
+# All 11 allowlisted tools are report/lookup reads; none dispatch
+# actions. Verified against the current official tool inventory
+# 2026-09-04 from the google/mcp-security server/gti source (36 tools
+# across collections/files/intelligence/netloc/threat_profiles/urls;
+# the mutating collection create/update family stays off this
+# allowlist, and anything not listed is refused fail-closed). There is
+# no dispatch tier for this arm.
 ALLOWED_TOOLS = frozenset(
     {
         "search_iocs",
