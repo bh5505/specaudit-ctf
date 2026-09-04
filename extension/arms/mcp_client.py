@@ -73,7 +73,7 @@ def _scrub_obj(obj: Any, scrub: Callable[[str], str]) -> Any:
     if isinstance(obj, list):
         return [_scrub_obj(item, scrub) for item in obj]
     if isinstance(obj, dict):
-        return {key: _scrub_obj(value, scrub) for key, value in obj.items()}
+        return {_scrub_obj(str(key), scrub): _scrub_obj(value, scrub) for key, value in obj.items()}
     return obj
 
 
@@ -504,7 +504,9 @@ class _CallbackRequestHandler(http.server.BaseHTTPRequestHandler):
         self._answer(404, "not found")
 
     def do_HEAD(self) -> None:
-        self._answer(404, "not found")
+        self.send_response(404)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
 
     def do_OPTIONS(self) -> None:
         self._answer(404, "not found")
@@ -1071,7 +1073,11 @@ class SseMcpSession:
 
     def _read_loop(self) -> None:
         buf = bytearray()
-        while not self._stop.is_set():
+        # Bind the stop event (and body, below) at loop start: a reader
+        # orphaned by a close/open cycle keeps ITS event - which is set -
+        # and exits instead of stealing from a newer stream.
+        stop = self._stop
+        while not stop.is_set():
             # Split frames on bytes; decoding first would desync on non-ASCII.
             while True:
                 idx_crlf = buf.find(b"\r\n\r\n")

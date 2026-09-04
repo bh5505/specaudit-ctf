@@ -159,6 +159,15 @@ class _SseGateHandler(BaseHTTPRequestHandler):
         state["requests"].append(
             {"path": self.path, "headers": {k.lower(): v for k, v in self.headers.items()}}
         )
+        if state.get("mode") == "always_401_meta":
+            self.send_response(401)
+            self.send_header(
+                "WWW-Authenticate",
+                'Bearer resource_metadata="%s"' % state["metadata_url"],
+            )
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.end_headers()
@@ -472,6 +481,65 @@ def _browser_sim(authorize_url: str) -> None:
     state = query["state"][0]
     separator = "&" if "?" in redirect else "?"
     _hit_url(redirect + separator + "code=c-sim&state=" + state)
+
+
+def test_p3_resource_metadata_mismatch_refused() -> None:
+    """A resource server pointing discovery at a resource that is not the
+    origin being served is a redirect-to-attacker-AS attempt."""
+    calls: list[str] = []
+
+    def fetch(url: str, timeout: float) -> dict[str, Any]:
+        calls.append(url)
+        return {"resource": "https://attacker.example", "authorization_servers": ["https://as.example.com"]}
+
+    manager = OAuthAuthorizationManager(
+        OAuthConfig(arm_id="test-arm", client_id="client-1", fetch_json=fetch)
+    )
+    with pytest.raises(RuntimeError, match="names resource"):
+        manager.authorize(
+            "https://as.example.com/.well-known/oauth-protected-resource",
+            "https://mcp.example.com",
+            1.0,
+        )
+    # Refused before any AS discovery.
+    assert calls == ["https://as.example.com/.well-known/oauth-protected-resource"]
+
+
+def test_p3_sse_repeat_challenge_is_terminal(gate_sse_server) -> None:
+    """SSE path: a server that keeps demanding OAuth after a completed
+    flow terminates with a public error, never an internal exception."""
+    url, state = gate_sse_server
+    state["mode"] = "always_401_meta"
+    origin = origin_string(urlparse(url))
+
+    def fetch_json(fetch_url: str, timeout: float) -> dict[str, Any]:
+        if fetch_url.endswith("oauth-protected-resource"):
+            return {"resource": origin, "authorization_servers": ["https://as.example.com"]}
+        return {
+            "authorization_endpoint": "https://as.example.com/authorize",
+            "token_endpoint": "https://as.example.com/token",
+        }
+
+    def on_authorization(auth_url: str) -> None:
+        threading.Thread(target=_browser_sim, args=(auth_url,), daemon=True).start()
+
+    session = SseMcpSession(
+        url,
+        timeout=5,
+        policy=LOOPBACK,
+        oauth_config=OAuthConfig(
+            arm_id="sse-test",
+            client_id="client-1",
+            on_authorization=on_authorization,
+            fetch_json=fetch_json,
+            fetch_post_form=lambda u, f, t: {"access_token": _make_jwt(origin)},
+        ),
+    )
+    try:
+        with pytest.raises(RuntimeError, match="re-challenged"):
+            session.connect()
+    finally:
+        session.close()
 
 
 def test_p3_manager_requires_on_authorization() -> None:
