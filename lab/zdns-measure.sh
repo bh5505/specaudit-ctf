@@ -152,9 +152,12 @@ python3 - "$WORK/control.json" <<'PY'
 import json, sys
 from pathlib import Path
 path = Path(sys.argv[1])
-if not path.exists():
-    print("(no control was run — fallback path handles it differently)")
-    raise SystemExit(0)
+if not path.exists() or not path.read_text(encoding="utf-8").strip():
+    # Both the namespace and fallback paths run the control; a missing
+    # or empty result means the containment proof did not happen, and
+    # the run must not claim it did.
+    print("[lab] CONTAINMENT CONTROL MISSING — refusing to record the run")
+    raise SystemExit(1)
 text = path.read_text(encoding="utf-8").strip()
 # zdns writes a progress line plus one JSON object; keep the last line
 # that parses as JSON with a results key.
@@ -165,9 +168,14 @@ for line in reversed(text.splitlines()):
         continue
     if isinstance(doc, dict) and "results" in doc:
         section = doc["results"].get("A") or {}
-        print("status:", section.get("status"), "(expected REFUSED)")
+        status = section.get("status")
+        print("status:", status, "(expected REFUSED)")
+        if status != "REFUSED":
+            print("[lab] CONTAINMENT CONTROL FAILED — outside-zone query not refused")
+            raise SystemExit(1)
         raise SystemExit(0)
-print("(control produced no parseable result)")
+print("[lab] CONTAINMENT CONTROL UNPARSEABLE — refusing to record the run")
+raise SystemExit(1)
 PY
 # 3. Integrity assertion: the host resolver must be byte-identical.
 RESOLV_AFTER="$(sha256sum /etc/resolv.conf | cut -d' ' -f1)"
