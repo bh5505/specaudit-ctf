@@ -19,7 +19,7 @@ ENV_DISPATCH_SCOPE = "METASPLOIT_DISPATCH_SCOPE"
 # literal 127.0.0.1/[::1] endpoints (http or https).
 TRANSPORT_POLICY = HttpTransportPolicy.loopback()
 
-# Read tier: module/payload/session/job listings.
+# Read tier: exploit/payload/session/listener listings.
 ALLOWED_TOOLS = frozenset(
     {
         "list_exploits",
