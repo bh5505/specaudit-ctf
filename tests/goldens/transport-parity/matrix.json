@@ -149,6 +149,31 @@
       }
     },
     {
+      "id": "invoke_prowler_admitted_but_unconfigured",
+      "kind": "envelope",
+      "cli": [
+        "invoke",
+        "prowler-mcp",
+        "list_tools"
+      ],
+      "mcp_tool": "invoke",
+      "mcp_arguments": {
+        "id": "prowler-mcp",
+        "action": "list_tools"
+      },
+      "expect": {
+        "exit_code": 2,
+        "is_error": true,
+        "envelope": {
+          "schema": "specaudit.ctf.execution-result.v1",
+          "status": "failed",
+          "transport_ok": false,
+          "limitations": ["arm is not installed"],
+          "artifacts_empty": true
+        }
+      }
+    },
+    {
       "id": "invoke_gti_admitted_but_unconfigured",
       "kind": "envelope",
       "cli": [

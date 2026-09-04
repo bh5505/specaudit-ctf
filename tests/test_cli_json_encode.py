@@ -400,14 +400,17 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
             assert profile.side_effects == ("local-read",)
             assert profile.default_off is True
             assert profile.synthetic_only is False
-        elif profile.arm_id == "google-mcp-security":
+        elif profile.arm_id in ("google-mcp-security", "prowler-mcp"):
             # Remote-read admission: R1 network-egress lookup, the
             # endpoint env is the operator's arming decision.
             assert profile.safety_class == "R1"
             assert profile.side_effects == ("network-egress",)
             assert profile.default_off is True
             assert profile.synthetic_only is False
-            assert profile.approval_ref == "operator://endpoint/GTI_MCP_ENDPOINT"
+            assert profile.approval_ref in (
+                "operator://endpoint/GTI_MCP_ENDPOINT",
+                "operator://endpoint/PROWLER_MCP_ENDPOINT",
+            )
         else:
             assert profile.action == "list_tools"
             assert profile.safety_class == "R0"

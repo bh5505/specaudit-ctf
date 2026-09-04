@@ -488,11 +488,9 @@ def test_agent_wiz_golden_matches_encoder_and_is_admitted() -> None:
 def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 21 since commix.scan admission (2026-09-03): 10 static read
     # profiles + 11 scope-gated dispatch profiles.
-    # 44 after the semgrep CLI integration (static list_tools +
-    # dispatch-class semgrep_scan) on top of the GTI (12 remote-read)
-    # and burp (9 loopback read; two arm-blocklisted _regex variants
-    # stay unadmitted) admissions.
-    assert len(INVOKE_PROFILES) == 44
+    # 45 after the prowler read admission (hosted-endpoint discovery)
+    # on top of semgrep CLI (2), GTI (12), and burp (9).
+    assert len(INVOKE_PROFILES) == 45
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -509,7 +507,7 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.synthetic_only is False
-        elif profile.arm_id == "google-mcp-security":
+        elif profile.arm_id in ("google-mcp-security", "prowler-mcp"):
             # Remote-read admission: R1 network-egress lookups.
             assert profile.safety_class == "R1"
             assert profile.side_effects == ("network-egress",)
@@ -556,7 +554,7 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["safety_class"] == "R0"
             assert payload["side_effects"] == ["local-read"]
             assert payload["synthetic_only"] is False
-        elif profile.arm_id == "google-mcp-security":
+        elif profile.arm_id in ("google-mcp-security", "prowler-mcp"):
             # Remote-read manifests: R1 network-egress lookups (including
             # its list_tools, which dials the endpoint).
             assert payload["safety_class"] == "R1"

@@ -126,9 +126,8 @@ entries:
     kind: arm
     protocols: [mcp, http]
     curated: true
-    tier: held
-    held_reason: HTTP MCP is held on this public cut until OAuth resource and audience binding, no token passthrough, HTTPS, PKCE, Origin validation, DNS-rebinding controls, and localhost binding are evidenced.
-    notes: First-party CSPM MCP with hub, docs, and optional cloud findings namespaces. Curated MCP arm; read-only namespaces only, cloud scan orchestration and mutation keywords blocked, credential-gated install. HTTP MCP is held on this public cut.
+    tier: research
+    notes: First-party CSPM MCP over the hosted streamable-HTTP endpoint (https://mcp.prowler.com/mcp) or an operator-configured self-hosted deployment, on the hardened shared client. The operator's Prowler API key is the explicit per-arm Bearer credential (value redacted end-to-end); read-only namespaces only - cloud scan orchestration and mutation keywords blocked; hub/docs namespaces need no auth upstream. Tool names are not individually documented upstream, so only discovery is admitted; the read tools stay handler-level behind the prefix allowlist.
 
   - id: semgrep-mcp
     kind: arm
