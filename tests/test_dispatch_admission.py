@@ -47,6 +47,7 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         "osmedeus.scan",
         "page-fetch.fetch",
         "commix.scan",
+        "semgrep-mcp.semgrep_scan",
     }
     admitted = {
         capability_id

@@ -9,8 +9,8 @@ from typing import Any
 import pytest
 
 from extension.arms.semgrep import ALLOWED_TOOLS, ARM_ID, BLOCKED_TOOLS, SemgrepArm
-from extension.arms.semgrep.policy import ENV_ENDPOINT, scan_config_refusal
-from extension.contract import ArmSpec, Extension, NotHeldError, NotInstalledError
+from extension.arms.semgrep.policy import ENV_BIN, ENV_ENDPOINT, scan_config_refusal
+from extension.contract import ArmSpec, Extension, NotInstalledError
 
 ALL_TOOLS = tuple(ALLOWED_TOOLS) + tuple(BLOCKED_TOOLS)
 
@@ -142,31 +142,41 @@ def test_scan_config_egress_gate() -> None:
     assert scan_config_refusal({"config": "rules:\n  - id: x"}) is None
 
 
-def test_scan_without_config_refused() -> None:
-    session = FakeSession()
-    result = _arm(session).invoke(_spec(), "semgrep_scan", {})
-    assert result.ok is False
-    assert "inline rule pack" in result.error
-    assert session.calls == []
+def test_scan_and_list_never_dial_mcp_even_when_configured(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    """Routing pin: semgrep_scan and list_tools ALWAYS run on the CLI
+    (matching the admitted profiles); an MCP endpoint serves reads only.
+    No binary -> honest NotInstalled; the fake session is never dialed."""
+    from extension.contract import NotInstalledError
 
-
-def test_scan_with_registry_config_refused() -> None:
+    monkeypatch.setenv(ENV_BIN, str(tmp_path / "missing-semgrep"))
     session = FakeSession()
-    result = _arm(session).invoke(_spec(), "semgrep_scan", {"config": "auto"})
-    assert result.ok is False
-    assert "registry" in result.error
+    arm = _arm(session)
+    with pytest.raises(NotInstalledError):
+        arm.invoke(_spec(), "semgrep_scan", {"config": "rules: []"})
+    listed = arm.invoke(_spec(), "list_tools", {})
+    assert listed.ok is True
+    assert listed.output["surface"] == "cli"
     assert session.calls == []
+    assert session.closed is False  # the MCP session is not even opened
 
 
 # --- invoke -------------------------------------------------------------
 
 
-def test_list_tools() -> None:
+def test_list_tools_is_cli_static_with_endpoint_set(
+    monkeypatch: pytest.MonkeyPatch, tmp_path
+) -> None:
+    monkeypatch.setenv(ENV_BIN, str(tmp_path / "missing-semgrep"))
     session = FakeSession()
     result = _arm(session).invoke(_spec(), "list_tools", {})
     assert result.ok is True
-    assert {tool["name"] for tool in result.output["tools"]} == set(ALL_TOOLS)
-    assert session.closed is True
+    assert result.output["surface"] == "cli"
+    # The MCP tool names are still surfaced as the endpoint-action list.
+    # Only the allowlisted reads; blocked tools are not endpoint actions.
+    assert set(result.output["mcp_endpoint_actions"]) == set(ALLOWED_TOOLS)
+    assert session.calls == []
 
 
 def test_allowlisted_findings_call() -> None:
@@ -176,12 +186,13 @@ def test_allowlisted_findings_call() -> None:
     assert session.calls == [("semgrep_findings", {"limit": 10})]
 
 
-def test_scan_with_inline_config_runs() -> None:
+def test_read_tools_still_use_mcp_session() -> None:
+    """Reads (findings/AST/language/schema) ride the MCP session when an
+    endpoint is wired - the endpoint surface is read-only."""
     session = FakeSession()
-    config = "rules:\n  - id: fixture\n    pattern: eval(...)"
-    result = _arm(session).invoke(_spec(), "semgrep_scan", {"config": config})
+    result = _arm(session).invoke(_spec(), "semgrep_findings", {"limit": 10})
     assert result.ok is True
-    assert session.calls == [("semgrep_scan", {"config": config})]
+    assert session.calls == [("semgrep_findings", {"limit": 10})]
 
 
 def test_tool_iserror_is_failure() -> None:
@@ -226,22 +237,39 @@ def test_rows_capped() -> None:
 # --- extension wiring ---------------------------------------------------
 
 
-def test_default_extension_wires_semgrep(monkeypatch: pytest.MonkeyPatch) -> None:
-    from extension.contract import Extension
+def test_default_extension_wires_semgrep(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    from extension.contract import Extension, NotInstalledError
 
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
+    # Deterministic across hosts (Kali ships semgrep on PATH): pin the
+    # binary env at a missing path so neither surface installs the arm.
+    monkeypatch.setenv("SEMGREP_BIN", str(tmp_path / "missing-semgrep"))
     ext = Extension()
     assert "semgrep-mcp" in ext.arms
-    with pytest.raises(NotHeldError):
+    with pytest.raises(NotInstalledError):
         ext.invoke("semgrep-mcp", "semgrep_findings", {})
 
 
-def test_extension_invoke_with_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ENV_ENDPOINT, "https://semgrep.example.invalid:8899")
-    ext = Extension(arms={ARM_ID: _arm(FakeSession())})
-    with pytest.raises(NotHeldError) as err:
-        ext.invoke(ARM_ID, "supported_languages", {})
-    assert err.value.entry_id == ARM_ID
+def test_extension_invoke_with_env() -> None:
+    """Research tier: MCP reads reachable through the arm wiring."""
+    ext = Extension(
+        arms={
+            ARM_ID: type(
+                "Wired",
+                (),
+                {
+                    "ARM_ID": ARM_ID,
+                    "protocol": "mcp",
+                    "installed": lambda self, spec: True,
+                    "invoke": lambda self, spec, action, args: _arm(
+                        FakeSession()
+                    ).invoke(spec, action, dict(args)),
+                },
+            )()
+        }
+    )
+    result = ext.invoke(ARM_ID, "supported_languages", {})
+    assert result.ok is True
 
 
 def test_scan_config_multiline_body_not_prefix_matched() -> None:

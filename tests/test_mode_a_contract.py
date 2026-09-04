@@ -488,10 +488,10 @@ def test_agent_wiz_golden_matches_encoder_and_is_admitted() -> None:
 def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 21 since commix.scan admission (2026-09-03): 10 static read
     # profiles + 11 scope-gated dispatch profiles.
-    # 42 after the GTI read admission (12 remote-read profiles on top
-    # of burp's 9; the arm blocklists the three _regex search variants,
-    # so they stay unadmitted).
-    assert len(INVOKE_PROFILES) == 42
+    # 44 after the semgrep CLI integration (static list_tools +
+    # dispatch-class semgrep_scan) on top of the GTI (12 remote-read)
+    # and burp (9 loopback read) admissions.
+    assert len(INVOKE_PROFILES) == 44
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.

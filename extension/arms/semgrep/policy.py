@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from typing import Any, Mapping
 
 from ..mcp_client import HttpTransportPolicy
@@ -11,6 +12,74 @@ ARM_ID = "semgrep-mcp"
 ENV_ENDPOINT = "SEMGREP_MCP_ENDPOINT"
 # Remote-armed catalog: https endpoints only, loopback refused.
 TRANSPORT_POLICY = HttpTransportPolicy.remote_https()
+
+# Primary integration point: the first-party semgrep CLI (the MCP
+# adapter repo is archived - implementation minutiae; the CLI is the
+# stable surface). NPSL: invoke the operator's binary, never bundle.
+ENV_BIN = "SEMGREP_BIN"
+# Scan containment: the directory tree scans may touch.
+ENV_SCAN_ROOT = "SEMGREP_SCAN_ROOT"
+TIMEOUT_SECONDS = 120.0
+MAX_FINDINGS = 500
+
+CAVEATS = (
+    "Primary surface is the semgrep CLI; scans run locally with an "
+    "inline rule pack (args.config) - registry/URL configs are refused, "
+    "so no rule egress; --metrics=off on every scan. MCP reads remain "
+    "available via SEMGREP_MCP_ENDPOINT on the hardened transport."
+)
+
+ARMING = (
+    f"set {ENV_SCAN_ROOT}=<directory> to arm semgrep_scan; containment "
+    f"is {ENV_SCAN_ROOT} (targets must resolve inside it)"
+)
+
+
+def resolve_binary() -> str | None:
+    """Return the semgrep path: SEMGREP_BIN, else PATH lookup."""
+    explicit = os.environ.get(ENV_BIN)
+    if explicit:
+        from pathlib import Path
+
+        path = Path(explicit)
+        if path.is_file():
+            return str(path)
+        return None
+    import shutil
+
+    return shutil.which("semgrep")
+
+
+def scan_root() -> "str | None":
+    root = os.environ.get(ENV_SCAN_ROOT, "").strip()
+    return root or None
+
+
+def resolve_target(payload: "Mapping[str, Any]") -> "tuple[str | None, str | None]":
+    """Resolve the scan target inside SEMGREP_SCAN_ROOT.
+
+    Returns (target_path, refusal). The optional args.target is a
+    relative path under the root; the root itself is the default.
+    """
+    from pathlib import Path
+
+    root = scan_root()
+    if not root:
+        return None, f"semgrep_scan requires {ENV_SCAN_ROOT} to name the scan root"
+    root_path = Path(root).resolve()
+    if not root_path.is_dir():
+        return None, f"{ENV_SCAN_ROOT} is not a directory"
+    raw_target = payload.get("target")
+    if raw_target in (None, ""):
+        return str(root_path), None
+    if not isinstance(raw_target, str) or "\x00" in raw_target:
+        return None, "target must be a relative path string"
+    target = (root_path / raw_target).resolve()
+    if target != root_path and root_path not in target.parents:
+        return None, "target must resolve inside the scan root"
+    if not target.exists():
+        return None, "target does not exist inside the scan root"
+    return str(target), None
 
 # Upstream semgrep-mcp (r2c) exposes 7 tools. Only local-rule scan and
 # findings/AST/language reads are allowed.

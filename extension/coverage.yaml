@@ -134,9 +134,8 @@ entries:
     kind: arm
     protocols: [mcp, cli, http]
     curated: true
-    tier: held
-    held_reason: HTTP MCP is held on this public cut until OAuth resource and audience binding, no token passthrough, HTTPS, PKCE, Origin validation, DNS-rebinding controls, and localhost binding are evidenced.
-    notes: First-party SAST MCP and CLI for local rule scans. Curated MCP arm; allowlisted scan and findings reads, inline rule pack required for scans. HTTP MCP is held on this public cut.
+    tier: research
+    notes: First-party SAST via the semgrep CLI as the primary surface - local rule scans with an inline rule pack (registry/URL configs refused, metrics off), scan containment is the SEMGREP_SCAN_ROOT directory. MCP reads (scan/findings/AST/language/schema) remain available over an operator-configured https endpoint on the hardened transport. No client credential sent for either surface.
 
   - id: google-mcp-security
     kind: arm

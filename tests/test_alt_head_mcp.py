@@ -146,7 +146,7 @@ def test_mcp_invoke_held_arm_is_failed_envelope() -> None:
     # four HTTP-MCP arms (G-15, doc 21), and the held refusal fires
     # before the X2 profile lookup. burp-mcp un-held 2026-09-03.
     server = McpServer()
-    response = _call(server, "invoke", {"id": "semgrep-mcp", "action": "ping"})
+    response = _call(server, "invoke", {"id": "prowler-mcp", "action": "ping"})
     assert response["result"]["isError"] is True
     result = _content_json(response)
     assert result["status"] == "failed"
@@ -291,7 +291,7 @@ def test_module_mcp_invoke_live_catalog_held() -> None:
                 "method": "tools/call",
                 "params": {
                     "name": "invoke",
-                    "arguments": {"id": "semgrep-mcp", "action": "list_tools"},
+                    "arguments": {"id": "prowler-mcp", "action": "list_tools"},
                 },
             }
         )

@@ -200,7 +200,7 @@ def test_invoke_curated_arm_not_installed(
 
 
 def test_invoke_held_arm_refused_even_if_curated() -> None:
-    held_id = "semgrep-mcp"
+    held_id = "prowler-mcp"
     fake = FakeCliTransport(installed_ids={held_id})
     ext = Extension(transports={"mcp": fake}, arms={held_id: fake})
     with pytest.raises(NotHeldError) as err:

@@ -1,9 +1,18 @@
-"""Curated Semgrep arm: allowlisted MCP tools over Streamable HTTP."""
+"""Curated Semgrep arm: first-party CLI scans + MCP reads.
+
+Primary integration point is the semgrep CLI (local rule scans with an
+inline rule pack; the archived MCP adapter repo is implementation
+minutiae). MCP reads over Streamable HTTP remain available when
+SEMGREP_MCP_ENDPOINT names an operator-configured https endpoint on
+the hardened transport.
+"""
 
 from __future__ import annotations
 
 import json
 import os
+import subprocess
+import tempfile
 from typing import Any, Callable, Mapping
 
 from ...contract import (
@@ -20,12 +29,20 @@ from ..mcp_client import (
     redact,
 )
 from .policy import (
+    ALLOWED_TOOLS,
     ARM_ID,
+    ARMING,
+    CAVEATS,
     ENV_ENDPOINT,
     LIST_ACTIONS,
+    MAX_FINDINGS,
+    TIMEOUT_SECONDS,
     TRANSPORT_POLICY,
     refuse_reason,
+    resolve_binary,
+    resolve_target,
     scan_config_refusal,
+    scan_root,
 )
 
 SessionFactory = Callable[..., Any]
@@ -60,14 +77,39 @@ class SemgrepArm:
         return configured_http_url(raw, TRANSPORT_POLICY)
 
     def installed(self, spec: ArmSpec) -> bool:
-        return spec.id == ARM_ID and self.endpoint_url() is not None
+        if spec.id != ARM_ID:
+            return False
+        # Either surface installs the arm: the CLI binary or the MCP
+        # endpoint.
+        return resolve_binary() is not None or self.endpoint_url() is not None
 
     def invoke(
         self, spec: ArmSpec, action: str, args: Mapping[str, Any]
     ) -> Result:
-        endpoint = self.endpoint_url()
-        if spec.id != ARM_ID or endpoint is None:
+        if spec.id != ARM_ID:
             raise NotInstalledError(spec.id)
+        endpoint = self.endpoint_url()
+        # Deterministic routing, matching the admitted profiles exactly:
+        # list_tools and semgrep_scan ALWAYS run on the first-party CLI
+        # (subprocess, scan-root contained); an MCP endpoint serves the
+        # read tools only.
+        if action in LIST_ACTIONS:
+            return self._cli_list_tools(spec, action)
+        if action == "semgrep_scan":
+            return self._cli_scan(spec, action, dict(args))
+        if endpoint is None:
+            if resolve_binary() is None:
+                raise NotInstalledError(spec.id)
+            return Result(
+                ok=False,
+                arm_id=spec.id,
+                action=action,
+                output=None,
+                error=(
+                    "MCP reads require SEMGREP_MCP_ENDPOINT; list_tools "
+                    "and semgrep_scan run on the CLI"
+                ),
+            )
         payload = dict(args)
         session = self._session_factory(endpoint, timeout=self.timeout)
         try:
@@ -125,6 +167,132 @@ class SemgrepArm:
             )
         finally:
             session.close()
+
+    def _cli_list_tools(self, spec: ArmSpec, action: str) -> Result:
+        return Result(
+            ok=True,
+            arm_id=spec.id,
+            action=action,
+            output={
+                "surface": "cli",
+                "read_actions": sorted(LIST_ACTIONS),
+                "mcp_endpoint_actions": sorted(ALLOWED_TOOLS),
+                "dispatch_actions": ["semgrep_scan"],
+                "dispatch_armed": scan_root() is not None,
+                "caveats": CAVEATS,
+                "arming": ARMING,
+            },
+            error=None,
+        )
+
+    def _cli_scan(
+        self, spec: ArmSpec, action: str, payload: dict[str, Any]
+    ) -> Result:
+        binary = resolve_binary()
+        if binary is None:
+            raise NotInstalledError(spec.id)
+        refusal = scan_config_refusal(payload)
+        if refusal:
+            return Result(
+                ok=False, arm_id=spec.id, action=action, output=None, error=refusal
+            )
+        target, refusal = resolve_target(payload)
+        if refusal:
+            return Result(
+                ok=False, arm_id=spec.id, action=action, output=None, error=refusal
+            )
+        config_fd, config_path = tempfile.mkstemp(
+            prefix="semgrep-config-", suffix=".yaml"
+        )
+        argv = [
+            binary,
+            "scan",
+            "--config",
+            config_path,
+            "--json",
+            "--metrics=off",
+            target,
+        ]
+        try:
+            with os.fdopen(config_fd, "w", encoding="utf-8") as fh:
+                fh.write(str(payload["config"]))
+            scan_env = dict(os.environ)
+            scan_env["SEMGREP_DISABLE_VERSION_CHECK"] = "1"
+            scan_env["SEMGREP_SEND_METRICS"] = "off"
+            try:
+                proc = subprocess.run(
+                    argv,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=TIMEOUT_SECONDS,
+                    check=False,
+                    env=scan_env,
+                )
+            except subprocess.TimeoutExpired:
+                return Result(
+                    ok=False,
+                    arm_id=spec.id,
+                    action=action,
+                    output=None,
+                    error="semgrep_scan timed out after %ds" % int(TIMEOUT_SECONDS),
+                )
+            except OSError as exc:
+                return Result(
+                    ok=False,
+                    arm_id=spec.id,
+                    action=action,
+                    output=None,
+                    error=redact(str(exc)),
+                )
+            if proc.returncode != 0:
+                return Result(
+                    ok=False,
+                    arm_id=spec.id,
+                    action=action,
+                    output=None,
+                    error=redact(
+                        proc.stderr[-800:] or ("semgrep exited %s" % proc.returncode)
+                    ),
+                )
+            try:
+                report = json.loads(proc.stdout)
+            except json.JSONDecodeError:
+                return Result(
+                    ok=False,
+                    arm_id=spec.id,
+                    action=action,
+                    output=None,
+                    error="semgrep produced invalid JSON output",
+                )
+            if not isinstance(report, dict):
+                return Result(
+                    ok=False,
+                    arm_id=spec.id,
+                    action=action,
+                    output=None,
+                    error="semgrep produced a non-object JSON report",
+                )
+            results = report.get("results") or []
+            return Result(
+                ok=True,
+                arm_id=spec.id,
+                action=action,
+                output={
+                    "target": target,
+                    "total": len(results),
+                    "results": results[:MAX_FINDINGS],
+                    "errors": (report.get("errors") or [])[:50],
+                    "truncated": len(results) > MAX_FINDINGS,
+                },
+                error=None,
+            )
+        finally:
+            try:
+                os.unlink(config_path)
+            except OSError:
+                pass
 
 
 def _cap_rows(rows: list[Any]) -> list[Any]:
