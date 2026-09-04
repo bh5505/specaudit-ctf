@@ -153,7 +153,10 @@ def _remote_read_profile(arm_id: str, action: str, endpoint_env: str, tier: str 
     The action is a lookup (no mutation), but it egresses to the
     operator-configured https endpoint once armed, so the profile carries
     the dispatch-class grammar: R1, network-egress, default-off, and the
-    endpoint env as the operator's arming/approval decision.
+    endpoint env as the operator's arming/approval decision
+    (operator://endpoint/<ENV>, the remote-read analog of the dispatch
+    scope envs). Timeout mirrors the shared MCP_CALL_TIMEOUT the client
+    applies to every call.
     """
     capability_id = f"{arm_id}.{action}"
     scope = (f"policy://extension/arms/{arm_id}",)
@@ -167,13 +170,13 @@ def _remote_read_profile(arm_id: str, action: str, endpoint_env: str, tier: str 
         touched_scope=scope,
         safety_class="R1",
         side_effects=("network-egress",),
-        timeout_ms=30_000,
+        timeout_ms=10_000,
         max_output_bytes=1_048_576,
         max_tool_steps=1,
         max_spend=None,
         cleanup_required=False,
         approval_ref=f"operator://endpoint/{endpoint_env}",
-        roe_ref="doc://README#dispatch-doctrine",
+        roe_ref="doc://README#remote-read-doctrine",
         tier=tier,
         default_off=True,
         synthetic_only=False,

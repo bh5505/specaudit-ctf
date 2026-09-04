@@ -371,6 +371,19 @@ and digested artifacts — end-to-end proof of the gate → audit →
 stamp → envelope chain on real Kali. The `lab/` directory carries the
 instance and target tooling.
 
+## Remote-read admission
+
+Read-tier capabilities that egress to an operator-configured remote
+endpoint (for example the `google-mcp-security` lookups) are admitted
+with the dispatch-class grammar but a read doctrine: safety class R1,
+`network-egress` side effects, default-off, and the endpoint
+environment variable (`GTI_MCP_ENDPOINT`) as the operator's arming
+decision — the remote-read analog of the dispatch scope envs
+(`operator://endpoint/<ENV>`). The arm's own allowlist and the
+hardened transport (https-only, DNS-pinned, Origin-pinned, no ambient
+credentials) remain the enforcement points; mutating upstream tools
+stay off the allowlist and are refused fail-closed.
+
 ## Dispatch doctrine
 
 Read-only (or unarmed-default) is the first tier. Dispatch-class

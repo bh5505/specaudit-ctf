@@ -10,8 +10,9 @@ from ..policy_base import ToolPolicy
 ARM_ID = "google-mcp-security"
 ENV_ENDPOINT = "GTI_MCP_ENDPOINT"
 # Remote-armed catalog: https endpoints only, loopback refused. The
-# upstream google/mcp-security GTI server itself ships stdio only; an
-# HTTP endpoint here names an operator-fronted deployment.
+# upstream google/mcp-security GTI server is FastMCP-based - stdio by
+# default, HTTP-capable by construction - and this arm targets
+# operator-fronted https deployments of that official server.
 TRANSPORT_POLICY = HttpTransportPolicy.remote_https()
 
 # All 11 allowlisted tools are report/lookup reads; none dispatch
