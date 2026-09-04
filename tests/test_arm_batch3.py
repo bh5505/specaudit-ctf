@@ -209,7 +209,10 @@ def test_page_fetch_dispatch_only(
         _spec(PAGE_FETCH_ID), "fetch", {"url": "http://10.10.0.1/"}
     )
     assert result.ok is True
-    assert "http://10.10.0.1/" in result.output["output"]["argv"]
+    # Upstream reads URLs from stdin only (verified in detectify/
+    # page-fetch main.go 2026-09-05): argv carries no target at all —
+    # the stdin-fed delivery itself is pinned in test_stdin_hygiene.
+    assert result.output["output"]["argv"] == []
 
 
 def test_page_fetch_non_http_refused(

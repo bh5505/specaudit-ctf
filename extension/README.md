@@ -279,7 +279,10 @@ One-liners. Full notes live on the catalog row (`describe <id>`).
 - `osmedeus` — recon scan is dispatch.
 - `zdns` — live resolution is the whole surface.
 - `page-fetch` — http(s) URL with a hostname, then host-scope via
-  `PAGE_FETCH_DISPATCH_SCOPE`. Private, metadata, and localhost hosts
+  `PAGE_FETCH_DISPATCH_SCOPE`. Upstream (detectify/page-fetch) reads
+  URLs from stdin only — argv never carries the URL (the arm feeds the
+  validated URL as the single stdin line). Private, metadata, and
+  localhost hosts
   are allowed if in scope; only the initial URL is scope-checked —
   redirects, name resolution at fetch time, and rendering subresources
   are not re-checked (treat the scope as reachable from anything its

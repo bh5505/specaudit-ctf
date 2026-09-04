@@ -46,7 +46,14 @@ def resolve_binary() -> str | None:
 
 
 def argv_for(binary: str, action: str, payload: dict) -> list[str] | None:
-    """Fixed argv per action; no caller-controlled fragment.
+    """Fixed argv per action; no caller-controlled fragment — the URL
+    never touches argv at all.
+
+    Upstream (detectify/page-fetch, main.go verified 2026-09-05) reads
+    URLs from stdin ONLY (bufio scanner, one per line); there is no URL
+    flag and no positional handling, and a positional URL is silently
+    ignored with exit 0 — so argv stays bare and the validated URL is
+    fed as the single stdin line by the arm (the zgrab2 pattern).
 
     Scope truth: only the initial URL is scope-checked (host + scheme are
     the effective control; URI path prefixes are best-effort). Redirect
@@ -59,6 +66,4 @@ def argv_for(binary: str, action: str, payload: dict) -> list[str] | None:
     target = payload.get("url")
     if not isinstance(target, str) or not target.strip():
         return None
-    # Provisional argv: bare URL argument (upstream flag semantics were
-    # not pinnable in the 2026-08-23 research pass).
-    return [binary, target.strip()]
+    return [binary]
