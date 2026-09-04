@@ -2,11 +2,13 @@
 
 ## Overview
 
-- **Arms**: 27 specialized adapters. One HTTP MCP row is held
-  (metasploit-mcp); the burp-mcp, google-mcp-security, semgrep-mcp, and
-  prowler-mcp rows are research integrations on the hardened transport
-  or the first-party CLI (prowler: discovery admitted; reads
-  handler-level); remaining
+- **Arms**: 27 specialized adapters. No row is held (the HTTP-MCP
+  held set closed 2026-09-04; the tier remains enforced for any
+  future held row); the burp-mcp, google-mcp-security, semgrep-mcp,
+  prowler-mcp, and metasploit-mcp rows are research integrations on
+  the hardened transport or the first-party CLI (prowler: discovery
+  admitted, reads handler-level; metasploit: listing reads admitted,
+  execution tools stay an unadmitted dispatch tier); remaining
   arm rows are research except the agent-wiz read tier
   (`agent-wiz.list_tools`), the sole maintained capability (X5-PROMOTE).
   A specialized handler is
@@ -18,7 +20,7 @@
   other agent CLIs.
 - **Range**: synthetic fixtures (`live_aws: false`). No live cloud.
 
-`extension/coverage.yaml` classifies the landscape survey (45 ids,
+`extension/coverage.yaml` classifies the landscape survey (46 ids,
 frozen order). It is a **survey map**, not a ship list: a row is not
 a promise that an adapter exists. Every row has a support tier
 (`research` | `experimental` | `maintained` | `held`). In this cut
@@ -94,23 +96,26 @@ python -m extension invoke agent-wiz list_tools
 
 X2-PUB admits the explicit in-process `list_tools` profiles for
 `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `pyrit`,
-`routersploit`, `sniper`, `vvah`, `zgrab2`, and `nmap`. These profiles
+`routersploit`, `sniper`, `vvah`, `zgrab2`, `nmap`, and
+`semgrep-mcp`. These profiles
 read static policy metadata and do not spawn the upstream binary. Every
 other CLI invoke action is refused before `Extension.invoke` until it has
 authoritative per-action safety, scope, side-effect, budget, cleanup, and
 tool-version metadata.
 
 Dispatch-class admission (2026-09-01, continued through 2026-09-03) adds
-exactly eleven scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
+exactly twelve scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
 `zaproxy.spider_scan`, `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`,
 `pyrit.scan`, `routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`,
-`commix.scan` —
+`commix.scan`, and `semgrep-mcp.semgrep_scan` —
 carrying honest manifest truth: safety class **R1**, declared side
 effects (`subprocess`+`network-egress` for the CLI arms;
-`network-egress` for the ZAP API), `default_off` with `approval_ref`
-naming the operator's `*_DISPATCH_SCOPE` gate and `roe_ref` naming the
+`network-egress` for the ZAP API; `subprocess` only for the local
+`semgrep_scan`, whose arming/containment gate is `SEMGREP_SCAN_ROOT`
+rather than a network target scope), `default_off` with `approval_ref`
+naming the operator's arming gate and `roe_ref` naming the
 dispatch doctrine, and `synthetic_only: false` (the operator arms a real
-lab target). Admission is metadata, not authority: each arm's own scope
+lab target or scan root). Admission is metadata, not authority: each arm's own scope
 gate, audit line, and stamp remain the enforcement point, and an unarmed
 or out-of-scope dispatch is a typed evaluated failure — never an
 all-clear. Four admitted actions deserve their caveats read aloud:
@@ -135,10 +140,12 @@ non-curated arms, and uninstalled curated arms are hard errors. Do not invent
 a fallback. `list` / `describe` include `tier`.
 
 `invoke <id> list_tools` returns static JSON (no binary spawn) on
-non-held surfaces that implement it (the ten lifted CLIs). Catalog
-`invoke` of the held HTTP MCP row (`metasploit-mcp`) is refused
-even if an endpoint is configured. `burp-mcp` (loopback reads),
-`google-mcp-security` (lookups), and `semgrep-mcp` (CLI scans + reads)
+surfaces that implement it (the eleven lifted CLIs). No row is currently
+held; a future held row would be refused at catalog `invoke` even if
+a binary or endpoint is configured. `burp-mcp` (loopback reads),
+`google-mcp-security` (lookups), `semgrep-mcp` (CLI scans + reads),
+and `metasploit-mcp` (listing reads over the operator-run loopback
+SSE server; execution tools stay an unadmitted dispatch tier)
 are admitted research integrations invocable through CLI/MCP `invoke`;
 `prowler-mcp` is research with discovery admitted (`list_tools` over
 the operator-configured https endpoint) - its read tools stay handler-level until upstream
