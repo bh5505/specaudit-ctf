@@ -97,9 +97,8 @@ entries:
     kind: arm
     protocols: [mcp, http]
     curated: true
-    tier: held
-    held_reason: HTTP MCP is held on this public cut until OAuth resource and audience binding, no token passthrough, HTTPS, PKCE, Origin validation, DNS-rebinding controls, and localhost binding are evidenced.
-    notes: Metasploit Framework MCP over RPC. Curated SSE arm; module/session listings are the read tier, execution tools are dispatch gated by METASPLOIT_DISPATCH_SCOPE with per-host RHOSTS scope matching. HTTP MCP is held on this public cut.
+    tier: research
+    notes: Metasploit Framework MCP over the operator-run local server (GH05TCREW MetasploitMCP, legacy HTTP+SSE) on the hardened shared client - literal-loopback endpoint policy (METASPLOIT_MCP_ENDPOINT must name 127.0.0.1 or [::1]); the client sends no credential (the msfrpcd password is server-side). Module/payload/session/job listings are admitted read capabilities; execution tools stay a dispatch tier gated by METASPLOIT_DISPATCH_SCOPE with per-host scope matching, unadmitted in the registry.
 
   - id: burp-mcp
     kind: arm

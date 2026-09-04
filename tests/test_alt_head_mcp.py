@@ -142,15 +142,16 @@ def test_mcp_invoke_methodology_only_does_not_call_transport() -> None:
 
 
 def test_mcp_invoke_held_arm_is_failed_envelope() -> None:
-    # The fixture catalog has no held rows; the live catalog still holds
-    # four HTTP-MCP arms (G-15, doc 21), and the held refusal fires
-    # before the X2 profile lookup. burp-mcp un-held 2026-09-03.
+    # Zero live held rows remain: an UNADMITTED action on a research arm
+    # is the honest refusal shape now (the held-tier envelope rule stays
+    # pinned by the goldens in test_ctf_envelopes and the fixture tests
+    # in test_support_tiers).
     server = McpServer()
     response = _call(server, "invoke", {"id": "metasploit-mcp", "action": "ping"})
     assert response["result"]["isError"] is True
     result = _content_json(response)
     assert result["status"] == "failed"
-    assert result["limitations"] == ["held capability is never invocable"]
+    assert result["limitations"] == ["unknown capability"]
 
 
 def test_mcp_invoke_missing_action_is_invalid_params() -> None:
@@ -282,7 +283,9 @@ def test_module_mcp_list() -> None:
     assert names == ["list", "describe", "invoke", "run_range"]
 
 
-def test_module_mcp_invoke_live_catalog_held() -> None:
+def test_module_mcp_invoke_live_catalog_unconfigured() -> None:
+    """metasploit-mcp is admitted research now: the live-catalog module
+    path without an endpoint emits the honest not-installed envelope."""
     payload = (
         json.dumps(
             {
@@ -313,7 +316,7 @@ def test_module_mcp_invoke_live_catalog_held() -> None:
     assert body["result"]["isError"] is True
     envelope = json.loads(body["result"]["content"][0]["text"])
     assert envelope["status"] == "failed"
-    assert envelope["limitations"] == ["held capability is never invocable"]
+    assert envelope["limitations"] == ["arm is not installed"]
 
 
 def test_head_launcher_does_not_import_cwd_extension(tmp_path: Path) -> None:

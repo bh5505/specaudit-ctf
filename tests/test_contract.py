@@ -200,9 +200,26 @@ def test_invoke_curated_arm_not_installed(
 
 
 def test_invoke_held_arm_refused_even_if_curated() -> None:
-    held_id = "metasploit-mcp"
+    """Pinned on the fixture catalog: the live catalog holds nothing
+    anymore (the 2026-09-04 campaign closed the HTTP-MCP held set)."""
+    from extension.contract import Catalog, CatalogEntry
+
+    held_id = "held-mcp"
+    entry = CatalogEntry(
+        id=held_id,
+        kind="arm",
+        protocols=("mcp", "http"),
+        curated=True,
+        notes="Fixture held HTTP MCP arm.",
+        tier="held",
+        held_reason="HTTP MCP is held on this public cut.",
+    )
     fake = FakeCliTransport(installed_ids={held_id})
-    ext = Extension(transports={"mcp": fake}, arms={held_id: fake})
+    ext = Extension(
+        catalog=Catalog([entry]),
+        transports={"mcp": fake},
+        arms={held_id: fake},
+    )
     with pytest.raises(NotHeldError) as err:
         ext.invoke(held_id, "list_tools", {})
     assert err.value.entry_id == held_id
