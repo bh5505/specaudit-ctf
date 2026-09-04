@@ -718,10 +718,19 @@ class OAuthAuthorizationManager:
         # RFC 6454: origin equality is scheme + case-insensitive host +
         # port (default ports elided). Compare parsed origins, not raw
         # strings, so https://MCP.Example.com and default-port spellings
-        # compare correctly.
-        if not isinstance(declared, str) or _normalized_origin(declared) != _normalized_origin(
-            resource_origin
-        ):
+        # compare correctly. An unparsable origin on EITHER side is a
+        # refusal - two invalid origins must never compare equal.
+        declared_origin = (
+            _normalized_origin(declared) if isinstance(declared, str) else None
+        )
+        expected_origin = _normalized_origin(resource_origin)
+        if declared_origin is None or expected_origin is None:
+            raise RuntimeError(
+                "protected-resource metadata or configured origin is not a "
+                "parsable http(s) origin: %r vs %r - refusing"
+                % (redact(str(declared)), resource_origin)
+            )
+        if declared_origin != expected_origin:
             raise RuntimeError(
                 "protected-resource metadata names resource %r, not %r - refusing"
                 % (redact(str(declared)), resource_origin)
