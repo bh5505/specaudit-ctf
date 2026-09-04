@@ -93,19 +93,17 @@ def test_invoke_unknown_id_emits_failed_envelope_not_prev1(
     assert code == 2
 
 
-def test_invoke_held_emits_failed_envelope(capsys: pytest.CaptureFixture[str]) -> None:
-    """A still-held arm (semgrep-mcp) fails closed end-to-end; burp-mcp
-    is admitted now and covered by its own success-path tests."""
+def test_invoke_admitted_but_unconfigured_emits_failed_envelope(capsys: pytest.CaptureFixture[str]) -> None:
+    """The last HTTP-MCP hold is gone (2026-09-04): metasploit-mcp is
+    admitted research, and invoking it without an endpoint emits the
+    honest not-installed failure envelope."""
     code = invoke_main(["invoke", "metasploit-mcp", "list_tools"])
     payload = _stdout_json(capsys)
     parsed = _assert_execution_result(payload)
     assert payload["capability_id"] == "metasploit-mcp.list_tools"
     assert payload["status"] == "failed"
     assert payload["transport_ok"] is False
-    # Unadmitted (no profile) + held tier: the honest envelope is the
-    # unknown-capability failure with the held limitation named.
-    assert "unknown-capability" in parsed.reasons
-    assert any("held" in line for line in payload.get("limitations", ()))
+    assert payload["limitations"] == ["arm is not installed"]
     assert code == 2
 
 
@@ -393,7 +391,7 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
             assert profile.default_off is True
             assert profile.synthetic_only is False
             assert profile.approval_ref and profile.roe_ref
-        elif profile.arm_id == "burp-mcp":
+        elif profile.arm_id in ("burp-mcp", "metasploit-mcp"):
             # MCP read admission: R0 local-read (loopback-confined),
             # default-off, not synthetic-only once the endpoint is set.
             assert profile.safety_class == "R0"

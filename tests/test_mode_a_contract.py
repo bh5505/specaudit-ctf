@@ -488,9 +488,10 @@ def test_agent_wiz_golden_matches_encoder_and_is_admitted() -> None:
 def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 21 since commix.scan admission (2026-09-03): 10 static read
     # profiles + 11 scope-gated dispatch profiles.
-    # 45 after the prowler read admission (hosted-endpoint discovery)
-    # on top of semgrep CLI (2), GTI (12), and burp (9).
-    assert len(INVOKE_PROFILES) == 45
+    # 50 after the metasploit read admission (5 loopback listing reads)
+    # closed the HTTP-MCP held set: semgrep CLI (2), GTI (12), burp (9),
+    # prowler (1), metasploit (5) on top of the original 21.
+    assert len(INVOKE_PROFILES) == 50
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -501,7 +502,7 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     )
     assert maintained == ["agent-wiz.list_tools"]
     for capability_id, profile in INVOKE_PROFILES.items():
-        if profile.arm_id == "burp-mcp":
+        if profile.arm_id in ("burp-mcp", "metasploit-mcp"):
             # MCP read admission: dials the operator endpoint once armed,
             # so not synthetic-only.
             assert profile.safety_class == "R0"
@@ -548,7 +549,7 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["tier"] == "maintained"
         assert payload["kind"] == "arm"
         assert payload["default_off"] is True
-        if profile.arm_id == "burp-mcp":
+        if profile.arm_id in ("burp-mcp", "metasploit-mcp"):
             # MCP read manifests: R0 local-read, synthetic_only False
             # (they dial the operator-configured endpoint once armed).
             assert payload["safety_class"] == "R0"

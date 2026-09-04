@@ -25,9 +25,10 @@ from tests.test_contract import FakeCliTransport
 from tests.test_coverage_catalog import _load_catalog, _load_schema
 
 ALLOWED_TIERS = frozenset({"research", "experimental", "maintained", "held"})
-HELD_HTTP_MCP_ARM_IDS = (
-    "metasploit-mcp",
-)
+# The 2026-09-04 transport-gate campaign closed the held set: zero
+# held rows remain in the live catalog. The held tier itself is still
+# exercised by the fixture-based tests below and the envelope goldens.
+HELD_HTTP_MCP_ARM_IDS: tuple[str, ...] = ()
 PINNED_CURATED_NOT_MAINTAINED = "checkov"
 METHODOLOGY_ID = "vulnhunter"
 HELD_FIXTURE_ID = "held-mcp"
@@ -269,29 +270,33 @@ def test_curated_true_does_not_imply_maintained(entries: list[dict]) -> None:
     assert PINNED_CURATED_NOT_MAINTAINED in curated_not_maintained
 
 
-def test_exactly_one_http_mcp_arm_is_held(entries: list[dict]) -> None:
+def test_no_http_mcp_arms_are_held(entries: list[dict]) -> None:
     held_rows = [row for row in entries if row["tier"] == "held"]
-    assert {row["id"] for row in held_rows} == set(HELD_HTTP_MCP_ARM_IDS)
-
-
-def test_http_mcp_arms_are_held_with_reason(entries: list[dict]) -> None:
-    by_id = {row["id"]: row for row in entries}
-    for arm_id in HELD_HTTP_MCP_ARM_IDS:
-        row = by_id[arm_id]
-        assert row["kind"] == "arm"
-        assert row["curated"] is True
-        assert row["tier"] == "held", arm_id
-        reason = row.get("held_reason")
-        assert isinstance(reason, str) and reason.strip(), arm_id
-        assert "http mcp" in reason.lower(), arm_id
+    assert held_rows == []
+    assert set(HELD_HTTP_MCP_ARM_IDS) == set()
 
 
 def test_held_cannot_be_invoked_even_if_curated_and_installed() -> None:
-    fake = FakeCliTransport(installed_ids={"metasploit-mcp"})
-    ext = Extension(transports={"mcp": fake}, arms={"metasploit-mcp": fake})
+    """The live catalog has no held rows anymore; the fixture catalog
+    pins the held gate itself (see also the fixture-row test below)."""
+    entry = CatalogEntry(
+        id=HELD_FIXTURE_ID,
+        kind="arm",
+        protocols=("mcp", "http"),
+        curated=True,
+        notes="Fixture held HTTP MCP arm.",
+        tier="held",
+        held_reason="HTTP MCP is held on this public cut.",
+    )
+    fake = FakeCliTransport(installed_ids={HELD_FIXTURE_ID})
+    ext = Extension(
+        catalog=Catalog([entry]),
+        transports={"mcp": fake},
+        arms={HELD_FIXTURE_ID: fake},
+    )
     with pytest.raises(NotHeldError) as err:
-        ext.invoke("metasploit-mcp", "list_tools", {})
-    assert err.value.entry_id == "metasploit-mcp"
+        ext.invoke(HELD_FIXTURE_ID, "list_tools", {})
+    assert err.value.entry_id == HELD_FIXTURE_ID
     assert "held" in str(err.value).lower()
     assert fake.calls == []
 
@@ -335,9 +340,9 @@ def test_describe_includes_tier() -> None:
     burp = describe("burp-mcp").to_dict()
     assert burp["tier"] == "research"
     assert not burp.get("held_reason")
-    held = describe("metasploit-mcp").to_dict()
-    assert held["tier"] == "held"
-    assert held.get("held_reason")
+    meta = describe("metasploit-mcp").to_dict()
+    assert meta["tier"] == "research"
+    assert not meta.get("held_reason")
 
 
 def test_cli_list_and_describe_include_tier(
@@ -371,18 +376,31 @@ def test_mcp_list_and_describe_include_tier() -> None:
 
 
 def test_mcp_invoke_held_is_tool_error_even_when_installed() -> None:
-    fake = FakeCliTransport(installed_ids={"metasploit-mcp"})
-    ext = Extension(transports={"mcp": fake}, arms={"metasploit-mcp": fake})
+    entry = CatalogEntry(
+        id=HELD_FIXTURE_ID,
+        kind="arm",
+        protocols=("mcp", "http"),
+        curated=True,
+        notes="Fixture held HTTP MCP arm.",
+        tier="held",
+        held_reason="HTTP MCP is held on this public cut.",
+    )
+    fake = FakeCliTransport(installed_ids={HELD_FIXTURE_ID})
+    ext = Extension(
+        catalog=Catalog([entry]),
+        transports={"mcp": fake},
+        arms={HELD_FIXTURE_ID: fake},
+    )
     server = McpServer(extension=ext)
-    response = _call(server, "invoke", {"id": "metasploit-mcp", "action": "list_tools"})
+    response = _call(server, "invoke", {"id": HELD_FIXTURE_ID, "action": "list_tools"})
     assert response["result"]["isError"] is True
     assert "held" in _content_text(response).lower()
     assert fake.calls == []
 
 
-def test_cli_invoke_held_is_hard_error(
+def test_cli_invoke_unconfigured_admitted_is_failed_envelope(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     assert main(["invoke", "metasploit-mcp", "list_tools"]) == 2
-    err = capsys.readouterr().err
-    assert "held" in err.lower()
+    captured = capsys.readouterr()
+    assert "arm is not installed" in captured.out

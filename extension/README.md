@@ -27,11 +27,13 @@ A validation client may attach the same CLI or MCP surface later.
 Every row has a support `tier`: `research` | `experimental` |
 `maintained` | `held`. `curated: true` is a **deprecated**
 compatibility flag meaning a specialized handler exists in this cut;
-it is **not** `tier: maintained`. **26 arms are curated; HTTP MCP
-arms are held; exactly one capability is maintained — the agent-wiz
+it is **not** `tier: maintained`. **27 arms are curated; zero rows
+are held (the HTTP-MCP held set closed 2026-09-04); exactly one
+capability is maintained — the agent-wiz
 read tier `agent-wiz.list_tools` (X5-PROMOTE, doc 13 evidence gate).**
 Methodology-only rows are never curated and never maintained. `held` is never invocable and carries
-`held_reason`. research/experimental presence is not a validator
+`held_reason` (a tier that currently has zero live rows; the gate
+stays enforced and fixture-pinned). research/experimental presence is not a validator
 support promise. A row on the map is not a promise that an adapter is
 implemented; in this cut every arm row has a specialized handler.
 
@@ -39,8 +41,8 @@ Schema: [schema/coverage.schema.json](schema/coverage.schema.json).
 
 ### Curated arms by family
 
-**MCP** (`tier: held` on this public cut; catalog invoke refused;
-handlers preserved; specialized session, not a generic transport):
+**MCP** (`tier: research` on the hardened transport; specialized
+session per arm, not a generic transport):
 
 - `burp-mcp` — research, fully usable on the free Community Edition;
   HTTP+SSE on the hardened transport; literal
@@ -62,8 +64,11 @@ handlers preserved; specialized session, not a generic transport):
   hardened transport; all 11 allowlisted tools are reads (verified
   against the current official inventory); mutating collection tools
   stay off the allowlist; no dispatch tier
-- `metasploit-mcp` — held; SSE; module/session listings read; execution
-  tools gated by `METASPLOIT_DISPATCH_SCOPE`
+- `metasploit-mcp` — research; SSE over the operator-run local server
+  (literal-loopback endpoints only); module/payload/session/job
+  listings admitted as read capabilities; execution tools gated by
+  `METASPLOIT_DISPATCH_SCOPE` at the handler and carrying no registry
+  profile
 
 **CLI read** (no dispatch tier):
 
@@ -159,17 +164,17 @@ metadata. Since X4-PUB the stdio MCP
 envelope as the CLI (timestamps differ per run); the direct library
 surface keeps its existing gates.
 
-Catalog `invoke` of the held HTTP MCP arm (`metasploit-mcp`) is
-refused even when an endpoint is configured. `burp-mcp`,
-`google-mcp-security`, `semgrep-mcp`, and `prowler-mcp` are admitted
-research integrations: handler-level
-`list_tools` / `tools/list` go through the shared client, while CLI
-and MCP `invoke` still require a registered capability profile.
+Catalog `invoke` of an unconfigured admitted arm emits the honest
+`arm is not installed` failure envelope. All five HTTP-MCP rows are
+admitted research integrations: `burp-mcp`,
+`google-mcp-security`, `semgrep-mcp`, `prowler-mcp` (discovery), and
+`metasploit-mcp` (listing reads).
 Burp is not installed unless
 `BURP_MCP_ENDPOINT` is set to a literal-loopback (`127.0.0.1` or
 `[::1]`) HTTP+SSE MCP URL; a configured endpoint that is unreachable fails the handler
-with an error. Community edition is refused for tool calls. Only
-allowlisted read or utility actions run once un-held. SSE endpoint
+with an error. Burp tool calls work on the free Community Edition (no
+edition gating; unavailable tools are refused by the server surface).
+SSE endpoint
 with CR/LF is refused, oversized SSE frames are rejected, and error
 payloads redact credential substrings.
 
