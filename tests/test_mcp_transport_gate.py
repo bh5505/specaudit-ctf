@@ -315,7 +315,6 @@ def test_p2_no_credentials_on_the_wire_without_configuration(
         "SEMGREP_APP_TOKEN",
         "VT_APIKEY",
         "AWS_ACCESS_KEY_ID",
-        "PROWLER_API_KEY",
         "MCP_AUTH_TOKEN",
         "NETRC",
     ):

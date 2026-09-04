@@ -1,4 +1,4 @@
-"""Curated Prowler arm: allowlisted MCP tools over Streamable HTTP."""
+"""Curated Prowler arm: allowlisted MCP tools over HTTP+SSE."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from ..mcp_client import (
     MAX_MCP_BYTES,
     MAX_MCP_ROWS,
     MCP_CALL_TIMEOUT,
-    StreamableHttpClient,
+    SseMcpSession,
     configured_http_url,
     redact,
 )
@@ -23,8 +23,6 @@ from .policy import (
     ARM_ID,
     ENV_ENDPOINT,
     LIST_ACTIONS,
-    TRANSPORT_POLICY,
-    api_credential,
     credentials_present,
     refuse_reason,
 )
@@ -32,18 +30,10 @@ from .policy import (
 SessionFactory = Callable[..., Any]
 
 
-def _default_session_factory(url: str, timeout: float = MCP_CALL_TIMEOUT) -> Any:
-    # The hosted endpoint (mcp.prowler.com/mcp) speaks the streamable
-    # HTTP dialect; self-hosted deployments ride the same client.
-    return StreamableHttpClient(
-        url, timeout=timeout, policy=TRANSPORT_POLICY, credential=api_credential()
-    )
-
-
 class ProwlerArm:
     """Specialized transport for catalog id prowler-mcp.
 
-    Streamable-HTTP client shape (hosted endpoint or self-hosted), with the highest
+    Near-clone of the Burp arm's HTTP+SSE shape, with the highest
     credential burden of any curated arm: install requires both an
     endpoint and cloud credentials in the environment, and every output
     path runs through the shared redaction before it leaves the arm.
@@ -61,14 +51,14 @@ class ProwlerArm:
         self._explicit_endpoint = endpoint is not None
         self._endpoint_arg = endpoint
         self.timeout = timeout
-        self._session_factory = session_factory or _default_session_factory
+        self._session_factory = session_factory or SseMcpSession
 
     def endpoint_url(self) -> str | None:
         if self._explicit_endpoint:
             raw = self._endpoint_arg
         else:
             raw = os.environ.get(ENV_ENDPOINT)
-        return configured_http_url(raw, TRANSPORT_POLICY)
+        return configured_http_url(raw)
 
     def installed(self, spec: ArmSpec) -> bool:
         return (

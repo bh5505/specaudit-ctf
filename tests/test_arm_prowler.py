@@ -86,7 +86,6 @@ def _names() -> set[str]:
 @pytest.fixture(autouse=True)
 def _creds(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AWS_PROFILE", raising=False)
-    monkeypatch.delenv("PROWLER_API_KEY", raising=False)
     monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIA-fixture")
 
 
@@ -228,7 +227,7 @@ def test_default_extension_wires_prowler(monkeypatch: pytest.MonkeyPatch) -> Non
     """Research tier: without an endpoint the arm fails closed as
     not-installed (credential-gated install is unchanged)."""
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
-    for name in ("PROWLER_API_KEY", "AWS_ACCESS_KEY_ID", "AWS_PROFILE"):
+    for name in ("AWS_ACCESS_KEY_ID", "AWS_PROFILE"):
         monkeypatch.delenv(name, raising=False)
     ext = Extension()
     assert "prowler-mcp" in ext.arms
