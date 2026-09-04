@@ -547,7 +547,11 @@ class LoopbackCallbackReceiver:
         deadline = time.monotonic() + self.timeout
         while time.monotonic() < deadline:
             if getattr(self._server, "callback_params", None) is not None:
-                return dict(self._server.callback_params)  # type: ignore[attr-defined]
+                params = dict(self._server.callback_params)  # type: ignore[attr-defined]
+                # One-shot is enforced here, not left to the caller: the
+                # socket closes the moment a callback is observed.
+                self.close()
+                return params
             self._server.handle_request()
         raise RuntimeError("timed out waiting for OAuth callback")
 
@@ -703,7 +707,10 @@ class OAuthAuthorizationManager:
         # RFC 9728: the metadata's resource MUST be the origin we are
         # talking to; anything else is a redirect-to-attacker-AS attempt.
         declared = metadata.get("resource")
-        if not isinstance(declared, str) or declared.rstrip("/") != resource_origin.rstrip("/"):
+        # RFC 6454: origin comparison is scheme + case-insensitive host
+        # + port; normalize both sides before the equality test.
+        normalized = declared.rstrip("/").lower() if isinstance(declared, str) else declared
+        if not isinstance(declared, str) or normalized != resource_origin.rstrip("/").lower():
             raise RuntimeError(
                 "protected-resource metadata names resource %r, not %r - refusing"
                 % (redact(str(declared)), resource_origin)
@@ -716,6 +723,17 @@ class OAuthAuthorizationManager:
         token_endpoint = as_metadata.get("token_endpoint")
         if not isinstance(authorization_endpoint, str) or not isinstance(token_endpoint, str):
             raise RuntimeError("authorization-server metadata lacks endpoints")
+        # Server-controlled metadata: both endpoints must pass the same
+        # remote-https gate before the operator's browser (authorize URL)
+        # or the token exchange ever sees them.
+        if not configured_http_url(authorization_endpoint, HttpTransportPolicy.remote_https()):
+            raise RuntimeError(
+                "authorization_endpoint must be https: %s" % redact(authorization_endpoint)
+            )
+        if not configured_http_url(token_endpoint, HttpTransportPolicy.remote_https()):
+            raise RuntimeError(
+                "token_endpoint must be https: %s" % redact(token_endpoint)
+            )
         flow = OAuthAuthorizationFlow(self._config.client_id, resource_origin, self._config.scopes)
         receiver = LoopbackCallbackReceiver(timeout=timeout)
         try:

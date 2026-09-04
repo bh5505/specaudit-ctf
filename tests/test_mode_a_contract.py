@@ -490,7 +490,8 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # profiles + 11 scope-gated dispatch profiles.
     # 44 after the semgrep CLI integration (static list_tools +
     # dispatch-class semgrep_scan) on top of the GTI (12 remote-read)
-    # and burp (9 loopback read) admissions.
+    # and burp (9 loopback read; two arm-blocklisted _regex variants
+    # stay unadmitted) admissions.
     assert len(INVOKE_PROFILES) == 44
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,

@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from .arms.mcp_client import MCP_CALL_TIMEOUT
+
 PACKAGE_NAME = "specaudit-ctf"
 PACKAGE_VERSION = "0.1.0"
 
@@ -132,9 +134,12 @@ def _mcp_read_profile(arm_id: str, action: str, tier: str = "research") -> Invok
 # Community-usable surface of the official BApp - discovery, codecs,
 # random text, proxy/WebSocket history, Organizer. No edition gating:
 # tools the connected Burp does not list are refused as unavailable by
-# the arm itself. get_scanner_issues / Collaborator tools are not
-# admitted (they require a paid Burp edition; the arm's allowlist-miss
-# refusal covers them without any gating machinery).
+# the arm's server-surface check (that is also what makes the Pro-only
+# scanner/Collaborator tools honest on a Community server - they are
+# allowlisted but simply absent from its tools/list). Two _regex
+# variants are arm-blocklisted and stay unadmitted;
+# get_proxy_http_history_regex is allowlisted but deliberately not
+# admitted in this cut (kept to the minimal usable read set).
 _BURP_READ_ACTIONS = (
     "list_tools",
     "url_encode",
@@ -171,13 +176,13 @@ def _remote_read_profile(arm_id: str, action: str, endpoint_env: str, tier: str 
         touched_scope=scope,
         safety_class="R1",
         side_effects=("network-egress",),
-        timeout_ms=10_000,
+        timeout_ms=int(MCP_CALL_TIMEOUT * 1000),
         max_output_bytes=1_048_576,
         max_tool_steps=1,
         max_spend=None,
         cleanup_required=False,
         approval_ref=f"operator://endpoint/{endpoint_env}",
-        roe_ref="doc://README#remote-read-doctrine",
+        roe_ref="doc://README#remote-read-admission",
         tier=tier,
         default_off=True,
         synthetic_only=False,
