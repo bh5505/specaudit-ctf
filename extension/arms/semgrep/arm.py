@@ -23,11 +23,16 @@ from .policy import (
     ARM_ID,
     ENV_ENDPOINT,
     LIST_ACTIONS,
+    TRANSPORT_POLICY,
     refuse_reason,
     scan_config_refusal,
 )
 
 SessionFactory = Callable[..., Any]
+
+
+def _default_session_factory(url: str, timeout: float = MCP_CALL_TIMEOUT) -> Any:
+    return StreamableHttpClient(url, timeout=timeout, policy=TRANSPORT_POLICY)
 
 
 class SemgrepArm:
@@ -45,14 +50,14 @@ class SemgrepArm:
         self._explicit_endpoint = endpoint is not None
         self._endpoint_arg = endpoint
         self.timeout = timeout
-        self._session_factory = session_factory or StreamableHttpClient
+        self._session_factory = session_factory or _default_session_factory
 
     def endpoint_url(self) -> str | None:
         if self._explicit_endpoint:
             raw = self._endpoint_arg
         else:
             raw = os.environ.get(ENV_ENDPOINT)
-        return configured_http_url(raw)
+        return configured_http_url(raw, TRANSPORT_POLICY)
 
     def installed(self, spec: ArmSpec) -> bool:
         return spec.id == ARM_ID and self.endpoint_url() is not None

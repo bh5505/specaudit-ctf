@@ -4,10 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from ..mcp_client import HttpTransportPolicy
 from ..policy_base import ToolPolicy
 
 ARM_ID = "semgrep-mcp"
 ENV_ENDPOINT = "SEMGREP_MCP_ENDPOINT"
+# Remote-armed catalog: https endpoints only, loopback refused.
+TRANSPORT_POLICY = HttpTransportPolicy.remote_https()
 
 # Upstream semgrep-mcp (r2c) exposes 7 tools. Only local-rule scan and
 # findings/AST/language reads are allowed.

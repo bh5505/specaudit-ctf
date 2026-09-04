@@ -78,7 +78,9 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
     # execution-result schema it reads at module level, and the DAST-role
     # note refresh; +3 for the nmap arm package files).
     assert len(lock["producer_source_files"]) == 99
-    assert len(lock["included_stdlib_files"]) == 107
+    # 107 at the 2026-08 nmap regen; +7 for the transport-gate imports
+    # (base64, hashlib, http.server, secrets and their traced deps).
+    assert len(lock["included_stdlib_files"]) == 114
     assert len(lock["included_yaml_files"]) == 18
     assert lock["capability_manifest"] == {
         "path": "tests/goldens/capability-manifest/agent-wiz.list_tools.json",

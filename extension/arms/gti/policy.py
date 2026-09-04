@@ -4,10 +4,15 @@ from __future__ import annotations
 
 import os
 
+from ..mcp_client import HttpTransportPolicy
 from ..policy_base import ToolPolicy
 
 ARM_ID = "google-mcp-security"
 ENV_ENDPOINT = "GTI_MCP_ENDPOINT"
+# Remote-armed catalog: https endpoints only, loopback refused. The
+# upstream google/mcp-security GTI server itself ships stdio only; an
+# HTTP endpoint here names an operator-fronted deployment.
+TRANSPORT_POLICY = HttpTransportPolicy.remote_https()
 
 # All 11 upstream tools are report/lookup reads; none dispatch actions
 # (verified 2026-08-23 from the gti-mcp-server README). There is no
@@ -38,7 +43,7 @@ _TOOL_POLICY = ToolPolicy(allowed=ALLOWED_TOOLS, blocked=BLOCKED_TOOLS)
 def endpoint_url() -> str | None:
     from ..mcp_client import configured_http_url
 
-    return configured_http_url(os.environ.get(ENV_ENDPOINT))
+    return configured_http_url(os.environ.get(ENV_ENDPOINT), TRANSPORT_POLICY)
 
 
 def refuse_reason(tool: str, available: set[str]) -> str | None:

@@ -9,11 +9,15 @@ from __future__ import annotations
 import os
 from urllib import parse as urllib_parse
 
+from ..mcp_client import HttpTransportPolicy
 from ..policy_base import ToolPolicy
 
 ARM_ID = "metasploit-mcp"
 ENV_ENDPOINT = "METASPLOIT_MCP_ENDPOINT"
 ENV_DISPATCH_SCOPE = "METASPLOIT_DISPATCH_SCOPE"
+# Upstream deployments are local SSE servers; this arm accepts only
+# literal 127.0.0.1/[::1] endpoints (http or https).
+TRANSPORT_POLICY = HttpTransportPolicy.loopback()
 
 # Read tier: module/payload/session/job listings.
 ALLOWED_TOOLS = frozenset(
@@ -59,7 +63,7 @@ _TOOL_POLICY = ToolPolicy(allowed=ALLOWED_TOOLS | DISPATCH_TOOLS, blocked=frozen
 def endpoint_url() -> str | None:
     from ..mcp_client import configured_http_url
 
-    return configured_http_url(os.environ.get(ENV_ENDPOINT))
+    return configured_http_url(os.environ.get(ENV_ENDPOINT), TRANSPORT_POLICY)
 
 
 def extract_targets(payload: dict) -> tuple[list[str] | None, str | None]:

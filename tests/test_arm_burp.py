@@ -27,6 +27,7 @@ from extension.arms.burp.policy import (
     ENV_ENDPOINT,
 )
 from extension.arms.burp.sse import configured_http_url, resolve_sse_endpoint, redact
+from extension.arms.mcp_client import HttpTransportPolicy
 from extension.contract import ArmSpec, Extension, NotHeldError, NotInstalledError, invoke
 from extension.__main__ import main
 
@@ -238,9 +239,8 @@ def test_open_sse_requires_host(monkeypatch: pytest.MonkeyPatch) -> None:
         raise AssertionError("must not connect")
 
     monkeypatch.setattr("extension.arms.burp.sse.http.client.HTTPConnection", boom)
-    session = SseMcpSession("http://")
     with pytest.raises(RuntimeError, match="host"):
-        session.connect()
+        SseMcpSession("http://", policy=HttpTransportPolicy.loopback())
 
 
 def test_env_reread_on_installed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -531,7 +531,7 @@ def stub_sse() -> Any:
 
 def test_sse_session_list_and_call(stub_sse: tuple[str, _StubState]) -> None:
     url, state = stub_sse
-    session = SseMcpSession(url, timeout=5)
+    session = SseMcpSession(url, timeout=5, policy=HttpTransportPolicy.loopback())
     try:
         session.connect()
         tools = session.list_tools()
@@ -772,7 +772,7 @@ def test_chunked_sse_endpoint_event() -> None:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     url = "http://%s:%d" % server.server_address[:2]
-    session = SseMcpSession(url, timeout=5)
+    session = SseMcpSession(url, timeout=5, policy=HttpTransportPolicy.loopback())
     try:
         session.connect()
         tools = session.list_tools()
@@ -805,7 +805,7 @@ def test_non_sse_body_surfaces_protocol_error() -> None:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     url = "http://%s:%d" % server.server_address[:2]
-    session = SseMcpSession(url, timeout=5)
+    session = SseMcpSession(url, timeout=5, policy=HttpTransportPolicy.loopback())
     try:
         with pytest.raises(RuntimeError, match="SSE frame buffer exceeds"):
             session.connect()

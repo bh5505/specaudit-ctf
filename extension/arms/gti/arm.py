@@ -22,11 +22,16 @@ from .policy import (
     ARM_ID,
     ENV_ENDPOINT,
     LIST_ACTIONS,
+    TRANSPORT_POLICY,
     endpoint_url,
     refuse_reason,
 )
 
 SessionFactory = Callable[..., Any]
+
+
+def _default_session_factory(url: str, timeout: float = MCP_CALL_TIMEOUT) -> Any:
+    return StreamableHttpClient(url, timeout=timeout, policy=TRANSPORT_POLICY)
 
 
 class GtiArm:
@@ -51,13 +56,13 @@ class GtiArm:
         self._explicit_endpoint = endpoint is not None
         self._endpoint_arg = endpoint
         self.timeout = timeout
-        self._session_factory = session_factory or StreamableHttpClient
+        self._session_factory = session_factory or _default_session_factory
 
     def endpoint_url(self) -> str | None:
         if self._explicit_endpoint:
             from ..mcp_client import configured_http_url
 
-            return configured_http_url(self._endpoint_arg)
+            return configured_http_url(self._endpoint_arg, TRANSPORT_POLICY)
         return endpoint_url()
 
     def installed(self, spec: ArmSpec) -> bool:

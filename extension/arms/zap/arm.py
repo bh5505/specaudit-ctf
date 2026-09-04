@@ -60,9 +60,9 @@ class ZapArm:
 
     def base_url(self) -> str | None:
         if self._explicit is not None:
-            from ..mcp_client import configured_http_url
+            from ..mcp_client import HttpTransportPolicy, configured_http_url
 
-            return configured_http_url(self._explicit)
+            return configured_http_url(self._explicit, HttpTransportPolicy.general_http())
         return endpoint_url()
 
     def installed(self, spec: ArmSpec) -> bool:

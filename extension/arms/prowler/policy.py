@@ -15,10 +15,13 @@ from __future__ import annotations
 
 import re
 
+from ..mcp_client import HttpTransportPolicy
 from ..policy_base import DEFAULT_TOOL_PATTERN
 
 ARM_ID = "prowler-mcp"
 ENV_ENDPOINT = "PROWLER_MCP_ENDPOINT"
+# Remote-armed catalog: the hosted endpoint is https; loopback refused.
+TRANSPORT_POLICY = HttpTransportPolicy.remote_https()
 
 # Install also requires cloud credentials in the environment. AWS is the
 # documented first cloud; add more when upstream surfaces them.
