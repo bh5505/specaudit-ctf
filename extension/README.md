@@ -148,15 +148,19 @@ Omit both flags for portable Mode B.
 
 The X2-PUB CLI manifest admits the in-process `list_tools` policy reads
 for `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `nmap`,
-`pyrit`, `routersploit`, `sniper`, `vvah`, and `zgrab2`, plus — since
-the 2026-09-01/02 dispatch-class admissions — the scope-gated R1
+`pyrit`, `routersploit`, `sniper`, `vvah`, `zgrab2`, and
+`semgrep-mcp`, plus — since
+the 2026-09-01/02/03 dispatch-class admissions — the scope-gated R1
 profiles (`nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan`,
 `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`, `pyrit.scan`,
-`routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`) with honest
-manifest truth: default-off behind the arm's `*_DISPATCH_SCOPE`,
+`routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`,
+`commix.scan`, `semgrep-mcp.semgrep_scan`) with honest
+manifest truth: default-off behind the arm's arming gate
+(`*_DISPATCH_SCOPE`, or `SEMGREP_SCAN_ROOT` containment for the local
+`semgrep_scan`),
 `synthetic_only: false`, declared side effects (`subprocess`+
 `network-egress` for the CLI arms; `network-egress` only for the ZAP
-API profiles). Any action without an admitted profile is still refused before
+API profiles; `subprocess` only for `semgrep_scan`). Any action without an admitted profile is still refused before
 `Extension.invoke`; nothing may borrow fabricated R0/local-read
 metadata. Since X4-PUB the stdio MCP
 `invoke` tool enforces the same registry through the shared
@@ -407,8 +411,10 @@ independent: a mismatch is `failed`, and a match cannot hide an arm
 skip/error. Default CLI auto-discovers curated arms and may exit 1 with
 a valid degraded execution-result envelope. MCP JSON-RPC success is
 transport-only; the MCP content document is still `range.lifecycle.v2`.
-The new nine do not implement `observe`; if a binary is accidentally
-installed, range records `Result.ok=False` as `status=error`.
+No curated arm implements `observe`: every installed or
+endpoint-armed arm refuses it fail-closed (not on any tier), and range
+records `Result.ok=False` as `status=error` — an accidentally
+installed binary cannot turn a skip into a pass.
 
 ## Tests
 
