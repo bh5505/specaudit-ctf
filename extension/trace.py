@@ -168,6 +168,8 @@ class TraceSink:
         """
         if self._closed:
             return
+        if not isinstance(request, Mapping):
+            return
         if request.get("method") != "tools/call" or "id" not in request:
             return
         params = request.get("params")

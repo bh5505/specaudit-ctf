@@ -233,6 +233,20 @@ def test_run_range_record_carries_the_fixture_roster(tmp_path: Path) -> None:
     assert "tf_iam_open" in result["fixture_ids"]
 
 
+def test_non_object_line_does_not_crash_the_traced_server(tmp_path: Path) -> None:
+    trace_path = _drive(
+        tmp_path,
+        [
+            {"jsonrpc": "2.0", "id": 1, "method": "ping"},
+            ["not", "an", "object"],
+            _call(2, "list", {}),
+        ],
+    )
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok, verification.reasons
+    assert verification.tool_calls == 1
+
+
 def test_range_fixture_ids_come_from_the_manifest() -> None:
     roster = trace.range_fixture_ids()
     assert len(roster) == 10

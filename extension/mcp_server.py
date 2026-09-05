@@ -288,7 +288,11 @@ class McpServer:
                 message = _read_message(inn)
             except EOFError:
                 if sink is not None:
-                    sink.close()
+                    try:
+                        sink.close()
+                    except OSError as exc:
+                        trace_module.refusal_line(str(exc))
+                        return 1
                 return 0
             except _ParseError as exc:
                 if not _write_parse_error(out, exc):
@@ -302,7 +306,11 @@ class McpServer:
                 return 1
             if message is None:
                 if sink is not None:
-                    sink.close()
+                    try:
+                        sink.close()
+                    except OSError as exc:
+                        trace_module.refusal_line(str(exc))
+                        return 1
                 return 0
             response = self.handle(message)
             if sink is not None:
