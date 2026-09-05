@@ -110,6 +110,24 @@ def test_attempt_without_key_is_a_usage_error(tmp_path: Path) -> None:
         grade_attempt(attempt_dir, expected_path=CONTRACT_02, key_env=None)
 
 
+def test_run_range_coverage_is_pinned_to_the_recorded_roster() -> None:
+    """An old trace never covers fixtures shipped after the attempt:
+    coverage comes from the roster the SERVER recorded, intersected
+    with the current manifest — a record without one covers nothing."""
+    from exercise.attempt import touched_fixtures
+    from extension.trace import range_fixture_ids
+
+    roster = range_fixture_ids()
+    stale = list(roster)[:3]
+    records = [
+        {"type": "call", "tool": "run_range", "result": {"isError": False, "fixture_ids": stale}},
+        {"type": "call", "tool": "run_range", "result": {"isError": False}},
+        {"type": "call", "tool": "run_range", "result": {"isError": True, "fixture_ids": roster}},
+    ]
+    touched = touched_fixtures(records, roster)
+    assert touched == set(stale)
+
+
 def test_every_contract_finding_parses_to_coverable_fixtures() -> None:
     """Drift alarm: a traces_to phrasing that names no fixture would
     fail honest agents — every shipped finding must stay parseable."""

@@ -398,6 +398,16 @@ def _failed_attempt_lane(attempt_dir: str, reason: str) -> dict[str, Any]:
         "status": STATUS_FAILED,
         "passed": False,
         "reason": reason,
+        # Same trace shape as a graded lane, all-failed: consumers can
+        # branch uniformly on the worst failure paths.
+        "trace": {
+            "chain_ok": False,
+            "close_ok": False,
+            "records": 0,
+            "tool_calls": 0,
+            "attempt_id": None,
+            "reasons": [reason],
+        },
     }
 
 

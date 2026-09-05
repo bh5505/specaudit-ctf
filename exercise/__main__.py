@@ -35,8 +35,24 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--seed", type=int, default=None, help="seed applied to the range lifecycle run")
     parser.add_argument("--found", default=None, help="participant found-findings document (requires --expected)")
-    parser.add_argument("--expected", default=None, help="challenge expected-findings contract (requires --found)")
-    parser.add_argument("--head", default=None, help="agent head to probe for readiness (claude-code | codex-cli)")
+    parser.add_argument(
+        "--expected",
+        default=None,
+        help=(
+            "challenge expected-findings contract (requires --found, "
+            "unless --attempt-dir/--head-execute supplies the found "
+            "document from the attempt)"
+        ),
+    )
+    parser.add_argument(
+        "--head",
+        default=None,
+        help=(
+            "agent head: claude-code | codex-cli for readiness probing; "
+            "fake only under --head-execute (or with --attempt-dir to "
+            "grade an existing fake attempt)"
+        ),
+    )
     parser.add_argument(
         "--attempt-dir",
         default=None,

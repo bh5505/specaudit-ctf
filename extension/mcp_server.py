@@ -306,7 +306,14 @@ class McpServer:
                 return 0
             response = self.handle(message)
             if sink is not None:
-                sink.observe(message, response)
+                try:
+                    sink.observe(message, response)
+                except OSError as exc:
+                    # Mid-run capture loss is the same emergency as an
+                    # unusable sink at startup: refuse loudly, never
+                    # keep serving unrecorded.
+                    trace_module.refusal_line(str(exc))
+                    return 1
             if response is not None:
                 try:
                     _write_message(out, response)

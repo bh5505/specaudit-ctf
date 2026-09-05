@@ -153,11 +153,11 @@ def _assert_handshake(response: dict[str, Any]) -> None:
 def _assert_calls(persona: str, responses: list[dict[str, Any]]) -> None:
     """A persona that claims tool work must have SUCCEEDED at it."""
     for response in responses:
+        if response.get("error") is not None:
+            raise FakeHeadError(f"JSON-RPC error in {persona} call: {response}")
         result = response.get("result")
         if not isinstance(result, dict):
             raise FakeHeadError(f"transport error in {persona} call: {response}")
-        if result.get("error") is not None:
-            raise FakeHeadError(f"JSON-RPC error in {persona} call: {response}")
         if result.get("isError") is True:
             raise FakeHeadError(f"tool error in {persona} call: {response}")
 

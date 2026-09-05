@@ -84,6 +84,12 @@ def touched_fixtures(
     Only successful calls count (isError false): a failed run_range
     produced no ground truth, and a failed invoke moved no data.
     Reconnaissance tools touch nothing by definition.
+
+    Coverage is pinned to what the SERVER recorded at capture time, not
+    to the grading-time manifest: a run_range record covers exactly the
+    fixture roster it recorded (intersected with the current roster), a
+    record with no recorded roster covers nothing (fail closed — an old
+    trace never silently covers fixtures shipped after the attempt).
     """
     touched: set[str] = set()
     for record in records:
@@ -94,7 +100,11 @@ def touched_fixtures(
             continue
         tool = record.get("tool")
         if tool == "run_range":
-            touched.update(roster)
+            recorded = result.get("fixture_ids")
+            if isinstance(recorded, list) and recorded:
+                touched.update(
+                    fixture for fixture in recorded if fixture in roster
+                )
         elif tool == "invoke":
             blob = json.dumps(record.get("args") or {}, sort_keys=True)
             touched.update(fixtures_named(blob, roster))

@@ -89,7 +89,7 @@ def _cap_str(value: Any) -> str:
 def _redacted(arguments: Mapping[str, Any]) -> dict[str, Any]:
     scrubbed = _scrub(dict(arguments), redact)
     capped = {
-        str(key): _cap_str(value)[:MAX_FIELD_CHARS]
+        str(key): _cap_str(value)
         for key, value in scrubbed.items()
     }
     return capped
@@ -100,7 +100,7 @@ def load_trace_key(raw: str | None) -> bytes:
     text = (raw or "").strip().lower()
     if not _ATTEMPT_HEX_RE.fullmatch(text):
         raise TraceUnavailable(
-            f"{ENV_KEY} must be 64 lowercase hex characters "
+            f"{ENV_KEY} must be 64 hex characters "
             "(the grading side needs the same key to verify the chain)"
         )
     return bytes.fromhex(text)
@@ -160,8 +160,15 @@ class TraceSink:
             raise TraceUnavailable(f"trace file is not writable: {exc}") from exc
 
     def observe(self, request: Mapping[str, Any], response: Mapping[str, Any] | None) -> None:
-        """Record one tools/call request/response pair (honestly bounded)."""
+        """Record one tools/call request/response pair (honestly bounded).
+
+        Only named requests over the ``tools/call`` method are tool
+        evidence: other methods, notifications (no id), and malformed
+        shapes are transport noise, never recorded.
+        """
         if self._closed:
+            return
+        if request.get("method") != "tools/call" or "id" not in request:
             return
         params = request.get("params")
         if not isinstance(params, Mapping):
@@ -254,7 +261,7 @@ def maybe_sink() -> TraceSink | None:
     attempt = os.environ.get(ENV_ATTEMPT, "").strip().lower() or None
     if attempt is not None and not _ATTEMPT_HEX_RE.fullmatch(attempt):
         raise TraceUnavailable(
-            f"{ENV_ATTEMPT} must be 64 lowercase hex characters when set"
+            f"{ENV_ATTEMPT} must be 64 hex characters when set"
         )
     sink = TraceSink(Path(raw), key, attempt_id=attempt)
     sink.start()

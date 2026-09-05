@@ -176,7 +176,7 @@ def test_bad_key_refuses_to_serve(tmp_path: Path, capsys) -> None:
             else:
                 os.environ[key] = value
     assert code == 1
-    assert "64 lowercase hex" in capsys.readouterr().err
+    assert "64 hex" in capsys.readouterr().err
 
 
 def test_capture_off_is_unchanged(tmp_path: Path) -> None:
