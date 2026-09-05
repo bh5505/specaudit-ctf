@@ -72,24 +72,20 @@ print("status:", env["status"], "| transport_ok:", env["transport_ok"],
 PY
 echo "--- scan results (vuls results dir):"
 if [ -d "$WORK/results" ]; then
-  ls -la "$WORK/results" | head -8
   python3 - "$WORK/results" <<'PY'
 import json, sys
 from pathlib import Path
-results = sorted(Path(sys.argv[1]).glob("*.json"))
-if not results:
-    print("(no results JSON written)")
+# vuls writes one per-server file per run: results/<timestamp>/<server>.json
+files = sorted(Path(sys.argv[1]).rglob("*.json"))
+if not files:
+    print("(no results JSON written — check the envelope/stderr above)")
     raise SystemExit(0)
-doc = json.loads(results[-1].read_text(encoding="utf-8"))
-scanned = doc.get("scannedServers") or []
-mode = doc.get("scanMode")
-print("scannedServers:", scanned, "| scanMode:", mode)
-server_info = doc.get("serverInfo") or (doc.get("scannedCves", {}) or {})
-if isinstance(server_info, dict):
-    for name, info in list(server_info.items())[:1]:
-        if isinstance(info, dict):
-            print("server:", name,
-                  "| packages collected:", len(info.get("packages") or {}))
+doc = json.loads(files[-1].read_text(encoding="utf-8"))
+pkgs = doc.get("packages") or {}
+print("file:", files[-1].relative_to(Path(sys.argv[1])))
+print("server hostname:", doc.get("serverName") or files[-1].stem)
+print("platform:", doc.get("platform"), doc.get("release"))
+print("packages collected:", len(pkgs), "| scanMode:", doc.get("mode"))
 PY
 else
   echo "(no results dir — check the envelope/stderr above)"

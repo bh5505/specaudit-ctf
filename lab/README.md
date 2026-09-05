@@ -16,6 +16,8 @@ All scripts run from **Windows (Git Bash)** and orchestrate `wsl.exe`.
 | `install-zgrab2.sh` | Build zgrab2 into the dev instance from a pinned upstream tag (`go install`; Kali does not package it). |
 | `install-zdns.sh` | Build zdns into the dev instance from a pinned upstream tag (`go install`, /v2 module path) + apt dnsmasq for the loopback lab zone. |
 | `zdns-measure.sh` | Measure the admitted `zdns lookup` against a loopback lab zone under a namespace-scoped resolver overlay (host resolver untouched). |
+| `install-vuls.sh` | Build vuls into the dev instance from a pinned upstream tag (`go install` + `GOEXPERIMENT=jsonv2`; Kali does not package it). |
+| `vuls-measure.sh` | Measure the admitted `vuls scan` in LOCAL mode (loopback inventory collection, no SSH, config-decided targeting). |
 | `build-golden.sh` | One-time: configure a fresh Debian WSL distro into the golden lab-target rootfs and export it to a tar. |
 | `spawn-target.sh` | Register a **disposable** target instance from the golden tar, start its services, print its IP + arming commands. |
 | `teardown-target.sh` | Unregister the instance and drop its state dir. |
@@ -140,6 +142,40 @@ honest empty success shape (`{"status": "success", "sessions": {},
 "count": 0}`). Execution tools stay an unadmitted dispatch tier:
 `METASPLOIT_DISPATCH_SCOPE` gates the handler, but no registry
 profile exists for them.
+
+### vuls — measured LOCAL-mode scan (config-decided targeting)
+
+The admitted `vuls scan` takes no caller arguments: upstream discovers
+targets from its own config (`config.toml` in the invoke working
+directory), so `VULS_DISPATCH_SCOPE` arms the scan **action** and the
+audit line records `target=unknown` — the armed config is what bounds
+what gets scanned. `lab/vuls-measure.sh` makes that concrete:
+
+- it writes a one-host `config.toml` into a `mktemp` workdir —
+  `[servers.localhost] host = "localhost" port = "local"` (upstream
+  local-scan-mode keys, verified against the vuls.io tutorial
+  2026-09-05) — and runs the armed invoke **from that workdir**, so
+  config discovery finds exactly that config;
+- why local mode and not the spawned target: the target's sshd is a
+  banner service with no login accounts (locked root, no authorized
+  keys — `build-golden.sh` installs openssh-server for the banner
+  only), so vuls's remote scan cannot authenticate. Local mode
+  collects the real inventory of the lab host with no SSH and no
+  egress beyond loopback.
+
+Measured 2026-09-05 (vuls v0.40.1 built by `install-vuls.sh` with
+`GOEXPERIMENT=jsonv2` — the trivy dependency uses the stdlib JSON v2
+experiment; Go 1.26 without it fails the build): with
+`VULS_DISPATCH_SCOPE=localhost`, the armed invoke (from the workdir)
+returned a `complete` envelope with the `[dispatch]` audit line
+(`arm=vuls action=scan scope=localhost target=unknown`) and real
+collected inventory in `results/<timestamp>/localhost.json`: 125
+packages, platform reported by the WSL instance as `other` /
+"Windows 11 Version 25H2 for x64-based Systems" (the WSL guest
+mirrors the host release string — recorded verbatim as measured).
+Honesty note: no CVE dictionaries are ever fetched from the lab
+(`fetch` stays blocked on no tier), so the record is the envelope plus
+the collected inventory, not findings.
 
 ### zdns — measured against a loopback lab zone (namespace-scoped resolver)
 
