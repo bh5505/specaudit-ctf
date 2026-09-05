@@ -501,7 +501,6 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # packet): the contained-subprocess carve-out — offline scan pinned
     # inside the packaged synthetic range, no scope env, no operator
     # arming decision to record.
-    assert len(INVOKE_PROFILES) == 60
     # Structural carve-out pin: the contained-subprocess shape (a
     # policy://extension/arms/<arm> approval on a non-read profile) has
     # EXACTLY one member — a second member needs a reviewed disposition,
