@@ -72,6 +72,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             "and grade with --attempt-dir"
         ),
     )
+    parser.add_argument(
+        "--battery",
+        action="store_true",
+        help=(
+            "run the default rehearsal battery preset (exercise/battery.py: "
+            "checkov offline IaC scan over the packaged range + semgrep "
+            "inline rules under SEMGREP_SCAN_ROOT); unavailable members "
+            "are skipped (the run degrades), members that run and fail "
+            "fail the run"
+        ),
+    )
     parser.add_argument("--out", default=None, help="write the report JSON here as well; stdout always gets it")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
@@ -107,6 +118,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             head=args.head,
             attempt_dir=args.attempt_dir,
             head_execute=args.head_execute,
+            battery=args.battery,
         )
     except ExerciseError as exc:
         print(f"exercise: {exc}", file=sys.stderr)

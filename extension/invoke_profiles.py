@@ -340,6 +340,54 @@ def _dispatch_profile(
     )
 
 
+def _checkov_scan_profile() -> InvokeProfile:
+    """Admission for a subprocess scan contained BY CONSTRUCTION.
+
+    Deliberate grammar carve-out (2026-09-05, rehearsal-battery packet;
+    consult-reviewed): the arm cannot leave its containment — the scan
+    root is pinned inside the packaged synthetic range and the scan is
+    offline — so there is no operator arming decision to record and no
+    scope env to name. Synthetic-only is the honest value (the reachable
+    surface IS the synthetic range), unlike scope-gated dispatch where
+    the operator arms real targets. Restricting this shape to reviewed
+    capability ids is enforced by the registry grammar test; any second
+    member needs its own reviewed disposition.
+    """
+    # Deliberately parameterless and checkov-named (review follow-up):
+    # a generic builder would let a second member silently inherit this
+    # carve-out shape; this one cannot.
+    arm_id, action = "checkov", "scan"
+    capability_id = f"{arm_id}.{action}"
+    scope = (f"policy://extension/arms/{arm_id}",)
+    return InvokeProfile(
+        arm_id=arm_id,
+        action=action,
+        capability_id=capability_id,
+        tool_name=PACKAGE_NAME,
+        tool_version=PACKAGE_VERSION,
+        authorized_scope=scope,
+        touched_scope=scope,
+        safety_class="R1",
+        side_effects=("subprocess",),
+        timeout_ms=60_000,
+        max_output_bytes=1_048_576,
+        max_tool_steps=1,
+        max_spend=None,
+        cleanup_required=False,
+        # Grammar note: the frozen v1 envelope/manifest grammar requires
+        # a non-empty approval_ref on every dispatch-class payload, so
+        # "None" is not admissible here. The honest authority for a
+        # contained-by-construction scan is the containment itself —
+        # the arm's structural scan-root policy, shipped by this
+        # repository — not an operator scope decision that does not
+        # exist.
+        approval_ref="policy://extension/arms/checkov",
+        roe_ref="doc://README#dispatch-doctrine",
+        default_off=True,
+        synthetic_only=True,
+    )
+
+
 INVOKE_PROFILES = {
     profile.capability_id: profile
     for profile in (
@@ -351,6 +399,12 @@ INVOKE_PROFILES = {
             _dispatch_profile(arm_id, action, side_effects, timeout_ms, scope_env)
             for arm_id, action, side_effects, timeout_ms, scope_env in _DISPATCH_PROFILES
         ),
+        # checkov.scan (2026-09-05, rehearsal-battery packet): offline
+        # IaC scan contained BY CONSTRUCTION to the packaged synthetic
+        # range (scan root pinned inside it, --skip-download). The
+        # contained-subprocess carve-out — no scope env, no operator
+        # arming decision to record; see _checkov_scan_profile.
+        _checkov_scan_profile(),
         *(_mcp_read_profile("burp-mcp", action) for action in _BURP_READ_ACTIONS),
         *(
             _remote_read_profile("google-mcp-security", action, "GTI_MCP_ENDPOINT")
