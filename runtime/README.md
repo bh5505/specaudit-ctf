@@ -91,8 +91,9 @@ archive `6bb157c3…253c`. Re-measured again the same
 day for the attack-stix-data admission (P4): the traced producer
 closure grows to 103 files with the new arm package (+4 package
 modules; the demo bundle is caller data, not traced), so the tree
-digest is `f33c8954…fc04` and the normalized archive `907ed1d2…e76`
-(closure still 114 stdlib modules). A 5 s cold startup
+digest is `7ea98c00…0d13` and the normalized archive `9b461432…a4dd` after
+the review follow-ups (fail-closed guards in the arm reader;
+closure still 103 producer files and 114 stdlib modules). A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
 by this producer. Re-measure before changing the platform or dependency lock.
