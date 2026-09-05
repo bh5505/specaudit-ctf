@@ -292,12 +292,23 @@ class McpServer:
         # close record before exiting — the trace then attests "ended
         # gracefully" exactly as with EOF. A SIGKILL (or a crash) still
         # leaves no close record and the attempt stays ungradable.
-        if sink is not None and threading.current_thread() is threading.main_thread():
+        if (
+            sink is not None
+            and threading.current_thread() is threading.main_thread()
+            and inn is sys.stdin
+        ):
+            # The real-stdio guard keeps in-process callers (tests
+            # driving serve with StringIO) from mutating process-global
+            # signal state.
             def _graceful_close(signum: int, frame: Any) -> None:
+                # Fail closed like the EOF path: a close-record write
+                # that cannot happen is a capture loss — nonzero exit
+                # with the refusal line, never a silent clean exit.
                 try:
                     sink.close()
-                except OSError:
-                    pass
+                except OSError as exc:
+                    trace_module.refusal_line(str(exc))
+                    raise SystemExit(1)
                 raise SystemExit(0)
 
             # SIGINT is also trapped (exiting 0 rather than the
