@@ -1363,7 +1363,7 @@
     "extension/arms/osmedeus/policy.py": "cea934feac98a952dc43c32d6ea81dc26c9c86993aeb3364cc9fa3ef9154a50c",
     "extension/arms/pagefetch/__init__.py": "a40196903685074022688771ef3d533438a6702af38181d8514bd7978a1923d0",
     "extension/arms/pagefetch/arm.py": "b5eb5517ae73086ef0176efd2708d1244edf3d99a594621657a717a7c4fef77a",
-    "extension/arms/pagefetch/policy.py": "f269574576774e3f4d0f1d9f3d391c6c762722bcb17de29fc18005b17c6aca5f",
+    "extension/arms/pagefetch/policy.py": "047d44f0cbe5461b9479e35b628295bfa2af83078c87fa5b293d871069a51a6c",
     "extension/arms/policy_base.py": "ee2a78d029e6e518958029e7421f7182caae498430e46c8722fae41f25e50c8d",
     "extension/arms/prowler/__init__.py": "c0332cf0da9ef1f2d6883d762f3abe4208392d86c889e7e1fceb6ccf857180cc",
     "extension/arms/prowler/arm.py": "5cd5c9c410a11ef277024973e4cf2690ab35fe002afcf30d7b7c57dd0842c9bc",

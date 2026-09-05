@@ -79,7 +79,7 @@ verification 0.197 s / 0.196 s, cold and repeat Mode-A CLI launch 0.484 s /
 0.435 s, cold and repeat sealed stdio-MCP server launch 0.410 s / 0.410 s.
 The resulting launcher, tree, and normalized-archive SHA-256 values are
 respectively `bba9c526…8c94` (unchanged — same locked CPython input),
-`f052ad65…a2e`, and `ec6276e2…7b20` (2026-09-05: stdin class-sweep +
+`3597c2d5…48bb`, and `788d7880…f1dd` (2026-09-05: stdin class-sweep +
 automatic-review sweep 7 — producer hashes only, closure unchanged at
 114 stdlib modules). A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
