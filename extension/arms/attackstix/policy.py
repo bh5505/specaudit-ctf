@@ -92,7 +92,11 @@ def args_refusal(action: str, payload: dict) -> str | None:
     if not {"bundle"} <= set(payload):
         return "this action requires a local STIX bundle path in args.bundle"
     if action in ("technique", "relationships"):
-        given = ("id" in payload) + ("name" in payload)
+        given = sum(
+            1
+            for key in ("id", "name")
+            if isinstance(payload.get(key), str) and payload[key].strip()
+        )
         if given != 1:
             return f"{action} requires exactly one of args.id or args.name"
     if action in ("software", "group") and not str(payload.get("name") or "").strip():

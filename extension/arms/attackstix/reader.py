@@ -35,7 +35,7 @@ class BundleError(ValueError):
 
 @dataclass(frozen=True)
 class Subject:
-    """One lookpable object: technique, software, or group."""
+    """One lookupable object: technique, software, or group."""
 
     stix_id: str
     kind: str  # technique | software | group
@@ -67,7 +67,12 @@ def load_bundle(path: Any) -> dict[str, Any]:
     by_id: dict[str, dict[str, Any]] = {}
     for row in objects:
         if not isinstance(row, dict) or not isinstance(row.get("id"), str):
-            continue
+            # A corrupt bundle (truncated download, bad merge) is not a
+            # partial corpus: fail the load so the arm returns an
+            # evaluated failure instead of answering from half an index.
+            raise BundleError("bundle objects must carry a string id")
+        if row["id"] in by_id:
+            raise BundleError(f"duplicate bundle object id: {row['id']}")
         by_id[row["id"]] = row
         subject = _subject_from(row)
         if subject is not None:

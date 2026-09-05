@@ -95,7 +95,10 @@ digest is `7ea98c00…0d13` and the normalized archive `9b461432…a4dd` after
 the review follow-ups (fail-closed guards in the arm reader;
 closure still 103 producer files and 114 stdlib modules). Re-measured
 2026-09-05 for sweep 9 (strict UTF-8 decode in the arm reader; tree
-`54981773…21ae`, archive `94f0eeb3…db3f`; hashes only). A 5 s cold startup
+`54981773…21ae`, archive `94f0eeb3…db3f`; hashes only). Re-measured
+2026-09-05 for sweep 10 (fail-closed bundle rows, blank-id refusals,
+sorted extras; tree `d6d759f8…64e2`, archive `f677e7e7…99d5`; hashes
+only). A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
 by this producer. Re-measure before changing the platform or dependency lock.

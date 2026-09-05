@@ -157,7 +157,7 @@ def grade(found: Mapping[str, Any], expected: Mapping[str, Any]) -> dict[str, An
         "expected_total": expected_total,
         "hits": sorted(hits),
         "misses": misses,
-        "extras": extras,
+        "extras": sorted(extras),
         "invalid": invalid,
         "severity_mismatches": severity_mismatches,
         "score": (len(hits) / expected_total) if expected_total else 0.0,

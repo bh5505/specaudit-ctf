@@ -237,19 +237,54 @@ def test_arm_corrupt_bundle_is_evaluated_failure(tmp_path: Path) -> None:
     assert "not valid JSON" in result.error
 
 
-def test_reader_tolerates_unhashable_malformed_rows(tmp_path: Path) -> None:
-    """List/dict values in keyed fields must skip rows, never raise."""
+def test_reader_fails_closed_on_idless_rows(tmp_path: Path) -> None:
+    """Rows without a string id fail the load — never a partial index."""
+    for objects in (
+        [{"type": "relationship", "relationship_type": ["uses"], "source_ref": "a", "target_ref": "b"}],
+        [{"type": "attack-pattern", "name": "No id"}],
+        [
+            {
+                "type": "attack-pattern",
+                "id": "attack-pattern--00000000-0000-4000-8000-00000000000a",
+                "name": "Once",
+                "external_references": [
+                    {"source_name": "mitre-attack", "external_id": "T0001"}
+                ],
+            },
+            {
+                "type": "attack-pattern",
+                "id": "attack-pattern--00000000-0000-4000-8000-00000000000a",
+                "name": "Twice",
+                "external_references": [
+                    {"source_name": "mitre-attack", "external_id": "T0002"}
+                ],
+            },
+        ],
+    ):
+        bundle = {
+            "type": "bundle",
+            "id": "bundle--00000000-0000-4000-8000-00000000000e",
+            "objects": objects,
+        }
+        path = tmp_path / f"{len(objects)}-obj.json"
+        path.write_text(json.dumps(bundle), encoding="utf-8")
+        with pytest.raises(BundleError, match="string id|duplicate bundle object id"):
+            reader.load_bundle(path)
+
+
+def test_reader_tolerates_unhashable_keyed_values(tmp_path: Path) -> None:
+    """Unhashable values in keyed fields skip rows, never raise TypeError."""
     bundle = {
         "type": "bundle",
         "id": "bundle--00000000-0000-4000-8000-00000000000e",
         "objects": [
             {
                 "type": "relationship",
+                "id": "relationship--00000000-0000-4000-8000-000000000001",
                 "relationship_type": ["uses"],
                 "source_ref": "a",
                 "target_ref": "b",
             },
-            {"type": "relationship", "relationship_type": "uses"},
             {
                 "type": "attack-pattern",
                 "id": "attack-pattern--00000000-0000-4000-8000-00000000000a",
@@ -297,6 +332,38 @@ def test_output_cap_refuses_rather_than_truncates(
     )
     assert result.ok is False
     assert "output cap" in result.error
+
+
+def test_arm_invoke_refuses_blank_ids_and_names() -> None:
+    ext = _ext()
+    blank = ext.invoke(ARM_ID, "technique", {"bundle": str(DEMO), "id": "   "})
+    assert blank.ok is False and "exactly one" in blank.error
+    blank_pair = ext.invoke(
+        ARM_ID, "software", {"bundle": str(DEMO), "name": "  "}
+    )
+    assert blank_pair.ok is False and "args.name" in blank_pair.error
+
+
+def test_extras_are_sorted_and_deterministic() -> None:
+    from score.grading import grade
+
+    def row(key: str) -> dict[str, str]:
+        return {
+            "finding_key": key,
+            "control": "c",
+            "severity": "high",
+            "rationale": "r",
+            "traces_to": "t",
+        }
+
+    found = {
+        "track": "t",
+        "total": 3,
+        "findings": [row("z-extra"), row("a-extra"), row("m-extra")],
+    }
+    expected = {"track": "t", "total": 0, "findings": []}
+    document = grade(found, expected)
+    assert document["extras"] == ["a-extra", "m-extra", "z-extra"]
 
 
 def test_args_refusal_contract() -> None:
