@@ -496,6 +496,17 @@ listings the honest empty success shape. The remaining three rows
 (burp, GTI, prowler) are operator-gated: lab/README.md carries their
 validation runbooks, and the lab never spends operator credentials.
 
+In the 2026-09-05 session `page-fetch` was live-measured for the first
+time since the stdin rewrite: the binary was installed at a pinned
+commit ([lab/install-page-fetch.sh](lab/install-page-fetch.sh);
+detectify/page-fetch has no release tags), the golden-image target was
+spawned, and an armed fetch of `http://<target>:8080/form.html?q=1`
+returned a `complete` envelope with the `[dispatch]` audit line
+recording scope and target, one 117-byte credentials-stripped
+policy-report artifact, ~1s elapsed. The same session's rehearsal
+battery and a real-head codex attempt are recorded in
+[lab/exercise-results.md](lab/exercise-results.md).
+
 The `zdns` arm's lookup — the last dispatch arm with no executable
 lab path — got its measurement through a loopback lab zone:
 `lab/zdns-measure.sh` runs dnsmasq authoritative for `lab.ctf` on an

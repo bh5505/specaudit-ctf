@@ -1,0 +1,32 @@
+{
+  "track": "telecom-aws-02-iam-s3-misconfig",
+  "seed": null,
+  "fixtures": [
+    "tf_iam_open",
+    "tf_s3_public_access"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-iam-wildcard-action",
+      "control": "least-privilege: action scope",
+      "severity": "critical",
+      "rationale": "The Allow statement grants Action \"*\", so its holder can perform every supported action rather than only the intended operations.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action"
+    },
+    {
+      "finding_key": "demo-iam-wildcard-resource",
+      "control": "least-privilege: resource containment",
+      "severity": "high",
+      "rationale": "The Allow statement applies to Resource \"*\", so even a narrowed action would not be contained to designated AWS resources.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Resource"
+    },
+    {
+      "finding_key": "demo-iam-to-exposure-chain",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "The account-wide wildcard identity grant, when combined with the public-read ACL on tf_s3_public_access, enables policy holders to read every object in that exposed bucket.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action/Resource chained with extension/range/tf_s3_public_access/input/main.tf, aws_s3_bucket.public_bucket acl = \"public-read\""
+    }
+  ]
+}
