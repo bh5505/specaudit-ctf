@@ -73,11 +73,10 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
         "b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d"
     )
     assert lock["pyyaml"]["size"] == 806638
-    # 99 after the nmap arm joined the catalog (96 for the stdio-MCP
-    # surface: the X4-PUB closure plus extension/mcp_server.py, the
-    # execution-result schema it reads at module level, and the DAST-role
-    # note refresh; +3 for the nmap arm package files).
-    assert len(lock["producer_source_files"]) == 99
+    # 103 after the attack-stix-data arm joined the catalog (+4 for its
+    # package files: __init__, arm, policy, reader — the demo bundle is
+    # caller data, not part of the traced closure).
+    assert len(lock["producer_source_files"]) == 103
     # 107 at the 2026-08 nmap regen; +7 for the transport-gate imports
     # (base64, hashlib, http.server, secrets and their traced deps).
     assert len(lock["included_stdlib_files"]) == 114
