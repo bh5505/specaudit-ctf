@@ -61,3 +61,9 @@ end to end.
   autonomy, missing trust boundaries, dynamic identity, and
   agent-to-agent interaction — applied to a tool server that exposes
   audit capabilities to a client program.
+- The dogfood worksheet ([docs/track-d-dogfood.md](docs/track-d-dogfood.md))
+  operationalizes this track: a MAESTRO layer-by-layer threat model of
+  this suite's own MCP/dispatch/envelope surfaces, graded on analyst
+  process (layer coverage, traditional-vs-agentic split quality,
+  cross-layer chain reasoning against captured evidence) — never
+  generated prose, and never a `score/` rubric challenge.

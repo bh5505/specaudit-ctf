@@ -215,6 +215,11 @@ runs it on loopback, and reports which one answered.
 
 ### Operator-gated rows — validation runbooks (never run from the lab)
 
+Outcomes live in **[validation-results.md](validation-results.md)**
+(fillable per-arm record, awaiting-operator until an operator fills
+it) — the runbooks below are how to run them; this lab never spends
+operator credentials.
+
 These three rows are usable catalog capabilities whose validating
 assets only the operator holds. The lab has no Burp installation, no
 Google credentials, and no Prowler endpoint, and it must never spend
