@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -320,6 +321,46 @@ def test_secret_shaped_keys_redact_their_values(tmp_path: Path) -> None:
     args = verification.records[0]["args"]
     assert "hunter2" not in json.dumps(args)
     assert "[redacted]" in args["args"]
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='Windows cannot deliver SIGTERM as a signal')
+def test_sigterm_is_attested_as_graceful_close(tmp_path: Path) -> None:
+    """Agent CLIs stop their MCP servers with a termination signal, not
+    an stdin EOF: a trapped SIGTERM appends the close record so the
+    trace attests an orderly shutdown (POSIX lanes; Windows cannot
+    deliver SIGTERM as a signal)."""
+    import signal
+    import subprocess
+    import sys
+    import time
+
+    trace_path = tmp_path / "trace.ndjson"
+    env = dict(os.environ)
+    env[trace.ENV_TRACE] = str(trace_path)
+    env[trace.ENV_KEY] = KEY_HEX
+    env[trace.ENV_ATTEMPT] = "c0" * 32
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "extension.mcp_server"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        env=env,
+        cwd=str(Path(__file__).resolve().parents[1]),
+    )
+    try:
+        proc.stdin.write(json.dumps(_init()).encode("utf-8") + b"\n")
+        proc.stdin.write(json.dumps(_call(2, "list", {})).encode("utf-8") + b"\n")
+        proc.stdin.flush()
+        time.sleep(0.5)
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(timeout=10)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok, verification.reasons
+    assert verification.tool_calls == 1
+    assert verification.close_ok is True
+    assert verification.records[-1]["type"] == "close"
 
 
 def test_range_fixture_ids_come_from_the_manifest() -> None:
