@@ -73,10 +73,11 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
         "b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d"
     )
     assert lock["pyyaml"]["size"] == 806638
-    # 103 after the attack-stix-data arm joined the catalog (+4 for its
-    # package files: __init__, arm, policy, reader — the demo bundle is
-    # caller data, not part of the traced closure).
-    assert len(lock["producer_source_files"]) == 103
+    # 104 after extension/trace.py joined the traced closure (the
+    # agent-head lane's server-side capture; 2026-09-05). Previously 103:
+    # the attack-stix-data arm's +4 package files (__init__, arm, policy,
+    # reader — the demo bundle is caller data, not part of the closure).
+    assert len(lock["producer_source_files"]) == 104
     # 107 at the 2026-08 nmap regen; +7 for the transport-gate imports
     # (base64, hashlib, http.server, secrets and their traced deps).
     assert len(lock["included_stdlib_files"]) == 114

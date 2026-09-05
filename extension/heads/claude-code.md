@@ -50,6 +50,24 @@ The bundled [claude-code/.mcp.json](claude-code/.mcp.json) uses
 still imports this clone when the project is the clone. If those files are
 outside the clone, set `SPECAUDIT_CTF_ROOT` to the clone root.
 
+## Headless attempt (exercise head lane)
+
+To have this head attempt a challenge gradably, the three trace env
+vars must reach the MCP server process this CLI spawns. Parent-env
+inheritance is not a documented guarantee — inject explicitly:
+
+- pass `-e SPECAUDIT_CTF_MCP_TRACE=<path> -e SPECAUDIT_CTF_MCP_TRACE_KEY=<hex>`
+  (and optionally `SPECAUDIT_CTF_MCP_TRACE_ATTEMPT`) on the `claude -p`
+  command line, or set them in the server's `env` map in the
+  project `.mcp.json` / `claude mcp add --env`;
+- bound the run: `claude -p "<attempt prompt>" --output-format json
+  --max-turns <n> --allowedTools "mcp__specaudit-ctf__*"` (allow
+  wildcards need the fixed server name);
+- the attempt prompt ends with the head writing its found findings to
+  `<attempt-dir>/found.json`; the trace is written by the server;
+- grade with `python -m exercise --attempt-dir <dir> --expected
+  <contract>` (key in `SPECAUDIT_CTF_MCP_TRACE_KEY`).
+
 ## Plugin and skill
 
 Bundled layout:

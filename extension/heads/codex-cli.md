@@ -54,6 +54,43 @@ The bundled [codex-cli/.mcp.json](codex-cli/.mcp.json) runs `launch_mcp.py`
 from the plugin directory. A marketplace/cache copy that is not inside the
 clone needs `SPECAUDIT_CTF_ROOT` set to the clone root.
 
+## Headless attempt (exercise head lane)
+
+Codex forwards parent env to stdio MCP servers only through an
+allowlist, so the trace vars must be named in the server's config
+block (user-global `~/.codex/config.toml` — project config cannot
+define providers/env forwarding). Values come from the codex
+process's own environment:
+
+```toml
+[mcp_servers.specaudit-ctf]
+command = "python"
+args = ["extension/heads/codex-cli/launch_mcp.py"]
+cwd = "."
+env_vars = [
+  "SPECAUDIT_CTF_MCP_TRACE",
+  "SPECAUDIT_CTF_MCP_TRACE_KEY",
+  "SPECAUDIT_CTF_MCP_TRACE_ATTEMPT",
+]
+```
+
+(Pin exact values instead with `[mcp_servers.specaudit-ctf.env]` —
+but a pinned key readable from the clone config defeats the chain's
+grading-side-only property; prefer the allowlist form with the key
+exported only where codex runs.)
+
+Run out-of-band, bounded:
+
+```text
+codex exec --sandbox read-only "<attempt prompt ending in: write your
+found findings to <attempt-dir>/found.json>"
+```
+
+The trace is written by the MCP server; the head only writes
+`found.json`. Grade with `python -m exercise --attempt-dir <dir>
+--expected <contract>` (key in `SPECAUDIT_CTF_MCP_TRACE_KEY` on the
+grading side).
+
 ## Plugin and skill
 
 Bundled layout:
