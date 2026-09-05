@@ -116,6 +116,7 @@ class VulsArm:
             proc = subprocess.run(
                 cmd,
                 capture_output=True,
+                stdin=subprocess.DEVNULL,
                 text=True,
                 encoding="utf-8",
                 errors="replace",

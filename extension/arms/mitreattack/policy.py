@@ -47,5 +47,16 @@ def input_refusal(args: dict) -> str | None:
 
 
 def argv_for(binary: str, args: dict) -> list[str]:
-    """Fixed argv: the console script plus the validated local bundle."""
-    return [binary, str(Path(args["input"].strip()).expanduser())]
+    """Fixed argv: from-stix with the validated local bundle.
+
+    Upstream attack-to-excel (v6.2.0) is a Typer app whose file input
+    is the from-stix --stix-file option; a bare positional bundle path
+    is an unrecognized command (verified in mitreattack/
+    attackToExcel/attackToExcel.py 2026-09-05).
+    """
+    return [
+        binary,
+        "from-stix",
+        "--stix-file",
+        str(Path(args["input"].strip()).expanduser()),
+    ]

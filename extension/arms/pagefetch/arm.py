@@ -90,8 +90,13 @@ class PageFetchArm:
                 error=f"action {action!r} rejected by argv policy",
             )
         try:
+            # Upstream reads URLs from stdin only (verified in
+            # detectify/page-fetch main.go 2026-09-05): no URL flag, no
+            # positional, argv URLs silently ignored. The validated
+            # URL is the single stdin line — the zgrab2 pattern.
             proc = subprocess.run(
                 cmd,
+                input=f"{target}\n",
                 capture_output=True,
                 text=True,
                 encoding="utf-8",

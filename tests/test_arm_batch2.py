@@ -73,7 +73,10 @@ def test_mitreattack_local_conversion(
     )
     assert result.ok is True
     argv = result.output["argv"]
-    assert argv == [str(bundle)]
+    # Upstream v6.2.0 attack-to-excel (Typer): file input is the
+    # from-stix --stix-file option; a bare positional is an
+    # unrecognized command (verified 2026-09-05 stdin class-sweep).
+    assert argv == ["from-stix", "--stix-file", str(bundle)]
 
 
 def test_mitreattack_url_input_refused(

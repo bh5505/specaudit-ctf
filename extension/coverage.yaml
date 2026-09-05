@@ -295,7 +295,7 @@ entries:
     protocols: [cli]
     curated: true
     tier: research
-    notes: Headless Chrome URL fetcher. Curated dispatch-only arm; http(s) URL with a hostname, then host-scope via PAGE_FETCH_DISPATCH_SCOPE. Private, metadata, and localhost hosts are allowed if in scope; only the initial URL is scope-checked — redirects, name resolution at fetch time, and rendering subresources are not re-checked (treat the armed scope as reachable from anything its hosts redirect or reference to), and browser state may be written in the binary's default location.
+    notes: Headless Chrome URL fetcher. Curated dispatch-only arm; http(s) URL with a hostname, then host-scope via PAGE_FETCH_DISPATCH_SCOPE. Upstream reads URLs from stdin only (detectify/page-fetch), so argv never carries the URL — the arm feeds the validated URL as the single stdin line. Private, metadata, and localhost hosts are allowed if in scope; only the initial URL is scope-checked — redirects, name resolution at fetch time, and rendering subresources are not re-checked (treat the armed scope as reachable from anything its hosts redirect or reference to), and browser state may be written in the binary's default location.
 
   - id: caldera
     kind: arm
