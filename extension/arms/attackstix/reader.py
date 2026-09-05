@@ -47,10 +47,14 @@ class Subject:
 def load_bundle(path: Any) -> dict[str, Any]:
     """Parse and index a local STIX 2.1 bundle file."""
     try:
-        with open(path, encoding="utf-8", errors="replace") as handle:
+        # Strict decode: a bundle with invalid UTF-8 is corrupted data,
+        # not content to silently U+FFFD-replace (sweep 9, bot finding).
+        with open(path, encoding="utf-8", errors="strict") as handle:
             data = json.load(handle)
     except OSError as exc:
         raise BundleError(f"bundle could not be read: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise BundleError(f"bundle is not valid UTF-8: {exc}") from exc
     except json.JSONDecodeError as exc:
         raise BundleError(f"bundle is not valid JSON: {exc}") from exc
     if not isinstance(data, dict) or data.get("type") != "bundle":
