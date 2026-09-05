@@ -93,6 +93,10 @@ def test_reader_failures_are_typed(tmp_path: Path) -> None:
     not_json.write_text("{nope", encoding="utf-8")
     with pytest.raises(BundleError, match="not valid JSON"):
         reader.load_bundle(not_json)
+    not_utf8 = tmp_path / "bytes.json"
+    not_utf8.write_bytes(b'{"type":"bundle","objects":["\xff\xfe"]}')
+    with pytest.raises(BundleError, match="not valid UTF-8"):
+        reader.load_bundle(not_utf8)
     not_bundle = tmp_path / "obj.json"
     not_bundle.write_text(json.dumps({"type": "attack-pattern"}), encoding="utf-8")
     with pytest.raises(BundleError, match="type 'bundle'"):

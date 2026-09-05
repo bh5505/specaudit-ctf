@@ -1333,7 +1333,7 @@
     "extension/arms/attackstix/__init__.py": "3ffcd206089f572aef05522982412297cb7f36548da14b8b7de4f27e35307f9f",
     "extension/arms/attackstix/arm.py": "2f0e778182695d77d5aea7d9bbc689946927ae88819265f58f0a30f39bc0ac6b",
     "extension/arms/attackstix/policy.py": "07f9d03e16c0ad0d386ce8fcc787616fca097ecd205e49e7d38dd863702d622b",
-    "extension/arms/attackstix/reader.py": "426d892a4a56efa5f8c5fd68203b65e879d5413b8fbb416657425e4befc7749b",
+    "extension/arms/attackstix/reader.py": "18515778aebcfc44842ba54d2f4b612d9d44bea9df1b5e12144a90f2f326c1ca",
     "extension/arms/burp/__init__.py": "742dc3bfa2f5f5ac5d8f262b021abce910266cfaad57e2a824565a55d935b321",
     "extension/arms/burp/arm.py": "fe90cae0d75b1f2f3708f95213bdf24284bba3478f43eb7dc9601b090ed19ea1",
     "extension/arms/burp/policy.py": "bc758ebb076b15a329d766e0d828f34ceced47bd67a1738802a497900c4ec43d",

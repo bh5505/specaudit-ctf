@@ -380,9 +380,12 @@ to call only `list`, `describe`, `invoke`, and `run_range`.
 
 ## Range
 
-`range/` holds synthetic fixtures `tf_s3_public_access` and
-`tf_iam_open`. Inputs are fixture asset / connectivity / SAST-like
-JSON plus a tiny Terraform sample. There is no live cloud.
+`range/` holds ten synthetic fixtures spanning the misconfiguration
+families (S3 public access, the blocked-policy negative control, S3
+logging/encryption gaps, IAM wildcard policy, assumable admin role,
+external trust, world-open security groups, and a multi-service
+chain). Inputs are fixture asset / connectivity / SAST-like JSON plus
+a tiny Terraform sample. There is no live cloud.
 
 ```text
 python -m extension.range
@@ -401,8 +404,10 @@ decide it. `transport_ok` is informational: it means the tool
 invocation/response transport succeeded, not that artifact custody
 succeeded. Library `run_range()` still emits a seed-stable
 `range.lifecycle.v3` document
-with `live_aws: false`, `fixtures[].exposure|path|impact`, and coverage
-lists of attempted / complete / skipped / error arm ids. The inner
+with `live_aws: false`, `fixtures[].exposure|path|impact` plus the
+per-asset `fixtures[].exposures` rows and `fixtures[].chains` (the
+v3 lifecycle mirror), and coverage lists of attempted / complete /
+skipped / error arm ids. The inner
 lifecycle document is coverage input and a `range-report` artifact
 digest, not a second all-clear: inner `ok` is not the outer status.
 `--seed` applies to that inner run. Document and fixture `status` is
