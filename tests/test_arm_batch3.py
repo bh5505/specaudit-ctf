@@ -276,6 +276,7 @@ class _Urlopen:
                 "url": req.full_url,
                 "method": req.get_method(),
                 "headers": dict(req.headers),
+                "body": req.data,
             }
         )
         return _Resp()
@@ -409,7 +410,11 @@ def test_caldera_schedule_dispatch(
     assert result.ok is True
     call = urlopen.calls[0]
     assert call["method"] == "POST"
-    assert "/api/operations/op%201/schedule" in call["url"]
+    # Verified upstream route: POST /api/v2/operations with a JSON body
+    # naming the operation (the old /api/operations/<name>/schedule
+    # path matched no upstream route).
+    assert call["url"].endswith("/api/v2/operations")
+    assert '{"name": "op 1"}' == call["body"].decode("utf-8")
     err = capsys.readouterr().err
     assert "arm=caldera" in err and "target=unknown" in err
 

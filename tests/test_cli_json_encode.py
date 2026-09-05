@@ -382,6 +382,16 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
         "stratus-red-team.warmup",
         "stratus-red-team.detonate",
         "stratus-red-team.revert",
+        "dark-moon.campaign",
+        "dark-moon.run",
+        "metasploit-mcp.run_exploit",
+        "metasploit-mcp.run_auxiliary_module",
+        "metasploit-mcp.run_post_module",
+        "metasploit-mcp.generate_payload",
+        "metasploit-mcp.send_session_command",
+        "metasploit-mcp.terminate_session",
+        "metasploit-mcp.start_listener",
+        "metasploit-mcp.stop_job",
     }
     for capability_id, profile in INVOKE_PROFILES.items():
         assert capability_id == f"{profile.arm_id}.{profile.action}"
@@ -395,7 +405,9 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
             assert profile.default_off is True
             assert profile.synthetic_only is False
             assert profile.approval_ref and profile.roe_ref
-        elif profile.arm_id in ("burp-mcp", "metasploit-mcp"):
+        elif profile.arm_id == "burp-mcp" or (
+            profile.arm_id == "metasploit-mcp" and profile.action.startswith("list_")
+        ):
             # MCP read admission: R0 local-read (loopback-confined),
             # default-off, not synthetic-only once the endpoint is set.
             assert profile.safety_class == "R0"

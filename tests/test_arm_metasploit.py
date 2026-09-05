@@ -177,13 +177,31 @@ def test_session_command_scope_presence_and_audit(
     assert "target=session:3" in capsys.readouterr().err
 
 
-def test_dispatch_tool_missing_on_server_refused() -> None:
+def test_dispatch_tool_missing_on_server_refused(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The server-surface check now sits BEHIND the scope gate (gate
+    before dial), so this test arms the scope to reach it."""
+    monkeypatch.setenv("METASPLOIT_DISPATCH_SCOPE", "10.0.0.1")
     session = FakeSession(tools=[{"name": "list_exploits"}])
     result = _arm(session).invoke(
         _spec(), "run_exploit", {"RHOSTS": "10.0.0.1"}
     )
     assert result.ok is False
     assert "not available on the server" in result.error
+
+
+def test_dispatch_unarmed_never_dials_the_server() -> None:
+    """Gate-before-dial: an unarmed execution attempt must fail on the
+    scope refusal alone, with zero connection activity."""
+    session = FakeSession()
+    result = _arm(session).invoke(
+        _spec(), "run_exploit", {"RHOSTS": "10.0.0.1"}
+    )
+    assert result.ok is False
+    assert "METASPLOIT_DISPATCH_SCOPE" in result.error
+    assert session.calls == []
+    assert session.closed is False
 
 
 def test_unknown_action_lists_dispatch_tier() -> None:

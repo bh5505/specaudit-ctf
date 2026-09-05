@@ -183,8 +183,15 @@ class CalderaArm:
         scope,
     ) -> Result:
         name = payload["operation"].strip()
-        url = base.rstrip("/") + f"/api/operations/{_quote(name)}/schedule"
-        body = b"{}"
+        # Verified against upstream mitre/caldera master (2026-09-05):
+        # POST /api/v2/operations with {"name": ...} is the create
+        # route (create-and-autostart; the only required field is the
+        # name — planner/adversary/source default server-side to
+        # atomic/ad-hoc/basic). The former provisional path
+        # /api/operations/<name>/schedule matched no documented or
+        # implemented route and was retired rather than kept on faith.
+        url = base.rstrip("/") + "/api/v2/operations"
+        body = json.dumps({"name": name}).encode("utf-8")
         req = urllib_request.Request(
             url,
             data=body,

@@ -513,6 +513,12 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
         and profile.side_effects != ("local-read",)
     }
     assert contained == {"checkov.scan"}
+    # 70 since the riders admission (2026-09-05, normal recipe):
+    # dark-moon campaign/run (2 dispatch profiles superseding the doc-20
+    # "not admitted this campaign" row) plus the 8 metasploit-mcp
+    # execution surfaces (the handler-gated DISPATCH_TOOLS get registry
+    # profiles behind METASPLOIT_DISPATCH_SCOPE).
+    assert len(INVOKE_PROFILES) == 70
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -522,13 +528,32 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
         if profile.tier == "maintained"
     )
     assert maintained == ["agent-wiz.list_tools"]
+    metasploit_read = {
+        "metasploit-mcp.list_tools",
+        "metasploit-mcp.list_exploits",
+        "metasploit-mcp.list_payloads",
+        "metasploit-mcp.list_active_sessions",
+        "metasploit-mcp.list_listeners",
+    }
     for capability_id, profile in INVOKE_PROFILES.items():
-        if profile.arm_id in ("burp-mcp", "metasploit-mcp"):
+        if profile.arm_id == "burp-mcp" or capability_id in metasploit_read:
             # MCP read admission: dials the operator endpoint once armed,
             # so not synthetic-only.
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.synthetic_only is False
+        elif profile.arm_id == "metasploit-mcp":
+            # Execution admission (2026-09-05): the handler-gated
+            # DISPATCH_TOOLS behind METASPLOIT_DISPATCH_SCOPE; execution
+            # happens at the operator-run msf server (network-egress).
+            assert profile.safety_class == "R1"
+            assert profile.side_effects == ("network-egress",)
+            assert profile.default_off is True
+            assert profile.synthetic_only is False
+            assert profile.approval_ref == (
+                "operator://dispatch-scope/METASPLOIT_DISPATCH_SCOPE"
+            )
+            assert profile.tier == "research"
         elif profile.arm_id in ("google-mcp-security", "prowler-mcp"):
             # Remote-read admission: R1 network-egress lookups.
             assert profile.safety_class == "R1"
@@ -590,7 +615,10 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["tier"] == "maintained"
         assert payload["kind"] == "arm"
         assert payload["default_off"] is True
-        if profile.arm_id in ("burp-mcp", "metasploit-mcp"):
+        if profile.arm_id == "burp-mcp" or (
+            profile.arm_id == "metasploit-mcp"
+            and profile.action.startswith("list_")
+        ):
             # MCP read manifests: R0 local-read, synthetic_only False
             # (they dial the operator-configured endpoint once armed).
             assert payload["safety_class"] == "R0"

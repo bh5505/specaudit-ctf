@@ -52,6 +52,16 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         "stratus-red-team.warmup",
         "stratus-red-team.detonate",
         "stratus-red-team.revert",
+        "dark-moon.campaign",
+        "dark-moon.run",
+        "metasploit-mcp.run_exploit",
+        "metasploit-mcp.run_auxiliary_module",
+        "metasploit-mcp.run_post_module",
+        "metasploit-mcp.generate_payload",
+        "metasploit-mcp.send_session_command",
+        "metasploit-mcp.terminate_session",
+        "metasploit-mcp.start_listener",
+        "metasploit-mcp.stop_job",
     }
     admitted = {
         capability_id
@@ -86,6 +96,8 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         ("stratus-red-team.warmup", "STRATUS_DISPATCH_SCOPE", 120_000),
         ("stratus-red-team.detonate", "STRATUS_DISPATCH_SCOPE", 120_000),
         ("stratus-red-team.revert", "STRATUS_DISPATCH_SCOPE", 120_000),
+        ("dark-moon.campaign", "DARK_MOON_DISPATCH_SCOPE", 600_000),
+        ("dark-moon.run", "DARK_MOON_DISPATCH_SCOPE", 600_000),
     ):
         wave = INVOKE_PROFILES[capability_id]
         assert wave.safety_class == "R1"
@@ -94,6 +106,29 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         assert wave.tier == "research"
         assert wave.timeout_ms == timeout_ms
         assert wave.approval_ref == f"operator://dispatch-scope/{scope_env}"
+        assert wave.roe_ref == "doc://README#dispatch-doctrine"
+    # Metasploit execution (2026-09-05 rider): execution happens at the
+    # operator-run msf server, so the honest side effect is
+    # network-egress and the timeout mirrors the arm's MCP_CALL_TIMEOUT.
+    for capability_id in (
+        "metasploit-mcp.run_exploit",
+        "metasploit-mcp.run_auxiliary_module",
+        "metasploit-mcp.run_post_module",
+        "metasploit-mcp.generate_payload",
+        "metasploit-mcp.send_session_command",
+        "metasploit-mcp.terminate_session",
+        "metasploit-mcp.start_listener",
+        "metasploit-mcp.stop_job",
+    ):
+        wave = INVOKE_PROFILES[capability_id]
+        assert wave.safety_class == "R1"
+        assert wave.side_effects == ("network-egress",)
+        assert wave.default_off is True and wave.synthetic_only is False
+        assert wave.tier == "research"
+        assert wave.timeout_ms == 30_000
+        assert wave.approval_ref == (
+            "operator://dispatch-scope/METASPLOIT_DISPATCH_SCOPE"
+        )
         assert wave.roe_ref == "doc://README#dispatch-doctrine"
 
 
@@ -587,3 +622,81 @@ def test_unadmitted_dispatch_actions_still_refused(
     assert outcome.exit_code == 2
     assert outcome.envelope is not None
     assert "unknown capability" in " ".join(outcome.envelope["limitations"]).lower()
+
+
+# --- 2026-09-05 riders: dark-moon campaign/run + metasploit execution ----
+
+
+def test_dark_moon_campaign_unarmed_is_an_evaluated_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(
+        "DARK_MOON_BIN", str(_fake_binary(tmp_path, "print('x')\n", stem="darkmoon"))
+    )
+    monkeypatch.delenv("DARK_MOON_DISPATCH_SCOPE", raising=False)
+    outcome = dispatch_invoke(
+        Extension(), arm_id="dark-moon", action="campaign", args={"target": "10.10.0.5"}
+    )
+    assert outcome.contract_error is None
+    assert outcome.exit_code == 1
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "failed"
+    assert outcome.envelope["capability_id"] == "dark-moon.campaign"
+    assert "DARK_MOON_DISPATCH_SCOPE" in (outcome.stderr_line or "")
+
+
+def test_dark_moon_campaign_armed_completes(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    body = "import json, sys\nprint(json.dumps({'argv': sys.argv[1:]}))\n"
+    monkeypatch.setenv(
+        "DARK_MOON_BIN", str(_fake_binary(tmp_path, body, stem="darkmoon"))
+    )
+    monkeypatch.setenv("DARK_MOON_DISPATCH_SCOPE", "10.10.0.0/16")
+    outcome = dispatch_invoke(
+        Extension(), arm_id="dark-moon", action="campaign", args={"target": "10.10.0.5"}
+    )
+    assert outcome.exit_code == 0
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "complete"
+    assert outcome.envelope["capability_id"] == "dark-moon.campaign"
+
+
+def test_dark_moon_out_of_scope_target_is_an_evaluated_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(
+        "DARK_MOON_BIN", str(_fake_binary(tmp_path, "print('x')\n", stem="darkmoon"))
+    )
+    monkeypatch.setenv("DARK_MOON_DISPATCH_SCOPE", "10.10.0.0/16")
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="dark-moon",
+        action="run",
+        args={"target": "http://203.0.113.9/"},
+    )
+    assert outcome.exit_code == 1
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "failed"
+    assert "outside the armed dispatch scope" in (outcome.stderr_line or "")
+
+
+def test_metasploit_execution_unarmed_is_an_evaluated_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Endpoint configured (so the arm is "installed") but no scope: the
+    # dispatch gate refuses before any connection is dialed.
+    monkeypatch.setenv("METASPLOIT_MCP_ENDPOINT", "http://127.0.0.1:9999")
+    monkeypatch.delenv("METASPLOIT_DISPATCH_SCOPE", raising=False)
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="metasploit-mcp",
+        action="run_exploit",
+        args={"exploit": "x", "RHOSTS": "10.10.0.5"},
+    )
+    assert outcome.contract_error is None
+    assert outcome.exit_code == 1
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "failed"
+    assert outcome.envelope["capability_id"] == "metasploit-mcp.run_exploit"
+    assert "METASPLOIT_DISPATCH_SCOPE" in (outcome.stderr_line or "")
