@@ -169,6 +169,7 @@ def test_curated_arms_are_exactly_the_curated_set(entries: list[dict]) -> None:
         "vvah",
         "ai-deep-sast",
         "agent-wiz",
+        "attack-stix-data",
     }
     for arm in curated:
         assert arm["kind"] == "arm"

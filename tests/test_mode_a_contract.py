@@ -494,7 +494,10 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 51 since the vuls.scan admission (2026-09-05, normal recipe).
     # 54 since the stratus warmup/detonate/revert admission
     # (2026-09-05, normal recipe — cloud-side technique lifecycle).
-    assert len(INVOKE_PROFILES) == 54
+    # 59 since the attack-stix-data read admission (2026-09-04): its
+    # list_tools plus four R0 local-read lookups over a local STIX
+    # bundle — no dispatch tier.
+    assert len(INVOKE_PROFILES) == 59
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -516,6 +519,12 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert profile.safety_class == "R1"
             assert profile.side_effects == ("network-egress",)
             assert profile.synthetic_only is False
+        elif profile.arm_id == "attack-stix-data":
+            # Local-read admission (2026-09-04): in-process lookups over
+            # a caller-named local bundle; no endpoint, no dispatch.
+            assert profile.safety_class == "R0"
+            assert profile.side_effects == ("local-read",)
+            assert profile.synthetic_only is True
         elif profile.action == "list_tools":
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
@@ -564,6 +573,12 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["safety_class"] == "R1"
             assert payload["side_effects"] == ["network-egress"]
             assert payload["synthetic_only"] is False
+        elif profile.arm_id == "attack-stix-data":
+            # Local-read manifests: R0 local-read, synthetic-only (the
+            # in-process reader never leaves the process).
+            assert payload["safety_class"] == "R0"
+            assert payload["side_effects"] == ["local-read"]
+            assert payload["synthetic_only"] is True
         elif profile.action == "list_tools":
             assert payload["safety_class"] == "R0"
             assert payload["side_effects"] == ["local-read"]
