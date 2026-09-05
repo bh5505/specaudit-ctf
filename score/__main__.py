@@ -15,9 +15,9 @@ import json
 import sys
 from pathlib import Path
 
-from .grading import GradingError, grade_files
+from .grading import GradingError, grade_files, verdict as grade_verdict
 from .rubric import RubricError, load_rubric
-from .scorer import score_run, verdict
+from .scorer import score_run, verdict as score_verdict
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -73,6 +73,9 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
             return 2
+        if args.rubric is not None:
+            print("score: --rubric is envelope-mode only", file=sys.stderr)
+            return 2
         try:
             document = grade_files(args.grade, args.expected)
         except GradingError as exc:
@@ -80,7 +83,7 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         json.dump(document, sys.stdout, indent=2, sort_keys=True)
         sys.stdout.write("\n")
-        return verdict(document)
+        return grade_verdict(document)
 
     if not args.files:
         print("score: envelope files (or --grade/--expected) are required", file=sys.stderr)
@@ -95,7 +98,7 @@ def main(argv: list[str] | None = None) -> int:
     document = score_run(args.files, rubric)
     json.dump(document, sys.stdout, indent=2, sort_keys=True)
     sys.stdout.write("\n")
-    return verdict(document)
+    return score_verdict(document)
 
 
 if __name__ == "__main__":

@@ -58,6 +58,7 @@ def load_findings_document(path: Path, *, what: str) -> dict[str, Any]:
     findings = raw.get("findings")
     if not isinstance(findings, list):
         raise GradingError(f"{what} requires a findings list")
+    seen_keys: set[str] = set()
     total = raw.get("total")
     if not isinstance(total, int) or isinstance(total, bool) or total < 0:
         raise GradingError(f"{what} requires a non-negative integer total")
@@ -80,6 +81,11 @@ def load_findings_document(path: Path, *, what: str) -> dict[str, Any]:
                 )
         if not row["finding_key"].strip():
             raise GradingError(f"{what} finding_key must be a non-empty string")
+        if row["finding_key"] in seen_keys:
+            raise GradingError(
+                f"{what} has duplicate finding_key: {row['finding_key']}"
+            )
+        seen_keys.add(row["finding_key"])
         severity = str(row.get("severity"))
         if severity not in _SEVERITIES:
             raise GradingError(

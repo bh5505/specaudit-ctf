@@ -64,6 +64,10 @@ def test_loader_rejects_unknown_and_malformed(tmp_path: Path) -> None:
     doc.write_text(json.dumps({"track": "t", "total": 1, "findings": [row]}), encoding="utf-8")
     with pytest.raises(GradingError, match="non-empty string"):
         load_findings_document(doc, what="doc")
+    duplicate = {"track": "t", "total": 2, "findings": [_finding("a"), _finding("a")]}
+    doc.write_text(json.dumps(duplicate), encoding="utf-8")
+    with pytest.raises(GradingError, match="duplicate finding_key"):
+        load_findings_document(doc, what="doc")
 
 
 # --- grading semantics ---------------------------------------------------
@@ -190,7 +194,24 @@ def test_shipped_contracts_grade_as_themselves() -> None:
     """A contract graded against itself passes — the grader is sound."""
     from score.grading import grade_files
 
-    for path in sorted((ROOT / "challenges").glob("*/artifacts/expected-findings.json")):
+    contracts = sorted((ROOT / "challenges").glob("*/artifacts/*expected*.json"))
+    assert contracts
+    for path in contracts:
         document = grade_files(path, path)
         assert document["passed"] is True, path
         assert document["score"] == 1.0
+
+
+def test_cli_grade_mode_rejects_rubric(tmp_path: Path) -> None:
+    import yaml
+
+    found = _write(tmp_path, "found.json", _found("a"))
+    contract = _write(tmp_path, "contract.json", _contract("a"))
+    rubric = tmp_path / "rubric.yaml"
+    rubric.write_text(yaml.safe_dump({"name": "r"}), encoding="utf-8")
+    assert (
+        score_main(
+            ["--grade", str(found), "--expected", str(contract), "--rubric", str(rubric)]
+        )
+        == 2
+    )
