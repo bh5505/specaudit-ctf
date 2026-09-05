@@ -4,6 +4,14 @@
   "live_aws": false,
   "fixtures": [
     "tf_s3_public_access",
-    "tf_iam_open"
+    "tf_iam_open",
+    "tf_iam_assume_role",
+    "tf_iam_external_trust",
+    "tf_sg_open_ingress",
+    "tf_cloudtrail_disabled",
+    "tf_s3_no_access_logging",
+    "tf_s3_policy_blocked_trap",
+    "tf_s3_unencrypted",
+    "tf_chain_ingress_role"
   ]
 }

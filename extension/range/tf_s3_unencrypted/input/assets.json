@@ -1,0 +1,15 @@
+{
+  "kind": "asset-config",
+  "assets": [
+    {
+      "id": "data-lake",
+      "type": "aws_s3_bucket",
+      "name": "demo-data-lake",
+      "acl": "private",
+      "public_access_block": true,
+      "policy_allows_anonymous": false,
+      "access_logging": true,
+      "encryption_enabled": false
+    }
+  ]
+}

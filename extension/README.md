@@ -400,7 +400,7 @@ only if the outer envelope `status` is `complete`; inner `ok` does not
 decide it. `transport_ok` is informational: it means the tool
 invocation/response transport succeeded, not that artifact custody
 succeeded. Library `run_range()` still emits a seed-stable
-`range.lifecycle.v2` document
+`range.lifecycle.v3` document
 with `live_aws: false`, `fixtures[].exposure|path|impact`, and coverage
 lists of attempted / complete / skipped / error arm ids. The inner
 lifecycle document is coverage input and a `range-report` artifact
@@ -416,7 +416,7 @@ may be `complete` when lifecycle matches. `matched_expected` stays
 independent: a mismatch is `failed`, and a match cannot hide an arm
 skip/error. Default CLI auto-discovers curated arms and may exit 1 with
 a valid degraded execution-result envelope. MCP JSON-RPC success is
-transport-only; the MCP content document is still `range.lifecycle.v2`.
+transport-only; the MCP content document is still `range.lifecycle.v3`.
 No curated arm implements `observe`: every installed or
 endpoint-armed arm refuses it fail-closed (not on any tier), and range
 records `Result.ok=False` as `status=error` — an accidentally

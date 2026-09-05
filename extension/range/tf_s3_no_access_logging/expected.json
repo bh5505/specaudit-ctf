@@ -1,0 +1,51 @@
+{
+  "exposure": {
+    "id": "demo-exp-audit-logs",
+    "kind": "logging_gap",
+    "asset_id": "audit-logs",
+    "asset_name": "demo-audit-logs",
+    "severity": "medium",
+    "summary": "aws_s3_bucket audit-logs does not record server access logs"
+  },
+  "path": [
+    {
+      "from": "any-principal",
+      "to": "audit-logs",
+      "via": "s3:GetObject",
+      "auth": "principal"
+    }
+  ],
+  "impact": {
+    "id": "demo-imp-audit-logs",
+    "kind": "detection_gap",
+    "asset_id": "audit-logs",
+    "severity": "medium",
+    "summary": "Activity involving demo-audit-logs leaves no durable audit trail"
+  },
+  "exposures": [
+    {
+      "id": "demo-exp-audit-logs",
+      "kind": "logging_gap",
+      "asset_id": "audit-logs",
+      "asset_name": "demo-audit-logs",
+      "severity": "medium",
+      "summary": "aws_s3_bucket audit-logs does not record server access logs",
+      "path": [
+        {
+          "from": "any-principal",
+          "to": "audit-logs",
+          "via": "s3:GetObject",
+          "auth": "principal"
+        }
+      ],
+      "impact": {
+        "id": "demo-imp-audit-logs",
+        "kind": "detection_gap",
+        "asset_id": "audit-logs",
+        "severity": "medium",
+        "summary": "Activity involving demo-audit-logs leaves no durable audit trail"
+      }
+    }
+  ],
+  "chains": []
+}

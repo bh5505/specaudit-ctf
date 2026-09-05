@@ -26,7 +26,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RESULT_SCHEMA_PATH = ROOT / "extension" / "schema" / "execution-result.v1.schema.json"
 MANIFESTS = ROOT / "tests" / "goldens" / "capability-manifest"
 PREV1_INVOKE_KEYS = frozenset({"ok", "arm_id", "action", "output", "error"})
-RANGE_LIFECYCLE_V2 = "range.lifecycle.v2"
+RANGE_LIFECYCLE_V3 = "range.lifecycle.v3"
 
 
 def _schema() -> dict[str, Any]:
@@ -45,7 +45,7 @@ def _stdout_json(capsys: pytest.CaptureFixture[str]) -> dict[str, Any]:
 def _assert_execution_result(payload: dict[str, Any], *, known_ids: Any = None) -> Any:
     assert payload["schema"] == RESULT_SCHEMA_ID
     assert payload["schema_version"] == 1
-    assert payload["schema"] != RANGE_LIFECYCLE_V2
+    assert payload["schema"] != RANGE_LIFECYCLE_V3
     for key in PREV1_INVOKE_KEYS:
         assert key not in payload
     assert "fixtures" not in payload
@@ -443,7 +443,7 @@ def test_range_cli_emits_execution_result_not_lifecycle_v2(
     code = range_main([])
     payload = _stdout_json(capsys)
     parsed = _assert_execution_result(payload)
-    assert inner["schema"] == RANGE_LIFECYCLE_V2
+    assert inner["schema"] == RANGE_LIFECYCLE_V3
     assert inner["ok"] is False
     assert inner["status"] == "degraded"
     assert payload["capability_id"] == "fixture.range-observe"
@@ -488,7 +488,7 @@ def test_range_module_cli_subprocess_emits_v1() -> None:
     )
     payload = json.loads(proc.stdout)
     parsed = _assert_execution_result(payload)
-    assert payload["schema"] != RANGE_LIFECYCLE_V2
+    assert payload["schema"] != RANGE_LIFECYCLE_V3
     assert parsed.status != "complete"
     assert proc.returncode != 0
 

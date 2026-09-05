@@ -1,0 +1,13 @@
+{
+  "kind": "sast",
+  "findings": [
+    {
+      "id": "demo-sast-assume-role",
+      "rule_id": "iam-role-assumable-admin",
+      "asset_id": "assume-target",
+      "severity": "critical",
+      "file": "main.tf",
+      "message": "Role is assumable through a broad sts:AssumeRole grant and holds administrator access"
+    }
+  ]
+}

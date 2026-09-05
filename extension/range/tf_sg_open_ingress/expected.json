@@ -1,0 +1,74 @@
+{
+  "exposure": {
+    "id": "demo-exp-sg-db",
+    "kind": "open_ingress",
+    "asset_id": "sg-db",
+    "asset_name": "demo-db-sg",
+    "severity": "critical",
+    "summary": "aws_security_group sg-db admits 0.0.0.0/0 ingress on port range 3306-3306"
+  },
+  "path": [
+    {
+      "from": "internet",
+      "to": "sg-db",
+      "via": "tcp/3306",
+      "auth": "none"
+    }
+  ],
+  "impact": {
+    "id": "demo-imp-sg-db",
+    "kind": "remote_service_exposure",
+    "asset_id": "sg-db",
+    "severity": "critical",
+    "summary": "Administrative or data services on demo-db-sg are reachable from any address"
+  },
+  "exposures": [
+    {
+      "id": "demo-exp-sg-admin",
+      "kind": "open_ingress",
+      "asset_id": "sg-admin",
+      "asset_name": "demo-admin-sg",
+      "severity": "high",
+      "summary": "aws_security_group sg-admin admits 0.0.0.0/0 ingress on port range 22-22",
+      "path": [
+        {
+          "from": "internet",
+          "to": "sg-admin",
+          "via": "tcp/22",
+          "auth": "none"
+        }
+      ],
+      "impact": {
+        "id": "demo-imp-sg-admin",
+        "kind": "remote_service_exposure",
+        "asset_id": "sg-admin",
+        "severity": "high",
+        "summary": "Administrative or data services on demo-admin-sg are reachable from any address"
+      }
+    },
+    {
+      "id": "demo-exp-sg-db",
+      "kind": "open_ingress",
+      "asset_id": "sg-db",
+      "asset_name": "demo-db-sg",
+      "severity": "critical",
+      "summary": "aws_security_group sg-db admits 0.0.0.0/0 ingress on port range 3306-3306",
+      "path": [
+        {
+          "from": "internet",
+          "to": "sg-db",
+          "via": "tcp/3306",
+          "auth": "none"
+        }
+      ],
+      "impact": {
+        "id": "demo-imp-sg-db",
+        "kind": "remote_service_exposure",
+        "asset_id": "sg-db",
+        "severity": "critical",
+        "summary": "Administrative or data services on demo-db-sg are reachable from any address"
+      }
+    }
+  ],
+  "chains": []
+}

@@ -1,0 +1,11 @@
+{
+  "kind": "connectivity",
+  "edges": [
+    {
+      "from": "any-principal",
+      "to": "data-lake",
+      "via": "s3:GetObject",
+      "auth": "principal"
+    }
+  ]
+}

@@ -15,14 +15,29 @@ from ..contract import (
     default_extension,
 )
 
-SCHEMA_ID = "range.lifecycle.v2"
+SCHEMA_ID = "range.lifecycle.v3"
 DEFAULT_SEED = 123
 FIXTURE_S3_PUBLIC = "tf_s3_public_access"
 FIXTURE_IAM_OPEN = "tf_iam_open"
+FIXTURE_IAM_ASSUME_ROLE = "tf_iam_assume_role"
+FIXTURE_IAM_EXTERNAL_TRUST = "tf_iam_external_trust"
+FIXTURE_SG_OPEN_INGRESS = "tf_sg_open_ingress"
+FIXTURE_CLOUDTRAIL_DISABLED = "tf_cloudtrail_disabled"
+FIXTURE_S3_NO_ACCESS_LOGGING = "tf_s3_no_access_logging"
+FIXTURE_S3_POLICY_BLOCKED = "tf_s3_policy_blocked_trap"
+FIXTURE_S3_UNENCRYPTED = "tf_s3_unencrypted"
+FIXTURE_CHAIN_INGRESS_ROLE = "tf_chain_ingress_role"
 ARM_ACTION = "observe"
 STATUS_COMPLETE = "complete"
 STATUS_DEGRADED = "degraded"
 STATUS_FAILED = "failed"
+# The expected.json mirror: derived documents carry exactly these keys
+# and a fixture's expected document must carry exactly the same set.
+DERIVED_KEYS = ("exposure", "path", "impact", "exposures", "chains")
+# Ports where world-open ingress is a finding regardless of service:
+# administrative shells and databases (donor planting vocabulary).
+SENSITIVE_PORTS = frozenset({22, 3389, 3306, 5432, 1521})
+_OPEN_CIDRS = frozenset({"0.0.0.0/0", "::/0"})
 _ARM_STATUS_OK = "ok"
 _ARM_STATUS_LIMITED = frozenset({"skipped", "error"})
 _SEVERITY_RANK = {
@@ -167,13 +182,9 @@ def _run_fixture(
         fixture_dir / "input" / "connectivity.json", "connectivity"
     )
     sast = _load_kind(fixture_dir / "input" / "sast.json", "sast")
-    expected = _load_json(fixture_dir / "expected.json")
+    expected = _load_expected(fixture_dir / "expected.json")
     derived = derive_lifecycle(assets, connectivity, sast)
-    matched = derived == {
-        "exposure": expected.get("exposure"),
-        "path": expected.get("path"),
-        "impact": expected.get("impact"),
-    }
+    matched = derived == expected
     arms = _invoke_arms(ext, arm_ids, fixture_id, seed)
     status = _fixture_status(matched=matched, arms=arms, required=required)
     return {
@@ -185,6 +196,8 @@ def _run_fixture(
         "exposure": derived["exposure"],
         "path": derived["path"],
         "impact": derived["impact"],
+        "exposures": derived["exposures"],
+        "chains": derived["chains"],
         "arms": arms,
     }
 
@@ -194,62 +207,185 @@ def derive_lifecycle(
     connectivity: Mapping[str, Any],
     sast: Mapping[str, Any],
 ) -> dict[str, Any]:
+    """Derive the v3 lifecycle document from fixture inputs.
+
+    Assets may be single- or multi-row. Every row yields exactly one
+    exposure: kind, severity (max planted sast finding, default high),
+    the attempted connectivity path into the asset, and the impact for
+    that kind. The primary exposure is the highest-severity row (ties
+    break in asset order) and is projected to the flat ``exposure``,
+    ``path``, and ``impact`` keys. ``chains`` pairs intra-fixture
+    exposures with one deliberate rule this iteration: an
+    ``open_ingress`` asset plus an ``assumable_role`` asset yields an
+    ``internet_to_identity`` chain. Cross-fixture reasoning stays in the
+    challenge layer. The derived document carries exactly
+    :data:`DERIVED_KEYS` and is compared by equality against the
+    fixture's ``expected.json`` mirror.
+    """
     asset_rows = assets.get("assets")
     if not isinstance(asset_rows, list) or not asset_rows:
         raise RangeError("assets must be a non-empty list")
-    if len(asset_rows) != 1:
-        raise RangeError("exactly one asset row is required")
-    if not isinstance(asset_rows[0], dict):
-        raise RangeError("asset row must be an object")
-    asset = asset_rows[0]
-    asset_id = str(asset.get("id") or "")
-    if not asset_id:
-        raise RangeError("asset id is required")
-    kind = _exposure_kind(asset)
     findings = sast.get("findings")
     if not isinstance(findings, list):
         raise RangeError("sast findings must be a list")
-    severity = _severity_for(asset_id, findings)
-    path = _path_to(asset_id, connectivity)
-    impact_kind = _impact_kind(kind)
+    edges = connectivity.get("edges")
+    if not isinstance(edges, list):
+        raise RangeError("connectivity edges must be a list")
+    exposures: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    for asset in asset_rows:
+        if not isinstance(asset, dict):
+            raise RangeError("asset row must be an object")
+        asset_id = str(asset.get("id") or "")
+        if not asset_id:
+            raise RangeError("asset id is required")
+        if asset_id in seen_ids:
+            raise RangeError(f"duplicate asset id: {asset_id}")
+        seen_ids.add(asset_id)
+        kind = _exposure_kind(asset)
+        severity = _severity_for(asset_id, findings)
+        exposures.append(
+            {
+                "id": f"demo-exp-{asset_id}",
+                "kind": kind,
+                "asset_id": asset_id,
+                "asset_name": str(asset.get("name") or asset_id),
+                "severity": severity,
+                "summary": _exposure_summary(asset, kind),
+                "path": _path_to(asset_id, connectivity),
+                "impact": _impact_row(asset, kind, severity),
+            }
+        )
+    primary = _primary_exposure(exposures)
     return {
         "exposure": {
-            "id": f"demo-exp-{asset_id}",
-            "kind": kind,
-            "asset_id": asset_id,
-            "asset_name": str(asset.get("name") or asset_id),
-            "severity": severity,
-            "summary": _exposure_summary(asset, kind),
+            key: primary[key]
+            for key in ("id", "kind", "asset_id", "asset_name", "severity", "summary")
         },
-        "path": path,
-        "impact": {
-            "id": f"demo-imp-{asset_id}",
-            "kind": impact_kind,
-            "asset_id": asset_id,
-            "severity": severity,
-            "summary": _impact_summary(asset, impact_kind),
-        },
+        "path": primary["path"],
+        "impact": primary["impact"],
+        "exposures": exposures,
+        "chains": _chains(exposures),
     }
+
+
+def _primary_exposure(
+    exposures: Sequence[Mapping[str, Any]],
+) -> Mapping[str, Any]:
+    best = exposures[0]
+    for row in exposures[1:]:
+        if _SEVERITY_RANK.get(str(row["severity"]), 0) > _SEVERITY_RANK.get(
+            str(best["severity"]), 0
+        ):
+            best = row
+    return best
+
+
+def _impact_row(
+    asset: Mapping[str, Any], kind: str, severity: str
+) -> dict[str, Any]:
+    impact_kind = _impact_kind(kind)
+    return {
+        "id": f"demo-imp-{asset['id']}",
+        "kind": impact_kind,
+        "asset_id": asset["id"],
+        "severity": severity,
+        "summary": _impact_summary(asset, impact_kind),
+    }
+
+
+def _chains(
+    exposures: Sequence[Mapping[str, Any]],
+) -> list[dict[str, str]]:
+    ingress = [row for row in exposures if row["kind"] == "open_ingress"]
+    roles = [row for row in exposures if row["kind"] == "assumable_role"]
+    chains: list[dict[str, str]] = []
+    for src in ingress:
+        for dst in roles:
+            chains.append(
+                {
+                    "kind": "internet_to_identity",
+                    "ingress_asset": str(src["asset_id"]),
+                    "role_asset": str(dst["asset_id"]),
+                    "summary": (
+                        f"Internet-reachable ingress on {src['asset_name']} "
+                        f"chains into assumable role {dst['asset_name']}"
+                    ),
+                }
+            )
+    return chains
 
 
 def _exposure_kind(asset: Mapping[str, Any]) -> str:
     atype = str(asset.get("type") or "")
     if atype == "aws_s3_bucket":
-        acl = str(asset.get("acl") or "").lower()
         blocked = bool(asset.get("public_access_block"))
+        acl = str(asset.get("acl") or "").lower()
+        if blocked and bool(asset.get("policy_allows_anonymous")):
+            # AWS semantics: with Block Public Access enabled, a bucket
+            # policy that would grant anonymous reads is neutralized.
+            # The grant is a policy misconfiguration, not a live
+            # exposure — the negative control for graders and auditors.
+            return "blocked_public_policy"
         if acl.startswith("public") or not blocked:
             return "public_storage"
+        if asset.get("encryption_enabled") is False:
+            return "unencrypted_storage"
+        if asset.get("access_logging") is False:
+            return "logging_gap"
     if atype == "aws_iam_policy":
         if asset.get("action") == "*" and asset.get("resource") == "*":
             return "open_identity"
+    if atype == "aws_iam_role":
+        if bool(asset.get("external_trust")):
+            return "open_trust"
+        if asset.get("assumable"):
+            return "assumable_role"
+    if atype == "aws_security_group":
+        if _is_open_ingress(asset):
+            return "open_ingress"
+    if atype == "aws_cloudtrail":
+        if asset.get("enabled") is False:
+            return "monitoring_gap"
     raise RangeError(f"no exposure derived for asset {asset.get('id')}")
+
+
+def _is_open_ingress(asset: Mapping[str, Any]) -> bool:
+    """World-open ingress counts when it touches a sensitive port.
+
+    Public ingress on ordinary service ports (443 and friends) is
+    normal posture; the planted finding is 0.0.0.0/0 or ::/0 reaching
+    administrative shells and database engines.
+    """
+    if str(asset.get("direction") or "") != "ingress":
+        return False
+    if str(asset.get("cidr") or "") not in _OPEN_CIDRS:
+        return False
+    try:
+        low = int(asset.get("from_port"))  # type: ignore[arg-type]
+        high = int(asset.get("to_port"))  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return False
+    if high < low:
+        return False
+    return any(low <= port <= high for port in SENSITIVE_PORTS)
 
 
 def _impact_kind(exposure_kind: str) -> str:
     if exposure_kind == "public_storage":
         return "data_disclosure"
-    if exposure_kind == "open_identity":
+    if exposure_kind in ("open_identity", "assumable_role"):
         return "privilege_escalation"
+    if exposure_kind == "open_trust":
+        return "identity_compromise"
+    if exposure_kind == "open_ingress":
+        return "remote_service_exposure"
+    if exposure_kind in ("monitoring_gap", "logging_gap"):
+        return "detection_gap"
+    if exposure_kind == "blocked_public_policy":
+        return "blocked"
+    if exposure_kind == "unencrypted_storage":
+        return "data_at_rest_exposure"
     raise RangeError(f"no impact for exposure {exposure_kind}")
 
 
@@ -260,6 +396,29 @@ def _exposure_summary(asset: Mapping[str, Any], kind: str) -> str:
         return f"{atype} {asset_id} is reachable without auth"
     if kind == "open_identity":
         return f"{atype} {asset_id} grants Action=* on Resource=*"
+    if kind == "open_trust":
+        return (
+            f"{atype} {asset_id} trusts an external principal "
+            "without requiring MFA"
+        )
+    if kind == "assumable_role":
+        return f"{atype} {asset_id} is assumable via sts:AssumeRole by broader principals"
+    if kind == "open_ingress":
+        return (
+            f"{atype} {asset_id} admits {asset.get('cidr')} ingress "
+            f"on port range {asset.get('from_port')}-{asset.get('to_port')}"
+        )
+    if kind == "monitoring_gap":
+        return f"{atype} {asset_id} is disabled; control-plane events go unrecorded"
+    if kind == "logging_gap":
+        return f"{atype} {asset_id} does not record server access logs"
+    if kind == "blocked_public_policy":
+        return (
+            f"{atype} {asset_id} grants anonymous reads by policy; "
+            "block public access neutralizes it"
+        )
+    if kind == "unencrypted_storage":
+        return f"{atype} {asset_id} stores objects without server-side encryption"
     raise RangeError(f"no exposure summary for {kind}")
 
 
@@ -268,7 +427,19 @@ def _impact_summary(asset: Mapping[str, Any], kind: str) -> str:
     if kind == "data_disclosure":
         return f"Unauthenticated parties can read objects on {name}"
     if kind == "privilege_escalation":
+        if str(asset.get("type") or "") == "aws_iam_role":
+            return f"A principal that can assume {name} acts with its permissions on every resource"
         return f"A principal attached to {name} can act on every resource"
+    if kind == "identity_compromise":
+        return f"An external principal can assume {name} without MFA"
+    if kind == "remote_service_exposure":
+        return f"Administrative or data services on {name} are reachable from any address"
+    if kind == "detection_gap":
+        return f"Activity involving {name} leaves no durable audit trail"
+    if kind == "blocked":
+        return f"The anonymous grant on {name} is neutralized; no live exposure"
+    if kind == "data_at_rest_exposure":
+        return f"Objects on {name} persist without encryption at rest"
     raise RangeError(f"no impact summary for {kind}")
 
 
@@ -465,6 +636,22 @@ def _load_kind(path: Path, kind: str) -> dict[str, Any]:
     data = _load_json(path)
     if data.get("kind") != kind:
         raise RangeError(f"{path.name} kind must be {kind}")
+    return data
+
+
+def _load_expected(path: Path) -> dict[str, Any]:
+    """Load the expected.json mirror.
+
+    Fail-closed on key-set drift in either direction: an expected
+    document missing a derived key (or carrying a stale one) is a
+    fixture error, never a silent partial comparison.
+    """
+    data = _load_json(path)
+    if set(data) != set(DERIVED_KEYS):
+        raise RangeError(
+            f"expected.json must mirror the derived document exactly "
+            f"({', '.join(sorted(DERIVED_KEYS))})"
+        )
     return data
 
 

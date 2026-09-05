@@ -1,0 +1,17 @@
+{
+  "kind": "connectivity",
+  "edges": [
+    {
+      "from": "internet",
+      "to": "sg-jump",
+      "via": "tcp/22",
+      "auth": "none"
+    },
+    {
+      "from": "sg-jump",
+      "to": "role-escalate",
+      "via": "sts:AssumeRole",
+      "auth": "principal"
+    }
+  ]
+}

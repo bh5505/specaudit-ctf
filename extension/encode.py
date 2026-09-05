@@ -477,7 +477,7 @@ def encode_range_document(
     attempt_id: str | None = None,
     artifact_dir: ArtifactSink | None = None,
 ) -> dict[str, Any]:
-    """Wrap range.lifecycle.v2 as coverage input. Inner ok is not outer status."""
+    """Wrap range.lifecycle.v3 as coverage input. Inner ok is not outer status."""
     claimed = document.get("status")
     if claimed not in {STATUS_COMPLETE, STATUS_DEGRADED, STATUS_FAILED}:
         claimed = STATUS_FAILED

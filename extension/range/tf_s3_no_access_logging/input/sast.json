@@ -1,0 +1,13 @@
+{
+  "kind": "sast",
+  "findings": [
+    {
+      "id": "demo-sast-no-access-logging",
+      "rule_id": "s3-access-logging-disabled",
+      "asset_id": "audit-logs",
+      "severity": "medium",
+      "file": "main.tf",
+      "message": "Server access logging not enabled on a bucket storing audit artifacts"
+    }
+  ]
+}
