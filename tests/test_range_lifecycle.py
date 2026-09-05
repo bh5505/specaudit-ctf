@@ -985,10 +985,114 @@ def test_expected_must_mirror_derived_keys() -> None:
         "chains",
     }
     with tempfile.TemporaryDirectory() as tmp:
-        bad = Path(tmp) / "expected.json"
-        bad.write_text(json.dumps({"exposure": {}, "path": []}), encoding="utf-8")
+        missing = Path(tmp) / "expected.json"
+        missing.write_text(json.dumps({"exposure": {}, "path": []}), encoding="utf-8")
         with pytest.raises(RangeError, match="mirror the derived document"):
-            _load_expected(bad)
+            _load_expected(missing)
+        stale = Path(tmp) / "stale.json"
+        stale.write_text(
+            json.dumps({"exposure": {}, "path": [], "impact": {}, "exposures": [], "chains": [], "legacy": True}),
+            encoding="utf-8",
+        )
+        with pytest.raises(RangeError, match="mirror the derived document"):
+            _load_expected(stale)
+
+
+def test_range_scope_matches_manifest() -> None:
+    """Drift guard: the encoder's capability grant names every fixture.
+
+    The sealed runtime cannot read the manifest at import time, so the
+    grant is a static tuple in encode.py; this test is the lockstep.
+    """
+    from extension.encode import RANGE_SCOPE, _RANGE_SCOPE_BY_FIXTURE
+
+    manifest = json.loads((RANGE_ROOT / "manifest.json").read_text(encoding="utf-8"))
+    assert sorted(_RANGE_SCOPE_BY_FIXTURE) == sorted(manifest["fixtures"])
+    assert [uri.rsplit("/", 1)[-1] for uri in RANGE_SCOPE] == list(
+        manifest["fixtures"]
+    )
+    for fixture_id, uri in _RANGE_SCOPE_BY_FIXTURE.items():
+        assert uri == f"file:///extension/range/{fixture_id}"
+
+
+def test_derive_lifecycle_primary_tie_breaks_by_asset_order() -> None:
+    derived = derive_lifecycle(
+        _assets(
+            {"id": "first", "type": "aws_cloudtrail", "name": "a", "enabled": False},
+            {"id": "second", "type": "aws_cloudtrail", "name": "b", "enabled": False},
+        ),
+        {
+            "kind": "connectivity",
+            "edges": [
+                {"from": "x", "to": "first", "via": "v", "auth": "none"},
+                {"from": "x", "to": "second", "via": "v", "auth": "none"},
+            ],
+        },
+        {
+            "kind": "sast",
+            "findings": [
+                {"asset_id": "first", "severity": "high", "rule_id": "t"},
+                {"asset_id": "second", "severity": "high", "rule_id": "t"},
+            ],
+        },
+    )
+    assert derived["exposure"]["asset_id"] == "first"
+
+
+def test_derive_lifecycle_blocked_public_acl_is_neutralized_too() -> None:
+    """Block public access neutralizes ACLs the same as policies."""
+    derived = _one(
+        {
+            "id": "x",
+            "type": "aws_s3_bucket",
+            "name": "n",
+            "acl": "public-read",
+            "public_access_block": True,
+            "access_logging": True,
+            "encryption_enabled": True,
+        }
+    )
+    assert derived["exposure"]["kind"] == "blocked_public_policy"
+    assert "grants anonymous access" in derived["exposure"]["summary"]
+
+
+def test_derive_lifecycle_chain_requires_joining_edge() -> None:
+    """Co-occurrence without a connecting edge is not a chain."""
+    derived = derive_lifecycle(
+        _assets(
+            {
+                "id": "sg",
+                "type": "aws_security_group",
+                "name": "g",
+                "direction": "ingress",
+                "from_port": 22,
+                "to_port": 22,
+                "cidr": "0.0.0.0/0",
+            },
+            {"id": "role", "type": "aws_iam_role", "name": "r", "assumable": True},
+        ),
+        {
+            "kind": "connectivity",
+            "edges": [
+                {"from": "internet", "to": "sg", "via": "tcp/22", "auth": "none"},
+                {"from": "admin-principal", "to": "role", "via": "sts:AssumeRole", "auth": "principal"},
+            ],
+        },
+        {"kind": "sast", "findings": []},
+    )
+    assert derived["chains"] == []
+
+
+def test_derive_lifecycle_unknown_severity_fails_closed() -> None:
+    with pytest.raises(RangeError, match="unrankable sast severity"):
+        derive_lifecycle(
+            _assets({"id": "a", "type": "aws_cloudtrail", "name": "n", "enabled": False}),
+            {"kind": "connectivity", "edges": [{"from": "x", "to": "a", "via": "v", "auth": "none"}]},
+            {
+                "kind": "sast",
+                "findings": [{"asset_id": "a", "severity": "critial", "rule_id": "t"}],
+            },
+        )
 
 
 def test_missing_fixture_is_hard_error(tmp_path: Path) -> None:

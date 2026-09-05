@@ -40,13 +40,25 @@ from .invoke_profiles import (
 
 RANGE_CAPABILITY_ID = "fixture.range-observe"
 RANGE_TOOL = {"name": "fixture-range", "version": "1.0.0"}
+# The deliberate capability grant for a range run: one URI per shipped
+# fixture, kept in lockstep with extension/range/manifest.json by the
+# drift-guard test (test_range_scope_matches_manifest). Static here —
+# the sealed runtime excludes the range data tree, so this file cannot
+# read the manifest at import time.
 RANGE_SCOPE = (
     "file:///extension/range/tf_s3_public_access",
     "file:///extension/range/tf_iam_open",
+    "file:///extension/range/tf_iam_assume_role",
+    "file:///extension/range/tf_iam_external_trust",
+    "file:///extension/range/tf_sg_open_ingress",
+    "file:///extension/range/tf_cloudtrail_disabled",
+    "file:///extension/range/tf_s3_no_access_logging",
+    "file:///extension/range/tf_s3_policy_blocked_trap",
+    "file:///extension/range/tf_s3_unencrypted",
+    "file:///extension/range/tf_chain_ingress_role",
 )
 _RANGE_SCOPE_BY_FIXTURE = {
-    "tf_s3_public_access": "file:///extension/range/tf_s3_public_access",
-    "tf_iam_open": "file:///extension/range/tf_iam_open",
+    uri.rsplit("/", 1)[-1]: uri for uri in RANGE_SCOPE
 }
 ROE_REF = "roe:synthetic-range"
 _REFUSED_SCOPE = ("urn:specaudit-ctf:refused-before-dispatch",)

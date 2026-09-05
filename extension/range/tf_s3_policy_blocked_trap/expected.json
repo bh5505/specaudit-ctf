@@ -5,7 +5,7 @@
     "asset_id": "trap-bucket",
     "asset_name": "demo-trap-bucket",
     "severity": "low",
-    "summary": "aws_s3_bucket trap-bucket grants anonymous reads by policy; block public access neutralizes it"
+    "summary": "aws_s3_bucket trap-bucket grants anonymous access; block public access neutralizes it"
   },
   "path": [
     {
@@ -29,7 +29,7 @@
       "asset_id": "trap-bucket",
       "asset_name": "demo-trap-bucket",
       "severity": "low",
-      "summary": "aws_s3_bucket trap-bucket grants anonymous reads by policy; block public access neutralizes it",
+      "summary": "aws_s3_bucket trap-bucket grants anonymous access; block public access neutralizes it",
       "path": [
         {
           "from": "any-principal",

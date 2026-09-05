@@ -265,7 +265,7 @@ def derive_lifecycle(
         "path": primary["path"],
         "impact": primary["impact"],
         "exposures": exposures,
-        "chains": _chains(exposures),
+        "chains": _chains(exposures, edges),
     }
 
 
@@ -296,12 +296,28 @@ def _impact_row(
 
 def _chains(
     exposures: Sequence[Mapping[str, Any]],
+    edges: Sequence[Any],
 ) -> list[dict[str, str]]:
+    """Pair ingress with assumable roles that a connectivity edge joins.
+
+    The one deliberate chain rule this iteration: an ``open_ingress``
+    asset plus an ``assumable_role`` asset, joined by an edge from the
+    ingress asset to the role asset, yields an ``internet_to_identity``
+    chain. Co-occurrence alone is not chaining — the summary says
+    "chains into", so the edge must exist.
+    """
+    joined: set[tuple[str, str]] = set()
+    for edge in edges:
+        if not isinstance(edge, dict):
+            continue
+        joined.add((str(edge.get("from") or ""), str(edge.get("to") or "")))
     ingress = [row for row in exposures if row["kind"] == "open_ingress"]
     roles = [row for row in exposures if row["kind"] == "assumable_role"]
     chains: list[dict[str, str]] = []
     for src in ingress:
         for dst in roles:
+            if (str(src["asset_id"]), str(dst["asset_id"])) not in joined:
+                continue
             chains.append(
                 {
                     "kind": "internet_to_identity",
@@ -321,11 +337,12 @@ def _exposure_kind(asset: Mapping[str, Any]) -> str:
     if atype == "aws_s3_bucket":
         blocked = bool(asset.get("public_access_block"))
         acl = str(asset.get("acl") or "").lower()
-        if blocked and bool(asset.get("policy_allows_anonymous")):
-            # AWS semantics: with Block Public Access enabled, a bucket
-            # policy that would grant anonymous reads is neutralized.
-            # The grant is a policy misconfiguration, not a live
-            # exposure — the negative control for graders and auditors.
+        if blocked and _grants_anonymous(asset):
+            # AWS semantics: with Block Public Access enabled, any
+            # anonymous grant — bucket policy or public ACL alike —
+            # is neutralized. The grant is a policy misconfiguration,
+            # not a live exposure — the negative control for graders
+            # and auditors.
             return "blocked_public_policy"
         if acl.startswith("public") or not blocked:
             return "public_storage"
@@ -350,6 +367,13 @@ def _exposure_kind(asset: Mapping[str, Any]) -> str:
     raise RangeError(f"no exposure derived for asset {asset.get('id')}")
 
 
+def _grants_anonymous(asset: Mapping[str, Any]) -> bool:
+    """Does this bucket grant anonymous access by any mechanism?"""
+    if bool(asset.get("policy_allows_anonymous")):
+        return True
+    return str(asset.get("acl") or "").lower().startswith("public")
+
+
 def _is_open_ingress(asset: Mapping[str, Any]) -> bool:
     """World-open ingress counts when it touches a sensitive port.
 
@@ -361,14 +385,17 @@ def _is_open_ingress(asset: Mapping[str, Any]) -> bool:
         return False
     if str(asset.get("cidr") or "") not in _OPEN_CIDRS:
         return False
-    try:
-        low = int(asset.get("from_port"))  # type: ignore[arg-type]
-        high = int(asset.get("to_port"))  # type: ignore[arg-type]
-    except (TypeError, ValueError):
+    low_raw = asset.get("from_port")
+    high_raw = asset.get("to_port")
+    # bool is an int subclass; a True/False port is a data error, and
+    # floats would truncate silently — both refuse rather than match.
+    if isinstance(low_raw, bool) or isinstance(high_raw, bool):
         return False
-    if high < low:
+    if not isinstance(low_raw, int) or not isinstance(high_raw, int):
         return False
-    return any(low <= port <= high for port in SENSITIVE_PORTS)
+    if high_raw < low_raw:
+        return False
+    return any(low_raw <= port <= high_raw for port in SENSITIVE_PORTS)
 
 
 def _impact_kind(exposure_kind: str) -> str:
@@ -414,7 +441,7 @@ def _exposure_summary(asset: Mapping[str, Any], kind: str) -> str:
         return f"{atype} {asset_id} does not record server access logs"
     if kind == "blocked_public_policy":
         return (
-            f"{atype} {asset_id} grants anonymous reads by policy; "
+            f"{atype} {asset_id} grants anonymous access; "
             "block public access neutralizes it"
         )
     if kind == "unencrypted_storage":
@@ -450,7 +477,13 @@ def _severity_for(asset_id: str, findings: Sequence[Any]) -> str:
         if not isinstance(row, dict) or row.get("asset_id") != asset_id:
             continue
         severity = str(row.get("severity") or "none").lower()
-        rank = _SEVERITY_RANK.get(severity, 0)
+        if severity not in _SEVERITY_RANK:
+            # A typo'd severity must not silently rank (and demote the
+            # asset in primary selection); fail the fixture instead.
+            raise RangeError(
+                f"unrankable sast severity {severity!r} for asset {asset_id}"
+            )
+        rank = _SEVERITY_RANK[severity]
         if rank > best_rank:
             best = severity
             best_rank = rank
