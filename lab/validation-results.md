@@ -30,7 +30,7 @@ Runbook: `lab/README.md` → "Operator-gated rows".
 |---|---|
 | Date | _(unfilled)_ |
 | Env vars armed | `BURP_MCP_ENDPOINT=http://127.0.0.1:9876` (literal loopback only; hostname endpoints refused) |
-| Invoke commands as run | `python -m extension invoke burp-mcp list_tools` · `url_encode '{"content": "a b"}'` · `get_proxy_http_history '{}'` |
+| Invoke commands as run | `python -m extension invoke burp-mcp list_tools` · `python -m extension invoke burp-mcp url_encode '{"content": "a b"}'` · `python -m extension invoke burp-mcp get_proxy_http_history '{}'` |
 | Envelope status | _(fill: complete / degraded / failed per action)_ |
 | Artifacts | _(fill: attempt ids, artifact dirs, notable outputs — e.g. detected Burp edition from list_tools)_ |
 | Operator note | _(optional: BApp version, Burp edition, anything surprising)_ |
@@ -49,7 +49,7 @@ credentials live; this client's environment never carries them.
 |---|---|
 | Date | _(unfilled)_ |
 | Env vars armed | `GTI_MCP_ENDPOINT=https://<operator-fronted-gti-endpoint>` (https only) |
-| Invoke commands as run | `python -m extension invoke google-mcp-security list_tools` · `get_domain_report '{"domain": "<domain>"}'` |
+| Invoke commands as run | `python -m extension invoke google-mcp-security list_tools` · `python -m extension invoke google-mcp-security get_domain_report '{"domain": "<domain>"}'` |
 | Envelope status | _(fill: expect complete with R1 / network-egress / approval_ref operator://endpoint/GTI_MCP_ENDPOINT)_ |
 | Artifacts | _(fill: attempt ids, artifact dirs, report documents returned)_ |
 | Operator note | _(optional)_ |

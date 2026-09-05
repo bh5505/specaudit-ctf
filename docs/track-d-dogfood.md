@@ -60,8 +60,8 @@ upstream framework:
   it NOT bound (the per-arm caveats in `README.md` say so out loud —
   composite egress, redirects, config-decided targets), and who is
   the "operator" when the client is an agent?
-- **The envelope contract** — `capability-manifest.v1` before
-  dispatch, `execution-result.v1` after, with `complete` /
+- **The envelope contract** — `specaudit.ctf.capability.manifest.v1`
+  before dispatch, `specaudit.ctf.execution-result.v1` after, with `complete` /
   `degraded` / `failed` as the only outcome states. Where could a
   component claim more certainty than it has? (The suite's own rule —
   `ok` is true only for `complete`, and no all-clear it did not
