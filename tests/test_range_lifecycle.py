@@ -949,6 +949,27 @@ def test_derive_lifecycle_ingress_port_sensitivity() -> None:
         )
 
 
+def test_derive_lifecycle_ingress_port_type_guard() -> None:
+    """Non-int ports never match sensitive ports (no float truncation)."""
+    for bad_ports in (
+        {"from_port": 22.0, "to_port": 22},
+        {"from_port": 22, "to_port": 22.0},
+        {"from_port": True, "to_port": 22},
+    ):
+        with pytest.raises(RangeError, match="no exposure derived"):
+            _one(
+                {
+                    "id": "web",
+                    "type": "aws_security_group",
+                    "name": "n",
+                    "direction": "ingress",
+                    "cidr": "0.0.0.0/0",
+                    **bad_ports,
+                },
+                port_edge=True,
+            )
+
+
 def test_derive_lifecycle_primary_is_highest_severity() -> None:
     derived = derive_lifecycle(
         _assets(
