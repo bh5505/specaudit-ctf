@@ -21,11 +21,13 @@ Track D teaches agentic threat modeling: reasoning about
 non-determinism, autonomy, missing trust boundaries, dynamic identity,
 and agent-to-agent interaction — the five factors the CURRICULUM §D
 lists. The cheapest honest target is not a toy example but **this
-suite's own agentic surface**: a tool server (`python -m extension`,
-CLI and stdio MCP) that exposes security-audit capabilities to a
-client program that may itself be an agent. You threat-model a system
-you can read end to end — and the exercise's honesty rules are the
-same ones the suite enforces on its own tool runs.
+suite's own agentic surface**: a tool server — the CLI
+(`python -m extension <verb>`) and the stdio MCP server
+(`python -m extension.mcp_server`) — exposing security-audit
+capabilities to a client program that may itself be an agent. You
+threat-model a system you can read end to end — and the exercise's
+honesty rules are the same ones the suite enforces on its own tool
+runs.
 
 The teaching model is MAESTRO (the public seven-layer reference
 architecture for agentic-system security). The layers, from the
@@ -44,9 +46,9 @@ upstream framework:
 
 ## The surfaces to inspect (all in this repo)
 
-- **The stdio MCP server** — `python -m extension` exposes exactly
-  four tools (`list`, `describe`, `invoke`, `run_range`) over stdio
-  JSON-RPC. Read `extension/mcp_server.py` and `extension/heads/`:
+- **The stdio MCP server** — `python -m extension.mcp_server` exposes
+  exactly four tools (`list`, `describe`, `invoke`, `run_range`) over
+  stdio JSON-RPC. Read `extension/mcp_server.py` and `extension/heads/`:
   who is the client, what can the client ask for, and what does the
   server do about requests it cannot vouch for?
 - **The dispatch path** — `extension/dispatch.py`, the invoke
@@ -64,10 +66,13 @@ upstream framework:
   component claim more certainty than it has? (The suite's own rule —
   `ok` is true only for `complete`, and no all-clear it did not
   achieve — is the pattern to check everyone else against.)
-- **The transport parity property** — identical logical requests on
-  CLI and MCP yield equivalent envelopes. Why does parity matter for
-  custody: if two transports disagreed, which one would an auditor
-  believe?
+- **The transport parity property** — identical logical `invoke`
+  requests on the CLI and MCP transports yield equivalent
+  `execution-result.v1` envelopes (the surfaces are not congruent —
+  the CLI additionally has `availability`, MCP additionally has
+  `run_range` — which is itself worth a worksheet row). Why does
+  parity matter for custody: if two transports disagreed, which one
+  would an auditor believe?
 
 Working the exercise: `python -m extension list`, `python -m
 extension describe nmap`, and an unarmed `python -m extension invoke
@@ -117,8 +122,8 @@ Three dimensions, in priority order:
 
 Generated prose is worth nothing: a fluent paragraph with no evidence
 scores zero; a terse worksheet row citing real lines scores. This is
-the same lesson the `score/` package enforces on tool runs — read
-`score/README`-adjacent tests (`tests/test_score.py`) and the two
+the same lesson the `score/` package enforces on tool runs — its
+doctrine and its tests (`tests/test_score.py`) carry the two
 structural rules (transport success is never a verdict; a skipped or
 failed required arm is never success) — here you are the arm, and
 your worksheet is your envelope: claims must trace to captured
