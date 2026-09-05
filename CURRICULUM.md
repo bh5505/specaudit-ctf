@@ -7,9 +7,12 @@ fixtures. No internal tooling, no product binaries, and no live cloud
 accounts are needed or used. Everything is synthetic; nothing here is a
 scanner installation.
 
-The shipped challenges (`challenges/telecom-aws-01-reachability/`,
-`challenges/telecom-aws-02-iam-s3-misconfig/`) exercise these tracks
-end to end.
+The shipped challenges (`challenges/telecom-aws-01-reachability/`
+through `challenges/telecom-aws-06-chain-rehearsal/`) exercise these
+tracks end to end: 01–02 teach envelope reading and the correspondence
+contract, 03–05 drill identity escalation, network exposure (with the
+near-miss discipline), and detection gaps, and 06 is the flagship
+four-stage chain engagement graded by the `score/` challenge mode.
 
 ## A — Extension fundamentals
 
