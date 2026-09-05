@@ -252,8 +252,10 @@ _DISPATCH_PROFILES = (
     # recipe — off-roster per doc-20 §2): cloud-side attack-technique
     # lifecycle. Spend truth: detonation acts on the OPERATOR'S OWN
     # cloud account through stratus (real resources are created,
-    # modified, and cleaned up); STRATUS_DISPATCH_SCOPE authorizes the
-    # technique ID being lifecycle-managed — it is not a host scope.
+    # modified, and cleaned up); STRATUS_DISPATCH_SCOPE binds the
+    # technique ID — the armed scope must literally name the technique
+    # being lifecycle-managed (equality under the same target_in_scope
+    # containment as host arms; technique ids parse as hostnames).
     # Never run from the lab (no operator credentials are ever spent
     # there); the demo notes are operator-gated by construction.
     ("stratus-red-team", "warmup", ("subprocess", "network-egress"), 120_000, "STRATUS_DISPATCH_SCOPE"),

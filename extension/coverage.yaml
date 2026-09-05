@@ -204,7 +204,7 @@ entries:
     protocols: [cli]
     curated: true
     tier: research
-    notes: Cloud technique library. Curated CLI arm; local technique list reads, warmup/detonate/revert gated by STRATUS_DISPATCH_SCOPE. Dispatch acts cloud-side on the operator's own account — the scope gate authorizes the technique ID being lifecycle-managed (not a host), and detonation spends real cloud resources.
+    notes: Cloud technique library. Curated CLI arm; local technique list reads, warmup/detonate/revert gated by STRATUS_DISPATCH_SCOPE. Dispatch acts cloud-side on the operator's own account — the scope gate binds the technique ID (the armed scope must literally name the technique; anything else is an evaluated failure), and detonation spends real cloud resources.
 
   - id: attackforge-testsuites
     kind: methodology-only

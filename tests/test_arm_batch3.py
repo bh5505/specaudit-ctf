@@ -88,7 +88,10 @@ def test_stratus_dispatch_armed_runs_and_logs(
 ) -> None:
     binary = _fake_binary(tmp_path, "stratus")
     monkeypatch.setenv("STRATUS_BIN", str(binary))
-    monkeypatch.setenv("STRATUS_DISPATCH_SCOPE", "aws-account-lab")
+    # The scope binds the technique id (review 2026-09-05: presence-only
+    # arming was stronger docs than mechanism — the technique now goes
+    # through the same target_in_scope containment as host arms).
+    monkeypatch.setenv("STRATUS_DISPATCH_SCOPE", "aws.exfiltration.s3")
     result = StratusArm().invoke(
         _spec(STRATUS_ID), "detonate", {"technique": "aws.exfiltration.s3"}
     )
@@ -97,6 +100,19 @@ def test_stratus_dispatch_armed_runs_and_logs(
     err = capsys.readouterr().err
     assert "arm=stratus-red-team" in err
     assert "target=aws.exfiltration.s3" in err
+
+
+def test_stratus_scope_must_name_the_technique(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "stratus")
+    monkeypatch.setenv("STRATUS_BIN", str(binary))
+    monkeypatch.setenv("STRATUS_DISPATCH_SCOPE", "anything-at-all")
+    result = StratusArm().invoke(
+        _spec(STRATUS_ID), "detonate", {"technique": "aws.exfiltration.s3"}
+    )
+    assert result.ok is False
+    assert "outside the armed dispatch scope" in result.error
 
 
 def test_stratus_bad_technique_refused(

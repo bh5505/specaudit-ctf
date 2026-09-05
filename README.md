@@ -132,7 +132,9 @@ discovery (`config.toml` at the invoke working directory), so the
 audit line records the target as unknown and the armed config is what
 bounds the scan; the `stratus-red-team` lifecycle actions act
 **cloud-side on the operator's own account** — the scope gate
-authorizes the technique ID being lifecycle-managed (not a host), and
+binds the technique ID (the armed scope must literally name the
+technique being lifecycle-managed; anything else is an evaluated
+failure), and
 detonation spends real cloud resources (warmup/revert provision and
 tear down technique prerequisites); `page-fetch.fetch` scope-checks
 **only the initial URL** — redirects, the name's resolution at fetch
