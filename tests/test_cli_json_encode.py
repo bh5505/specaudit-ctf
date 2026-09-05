@@ -378,6 +378,7 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
         "page-fetch.fetch",
         "commix.scan",
         "semgrep-mcp.semgrep_scan",
+        "vuls.scan",
     }
     for capability_id, profile in INVOKE_PROFILES.items():
         assert capability_id == f"{profile.arm_id}.{profile.action}"
