@@ -8,7 +8,8 @@
   prowler-mcp, and metasploit-mcp rows are research integrations on
   the hardened transport or the first-party CLI (prowler: discovery
   admitted, reads handler-level; metasploit: listing reads admitted,
-  execution tools stay an unadmitted dispatch tier); remaining
+  execution tools admitted as R1 network-egress dispatch profiles
+  behind METASPLOIT_DISPATCH_SCOPE); remaining
   arm rows are research except the agent-wiz read tier
   (`agent-wiz.list_tools`), the sole maintained capability (X5-PROMOTE).
   A specialized handler is
@@ -161,7 +162,8 @@ held; a future held row would be refused at catalog `invoke` even if
 a binary or endpoint is configured. `burp-mcp` (loopback reads),
 `google-mcp-security` (lookups), `semgrep-mcp` (CLI scans + reads),
 and `metasploit-mcp` (listing reads over the operator-run loopback
-SSE server; execution tools stay an unadmitted dispatch tier)
+SSE server; execution tools admitted as R1 network-egress dispatch
+profiles behind METASPLOIT_DISPATCH_SCOPE)
 are admitted research integrations invocable through CLI/MCP `invoke`;
 `prowler-mcp` is research with discovery admitted (`list_tools` over
 the operator-configured https endpoint) - its read tools stay handler-level until upstream
@@ -493,6 +495,17 @@ wrapper's own 100-entry module lists, and the session/listener
 listings the honest empty success shape. The remaining three rows
 (burp, GTI, prowler) are operator-gated: lab/README.md carries their
 validation runbooks, and the lab never spends operator credentials.
+
+In the 2026-09-05 session `page-fetch` was live-measured for the first
+time since the stdin rewrite: the binary was installed at a pinned
+commit ([lab/install-page-fetch.sh](lab/install-page-fetch.sh);
+detectify/page-fetch has no release tags), the golden-image target was
+spawned, and an armed fetch of `http://<target>:8080/form.html?q=1`
+returned a `complete` envelope with the `[dispatch]` audit line
+recording scope and target, one 117-byte credentials-stripped
+policy-report artifact, ~1s elapsed. The same session's rehearsal
+battery and a real-head codex attempt are recorded in
+[lab/exercise-results.md](lab/exercise-results.md).
 
 The `zdns` arm's lookup — the last dispatch arm with no executable
 lab path — got its measurement through a loopback lab zone:

@@ -129,8 +129,9 @@ def test_argv_is_fixed(monkeypatch: pytest.MonkeyPatch, fake_bin: Path) -> None:
     monkeypatch.delenv(ENV_SCAN_ROOT, raising=False)
     root = Path("some") / "root"
     argv = argv_for(str(fake_bin), root)
-    assert argv[:4] == [str(fake_bin), "scan", "-d", str(root)]
-    assert argv[4:] == ["--framework", "terraform", "-o", "json", "--skip-download"]
+    assert argv[:3] == [str(fake_bin), "-d", str(root)]
+    assert "--soft-fail" in argv
+    assert argv[3:] == ["--framework", "terraform", "-o", "json", "--skip-download", "--soft-fail"]
 
 
 # --- invoke -------------------------------------------------------------
@@ -144,9 +145,10 @@ def test_scan_runs_fixed_argv(
     result = _arm().invoke(_spec(), "scan", {})
     assert result.ok is True
     argv = result.output["argv"]
-    assert argv[0] == "scan"
-    assert argv[1] == "-d"
-    assert argv[3:] == ["--framework", "terraform", "-o", "json", "--skip-download"]
+    # argv here is sys.argv[1:] of the fake binary: the leading binary
+    # path is absent, so ["-d", <root>, *FIXED_ARGV_TAIL].
+    assert argv[0] == "-d"
+    assert argv[2:] == ["--framework", "terraform", "-o", "json", "--skip-download", "--soft-fail"]
 
 
 def _fail_binary(tmp_path: Path, body: str) -> Path:

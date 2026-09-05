@@ -46,8 +46,11 @@ _UUID_RE = re.compile(
 CAVEATS = (
     "v2 REST surface (mounted at /api/v2). The operation report is "
     "POST-only upstream and excluded from the read tier (use the "
-    "per-operation views). The schedule_operation dispatch path is "
-    "provisional pending upstream verification."
+    "per-operation views). schedule_operation POSTs the verified "
+    "create route /api/v2/operations (name is the only required "
+    "field; creation auto-starts the operation with server defaults: "
+    "planner atomic, adversary ad-hoc, source basic) - verified "
+    "against upstream master 2026-09-05."
 )
 
 # Dispatch tier: schedule an operation profile against agents. Targets

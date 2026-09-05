@@ -49,7 +49,9 @@ the envelope's ``status``.
 from __future__ import annotations
 
 import json
+import signal
 import sys
+import threading
 from pathlib import Path
 from typing import Any, Mapping, Sequence, TextIO
 
@@ -283,6 +285,30 @@ class McpServer:
         except trace_module.TraceUnavailable as exc:
             trace_module.refusal_line(str(exc))
             return 1
+        # Graceful-termination attestation: agent CLIs shut their MCP
+        # servers down with a termination signal, not an stdin EOF. A
+        # termination request is an orderly shutdown by the client, so
+        # while capture is active the server traps it to append the
+        # close record before exiting — the trace then attests "ended
+        # gracefully" exactly as with EOF. A SIGKILL (or a crash) still
+        # leaves no close record and the attempt stays ungradable.
+        if sink is not None and threading.current_thread() is threading.main_thread():
+            def _graceful_close(signum: int, frame: Any) -> None:
+                try:
+                    sink.close()
+                except OSError:
+                    pass
+                raise SystemExit(0)
+
+            # SIGINT is also trapped (exiting 0 rather than the
+            # conventional KeyboardInterrupt/130): inside this
+            # capture-only server process the close record matters
+            # more than the conventional code.
+            for _sig in (signal.SIGTERM, signal.SIGINT):
+                try:
+                    signal.signal(_sig, _graceful_close)
+                except (ValueError, OSError):
+                    pass  # non-main-thread or restricted host: unchanged
         while True:
             try:
                 message = _read_message(inn)

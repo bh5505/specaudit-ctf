@@ -38,12 +38,13 @@ class CalderaArm:
 
     Read tier: exact allowlisted v2 GET endpoints with the documented
     `KEY` auth header; the three {id} views take one UUID argument.
-    Dispatch tier: POST /api/operations/<name>/schedule, authorized by
-    CALDERA_DISPATCH_SCOPE presence (targets are operation-internal),
-    logged and stamped. The POST body is an empty JSON object and the
-    schedule endpoint form is provisional: it matches neither verified
-    official write route (PATCH /api/v2/operations/{id}, legacy PUT
-    /api/rest index schedule), pending live-server verification.
+    Dispatch tier: POST /api/v2/operations with {"name": ...} - the
+    verified upstream create route (create-and-autostart; name is the
+    only required field, planner/adversary/source default server-side
+    to atomic/ad-hoc/basic), authorized by CALDERA_DISPATCH_SCOPE
+    presence (targets are operation-internal), logged and stamped.
+    The former /api/operations/<name>/schedule path matched no
+    upstream route and was retired.
     """
 
     ARM_ID = ARM_ID
@@ -183,8 +184,15 @@ class CalderaArm:
         scope,
     ) -> Result:
         name = payload["operation"].strip()
-        url = base.rstrip("/") + f"/api/operations/{_quote(name)}/schedule"
-        body = b"{}"
+        # Verified against upstream mitre/caldera master (2026-09-05):
+        # POST /api/v2/operations with {"name": ...} is the create
+        # route (create-and-autostart; the only required field is the
+        # name — planner/adversary/source default server-side to
+        # atomic/ad-hoc/basic). The former provisional path
+        # /api/operations/<name>/schedule matched no documented or
+        # implemented route and was retired rather than kept on faith.
+        url = base.rstrip("/") + "/api/v2/operations"
+        body = json.dumps({"name": name}).encode("utf-8")
         req = urllib_request.Request(
             url,
             data=body,

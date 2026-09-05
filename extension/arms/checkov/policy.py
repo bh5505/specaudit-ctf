@@ -15,13 +15,20 @@ ALLOWED_ACTIONS = frozenset({"scan"})
 
 # Offline first: --skip-download stops the policy-bundle download so a
 # scan never egresses (the same doctrine as the semgrep inline rule
-# pack). Operator docs still tell operators to pre-warm the bundle.
+# pack). --soft-fail makes the exit code 0 even when findings exist —
+# findings are the PRODUCT of the scan and live in the JSON output;
+# without it checkov 3.x exits 1 on any finding and the arm would
+# misread planted violations as tool failure. (Measured against
+# checkov 3.3.16 in the lab, 2026-09-05: the argv carries no `scan`
+# subcommand — current checkov rejects it — and --soft-fail flips the
+# findings exit from 1 to 0.)
 FIXED_ARGV_TAIL = (
     "--framework",
     "terraform",
     "-o",
     "json",
     "--skip-download",
+    "--soft-fail",
 )
 
 TIMEOUT_SECONDS = 60.0
@@ -75,4 +82,4 @@ def resolve_scan_root() -> tuple[Path | None, str | None]:
 
 def argv_for(binary: str, root: Path) -> list[str]:
     """Fixed argv; no caller-supplied fragment ever reaches it."""
-    return [binary, "scan", "-d", str(root), *FIXED_ARGV_TAIL]
+    return [binary, "-d", str(root), *FIXED_ARGV_TAIL]

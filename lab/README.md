@@ -139,9 +139,14 @@ tools, exactly the arm's read/dispatch tiers (the display is capped at
 the wrapper's own 100-entry module lists (an upstream cap, not this
 client's). `list_active_sessions` and `list_listeners` return the
 honest empty success shape (`{"status": "success", "sessions": {},
-"count": 0}`). Execution tools stay an unadmitted dispatch tier:
-`METASPLOIT_DISPATCH_SCOPE` gates the handler, but no registry
-profile exists for them.
+"count": 0}`). Execution tools are admitted dispatch profiles
+(R1 `network-egress`, timeout mirroring the arm's `MCP_CALL_TIMEOUT`) gated by
+`METASPLOIT_DISPATCH_SCOPE`: host-bearing tools are scope-matched via
+RHOSTS/RHOST, scope-presence tools audit the session/job id, and the
+arm gates before dialing - an unarmed execution never connects.
+`send_session_command` residual risk (session host not verifiable
+from scope presence) rides the admission; operators who do not accept
+it leave the arm unarmed.
 
 ### vuls — measured LOCAL-mode scan (config-decided targeting)
 

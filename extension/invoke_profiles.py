@@ -274,6 +274,14 @@ _DISPATCH_PROFILES = (
     # recipe): active command-injection prober — no read-only mode
     # upstream, probe is the whole surface.
     ("commix", "scan", ("subprocess", "network-egress"), 600_000, "COMMIX_DISPATCH_SCOPE"),
+    # dark-moon campaign/run (2026-09-05, rider on the normal recipe —
+    # supersedes the doc-20 §3 "not admitted this campaign" row).
+    # Launcher-shaped composite platform: the MCP gateway still launches
+    # Nuclei/sqlmap/NetExec/etc. inside Docker, so the spend truth is
+    # composite egress accepted by the operator-armed scope (catalog
+    # caveat, not a side-effect enum value — the v1 enum is closed).
+    ("dark-moon", "campaign", ("subprocess", "network-egress"), 600_000, "DARK_MOON_DISPATCH_SCOPE"),
+    ("dark-moon", "run", ("subprocess", "network-egress"), 600_000, "DARK_MOON_DISPATCH_SCOPE"),
     # vuls.scan (2026-09-05, normal recipe — off-roster per doc-20 §2):
     # host vulnerability scan. Spend truth: the scope env authorizes the
     # scan ACTION, not a named host — targets come from vuls's own
@@ -430,9 +438,7 @@ INVOKE_PROFILES = {
         ),
         # Metasploit read admission (2026-09-04): the exploit/payload/
         # session/listener listings over the operator-run loopback SSE server
-        # (GH05TCREW MetasploitMCP). Execution tools stay an unadmitted
-        # dispatch tier (METASPLOIT_DISPATCH_SCOPE gates the handler; no
-        # registry profile exists for them).
+        # (GH05TCREW MetasploitMCP).
         *(
             _mcp_read_profile("metasploit-mcp", action)
             for action in (
@@ -441,6 +447,38 @@ INVOKE_PROFILES = {
                 "list_payloads",
                 "list_active_sessions",
                 "list_listeners",
+            )
+        ),
+        # Metasploit EXECUTION admission (2026-09-05, rider on the
+        # normal recipe): the handler-gated execution surfaces get their
+        # registry profiles. Host-bearing tools (run_exploit,
+        # run_auxiliary_module) are scope-matched by the arm's
+        # RHOSTS/RHOST extraction; the scope-presence tools authorize on
+        # the armed scope and audit the session/job id - the arm
+        # policy's documented residual risk (send_session_command's
+        # session host is not verifiable from scope presence) rides the
+        # admission caveat, and operators who do not accept it leave
+        # the arm unarmed. Execution happens at the operator-run msf
+        # server, so the honest side effect is network-egress and the
+        # timeout is the arm's MCP_CALL_TIMEOUT (single source, same
+        # derivation as the read admission below).
+        *(
+            _dispatch_profile(
+                "metasploit-mcp",
+                action,
+                ("network-egress",),
+                int(MCP_CALL_TIMEOUT * 1000),
+                "METASPLOIT_DISPATCH_SCOPE",
+            )
+            for action in (
+                "run_exploit",
+                "run_auxiliary_module",
+                "run_post_module",
+                "generate_payload",
+                "send_session_command",
+                "terminate_session",
+                "start_listener",
+                "stop_job",
             )
         ),
     )

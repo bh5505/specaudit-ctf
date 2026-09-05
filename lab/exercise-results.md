@@ -40,3 +40,72 @@ The committed machine-readable report is
 `lab/exercise-run-2026-09-04.json` (schema `exercise.run.v1`; the
 report is deterministic — no wall-clock fields — so the JSON is the
 measured record, not a transcript).
+
+
+---
+
+# 2026-09-05 — rehearsal battery, real-head attempt, page-fetch
+
+Second measured session on the same single-host lab (Kali-WSL dev
+instance, `/root/ctf` checkout, `/opt/ctf` venv; golden-image target
+spawned by `lab/spawn-target.sh` and torn down after; no operator
+credentials spent).
+
+## Rehearsal battery + target-facing arm (measured)
+
+```text
+export CHECKOV_BIN=/opt/ctf/bin/checkov SEMGREP_BIN=/opt/ctf/bin/semgrep
+export SEMGREP_SCAN_ROOT=/root/ctf/extension/range
+export ZGRAB2_DISPATCH_SCOPE=172.19.89.77
+python -m exercise --battery   --arms '[{"arm_id":"zgrab2","action":"scan","args":{"target":"172.19.89.77","module":"http"}}]'   --challenge telecom-aws-02-iam-s3-misconfig
+```
+
+Outcome: exit 0, `exercise complete; range complete (10 fixtures);
+arms 1/1; battery 2/2`.
+
+- `checkov.scan` `complete` — offline IaC scan over the packaged
+  range (checkov 3.3.16: 75 passed / 56 failed findings, exit 0 via
+  `--soft-fail`; findings live in the JSON output). The measurement
+  caught real CLI drift the hermetic fake binary could not: checkov
+  3.3.16 rejects the `scan` subcommand and exits 1 on findings, so the
+  arm's fixed argv was corrected in the same packet.
+- `semgrep-mcp.semgrep_scan` `complete` — inline rule pack under
+  `SEMGREP_SCAN_ROOT` containment (semgrep 1.176.1).
+- `zgrab2.scan` `complete` — target-facing arm through explicit
+  `--arms` against the spawned target, `[dispatch]` audit line on
+  stderr, scope `172.19.89.77`.
+
+Committed report: `lab/records/battery-demo.json`
+(schema `exercise.run.v1`, deterministic — no wall-clock fields).
+
+## Real-head attempt: codex-cli × challenge 02 (measured, passed)
+
+The agent CLI is operator-installed and operator-credentialed
+(codex-cli 0.153.4, headless, custom model provider; no credentials
+in the repo or the attempt directory). MCP attach follows
+[extension/heads/codex-cli.md](../extension/heads/codex-cli.md):
+user-global `config.toml` `[mcp_servers.specaudit-ctf]` spawning this
+checkout's launcher with `env_vars` forwarding the three trace vars.
+
+```text
+codex exec --sandbox workspace-write --skip-git-repo-check -C <attempt-dir>   "$(cat prompt.txt)"          # challenge 02 attempt prompt
+python -m exercise --challenge telecom-aws-02-iam-s3-misconfig   --attempt-dir <attempt-dir>   --expected challenges/telecom-aws-02-iam-s3-misconfig/artifacts/expected-findings.json
+```
+
+Outcome: **run `complete`, head lane `passed`** — 5 `tools/call`
+recorded server-side, HMAC chain verified, close record present
+(graceful termination), 3 findings claimed / 3 verified / 0
+unverified, `grade.passed` true. Attempt id `b42a4ca4…`; trace file
+sha256 `35ca7437…`; 48,733 model tokens on the operator's provider.
+
+Committed evidence: `lab/records/head-attempt-report.json` (the graded
+report), `lab/records/head-attempt-found.json` (the agent's claimed
+findings — plain prose, never the evidence),
+`lab/records/head-attempt-trace.ndjson` (the server-side trace; the
+chain key is not stored beside it).
+
+The first attempt run is part of the record too: with the pre-fix
+server it produced a fully intact 6-call chain with no close record
+(agent CLIs terminate their servers with a signal, not an EOF) and the
+lane refused to grade it — the honest failure that motivated the
+graceful-termination attestation now in `mcp_server.serve`.

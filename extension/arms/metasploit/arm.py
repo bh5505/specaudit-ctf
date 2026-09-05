@@ -80,6 +80,12 @@ class MetasploitArm:
         if spec.id != ARM_ID or endpoint is None:
             raise NotInstalledError(spec.id)
         payload = dict(args)
+        # Execution surfaces gate BEFORE any dial: scope authorization,
+        # target containment, and the audit stamp are decided from the
+        # armed scope alone, so an unarmed (or out-of-scope) invocation
+        # never opens a connection to the msf server.
+        if action in DISPATCH_TOOLS:
+            return self._dispatch_call(spec, action, payload, endpoint)
         session = self._session_factory(endpoint, timeout=self.timeout)
         try:
             session.connect()
@@ -123,77 +129,6 @@ class MetasploitArm:
                     output={"data": data},
                     error=None,
                 )
-            if action in DISPATCH_TOOLS:
-                if action not in names:
-                    return Result(
-                        ok=False,
-                        arm_id=spec.id,
-                        action=action,
-                        output=None,
-                        error=f"tool {action!r} is not available on the server",
-                    )
-                targets, refusal = extract_targets(payload)
-                if refusal:
-                    return Result(
-                        ok=False,
-                        arm_id=spec.id,
-                        action=action,
-                        output=None,
-                        error=refusal,
-                    )
-                scope = None
-                if targets is not None:
-                    scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, None)
-                    if scope is None:
-                        return Result(
-                            ok=False,
-                            arm_id=spec.id,
-                            action=action,
-                            output=None,
-                            error=refusal,
-                        )
-                    for host in targets:
-                        if not target_in_scope(host, scope):
-                            return Result(
-                                ok=False,
-                                arm_id=spec.id,
-                                action=action,
-                                output=None,
-                                error=f"target {host!r} is outside the armed "
-                                "dispatch scope",
-                            )
-                else:
-                    scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, None)
-                    if scope is None:
-                        return Result(
-                            ok=False,
-                            arm_id=spec.id,
-                            action=action,
-                            output=None,
-                            error=refusal,
-                        )
-                audited = audit_target(payload, targets)
-                log_dispatch(ARM_ID, action, scope, audited)
-                result_obj = session.call_tool(action, payload)
-                data = _normalize(result_obj)
-                if isinstance(data, dict) and data.get("isError"):
-                    return Result(
-                        ok=False,
-                        arm_id=spec.id,
-                        action=action,
-                        output={"data": data},
-                        error=redact(str(data.get("error") or "tool error")),
-                    )
-                return Result(
-                    ok=True,
-                    arm_id=spec.id,
-                    action=action,
-                    output={
-                        "dispatch": stamp(scope, audited),
-                        "data": data,
-                    },
-                    error=None,
-                )
             reason = "is not on the allowlist"
             if action in {"exploit", "run", "payload"}:
                 reason = (
@@ -206,6 +141,90 @@ class MetasploitArm:
                 action=action,
                 output=None,
                 error=f"tool {action!r} {reason}",
+            )
+        except Exception as exc:  # noqa: BLE001 - surface as Result, stay closed
+            return Result(
+                ok=False,
+                arm_id=spec.id,
+                action=action,
+                output=None,
+                error=redact(str(exc)),
+            )
+        finally:
+            session.close()
+
+    def _dispatch_call(
+        self, spec: ArmSpec, action: str, payload: dict, endpoint: str
+    ) -> Result:
+        """Gate an execution call BEFORE any dial, then execute it.
+
+        Order is the admission's teeth: target extraction, scope
+        authorization, containment, and the audit line all run against
+        the armed scope alone - an unarmed or out-of-scope invocation
+        never opens a connection to the msf server. Only a fully
+        authorized call reaches the server-surface check and the tool
+        call.
+        """
+        targets, refusal = extract_targets(payload)
+        if refusal:
+            return Result(
+                ok=False, arm_id=spec.id, action=action, output=None, error=refusal
+            )
+        scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, None)
+        if scope is None:
+            return Result(
+                ok=False, arm_id=spec.id, action=action, output=None, error=refusal
+            )
+        for host in targets or ():
+            if not target_in_scope(host, scope):
+                return Result(
+                    ok=False,
+                    arm_id=spec.id,
+                    action=action,
+                    output=None,
+                    error=f"target {host!r} is outside the armed dispatch scope",
+                )
+        audited = audit_target(payload, targets)
+        session = self._session_factory(endpoint, timeout=self.timeout)
+        try:
+            session.connect()
+            tools = session.list_tools()
+            names = {
+                str(item.get("name"))
+                for item in tools
+                if isinstance(item, dict) and item.get("name")
+            }
+            if action not in names:
+                return Result(
+                    ok=False,
+                    arm_id=spec.id,
+                    action=action,
+                    output=None,
+                    error=f"tool {action!r} is not available on the server",
+                )
+            # The audit line fires only once the tool is known to exist
+            # on the server: it records an authorized AND available
+            # dispatch, never a refused attempt.
+            log_dispatch(ARM_ID, action, scope, audited)
+            result_obj = session.call_tool(action, payload)
+            data = _normalize(result_obj)
+            if isinstance(data, dict) and data.get("isError"):
+                return Result(
+                    ok=False,
+                    arm_id=spec.id,
+                    action=action,
+                    output={"data": data},
+                    error=redact(str(data.get("error") or "tool error")),
+                )
+            return Result(
+                ok=True,
+                arm_id=spec.id,
+                action=action,
+                output={
+                    "dispatch": stamp(scope, audited),
+                    "data": data,
+                },
+                error=None,
             )
         except Exception as exc:  # noqa: BLE001 - surface as Result, stay closed
             return Result(
