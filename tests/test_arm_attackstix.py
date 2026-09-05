@@ -26,7 +26,6 @@ from extension.arms.attackstix.reader import BundleError
 
 ROOT = Path(__file__).resolve().parents[1]
 DEMO = demo_bundle_path()
-CURATED_ARM_ID = "burp-mcp"
 
 
 def _spec(entry_id: str = ARM_ID) -> ArmSpec:
@@ -232,6 +231,68 @@ def test_arm_corrupt_bundle_is_evaluated_failure(tmp_path: Path) -> None:
     )
     assert result.ok is False
     assert "not valid JSON" in result.error
+
+
+def test_reader_tolerates_unhashable_malformed_rows(tmp_path: Path) -> None:
+    """List/dict values in keyed fields must skip rows, never raise."""
+    bundle = {
+        "type": "bundle",
+        "id": "bundle--00000000-0000-4000-8000-00000000000e",
+        "objects": [
+            {
+                "type": "relationship",
+                "relationship_type": ["uses"],
+                "source_ref": "a",
+                "target_ref": "b",
+            },
+            {"type": "relationship", "relationship_type": "uses"},
+            {
+                "type": "attack-pattern",
+                "id": "attack-pattern--00000000-0000-4000-8000-00000000000a",
+                "name": "Broken Refs",
+                "external_references": [
+                    {"source_name": ["mitre-attack"], "external_id": "T0000"}
+                ],
+            },
+            {
+                "type": "attack-pattern",
+                "id": "attack-pattern--00000000-0000-4000-8000-00000000000b",
+                "name": "Good Technique",
+                "external_references": [
+                    {"source_name": "mitre-attack", "external_id": "T0001"}
+                ],
+            },
+        ],
+    }
+    path = tmp_path / "malformed.json"
+    path.write_text(json.dumps(bundle), encoding="utf-8")
+    index = reader.load_bundle(path)
+    # The unhashable-relationship row was skipped; the subject loaded
+    # with no attack id extracted from its broken reference.
+    assert index["relationships"] == []
+    broken = reader.find_technique(index, name="Broken Refs")
+    assert broken is not None and broken.attack_id is None
+    good = reader.find_technique(index, attack_id="T0001")
+    assert good is not None and good.name == "Good Technique"
+
+
+def test_tools_list_alias_works() -> None:
+    result = _ext().invoke(ARM_ID, "tools/list", {})
+    assert result.ok is True
+    assert "technique" in result.output["read_actions"]
+
+
+def test_output_cap_refuses_rather_than_truncates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import extension.arms.attackstix.arm as arm_module
+
+    monkeypatch.setattr(arm_module, "MAX_OUTPUT_CHARS", 10)
+    result = _ext().invoke(
+        ARM_ID, "technique", {"bundle": str(DEMO), "id": "T1078"}
+    )
+    assert result.ok is False
+    assert "output cap" in result.error
 
 
 def test_args_refusal_contract() -> None:

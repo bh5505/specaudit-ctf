@@ -14,7 +14,7 @@
   A specialized handler is
   required; curated arms never ride a generic transport. `curated` is a
   deprecated compatibility flag and does not mean maintained.
-- **Legs / methodologies**: 19 methodology-only catalog rows
+- **Legs / methodologies**: 18 methodology-only catalog rows
   (curriculum, spec, teach-only). They are not adapters.
 - **Heads**: attach profiles for Claude Code CLI, Codex CLI, and
   other agent CLIs.

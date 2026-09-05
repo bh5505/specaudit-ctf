@@ -70,6 +70,18 @@ class AttackStixArm:
                 output=None,
                 error=refusal,
             )
+        if action == "relationships":
+            # Cheap grammar before disk: a bad type filter is refused
+            # without reading the bundle.
+            type_refusal = _relationship_type_refusal(payload.get("type"))
+            if type_refusal:
+                return Result(
+                    ok=False,
+                    arm_id=spec.id,
+                    action=action,
+                    output=None,
+                    error=type_refusal,
+                )
         path, bundle_refused = bundle_refusal(payload.get("bundle"))
         if bundle_refused:
             return Result(

@@ -74,7 +74,8 @@ def load_bundle(path: Any) -> dict[str, Any]:
         for row in objects
         if isinstance(row, dict)
         and row.get("type") == "relationship"
-        and row.get("relationship_type") in ALLOWED_RELATIONSHIP_TYPES
+        and isinstance(row.get("relationship_type"), str)
+        and row["relationship_type"] in ALLOWED_RELATIONSHIP_TYPES
         and isinstance(row.get("source_ref"), str)
         and isinstance(row.get("target_ref"), str)
     ]
@@ -134,8 +135,15 @@ def _external_id_of(row: dict[str, Any], source: Any) -> str | None:
     for ref in refs:
         if not isinstance(ref, dict):
             continue
-        if ref.get("source_name") in names and ref.get("external_id"):
-            return str(ref["external_id"])
+        # isinstance first: a list/dict source_name is unhashable and
+        # would raise TypeError out of set membership.
+        if (
+            isinstance(ref.get("source_name"), str)
+            and ref["source_name"] in names
+            and isinstance(ref.get("external_id"), str)
+            and ref["external_id"]
+        ):
+            return ref["external_id"]
     return None
 
 
