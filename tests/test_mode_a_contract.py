@@ -497,7 +497,11 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 59 since the attack-stix-data read admission (2026-09-04): its
     # list_tools plus four R0 local-read lookups over a local STIX
     # bundle — no dispatch tier.
-    assert len(INVOKE_PROFILES) == 59
+    # 60 since the checkov.scan admission (2026-09-05, rehearsal-battery
+    # packet): the contained-subprocess carve-out — offline scan pinned
+    # inside the packaged synthetic range, no scope env, no operator
+    # arming decision to record.
+    assert len(INVOKE_PROFILES) == 60
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -525,6 +529,20 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.synthetic_only is True
+        elif capability_id == "checkov.scan":
+            # Contained-subprocess carve-out (2026-09-05): offline scan
+            # pinned inside the packaged synthetic range. Deliberately
+            # the ONLY member of this shape — a second member needs its
+            # own reviewed disposition, never a quiet extension here.
+            assert profile.safety_class == "R1"
+            assert profile.side_effects == ("subprocess",)
+            assert profile.default_off is True
+            assert profile.synthetic_only is True
+            # The frozen grammar requires a dispatch approval; the
+            # honest one is the containment policy itself (no operator
+            # scope decision exists to reference).
+            assert profile.approval_ref == "policy://extension/arms/checkov"
+            assert profile.tier == "research"
         elif profile.action == "list_tools":
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
@@ -582,6 +600,13 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
         elif profile.action == "list_tools":
             assert payload["safety_class"] == "R0"
             assert payload["side_effects"] == ["local-read"]
+            assert payload["synthetic_only"] is True
+        elif capability_id == "checkov.scan":
+            # Contained-subprocess manifest (2026-09-05): honest R1
+            # subprocess truth, synthetic-only (the scan root is pinned
+            # inside the packaged synthetic range).
+            assert payload["safety_class"] == "R1"
+            assert payload["side_effects"] == ["subprocess"]
             assert payload["synthetic_only"] is True
         else:
             # Dispatch-class manifests carry their honest R1 truth.

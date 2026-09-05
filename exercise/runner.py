@@ -30,6 +30,7 @@ SCHEMA_ID = "exercise.run.v1"
 STATUS_COMPLETE = "complete"
 STATUS_DEGRADED = "degraded"
 STATUS_FAILED = "failed"
+STATUS_SKIPPED = "skipped"
 HEAD_IDS = ("claude-code", "codex-cli")
 FAKE_HEAD = "fake"
 
@@ -51,6 +52,7 @@ def run_exercise(
     attempt_dir: str | None = None,
     head_execute: bool = False,
     trace_key: str | None = None,
+    battery: bool = False,
 ) -> dict[str, Any]:
     """Compose the lanes and return the consolidated run report.
 
@@ -65,6 +67,12 @@ def run_exercise(
       ``[{"arm_id", "action", "args"}, ...]`` riding the same X2-PUB
       admission path as ``python -m extension invoke``; a failed arm
       row fails the run.
+    - battery (optional): the default rehearsal preset
+      (``exercise/battery.py``) — the offline/contained pair. A member
+      that is not installed or whose arming env is unset is SKIPPED
+      (designed-safe unavailability: the run degrades, never fails);
+      a member that runs and fails fails the run. Target-facing arms
+      compose through ``arms`` in the lab instead.
     - head (optional): readiness only for the shipped real-agent
       bundles — whether the named head's MCP launcher exists in this
       checkout. Attachment is an operator-driven step and is never
@@ -199,6 +207,10 @@ def run_exercise(
         )
         arms_lane.append(row)
 
+    battery_lane: list[dict[str, Any]] = []
+    if battery:
+        battery_lane = _run_battery(ext)
+
     head_lane: dict[str, Any] | None = None
     attempt_executed = attempt_dir is not None
     if head_execute:
@@ -260,12 +272,19 @@ def run_exercise(
         lanes_ok.append(grading_lane.get("passed") is True)
     arm_failures = [row for row in arms_lane if row["status"] == STATUS_FAILED]
     lanes_ok.append(not arm_failures)
+    battery_failed = any(row["status"] == STATUS_FAILED for row in battery_lane)
+    battery_not_complete = any(
+        row["status"] in (STATUS_SKIPPED, STATUS_DEGRADED) for row in battery_lane
+    )
+    if battery:
+        lanes_ok.append(not battery_failed)
     if attempt_executed:
         lanes_ok.append(head_lane.get("passed") is True)  # type: ignore[union-attr]
-    if all(lanes_ok):
+    if all(lanes_ok) and not battery_not_complete:
         status = STATUS_COMPLETE
-    elif arm_failures:
-        # A requested arm invocation that failed fails the run.
+    elif arm_failures or battery_failed:
+        # A requested arm invocation or battery member that ran and
+        # failed fails the run.
         status = STATUS_FAILED
     elif not range_matched or range_doc["ok"] is not True:
         # The ground truth itself did not hold (reported subset or the
@@ -292,10 +311,81 @@ def run_exercise(
         "range": range_lane,
         "grading": grading_lane,
         "arms": arms_lane,
+        "battery": battery_lane,
         "head": head_lane,
     }
     document["summary"] = _summary(document)
     return document
+
+
+def _run_battery(ext: Extension) -> list[dict[str, Any]]:
+    """Run the rehearsal preset; skip designed-safe unavailability.
+
+    A member whose arming env is unset is skipped BEFORE dispatch (the
+    preset declares its arming envs, so no envelope string-matching).
+    A member whose binary is absent comes back as a failed envelope
+    whose limitations name "arm is not installed" (dispatch never
+    propagates that error) and is skipped. Everything else stays
+    fail-closed: a run that returns a failed envelope is a failed row
+    and fails the run.
+    """
+    import os
+
+    from .battery import BATTERY_PRESET
+
+    rows: list[dict[str, Any]] = []
+    for member in BATTERY_PRESET:
+        row: dict[str, Any] = {"arm_id": member.arm_id, "action": member.action}
+        if member.arming_env is not None and not os.environ.get(
+            member.arming_env, ""
+        ).strip():
+            row.update(
+                status=STATUS_SKIPPED,
+                reason=(
+                    f"battery: {member.arming_env} is unset; preset member "
+                    "skipped (arm it to include this member)"
+                ),
+            )
+            rows.append(row)
+            continue
+        try:
+            outcome = dispatch_invoke(
+                ext, arm_id=member.arm_id, action=member.action, args=dict(member.args)
+            )
+        except Exception as exc:  # noqa: BLE001 - recorded per member, stay fail-closed
+            row.update(status=STATUS_FAILED, reason=str(exc))
+            rows.append(row)
+            continue
+        if outcome.envelope is None:
+            row.update(
+                status=STATUS_FAILED,
+                reason=(
+                    "pre-dispatch contract error"
+                    + (f": {outcome.stderr_line}" if outcome.stderr_line else "")
+                ),
+            )
+            rows.append(row)
+            continue
+        envelope = outcome.envelope
+        limitations = envelope.get("limitations")
+        if isinstance(limitations, (list, tuple)) and "arm is not installed" in limitations:
+            row.update(status=STATUS_SKIPPED, reason="battery: arm is not installed")
+            rows.append(row)
+            continue
+        parsed = parse_execution_result(envelope)
+        row.update(
+            status=(
+                STATUS_COMPLETE
+                if parsed.schema_ok and parsed.status == "complete"
+                else STATUS_DEGRADED
+                if parsed.schema_ok and parsed.status == "degraded"
+                else STATUS_FAILED
+            ),
+            capability_id=envelope.get("capability_id"),
+            envelope_status=envelope.get("status"),
+        )
+        rows.append(row)
+    return rows
 
 
 def _subset_status(rows: Sequence[Mapping[str, Any]]) -> str:
@@ -424,6 +514,11 @@ def _summary(document: Mapping[str, Any]) -> str:
     if document["arms"]:
         ok = sum(1 for row in document["arms"] if row["status"] == STATUS_COMPLETE)
         parts.append(f"arms {ok}/{len(document['arms'])}")
+    if document.get("battery"):
+        lane = document["battery"]
+        ok = sum(1 for row in lane if row["status"] == STATUS_COMPLETE)
+        skipped = sum(1 for row in lane if row["status"] == STATUS_SKIPPED)
+        parts.append(f"battery {ok}/{len(lane)}" + (f" ({skipped} skipped)" if skipped else ""))
     if document["head"] is not None:
         parts.append(f"head {document['head']['status']}")
     return "; ".join(parts)

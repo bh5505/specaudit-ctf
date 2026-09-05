@@ -298,6 +298,20 @@ non-gating). The fake head (`python -m exercise.fake_head`, personas
 hermetic proof and regression harness: no agent CLI, no API keys, no
 spend.
 
+### The rehearsal battery
+
+`python -m exercise --battery` runs the default multi-arm composition
+(`exercise/battery.py`): `checkov.scan`, the offline IaC scan whose
+root is contained by construction to the packaged synthetic range, and
+`semgrep-mcp.semgrep_scan` with a shipped inline rule pack against
+planted fixture code under `SEMGREP_SCAN_ROOT`. Members are skipped
+honestly when their binary is absent or their arming env is unset (the
+run degrades); a member that runs and fails fails the run.
+Target-facing arms (zgrab2, wapiti, …) need a live, operator-armed
+lab target and compose through explicit `--arms` — they are never
+preset members. The unarmed/explicit contrast is pinned by tests:
+the same request that skips under `--battery` fails under `--arms`.
+
 ## Range
 
 ```text
