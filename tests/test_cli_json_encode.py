@@ -424,6 +424,18 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
             assert profile.default_off is True
             assert profile.synthetic_only is True
             assert profile.approval_ref is None
+        elif capability_id == "checkov.scan":
+            # Contained-subprocess carve-out (2026-09-05): offline scan
+            # pinned inside the packaged synthetic range; the approval
+            # names the containment itself (the frozen grammar requires
+            # a dispatch approval and no operator scope decision
+            # exists). Deliberately the ONLY member of this shape.
+            assert profile.safety_class == "R1"
+            assert profile.side_effects == ("subprocess",)
+            assert profile.default_off is True
+            assert profile.synthetic_only is True
+            assert profile.approval_ref == "policy://extension/arms/checkov"
+            assert profile.roe_ref == "doc://README#dispatch-doctrine"
         else:
             assert profile.action == "list_tools"
             assert profile.safety_class == "R0"
