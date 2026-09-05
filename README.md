@@ -8,7 +8,8 @@
   prowler-mcp, and metasploit-mcp rows are research integrations on
   the hardened transport or the first-party CLI (prowler: discovery
   admitted, reads handler-level; metasploit: listing reads admitted,
-  execution tools stay an unadmitted dispatch tier); remaining
+  execution tools admitted as R1 network-egress dispatch profiles
+  behind METASPLOIT_DISPATCH_SCOPE); remaining
   arm rows are research except the agent-wiz read tier
   (`agent-wiz.list_tools`), the sole maintained capability (X5-PROMOTE).
   A specialized handler is
@@ -161,7 +162,8 @@ held; a future held row would be refused at catalog `invoke` even if
 a binary or endpoint is configured. `burp-mcp` (loopback reads),
 `google-mcp-security` (lookups), `semgrep-mcp` (CLI scans + reads),
 and `metasploit-mcp` (listing reads over the operator-run loopback
-SSE server; execution tools stay an unadmitted dispatch tier)
+SSE server; execution tools admitted as R1 network-egress dispatch
+profiles behind METASPLOIT_DISPATCH_SCOPE)
 are admitted research integrations invocable through CLI/MCP `invoke`;
 `prowler-mcp` is research with discovery admitted (`list_tools` over
 the operator-configured https endpoint) - its read tools stay handler-level until upstream

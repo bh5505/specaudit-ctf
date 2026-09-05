@@ -38,12 +38,13 @@ class CalderaArm:
 
     Read tier: exact allowlisted v2 GET endpoints with the documented
     `KEY` auth header; the three {id} views take one UUID argument.
-    Dispatch tier: POST /api/operations/<name>/schedule, authorized by
-    CALDERA_DISPATCH_SCOPE presence (targets are operation-internal),
-    logged and stamped. The POST body is an empty JSON object and the
-    schedule endpoint form is provisional: it matches neither verified
-    official write route (PATCH /api/v2/operations/{id}, legacy PUT
-    /api/rest index schedule), pending live-server verification.
+    Dispatch tier: POST /api/v2/operations with {"name": ...} - the
+    verified upstream create route (create-and-autostart; name is the
+    only required field, planner/adversary/source default server-side
+    to atomic/ad-hoc/basic), authorized by CALDERA_DISPATCH_SCOPE
+    presence (targets are operation-internal), logged and stamped.
+    The former /api/operations/<name>/schedule path matched no
+    upstream route and was retired.
     """
 
     ARM_ID = ARM_ID

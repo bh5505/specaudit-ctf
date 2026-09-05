@@ -185,7 +185,6 @@ class MetasploitArm:
                     error=f"target {host!r} is outside the armed dispatch scope",
                 )
         audited = audit_target(payload, targets)
-        log_dispatch(ARM_ID, action, scope, audited)
         session = self._session_factory(endpoint, timeout=self.timeout)
         try:
             session.connect()
@@ -203,6 +202,10 @@ class MetasploitArm:
                     output=None,
                     error=f"tool {action!r} is not available on the server",
                 )
+            # The audit line fires only once the tool is known to exist
+            # on the server: it records an authorized AND available
+            # dispatch, never a refused attempt.
+            log_dispatch(ARM_ID, action, scope, audited)
             result_obj = session.call_tool(action, payload)
             data = _normalize(result_obj)
             if isinstance(data, dict) and data.get("isError"):

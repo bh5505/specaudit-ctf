@@ -614,10 +614,7 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["tier"] == "maintained"
         assert payload["kind"] == "arm"
         assert payload["default_off"] is True
-        if profile.arm_id == "burp-mcp" or (
-            profile.arm_id == "metasploit-mcp"
-            and profile.action.startswith("list_")
-        ):
+        if profile.arm_id == "burp-mcp" or capability_id in metasploit_read:
             # MCP read manifests: R0 local-read, synthetic_only False
             # (they dial the operator-configured endpoint once armed).
             assert payload["safety_class"] == "R0"

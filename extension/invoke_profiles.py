@@ -460,13 +460,14 @@ INVOKE_PROFILES = {
         # admission caveat, and operators who do not accept it leave
         # the arm unarmed. Execution happens at the operator-run msf
         # server, so the honest side effect is network-egress and the
-        # timeout mirrors the arm's MCP_CALL_TIMEOUT.
+        # timeout is the arm's MCP_CALL_TIMEOUT (single source, same
+        # derivation as the read admission below).
         *(
             _dispatch_profile(
                 "metasploit-mcp",
                 action,
                 ("network-egress",),
-                30_000,
+                int(MCP_CALL_TIMEOUT * 1000),
                 "METASPLOIT_DISPATCH_SCOPE",
             )
             for action in (

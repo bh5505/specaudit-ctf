@@ -191,9 +191,12 @@ def test_dispatch_tool_missing_on_server_refused(
     assert "not available on the server" in result.error
 
 
-def test_dispatch_unarmed_never_dials_the_server() -> None:
+def test_dispatch_unarmed_never_dials_the_server(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Gate-before-dial: an unarmed execution attempt must fail on the
     scope refusal alone, with zero connection activity."""
+    monkeypatch.delenv("METASPLOIT_DISPATCH_SCOPE", raising=False)
     session = FakeSession()
     result = _arm(session).invoke(
         _spec(), "run_exploit", {"RHOSTS": "10.0.0.1"}

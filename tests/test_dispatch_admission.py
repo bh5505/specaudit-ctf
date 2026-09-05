@@ -110,6 +110,8 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
     # Metasploit execution (2026-09-05 rider): execution happens at the
     # operator-run msf server, so the honest side effect is
     # network-egress and the timeout mirrors the arm's MCP_CALL_TIMEOUT.
+    from extension.arms.metasploit.arm import MCP_CALL_TIMEOUT as MSF_CALL_T
+
     for capability_id in (
         "metasploit-mcp.run_exploit",
         "metasploit-mcp.run_auxiliary_module",
@@ -125,7 +127,7 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         assert wave.side_effects == ("network-egress",)
         assert wave.default_off is True and wave.synthetic_only is False
         assert wave.tier == "research"
-        assert wave.timeout_ms == 30_000
+        assert wave.timeout_ms == int(MSF_CALL_T * 1000)
         assert wave.approval_ref == (
             "operator://dispatch-scope/METASPLOIT_DISPATCH_SCOPE"
         )
@@ -584,6 +586,8 @@ def test_dispatch_timeouts_mirror_arm_policy() -> None:
     from extension.arms.commix.policy import TIMEOUT_SECONDS as COMMIX_T
     from extension.arms.vuls.policy import TIMEOUT_SECONDS as VULS_T
     from extension.arms.stratus.policy import TIMEOUT_SECONDS as STRATUS_T
+    from extension.arms.darkmoon.policy import TIMEOUT_SECONDS as DARKMOON_T
+    from extension.arms.metasploit.arm import MCP_CALL_TIMEOUT as MSF_CALL_T
 
     expected_ms = {
         "nmap.scan": NMAP_T,
@@ -601,6 +605,19 @@ def test_dispatch_timeouts_mirror_arm_policy() -> None:
         "stratus-red-team.warmup": STRATUS_T,
         "stratus-red-team.detonate": STRATUS_T,
         "stratus-red-team.revert": STRATUS_T,
+        "dark-moon.campaign": DARKMOON_T,
+        "dark-moon.run": DARKMOON_T,
+        # Execution happens at the operator-run msf server over the
+        # shared SSE client: the profile mirrors the arm's per-call
+        # timeout, not a subprocess wall clock.
+        "metasploit-mcp.run_exploit": MSF_CALL_T,
+        "metasploit-mcp.run_auxiliary_module": MSF_CALL_T,
+        "metasploit-mcp.run_post_module": MSF_CALL_T,
+        "metasploit-mcp.generate_payload": MSF_CALL_T,
+        "metasploit-mcp.send_session_command": MSF_CALL_T,
+        "metasploit-mcp.terminate_session": MSF_CALL_T,
+        "metasploit-mcp.start_listener": MSF_CALL_T,
+        "metasploit-mcp.stop_job": MSF_CALL_T,
     }
     for capability_id, seconds in expected_ms.items():
         profile = INVOKE_PROFILES[capability_id]

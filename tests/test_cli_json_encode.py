@@ -405,9 +405,13 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
             assert profile.default_off is True
             assert profile.synthetic_only is False
             assert profile.approval_ref and profile.roe_ref
-        elif profile.arm_id == "burp-mcp" or (
-            profile.arm_id == "metasploit-mcp" and profile.action.startswith("list_")
-        ):
+        elif profile.arm_id == "burp-mcp" or capability_id in {
+            "metasploit-mcp.list_tools",
+            "metasploit-mcp.list_exploits",
+            "metasploit-mcp.list_payloads",
+            "metasploit-mcp.list_active_sessions",
+            "metasploit-mcp.list_listeners",
+        }:
             # MCP read admission: R0 local-read (loopback-confined),
             # default-off, not synthetic-only once the endpoint is set.
             assert profile.safety_class == "R0"
