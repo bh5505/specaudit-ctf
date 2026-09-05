@@ -1404,7 +1404,7 @@
     "extension/contract.py": "51f233c3ff9d350261c4e0d54389911924ebedce1a53b05cf8f0d006898da00f",
     "extension/coverage.yaml": "1fabd50f3354b2fd24660e143fbb13d7dbd98b0aa089fb3bf985ad9d375f2465",
     "extension/dispatch.py": "4f6b56e2d63efbe33b6b4995a2554d2ef0b5c2ab01ad9fad53742e840a4dd5b3",
-    "extension/encode.py": "21a40d760edd783670246b5a977781959217e8ab9242bd2c846e8b08c680ff95",
+    "extension/encode.py": "77baec5f112d896fac08117505b0861b9b8cd370d4aaf094447abb9c013721bd",
     "extension/envelopes.py": "e35fc42d6a18140f275d060447dfff3f8c6054a706b49d3c9d9798233c4d3fcd",
     "extension/invoke_profiles.py": "9b03e0df180f6dcb9667bb78f095150ac49f289e51d04eb3c27ab6dd991d5b9a",
     "extension/mcp_server.py": "04452b666b00b82d5c3ed1312552110a0e3c21dc1da30deaebe4dddd19b51576",
