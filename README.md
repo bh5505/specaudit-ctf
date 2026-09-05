@@ -269,9 +269,11 @@ close record present — a crashed or truncated attempt is never
 gradable) and must contain at least one `tools/call`; then the found
 document grades found-vs-expected as usual, and every hit is demoted
 to `unverified` unless the trace shows a successful call covering the
-finding's fixtures (a successful `run_range` covers the shipped
-roster; a successful `invoke` covers fixtures its arguments name;
-`list`/`describe` reconnaissance covers nothing). Passing requires
+finding's fixtures. The only coverage source is a successful
+`run_range` and the fixture roster the server itself recorded —
+trusted handler evidence; `invoke` arguments are the agent's own
+strings and grant nothing, nor do `list`/`describe` reconnaissance.
+Passing requires
 zero unverified hits. This is a claim-without-evidence tripwire, not
 proof of investigative depth.
 

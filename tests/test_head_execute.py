@@ -128,6 +128,31 @@ def test_run_range_coverage_is_pinned_to_the_recorded_roster() -> None:
     assert touched == set(stale)
 
 
+def test_invoke_arguments_never_grant_coverage() -> None:
+    """Codex advisory: a successful invoke whose agent-chosen arguments
+    lexically walk every fixture path must cover NOTHING — coverage is
+    trusted handler evidence (run_range's recorded roster) only."""
+    from exercise.attempt import touched_fixtures
+    from extension.trace import range_fixture_ids
+
+    roster = range_fixture_ids()
+    spoof_args = {
+        "bundle": "/".join(
+            f"extension/range/{fixture}/.." for fixture in roster
+        )
+        + "/data/demo-enterprise-sample.json",
+    }
+    records = [
+        {
+            "type": "call",
+            "tool": "invoke",
+            "args": spoof_args,
+            "result": {"isError": False},
+        }
+    ]
+    assert touched_fixtures(records, roster) == set()
+
+
 def test_every_contract_finding_parses_to_coverable_fixtures() -> None:
     """Drift alarm: a traces_to phrasing that names no fixture would
     fail honest agents — every shipped finding must stay parseable."""

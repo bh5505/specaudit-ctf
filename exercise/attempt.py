@@ -16,9 +16,12 @@ combines both:
    pair (owned-evidence doctrine, misses/extras/invalid all fail);
 4. every hit is then demoted to ``unverified`` unless the trace shows
    the agent actually touched the finding's fixtures through the
-   server: a successful ``run_range`` covers the shipped fixture
-   roster, a successful ``invoke`` covers fixtures named in its
-   arguments, and ``list``/``describe`` reconnaissance covers nothing.
+   server. The ONLY fixture-coverage source is a successful
+   ``run_range`` and the fixture roster the server itself recorded
+   from the packaged manifest — trusted handler evidence.
+   ``list``/``describe``/``invoke`` grant none: reconnaissance moves
+   no data, and invoke arguments are the agent's own strings, whose
+   substrings could lexically walk any path without touching it.
 
 The verdict passes only with ``grade().passed`` AND zero unverified
 hits. This gate is deliberately a tripwire against claim-without-
@@ -28,7 +31,6 @@ evidence attempts, not proof of investigative depth: one successful
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -81,15 +83,12 @@ def touched_fixtures(
 ) -> set[str]:
     """Derive the fixture set the trace proves the agent touched.
 
-    Only successful calls count (isError false): a failed run_range
-    produced no ground truth, and a failed invoke moved no data.
-    Reconnaissance tools touch nothing by definition.
-
-    Coverage is pinned to what the SERVER recorded at capture time, not
-    to the grading-time manifest: a run_range record covers exactly the
-    fixture roster it recorded (intersected with the current roster), a
-    record with no recorded roster covers nothing (fail closed — an old
-    trace never silently covers fixtures shipped after the attempt).
+    Coverage comes from TRUSTED HANDLER EVIDENCE only: a successful
+    ``run_range`` and the fixture roster the server recorded for it
+    (intersected with the current manifest). Everything else grants
+    nothing — a failed run_range produced no ground truth, and invoke
+    arguments are the agent's own strings whose substrings could name
+    any path without the handler ever touching it.
     """
     touched: set[str] = set()
     for record in records:
@@ -98,16 +97,12 @@ def touched_fixtures(
         result = record.get("result")
         if not isinstance(result, Mapping) or result.get("isError") is not False:
             continue
-        tool = record.get("tool")
-        if tool == "run_range":
+        if record.get("tool") == "run_range":
             recorded = result.get("fixture_ids")
             if isinstance(recorded, list) and recorded:
                 touched.update(
                     fixture for fixture in recorded if fixture in roster
                 )
-        elif tool == "invoke":
-            blob = json.dumps(record.get("args") or {}, sort_keys=True)
-            touched.update(fixtures_named(blob, roster))
     return touched
 
 
