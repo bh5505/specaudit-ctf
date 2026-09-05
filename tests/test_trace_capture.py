@@ -342,7 +342,9 @@ def test_sigterm_is_attested_as_graceful_close(tmp_path: Path) -> None:
     proc = subprocess.Popen(
         [sys.executable, "-m", "extension.mcp_server"],
         stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
+        # The test only reads the trace file: DEVNULL cannot fill up
+        # and block the server mid-write of a large response.
+        stdout=subprocess.DEVNULL,
         env=env,
         cwd=str(Path(__file__).resolve().parents[1]),
     )
