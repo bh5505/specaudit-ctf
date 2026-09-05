@@ -492,7 +492,9 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # closed the HTTP-MCP held set: semgrep CLI (2), GTI (12), burp (9),
     # prowler (1), metasploit (5) on top of the original 21.
     # 51 since the vuls.scan admission (2026-09-05, normal recipe).
-    assert len(INVOKE_PROFILES) == 51
+    # 54 since the stratus warmup/detonate/revert admission
+    # (2026-09-05, normal recipe — cloud-side technique lifecycle).
+    assert len(INVOKE_PROFILES) == 54
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.

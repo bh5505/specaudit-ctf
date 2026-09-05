@@ -379,6 +379,9 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
         "commix.scan",
         "semgrep-mcp.semgrep_scan",
         "vuls.scan",
+        "stratus-red-team.warmup",
+        "stratus-red-team.detonate",
+        "stratus-red-team.revert",
     }
     for capability_id, profile in INVOKE_PROFILES.items():
         assert capability_id == f"{profile.arm_id}.{profile.action}"

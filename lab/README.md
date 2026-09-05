@@ -280,3 +280,30 @@ plain-http endpoints are refused fail-closed, pinned by a gate test)
 — with the endpoint's tool inventory rows. Read tools beyond
 `list_tools` stay handler-level (prefix allowlist, mutation keywords
 refused) until upstream documents individual tool names.
+
+**stratus-red-team — cloud-side technique lifecycle (operator-gated
+by construction).** Detonation is cloud-side: `stratus` acts on the
+operator's own cloud account, so it can never be validated from this
+lab (no operator credentials are ever spent here). The lab validates
+the local read (`python -m extension invoke stratus-red-team list`
+with the binary installed) and the unarmed refusals; an operator
+validating the admitted lifecycle set runs from their own host with
+their own account:
+
+```text
+export STRATUS_DISPATCH_SCOPE=<technique-id>   # e.g. aws.exfiltration.s3
+python -m extension invoke stratus-red-team warmup '{"technique": "<id>"}'
+python -m extension invoke stratus-red-team detonate '{"technique": "<id>"}'
+python -m extension invoke stratus-red-team revert '{"technique": "<id>"}'
+```
+
+Honesty notes the admission carries: the scope gate authorizes the
+**technique ID** being lifecycle-managed — it is not a host scope;
+detonation spends real cloud resources (warmup/revert provision and
+tear down technique prerequisites); revert after detonate is the
+documented cleanup path and should be part of any validation.
+Upstream behavior verified 2026-09-05 (stdin class-sweep lane): no
+stdin reads and no confirmation prompts in detonate/warmup/revert at
+v2.36.0 — `--force` exists but is for non-idempotent re-detonation,
+not prompt bypass. Record outcomes in
+[validation-results.md](validation-results.md) when run.

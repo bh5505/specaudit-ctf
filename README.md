@@ -104,10 +104,12 @@ authoritative per-action safety, scope, side-effect, budget, cleanup, and
 tool-version metadata.
 
 Dispatch-class admission (2026-09-01, continued through 2026-09-05) adds
-exactly thirteen scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
+exactly sixteen scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
 `zaproxy.spider_scan`, `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`,
 `pyrit.scan`, `routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`,
-`commix.scan`, `semgrep-mcp.semgrep_scan`, and `vuls.scan` —
+`commix.scan`, `semgrep-mcp.semgrep_scan`, `vuls.scan`, and the
+`stratus-red-team` technique-lifecycle set (`warmup`, `detonate`,
+`revert`) —
 carrying honest manifest truth: safety class **R1**, declared side
 effects (`subprocess`+`network-egress` for the CLI arms;
 `network-egress` for the ZAP API; `subprocess` only for the local
@@ -118,7 +120,7 @@ dispatch doctrine, and `synthetic_only: false` (the operator arms a real
 lab target or scan root). Admission is metadata, not authority: each arm's own scope
 gate, audit line, and stamp remain the enforcement point, and an unarmed
 or out-of-scope dispatch is a typed evaluated failure — never an
-all-clear. Five admitted actions deserve their caveats read aloud:
+all-clear. Six admitted actions deserve their caveats read aloud:
 `pyrit.scan` spends model tokens on the operator-configured endpoints
 (the manifest's `network-egress` names the transport, not the spend);
 `routersploit.run` **always executes the module** upstream — there is
@@ -128,7 +130,11 @@ scope accepts that composite egress); `vuls.scan`'s scope gate arms
 the scan **action** — the scanned hosts come from vuls's own config
 discovery (`config.toml` at the invoke working directory), so the
 audit line records the target as unknown and the armed config is what
-bounds the scan; `page-fetch.fetch` scope-checks
+bounds the scan; the `stratus-red-team` lifecycle actions act
+**cloud-side on the operator's own account** — the scope gate
+authorizes the technique ID being lifecycle-managed (not a host), and
+detonation spends real cloud resources (warmup/revert provision and
+tear down technique prerequisites); `page-fetch.fetch` scope-checks
 **only the initial URL** — redirects, the name's resolution at fetch
 time, and rendering-time subresources are not re-checked, so an armed
 scope must be considered reachable from anything its hosts redirect or

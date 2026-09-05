@@ -49,6 +49,9 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         "commix.scan",
         "semgrep-mcp.semgrep_scan",
         "vuls.scan",
+        "stratus-red-team.warmup",
+        "stratus-red-team.detonate",
+        "stratus-red-team.revert",
     }
     admitted = {
         capability_id
@@ -80,6 +83,9 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         ("page-fetch.fetch", "PAGE_FETCH_DISPATCH_SCOPE", 60_000),
         ("commix.scan", "COMMIX_DISPATCH_SCOPE", 600_000),
         ("vuls.scan", "VULS_DISPATCH_SCOPE", 60_000),
+        ("stratus-red-team.warmup", "STRATUS_DISPATCH_SCOPE", 120_000),
+        ("stratus-red-team.detonate", "STRATUS_DISPATCH_SCOPE", 120_000),
+        ("stratus-red-team.revert", "STRATUS_DISPATCH_SCOPE", 120_000),
     ):
         wave = INVOKE_PROFILES[capability_id]
         assert wave.safety_class == "R1"
