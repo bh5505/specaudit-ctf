@@ -1419,7 +1419,7 @@
     "extension/dispatch.py": "4f6b56e2d63efbe33b6b4995a2554d2ef0b5c2ab01ad9fad53742e840a4dd5b3",
     "extension/encode.py": "77baec5f112d896fac08117505b0861b9b8cd370d4aaf094447abb9c013721bd",
     "extension/envelopes.py": "e35fc42d6a18140f275d060447dfff3f8c6054a706b49d3c9d9798233c4d3fcd",
-    "extension/invoke_profiles.py": "9c207bf3641b80729e7fe384e5f655899530db5fc2cf96d65d4337b214a95155",
+    "extension/invoke_profiles.py": "28d4de9015f005b6273ccb526570c4d6c82e4f2b3c6c0134ca296d5bb28214a8",
     "extension/mcp_server.py": "f531a37a0f94dd2543ddcf8721653ba35bff8b3bf5a38af1c79b0b49833f9e55",
     "extension/schema/execution-result.v1.schema.json": "b5a928b2481944cd3040057934208dcb913077f31e9b0fc2ed6ab83d48b245cc",
     "extension/trace.py": "5e957b4427631da01345944e4ecbae420e84eec20cbd42dced8c3e72a4c2a8a3",
