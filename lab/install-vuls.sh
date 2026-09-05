@@ -17,7 +17,7 @@ NAME="${LAB_KALI_NAME:-kali-linux}"
 TAG="${LAB_VULS_TAG:-v0.40.1}"
 
 echo "[lab] installing vuls ($TAG) into $NAME (apt golang + go install)"
-wsl -d "$NAME" -u root -e bash -seu "$TAG" <<'EOF'
+wsl -d "$NAME" -u root -e bash -seu -- "$TAG" <<'EOF'
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
 TAG="$1"

@@ -157,11 +157,11 @@ what gets scanned. `lab/vuls-measure.sh` makes that concrete:
   2026-09-05) — and runs the armed invoke **from that workdir**, so
   config discovery finds exactly that config;
 - why local mode and not the spawned target: the target's sshd is a
-  banner service with no login accounts (locked root, no authorized
-  keys — `build-golden.sh` installs openssh-server for the banner
-  only), so vuls's remote scan cannot authenticate. Local mode
-  collects the real inventory of the lab host with no SSH and no
-  egress beyond loopback.
+  banner service, and `build-golden.sh` provisions **no login
+  credentials** for it (openssh-server is installed for the banner
+  only), so a remote vuls scan has nothing to authenticate with.
+  Local mode collects the real inventory of the lab host with no SSH
+  and no egress beyond loopback.
 
 Measured 2026-09-05 (vuls v0.40.1 built by `install-vuls.sh` with
 `GOEXPERIMENT=jsonv2` — the trivy dependency uses the stdlib JSON v2
@@ -201,8 +201,8 @@ lookup a lab authority without touching the distro's resolver:
 
 Measured 2026-09-04 (zdns v2.1.1 built by `install-zdns.sh`, dnsmasq
 on `127.0.0.2:53`, zone `lab.ctf`): with `ZDNS_DISPATCH_SCOPE=probe.lab.ctf`,
-the armed invoke (recorded exactly as `lab/zdns-measure.sh` runs it
-inside the namespace)
+the armed invoke (as `lab/zdns-measure.sh` runs it inside the
+namespace; the attempt and artifact-dir values are per-run)
 `/opt/ctf/bin/python -m extension invoke zdns lookup '{"domain": "probe.lab.ctf", "record_type": "A"}' --attempt-id <attempt> --artifact-dir <dir>`
 returned a `complete` envelope with the
 `[dispatch]` audit line and a materialized policy-report artifact
