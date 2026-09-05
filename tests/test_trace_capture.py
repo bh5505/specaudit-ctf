@@ -247,6 +247,81 @@ def test_non_object_line_does_not_crash_the_traced_server(tmp_path: Path) -> Non
     assert verification.tool_calls == 1
 
 
+def test_non_empty_existing_trace_refuses_startup(tmp_path: Path, capsys) -> None:
+    import io
+    import os
+
+    trace_path = tmp_path / "trace.ndjson"
+    trace_path.write_text('{"seq": 1}\n', encoding="utf-8")
+    saved = {
+        trace.ENV_TRACE: os.environ.pop(trace.ENV_TRACE, None),
+        trace.ENV_KEY: os.environ.pop(trace.ENV_KEY, None),
+    }
+    os.environ[trace.ENV_TRACE] = str(trace_path)
+    os.environ[trace.ENV_KEY] = KEY_HEX
+    try:
+        code = McpServer().serve(stdin=io.StringIO(""), stdout=io.StringIO())
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    assert code == 1
+    assert "already exists" in capsys.readouterr().err
+
+
+def test_records_after_close_fail_verification(tmp_path: Path) -> None:
+    trace_path = _drive(tmp_path, [_init(), _call(2, "list", {})])
+    # Forge a VALID chained extension after the close record (we hold
+    # the key): the verifier must still refuse — a cleanly closed trace
+    # ends with its close record.
+    records = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+    last = records[-1]
+    assert last["type"] == "close"
+    extension = {
+        "seq": last["seq"] + 1,
+        "ts": last["ts"],
+        "prev": last["hmac"],
+        "type": "call",
+        "tool": "list",
+        "args": {},
+        "result": {"isError": False, "envelope_status": None, "capability_id": None, "fixture_ids": [], "error": None},
+    }
+    body = {k: v for k, v in extension.items() if k != "hmac"}
+    import hmac as hmac_module
+    import hashlib
+
+    mac = hmac_module.new(KEY, digestmod=hashlib.sha256)
+    mac.update(last["hmac"].encode("ascii"))
+    mac.update(trace._canonical(body))
+    extension["hmac"] = mac.hexdigest()
+    with trace_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(extension) + "\n")
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok is False
+    assert any("does not end with a close record" in reason for reason in verification.reasons)
+
+
+def test_secret_shaped_keys_redact_their_values(tmp_path: Path) -> None:
+    trace_path = _drive(
+        tmp_path,
+        [
+            _init(),
+            _call(
+                2,
+                "invoke",
+                {"id": "x", "action": "y", "args": {"credentials": "hunter2"}},
+            ),
+        ],
+    )
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok, verification.reasons
+    args = verification.records[0]["args"]
+    assert "hunter2" not in json.dumps(args)
+    assert "[redacted]" in args["args"]
+
+
 def test_range_fixture_ids_come_from_the_manifest() -> None:
     roster = trace.range_fixture_ids()
     assert len(roster) == 10

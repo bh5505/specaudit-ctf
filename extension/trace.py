@@ -47,18 +47,35 @@ ENV_ATTEMPT = "SPECAUDIT_CTF_MCP_TRACE_ATTEMPT"
 GENESIS_PREFIX = "specaudit-ctf-trace-v1:"
 MAX_FIELD_CHARS = 4096
 _ATTEMPT_HEX_RE = re.compile(r"^[0-9a-f]{64}$")
+# Strictly wider than the string-scrub keyword list: a KEY that merely
+# LOOKS credential-bearing redacts its value wholesale, even when the
+# value itself matches no keyword.
+_SECRET_KEY_RE = re.compile(
+    r"(token|password|passwd|secret|credential|api[_-]?key|authorization|bearer|cookie)",
+    re.IGNORECASE,
+)
 
 
 def _scrub(obj: Any, scrub: Any) -> Any:
     """Scrub every string in a JSON-shaped payload (same semantics as
     the arm-side object scrubber; kept local so this module does not
-    lean on a sibling's private helper)."""
+    lean on a sibling's private helper). Dict handling is fail-closed
+    beyond the scrubber: a value under a secret-shaped KEY is redacted
+    wholesale even when the value itself matches no keyword."""
     if isinstance(obj, str):
         return scrub(obj)
     if isinstance(obj, list):
         return [_scrub(item, scrub) for item in obj]
     if isinstance(obj, dict):
-        return {_scrub(str(key), scrub): _scrub(value, scrub) for key, value in obj.items()}
+        out: dict[str, Any] = {}
+        for key, value in obj.items():
+            text_key = str(key)
+            out[scrub(text_key)] = (
+                "[redacted]"
+                if isinstance(value, str) and _SECRET_KEY_RE.search(text_key)
+                else _scrub(value, scrub)
+            )
+        return out
     return obj
 
 
@@ -153,6 +170,12 @@ class TraceSink:
             raise TraceUnavailable(f"trace parent directory is missing: {parent}")
         if self._path.exists() and not self._path.is_file():
             raise TraceUnavailable(f"trace path is not a file: {self._path}")
+        if self._path.exists() and self._path.stat().st_size > 0:
+            # Appending would restart the chain at genesis over someone
+            # else's records: guaranteed-ungradable by construction.
+            raise TraceUnavailable(
+                f"trace file already exists and is not empty: {self._path}"
+            )
         try:
             with self._path.open("a", encoding="utf-8"):
                 pass
@@ -338,8 +361,6 @@ def verify_trace(path: Path, key: bytes) -> TraceVerification:
         verification.records.append(dict(record))
         if record.get("type") == "call":
             verification.tool_calls += 1
-        if record.get("type") == "close":
-            verification.close_ok = True
         attempt = record.get("attempt_id")
         if attempt is not None:
             if not isinstance(attempt, str) or not _ATTEMPT_HEX_RE.fullmatch(attempt):
@@ -358,8 +379,14 @@ def verify_trace(path: Path, key: bytes) -> TraceVerification:
     genesis = verification.records[0].get("prev") if verification.records else None
     if genesis != GENESIS_PREFIX:
         verification.reasons.append("trace does not start from the harness genesis")
-    if not verification.close_ok:
-        verification.reasons.append("trace has no close record (crashed or truncated)")
+    # A cleanly closed trace ENDS with its close record: anything after
+    # (or nothing but calls) means the shutdown record is not the close.
+    if verification.records and verification.records[-1].get("type") == "close":
+        verification.close_ok = True
+    else:
+        verification.reasons.append(
+            "trace does not end with a close record (crashed, truncated, or extended)"
+        )
     verification.ok = not verification.reasons
     return verification
 

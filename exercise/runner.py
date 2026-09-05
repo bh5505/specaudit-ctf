@@ -32,7 +32,6 @@ STATUS_DEGRADED = "degraded"
 STATUS_FAILED = "failed"
 HEAD_IDS = ("claude-code", "codex-cli")
 FAKE_HEAD = "fake"
-HEAD_STATUS_PASSED = "passed"
 
 
 class ExerciseError(Exception):
