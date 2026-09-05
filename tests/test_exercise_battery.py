@@ -30,10 +30,48 @@ def test_battery_preset_is_the_offline_pair() -> None:
     checkov, semgrep = BATTERY_PRESET
     assert checkov.arming_env is None, "contained by construction: nothing to arm"
     assert semgrep.arming_env == "SEMGREP_SCAN_ROOT"
-    # The inline pack must carry real rules and be a multi-line body
-    # (single-line configs are checked against registry/URL prefixes).
-    assert semgrep.args["config"].lstrip().startswith("rules:")
-    assert "\n" in semgrep.args["config"]
+    # The inline pack must parse as real semgrep rules and carry the
+    # planted-fixture detections (not just be a non-empty string).
+    import yaml
+
+    pack = yaml.safe_load(semgrep.args["config"])
+    assert [rule["id"] for rule in pack["rules"]] == [
+        "demo-terraform-s3-public-read",
+        "demo-terraform-iam-wildcard-action",
+    ]
+    for rule in pack["rules"]:
+        assert rule["languages"] == ["terraform"]
+        assert rule["patterns"] and rule["message"] and rule["severity"]
+
+
+def test_battery_unadmitted_member_is_a_programming_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Consult requirement: a preset member without an admitted profile
+    raises at run time — it must never present as a perpetual skip.
+    Patched at exercise.battery (the module _run_battery imports from)."""
+    import exercise.battery as battery_module
+    from exercise.battery import BatteryMember
+    from exercise.runner import ExerciseError
+
+    monkeypatch.setattr(
+        battery_module,
+        "BATTERY_PRESET",
+        (
+            BatteryMember(
+                arm_id="checkov", action="scan", args={}, arming_env=None
+            ),
+            BatteryMember(
+                arm_id="no-such-arm",
+                action="scan",
+                args={},
+                arming_env="NO_SUCH_ENV",
+            ),
+        ),
+        raising=True,
+    )
+    with pytest.raises(ExerciseError, match="not admitted"):
+        run_exercise(battery=True)
 
 
 def test_battery_unavailable_members_skip_and_degrade_the_run() -> None:
@@ -47,13 +85,21 @@ def test_battery_unavailable_members_skip_and_degrade_the_run() -> None:
 
 def test_battery_unarmed_semgrep_skipped_but_arms_request_fails() -> None:
     """The dual mapping: designed-safe unavailability is a skip under
-    the battery preset, while the same explicit request through --arms
-    keeps the existing fail-closed rule."""
+    the battery preset, while the same fully-armed-shape request (the
+    inline pack, but SEMGREP_SCAN_ROOT unset) through --arms keeps the
+    existing fail-closed rule."""
     battery_run = run_exercise(battery=True)
     assert battery_run["battery"][1]["status"] == "skipped"
 
+    semgrep = BATTERY_PRESET[1]
     arms_run = run_exercise(
-        arms=[{"arm_id": "semgrep-mcp", "action": "semgrep_scan", "args": {}}]
+        arms=[
+            {
+                "arm_id": semgrep.arm_id,
+                "action": semgrep.action,
+                "args": dict(semgrep.args),
+            }
+        ]
     )
     assert arms_run["arms"][0]["status"] == "failed"
     assert arms_run["status"] == "failed"

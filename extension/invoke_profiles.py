@@ -340,12 +340,7 @@ def _dispatch_profile(
     )
 
 
-def _contained_scan_profile(
-    arm_id: str,
-    action: str,
-    timeout_ms: int,
-    tier: str = "research",
-) -> InvokeProfile:
+def _checkov_scan_profile() -> InvokeProfile:
     """Admission for a subprocess scan contained BY CONSTRUCTION.
 
     Deliberate grammar carve-out (2026-09-05, rehearsal-battery packet;
@@ -358,6 +353,10 @@ def _contained_scan_profile(
     capability ids is enforced by the registry grammar test; any second
     member needs its own reviewed disposition.
     """
+    # Deliberately parameterless and checkov-named (review follow-up):
+    # a generic builder would let a second member silently inherit this
+    # carve-out shape; this one cannot.
+    arm_id, action = "checkov", "scan"
     capability_id = f"{arm_id}.{action}"
     scope = (f"policy://extension/arms/{arm_id}",)
     return InvokeProfile(
@@ -370,7 +369,7 @@ def _contained_scan_profile(
         touched_scope=scope,
         safety_class="R1",
         side_effects=("subprocess",),
-        timeout_ms=timeout_ms,
+        timeout_ms=60_000,
         max_output_bytes=1_048_576,
         max_tool_steps=1,
         max_spend=None,
@@ -384,7 +383,6 @@ def _contained_scan_profile(
         # exist.
         approval_ref="policy://extension/arms/checkov",
         roe_ref="doc://README#dispatch-doctrine",
-        tier=tier,
         default_off=True,
         synthetic_only=True,
     )
@@ -405,8 +403,8 @@ INVOKE_PROFILES = {
         # IaC scan contained BY CONSTRUCTION to the packaged synthetic
         # range (scan root pinned inside it, --skip-download). The
         # contained-subprocess carve-out — no scope env, no operator
-        # arming decision to record; see _contained_scan_profile.
-        _contained_scan_profile("checkov", "scan", 60_000),
+        # arming decision to record; see _checkov_scan_profile.
+        _checkov_scan_profile(),
         *(_mcp_read_profile("burp-mcp", action) for action in _BURP_READ_ACTIONS),
         *(
             _remote_read_profile("google-mcp-security", action, "GTI_MCP_ENDPOINT")

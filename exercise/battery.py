@@ -21,8 +21,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-BATTERY_SCHEMA = "exercise.battery.v1"
-
 
 @dataclass(frozen=True)
 class BatteryMember:

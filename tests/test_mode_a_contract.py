@@ -502,6 +502,17 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # inside the packaged synthetic range, no scope env, no operator
     # arming decision to record.
     assert len(INVOKE_PROFILES) == 60
+    # Structural carve-out pin: the contained-subprocess shape (a
+    # policy://extension/arms/<arm> approval on a non-read profile) has
+    # EXACTLY one member — a second member needs a reviewed disposition,
+    # never a quiet extension.
+    contained = {
+        capability_id
+        for capability_id, profile in INVOKE_PROFILES.items()
+        if (profile.approval_ref or "").startswith("policy://extension/arms/")
+        and profile.side_effects != ("local-read",)
+    }
+    assert contained == {"checkov.scan"}
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.

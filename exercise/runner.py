@@ -332,6 +332,18 @@ def _run_battery(ext: Extension) -> list[dict[str, Any]]:
     import os
 
     from .battery import BATTERY_PRESET
+    from extension.invoke_profiles import invoke_profile
+
+    # Build-time admission validation (consult requirement): a preset
+    # member without an admitted profile is a programming error, not a
+    # designed-safe unavailability — it must never present as a
+    # perpetual "skipped" row.
+    for member in BATTERY_PRESET:
+        if invoke_profile(member.arm_id, member.action) is None:
+            raise ExerciseError(
+                "battery preset member not admitted: "
+                f"{member.arm_id}.{member.action}"
+            )
 
     rows: list[dict[str, Any]] = []
     for member in BATTERY_PRESET:
@@ -518,7 +530,15 @@ def _summary(document: Mapping[str, Any]) -> str:
         lane = document["battery"]
         ok = sum(1 for row in lane if row["status"] == STATUS_COMPLETE)
         skipped = sum(1 for row in lane if row["status"] == STATUS_SKIPPED)
-        parts.append(f"battery {ok}/{len(lane)}" + (f" ({skipped} skipped)" if skipped else ""))
+        degraded = sum(1 for row in lane if row["status"] == STATUS_DEGRADED)
+        detail = [
+            f"{count} {name}"
+            for name, count in (("skipped", skipped), ("degraded", degraded))
+            if count
+        ]
+        parts.append(
+            f"battery {ok}/{len(lane)}" + (f" ({', '.join(detail)})" if detail else "")
+        )
     if document["head"] is not None:
         parts.append(f"head {document['head']['status']}")
     return "; ".join(parts)
