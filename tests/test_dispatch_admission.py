@@ -110,7 +110,7 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
     # Metasploit execution (2026-09-05 rider): execution happens at the
     # operator-run msf server, so the honest side effect is
     # network-egress and the timeout mirrors the arm's MCP_CALL_TIMEOUT.
-    from extension.arms.metasploit.arm import MCP_CALL_TIMEOUT as MSF_CALL_T
+    from extension.arms.mcp_client import MCP_CALL_TIMEOUT as MSF_CALL_T
 
     for capability_id in (
         "metasploit-mcp.run_exploit",
@@ -587,7 +587,7 @@ def test_dispatch_timeouts_mirror_arm_policy() -> None:
     from extension.arms.vuls.policy import TIMEOUT_SECONDS as VULS_T
     from extension.arms.stratus.policy import TIMEOUT_SECONDS as STRATUS_T
     from extension.arms.darkmoon.policy import TIMEOUT_SECONDS as DARKMOON_T
-    from extension.arms.metasploit.arm import MCP_CALL_TIMEOUT as MSF_CALL_T
+    from extension.arms.mcp_client import MCP_CALL_TIMEOUT as MSF_CALL_T
 
     expected_ms = {
         "nmap.scan": NMAP_T,

@@ -140,7 +140,7 @@ the wrapper's own 100-entry module lists (an upstream cap, not this
 client's). `list_active_sessions` and `list_listeners` return the
 honest empty success shape (`{"status": "success", "sessions": {},
 "count": 0}`). Execution tools are admitted dispatch profiles
-(R1 `network-egress`, 10s mirroring MCP_CALL_TIMEOUT) gated by
+(R1 `network-egress`, timeout mirroring the arm's `MCP_CALL_TIMEOUT`) gated by
 `METASPLOIT_DISPATCH_SCOPE`: host-bearing tools are scope-matched via
 RHOSTS/RHOST, scope-presence tools audit the session/job id, and the
 arm gates before dialing - an unarmed execution never connects.

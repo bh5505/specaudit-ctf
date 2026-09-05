@@ -300,6 +300,10 @@ class McpServer:
                     pass
                 raise SystemExit(0)
 
+            # SIGINT is also trapped (exiting 0 rather than the
+            # conventional KeyboardInterrupt/130): inside this
+            # capture-only server process the close record matters
+            # more than the conventional code.
             for _sig in (signal.SIGTERM, signal.SIGINT):
                 try:
                     signal.signal(_sig, _graceful_close)

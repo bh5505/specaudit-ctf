@@ -353,7 +353,9 @@ def test_checkov_child_gets_empty_stdin(
         CheckovArm().invoke(_spec("checkov"), "scan", {})
     )
     assert stdin_text == ""
-    assert "scan" in argv and "-d" in argv
+    # checkov 3.3.16 (live-measured): no `scan` subcommand; -d carries
+    # the contained scan root.
+    assert "-d" in argv and "--soft-fail" in argv
 
 
 def test_pyrit_child_gets_empty_stdin(

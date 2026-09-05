@@ -25,7 +25,11 @@ Sink rules (fail closed):
   agent CLI shutting its server down) appends a ``close`` record; a
   SIGKILLed or crashed server leaves the chain without one, and
   ``verify_trace`` treats every missing-close trace as a failed
-  attempt, never a gradable one.
+  attempt, never a gradable one. The close record attests "no
+  SIGKILL/crash" — it cannot distinguish "agent finished" from
+  "client terminated the server mid-run", so a verified close is
+  shutdown integrity, not completion of the attempt. The handler is
+  registered for the process lifetime of one serve() call.
 """
 
 from __future__ import annotations
