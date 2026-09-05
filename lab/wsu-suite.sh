@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Tri-host suite for the stdin class-sweep branch, sequenced (WSL
-# distros share nothing here but avoid concurrent wsl instances).
+# WSL-lane suites (Ubuntu + Kali) for the stdin class-sweep branch;
+# the Windows lane runs on the host. Sequenced (avoid concurrent wsl
+# instances racing a shared checkout).
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 

@@ -63,6 +63,8 @@ def argv_for(binary: str, action: str, payload: dict) -> list[str] | None:
     or reference to, including metadata IPs. Private and metadata hosts
     are allowed only when deliberately scoped.
     """
+    if action not in DISPATCH_ACTIONS:
+        return None
     target = payload.get("url")
     if not isinstance(target, str) or not target.strip():
         return None

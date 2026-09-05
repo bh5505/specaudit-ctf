@@ -6,8 +6,8 @@ CI or a pipe, the child sees a non-tty pipe, and upstreams that parse
 input from stdin in that state can silently ignore the argv target
 (commix >= 4 did exactly that — PR #43). Every spawn in the extension
 package now controls stdin explicitly: stdin=DEVNULL for argv-driven
-tools, input= for the two deliberate stdin feeders (zgrab2's host
-channel, the MCP stdio transport).
+tools, input= for the three deliberate stdin feeders (zgrab2's host
+channel, page-fetch's URL line, the MCP stdio transport).
 
 Two defense layers are pinned here:
 - an AST invariant (every subprocess spawn in extension/ sets stdin=
@@ -44,44 +44,54 @@ ECHO_ARGV_AND_STDIN = (
 _SPAWN_FUNCS = {"run", "Popen", "call", "check_call", "check_output"}
 
 
-def _spawn_call_sites() -> list[tuple[Path, int, str]]:
-    sites: list[tuple[Path, int, str]] = []
+def _spawn_calls(tree: ast.AST) -> list[tuple[ast.Call, str]]:
+    """Every spawn call in a module: (call, label).
+
+    Matches subprocess.<func>(...) attribute calls AND bare <func>(...)
+    calls where <func> was imported from subprocess (the
+    `from subprocess import run` bypass).
+    """
+    imported_names: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.ImportFrom) and node.module == "subprocess":
+            imported_names.update(
+                alias.asname or alias.name
+                for alias in node.names
+                if (alias.asname or alias.name) in _SPAWN_FUNCS
+            )
+    calls: list[tuple[ast.Call, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if (
+            isinstance(func, ast.Attribute)
+            and func.attr in _SPAWN_FUNCS
+            and isinstance(func.value, ast.Name)
+            and func.value.id == "subprocess"
+        ):
+            calls.append((node, f"subprocess.{func.attr}"))
+        elif isinstance(func, ast.Name) and func.id in imported_names:
+            calls.append((node, f"subprocess.{func.id} (imported)"))
+    return calls
+
+
+def test_every_subprocess_spawn_controls_stdin() -> None:
+    checked = 0
+    offenders: list[str] = []
     for path in sorted(EXTENSION_ROOT.rglob("*.py")):
         if "__pycache__" in path.parts:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            func = node.func
-            if (
-                isinstance(func, ast.Attribute)
-                and func.attr in _SPAWN_FUNCS
-                and isinstance(func.value, ast.Name)
-                and func.value.id == "subprocess"
-            ):
-                sites.append((path, node.lineno, func.attr))
-    return sites
-
-
-def test_every_subprocess_spawn_controls_stdin() -> None:
-    sites = _spawn_call_sites()
-    assert sites, "spawn-site walk found nothing — the invariant is broken"
-    offenders = []
-    for path, lineno, func in sites:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if (
-                isinstance(node, ast.Call)
-                and node.lineno == lineno
-                and isinstance(node.func, ast.Attribute)
-                and node.func.attr == func
-            ):
-                names = [
-                    kw.arg for kw in node.keywords if kw.arg is not None
-                ]
-                if "stdin" not in names and "input" not in names:
-                    offenders.append(f"{path}:{lineno} subprocess.{func}")
+        for call, label in _spawn_calls(tree):
+            checked += 1
+            names = [kw.arg for kw in call.keywords if kw.arg is not None]
+            if "stdin" not in names and "input" not in names:
+                offenders.append(f"{path}:{call.lineno} {label}")
+    assert checked >= 20, (
+        f"spawn-site walk found only {checked} calls — the invariant "
+        "is broken"
+    )
     assert not offenders, (
         "subprocess spawns without explicit stdin control (inherited "
         "stdin is the commix-class silent-no-scan vector): "
@@ -218,7 +228,7 @@ def test_osmedeus_child_gets_empty_stdin(
     assert "-t" in argv and "http://lab.internal/" in argv
 
 
-def test_page_fetch_child_gets_empty_stdin(
+def test_page_fetch_feeds_url_on_stdin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from extension.arms.pagefetch.arm import PageFetchArm
