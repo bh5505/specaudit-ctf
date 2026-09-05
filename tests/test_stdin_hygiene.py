@@ -405,7 +405,8 @@ def test_stratus_child_gets_empty_stdin(
 
     binary = _fake_binary(tmp_path, "stratus", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "aws-account-lab")
+    # The scope binds the technique id (2026-09-05 review follow-up).
+    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "aws.exfiltration.s3")
     stdin_text, argv = _stdin_and_argv(
         StratusArm().invoke(
             _spec("stratus-red-team"),
