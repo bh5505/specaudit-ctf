@@ -240,6 +240,14 @@ _DISPATCH_PROFILES = (
     # recipe): active command-injection prober — no read-only mode
     # upstream, probe is the whole surface.
     ("commix", "scan", ("subprocess", "network-egress"), 600_000, "COMMIX_DISPATCH_SCOPE"),
+    # vuls.scan (2026-09-05, normal recipe — off-roster per doc-20 §2):
+    # host vulnerability scan. Spend truth: the scope env authorizes the
+    # scan ACTION, not a named host — targets come from vuls's own
+    # config discovery (config.toml at the invoke cwd), so the audit
+    # line records target=unknown and the operator's config decides
+    # what is scanned. Upstream reads stdin only behind an explicit
+    # --pipe flag the fixed argv never passes (verified 2026-09-05).
+    ("vuls", "scan", ("subprocess", "network-egress"), 60_000, "VULS_DISPATCH_SCOPE"),
     # semgrep-mcp (2026-09-03 CLI integration packet): the first-party
     # CLI is the primary surface; scan runs locally with an inline rule
     # pack (registry/URL configs refused, --metrics=off), so the spend

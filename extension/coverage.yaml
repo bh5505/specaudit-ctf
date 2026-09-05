@@ -246,7 +246,7 @@ entries:
     protocols: [cli]
     curated: true
     tier: research
-    notes: Agent-less host vulnerability scanner. Curated CLI arm; local report/summary reads, host scan gated by VULS_DISPATCH_SCOPE, feed fetch on no tier.
+    notes: Agent-less host vulnerability scanner. Curated CLI arm; local report/summary reads, host scan gated by VULS_DISPATCH_SCOPE, feed fetch on no tier. Scan targets come from vuls's own config discovery (config.toml at the invoke working directory) — the scope gate arms the scan action, so the armed config is what bounds what gets scanned.
 
   - id: zaproxy
     kind: arm

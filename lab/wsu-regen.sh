@@ -4,7 +4,7 @@
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 
-BRANCH="agents/20260905-stdin-class-sweep"
+BRANCH="${1:-agents/20260905-vuls-scan-admission}"
 
 wsl -d Ubuntu -- bash -seu <<EOF
 set -euo pipefail

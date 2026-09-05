@@ -152,11 +152,11 @@ The X2-PUB CLI manifest admits the in-process `list_tools` policy reads
 for `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `nmap`,
 `pyrit`, `routersploit`, `sniper`, `vvah`, `zgrab2`, and
 `semgrep-mcp`, plus — since
-the 2026-09-01/02/03 dispatch-class admissions — the scope-gated R1
+the 2026-09-01/02/03/05 dispatch-class admissions — the scope-gated R1
 profiles (`nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan`,
 `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`, `pyrit.scan`,
 `routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`,
-`commix.scan`, `semgrep-mcp.semgrep_scan`) with honest
+`commix.scan`, `semgrep-mcp.semgrep_scan`, `vuls.scan`) with honest
 manifest truth: default-off behind the arm's arming gate
 (`*_DISPATCH_SCOPE`, or `SEMGREP_SCAN_ROOT` containment for the local
 `semgrep_scan`),
