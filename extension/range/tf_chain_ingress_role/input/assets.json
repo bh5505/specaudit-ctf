@@ -1,0 +1,21 @@
+{
+  "kind": "asset-config",
+  "assets": [
+    {
+      "id": "sg-jump",
+      "type": "aws_security_group",
+      "name": "demo-jump-sg",
+      "direction": "ingress",
+      "from_port": 22,
+      "to_port": 22,
+      "cidr": "0.0.0.0/0"
+    },
+    {
+      "id": "role-escalate",
+      "type": "aws_iam_role",
+      "name": "demo-escalation-role",
+      "assumable": true,
+      "admin": true
+    }
+  ]
+}

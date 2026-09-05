@@ -1,0 +1,51 @@
+{
+  "exposure": {
+    "id": "demo-exp-trap-bucket",
+    "kind": "blocked_public_policy",
+    "asset_id": "trap-bucket",
+    "asset_name": "demo-trap-bucket",
+    "severity": "low",
+    "summary": "aws_s3_bucket trap-bucket grants anonymous access; block public access neutralizes it"
+  },
+  "path": [
+    {
+      "from": "any-principal",
+      "to": "trap-bucket",
+      "via": "s3:GetObject",
+      "auth": "blocked"
+    }
+  ],
+  "impact": {
+    "id": "demo-imp-trap-bucket",
+    "kind": "blocked",
+    "asset_id": "trap-bucket",
+    "severity": "low",
+    "summary": "The anonymous grant on demo-trap-bucket is neutralized; no live exposure"
+  },
+  "exposures": [
+    {
+      "id": "demo-exp-trap-bucket",
+      "kind": "blocked_public_policy",
+      "asset_id": "trap-bucket",
+      "asset_name": "demo-trap-bucket",
+      "severity": "low",
+      "summary": "aws_s3_bucket trap-bucket grants anonymous access; block public access neutralizes it",
+      "path": [
+        {
+          "from": "any-principal",
+          "to": "trap-bucket",
+          "via": "s3:GetObject",
+          "auth": "blocked"
+        }
+      ],
+      "impact": {
+        "id": "demo-imp-trap-bucket",
+        "kind": "blocked",
+        "asset_id": "trap-bucket",
+        "severity": "low",
+        "summary": "The anonymous grant on demo-trap-bucket is neutralized; no live exposure"
+      }
+    }
+  ],
+  "chains": []
+}

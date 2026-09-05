@@ -261,7 +261,7 @@ Process exit 0 if and only if the outer envelope `status` is
 `complete`; inner `ok` does not decide it. `transport_ok` is
 informational: it means the tool invocation/response transport
 succeeded, not that artifact custody succeeded. Library `run_range()`
-still returns seed-stable `range.lifecycle.v2` with
+still returns seed-stable `range.lifecycle.v3` with
 `live_aws: false`. The inner lifecycle document is coverage input and
 a `range-report` artifact digest, not a second all-clear: inner `ok`
 is not the outer status. `--seed` applies to that inner run. Document
@@ -275,7 +275,7 @@ matches. Lifecycle `matched_expected` is independent — a match cannot
 hide an arm skip/error. Default CLI omits `arm_ids` (auto-discover) and
 may exit 1 with a valid degraded execution-result envelope. MCP
 JSON-RPC success is transport-only; the MCP content document is still
-`range.lifecycle.v2`.
+`range.lifecycle.v3`.
 
 ## Scoring runs
 

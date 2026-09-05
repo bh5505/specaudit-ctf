@@ -126,7 +126,7 @@ _RUN_RANGE_TOOL_DEF: dict[str, Any] = {
     "name": "run_range",
     "description": (
         "Run the synthetic range fixtures and return an execution-result.v1 "
-        "envelope wrapping the seed-stable range.lifecycle.v2 document, "
+        "envelope wrapping the seed-stable range.lifecycle.v3 document, "
         "identical to `python -m extension.range` output (timestamps differ "
         "per run). No live cloud, no file writes over MCP (--out stays "
         "CLI-only). isError mirrors the CLI nonzero exit; degraded/failed "

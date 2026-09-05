@@ -1,0 +1,11 @@
+{
+  "kind": "connectivity",
+  "edges": [
+    {
+      "from": "external-principal",
+      "to": "external-trust",
+      "via": "sts:AssumeRole",
+      "auth": "none"
+    }
+  ]
+}

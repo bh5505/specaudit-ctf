@@ -470,7 +470,7 @@ def test_run_range_returns_envelope_not_lifecycle_document() -> None:
     # CLI's nonzero exit without replacing the verdict.
     assert response["result"]["isError"] is True
     payload = json.loads(response["result"]["content"][0]["text"])
-    assert SCHEMA_ID == "range.lifecycle.v2"
+    assert SCHEMA_ID == "range.lifecycle.v3"
     assert payload["schema"] == "specaudit.ctf.execution-result.v1"
     assert payload["status"] == "degraded"
     assert payload["transport_ok"] is True

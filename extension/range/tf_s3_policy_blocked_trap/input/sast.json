@@ -1,0 +1,13 @@
+{
+  "kind": "sast",
+  "findings": [
+    {
+      "id": "demo-sast-blocked-policy",
+      "rule_id": "s3-anonymous-policy-blocked",
+      "asset_id": "trap-bucket",
+      "severity": "low",
+      "file": "main.tf",
+      "message": "Anonymous-read bucket policy present but neutralized by block public access"
+    }
+  ]
+}

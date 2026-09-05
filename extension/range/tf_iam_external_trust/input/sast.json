@@ -1,0 +1,13 @@
+{
+  "kind": "sast",
+  "findings": [
+    {
+      "id": "demo-sast-external-trust",
+      "rule_id": "iam-external-trust-no-mfa",
+      "asset_id": "external-trust",
+      "severity": "critical",
+      "file": "main.tf",
+      "message": "Trust policy admits an external principal with no MFA condition"
+    }
+  ]
+}

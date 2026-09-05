@@ -1,36 +1,57 @@
 {
+  "approval_ref": null,
+  "authorized_scope": [
+    "file:///extension/range/tf_s3_public_access",
+    "file:///extension/range/tf_iam_open",
+    "file:///extension/range/tf_iam_assume_role",
+    "file:///extension/range/tf_iam_external_trust",
+    "file:///extension/range/tf_sg_open_ingress",
+    "file:///extension/range/tf_cloudtrail_disabled",
+    "file:///extension/range/tf_s3_no_access_logging",
+    "file:///extension/range/tf_s3_policy_blocked_trap",
+    "file:///extension/range/tf_s3_unencrypted",
+    "file:///extension/range/tf_chain_ingress_role"
+  ],
+  "budget": {
+    "max_output_bytes": 1048576,
+    "max_spend": null,
+    "max_tool_steps": 16,
+    "timeout_ms": 60000
+  },
+  "capability_id": "fixture.range-observe",
+  "cleanup": {
+    "proof": "none",
+    "required": false
+  },
+  "default_off": true,
+  "kind": "range",
+  "protocols": [
+    "cli-json",
+    "mcp-stdio"
+  ],
+  "redaction": {
+    "env": [
+      "AWS_SECRET_ACCESS_KEY",
+      "AWS_ACCESS_KEY_ID",
+      "AWS_SESSION_TOKEN"
+    ],
+    "fields": [
+      "authorization",
+      "cookie",
+      "set-cookie"
+    ]
+  },
+  "roe_ref": "roe:synthetic-range",
+  "safety_class": "R0",
   "schema": "specaudit.ctf.capability.manifest.v1",
   "schema_version": 1,
-  "capability_id": "fixture.range-observe",
+  "side_effects": [
+    "local-read"
+  ],
+  "synthetic_only": true,
   "tier": "research",
-  "kind": "range",
   "tool": {
     "name": "fixture-range",
     "version": "1.0.0"
-  },
-  "protocols": ["cli-json", "mcp-stdio"],
-  "safety_class": "R0",
-  "side_effects": ["local-read"],
-  "default_off": true,
-  "synthetic_only": true,
-  "authorized_scope": [
-    "file:///extension/range/tf_s3_public_access",
-    "file:///extension/range/tf_iam_open"
-  ],
-  "approval_ref": null,
-  "roe_ref": "roe:synthetic-range",
-  "budget": {
-    "timeout_ms": 60000,
-    "max_output_bytes": 1048576,
-    "max_tool_steps": 16,
-    "max_spend": null
-  },
-  "cleanup": {
-    "required": false,
-    "proof": "none"
-  },
-  "redaction": {
-    "fields": ["authorization", "cookie", "set-cookie"],
-    "env": ["AWS_SECRET_ACCESS_KEY", "AWS_ACCESS_KEY_ID", "AWS_SESSION_TOKEN"]
   }
 }

@@ -20,8 +20,6 @@ from extension.envelopes import RESULT_SCHEMA_ID, parse_execution_result
 from extension.range import (
     ARM_ACTION,
     DEFAULT_SEED,
-    FIXTURE_IAM_OPEN,
-    FIXTURE_S3_PUBLIC,
     SCHEMA_ID,
     run_range,
 )
@@ -38,9 +36,18 @@ MODE_B_FIELDS = {
     "exposure",
     "path",
     "impact",
+    "exposures",
+    "chains",
     "arms",
 }
-RANGE_SCHEMA_V2 = "range.lifecycle.v2"
+RANGE_SCHEMA_V3 = "range.lifecycle.v3"
+
+
+def _manifest_fixtures() -> set[str]:
+    manifest = json.loads(
+        (ROOT / "extension" / "range" / "manifest.json").read_text(encoding="utf-8")
+    )
+    return set(manifest["fixtures"])
 
 
 @pytest.fixture
@@ -64,15 +71,15 @@ def stub_sse() -> Any:
 
 
 def _assert_mode_b_loadable(document: dict[str, Any], *, status: str) -> None:
-    assert SCHEMA_ID == RANGE_SCHEMA_V2
-    assert document["schema"] == RANGE_SCHEMA_V2
+    assert SCHEMA_ID == RANGE_SCHEMA_V3
+    assert document["schema"] == RANGE_SCHEMA_V3
     assert document["live_aws"] is False
     assert document["status"] == status
     assert document["ok"] is (status == "complete")
     assert document["seed"] == DEFAULT_SEED
     assert set(document["coverage"]) == {"attempted", "complete", "skipped", "error"}
     by_id = {row["id"]: row for row in document["fixtures"]}
-    assert set(by_id) == {FIXTURE_S3_PUBLIC, FIXTURE_IAM_OPEN}
+    assert set(by_id) == _manifest_fixtures()
     for row in by_id.values():
         assert set(row) >= MODE_B_FIELDS
         assert row["ok"] is (row["status"] == "complete")
@@ -80,6 +87,8 @@ def _assert_mode_b_loadable(document: dict[str, Any], *, status: str) -> None:
         assert isinstance(row["exposure"], dict)
         assert isinstance(row["path"], list)
         assert isinstance(row["impact"], dict)
+        assert isinstance(row["exposures"], list)
+        assert isinstance(row["chains"], list)
         assert row["exposure"]["asset_id"]
         assert row["impact"]["asset_id"]
         assert row["path"]

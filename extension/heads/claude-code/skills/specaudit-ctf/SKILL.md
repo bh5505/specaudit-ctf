@@ -26,7 +26,7 @@ Use only the specaudit-ctf MCP tools `list`, `describe`, `invoke`, and
   `arm_ids: []` for lifecycle-only (may be `complete`). Non-empty
   `arm_ids` are required (skip/error → `failed`). Returns the same
   execution-result.v1 envelope as `python -m extension.range` — the
-  seed-stable `range.lifecycle.v2` document is inside the
+  seed-stable `range.lifecycle.v3` document is inside the
   range-report artifact digest; its `status` and `ok` are inner
   fields. JSON-RPC success is transport-only. No live cloud, no file
   writes.
