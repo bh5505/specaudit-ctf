@@ -83,7 +83,11 @@ respectively `bba9c526…8c94` (unchanged — same locked CPython input),
 sweep 7, the vuls.scan admission, and the stratus lifecycle admission
 with its review-binding follow-up — producer hashes only, closure
 unchanged at
-114 stdlib modules). A 5 s cold startup
+114 stdlib modules). Re-measured 2026-09-04 for the scenario range
+library (P1): the run_range tool text now names `range.lifecycle.v3`,
+so the tree digest is `1c5de457…f2b2` and the normalized archive
+`301dea3a…4591` (producer hashes only; closure still 99 producer files
+and 114 stdlib modules). A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
 by this producer. Re-measure before changing the platform or dependency lock.
