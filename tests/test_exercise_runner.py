@@ -102,6 +102,46 @@ def test_arms_lane_offline_success_and_refusal() -> None:
     assert document["status"] == "failed"
 
 
+def test_subset_report_cannot_upgrade_a_failed_full_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """If any excluded fixture mismatches, the run is failed — not hidden."""
+    import exercise.runner as runner_module
+
+    real_run_range = runner_module.run_range
+
+    def patched(*, extension, seed, arm_ids):
+        document = real_run_range(extension=extension, seed=seed, arm_ids=arm_ids)
+        document = dict(document)
+        # Ground truth failure on an EXCLUDED fixture: the subset itself
+        # is clean.
+        document["ok"] = False
+        document["status"] = "failed"
+        for row in document["fixtures"]:
+            if row["id"] == "tf_iam_open":
+                broken_row = dict(row)
+                broken_row["matched_expected"] = False
+                document["fixtures"] = [
+                    broken_row if item["id"] == "tf_iam_open" else item
+                    for item in document["fixtures"]
+                ]
+        return document
+
+    monkeypatch.setattr(runner_module, "run_range", patched)
+    document = run_exercise(fixtures=["tf_chain_ingress_role"])
+    assert document["range"]["full_status"] == "failed"
+    assert document["range"]["status"] == "failed"
+    assert document["status"] == "failed"
+    assert document["ok"] is False
+
+
+def test_arms_lane_non_mapping_request_is_failed_row() -> None:
+    document = run_exercise(arms=["not-a-mapping"])
+    assert document["arms"][0]["status"] == "failed"
+    assert "must be a mapping" in document["arms"][0]["reason"]
+    assert document["status"] == "failed"
+
+
 def test_head_lane_readiness_only() -> None:
     document = run_exercise(head="claude-code")
     assert document["head"]["ready"] is True

@@ -37,7 +37,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--expected", default=None, help="challenge expected-findings contract (requires --found)")
     parser.add_argument("--head", default=None, help="agent head to probe for readiness (claude-code | codex-cli)")
     parser.add_argument("--out", default=None, help="write the report JSON here as well; stdout always gets it")
-    parser.add_argument("--attempt-id", default=None, help=argparse.SUPPRESS)
     args = parser.parse_args(list(argv) if argv is not None else None)
 
     arms: list[dict[str, Any]] = []
@@ -54,7 +53,12 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
         arms = parsed_arms
 
-    fixtures = [item.strip() for item in args.fixtures.split(",")] if args.fixtures else None
+    fixtures = None
+    if args.fixtures is not None:
+        fixtures = [item.strip() for item in args.fixtures.split(",")]
+        if not fixtures or not all(fixtures):
+            print("exercise: --fixtures must name at least one fixture id", file=sys.stderr)
+            return 2
 
     try:
         document = run_exercise(

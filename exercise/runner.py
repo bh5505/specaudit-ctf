@@ -76,8 +76,14 @@ def run_exercise(
     range_matched = bool(reported_rows) and all(
         row["matched_expected"] is True for row in reported_rows
     )
+    reported_status = (
+        range_doc["status"] if fixtures is None else _subset_status(reported_rows)
+    )
     range_lane = {
-        "status": range_doc["status"] if fixtures is None else _subset_status(reported_rows),
+        "full_status": range_doc["status"],
+        # A subset report narrows what is listed; it never upgrades a
+        # failed full run.
+        "status": reported_status if range_doc["ok"] is True else STATUS_FAILED,
         "ok": range_matched,
         "fixtures": [row["id"] for row in reported_rows],
         "matched": range_matched,
@@ -107,6 +113,16 @@ def run_exercise(
 
     arms_lane: list[dict[str, Any]] = []
     for request in arms or ():
+        if not isinstance(request, Mapping):
+            arms_lane.append(
+                {
+                    "arm_id": "",
+                    "action": "",
+                    "status": STATUS_FAILED,
+                    "reason": "arm request must be a mapping",
+                }
+            )
+            continue
         arm_id = str(request.get("arm_id") or "")
         action = str(request.get("action") or "")
         args = request.get("args") or {}
@@ -122,7 +138,13 @@ def run_exercise(
             arms_lane.append(row)
             continue
         if outcome.envelope is None:
-            row.update(status=STATUS_FAILED, reason="pre-dispatch contract error")
+            row.update(
+                status=STATUS_FAILED,
+                reason=(
+                    "pre-dispatch contract error"
+                    + (f": {outcome.stderr_line}" if outcome.stderr_line else "")
+                ),
+            )
             arms_lane.append(row)
             continue
         parsed = parse_execution_result(outcome.envelope)
@@ -157,7 +179,12 @@ def run_exercise(
             "status": "available" if launcher.is_file() else "skipped",
         }
 
-    lanes_ok = [range_matched]
+    lanes_ok = [
+        range_matched,
+        # The full run must hold too: a subset report may narrow what is
+        # listed, never what must have matched.
+        range_doc["ok"] is True,
+    ]
     if grading_lane is not None:
         lanes_ok.append(grading_lane.get("passed") is True)
     arm_failures = [row for row in arms_lane if row["status"] == STATUS_FAILED]
@@ -167,8 +194,9 @@ def run_exercise(
     elif arm_failures:
         # A requested arm invocation that failed fails the run.
         status = STATUS_FAILED
-    elif not range_matched:
-        # The ground truth itself did not hold: nothing else matters.
+    elif not range_matched or range_doc["ok"] is not True:
+        # The ground truth itself did not hold (reported subset or the
+        # full run): nothing else matters.
         status = STATUS_FAILED
     elif grading_lane is not None and grading_lane.get("passed") is not True:
         # A graded challenge that did not pass is a failure, not a
