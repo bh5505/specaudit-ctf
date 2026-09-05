@@ -55,6 +55,7 @@ class InvokeProfile:
 _STATIC_POLICY_ARMS = (
     "agent-wiz",
     "ai-deep-sast",
+    "attack-stix-data",
     "dark-moon",
     "deepsec",
     "nmap",
@@ -73,6 +74,39 @@ def _policy_profile(arm_id: str, tier: str = "research") -> InvokeProfile:
     return InvokeProfile(
         arm_id=arm_id,
         action="list_tools",
+        capability_id=capability_id,
+        tool_name=PACKAGE_NAME,
+        tool_version=PACKAGE_VERSION,
+        authorized_scope=scope,
+        touched_scope=scope,
+        safety_class="R0",
+        side_effects=("local-read",),
+        timeout_ms=30_000,
+        max_output_bytes=1_048_576,
+        max_tool_steps=1,
+        max_spend=None,
+        cleanup_required=False,
+        approval_ref=None,
+        roe_ref=None,
+        tier=tier,
+    )
+
+
+def _local_read_profile(arm_id: str, action: str, tier: str = "research") -> InvokeProfile:
+    """Read admission for a first-party in-process local-file lookup.
+
+    Same grammar as the static policy arms (R0, local-read, default-off
+    in the validator sense, synthetic-only by construction), scoped per
+    action: the only touched surface is the caller-named local bundle
+    file, validated by the arm's egress gate (existing local file,
+    STIX suffix, size cap; URLs refused). There is no endpoint and no
+    subprocess.
+    """
+    capability_id = f"{arm_id}.{action}"
+    scope = (f"policy://extension/arms/{arm_id}",)
+    return InvokeProfile(
+        arm_id=arm_id,
+        action=action,
         capability_id=capability_id,
         tool_name=PACKAGE_NAME,
         tool_version=PACKAGE_VERSION,
@@ -331,6 +365,15 @@ INVOKE_PROFILES = {
         # handler-level (prefix allowlist + mutation keyword refusals)
         # until names are documentable.
         _remote_read_profile("prowler-mcp", "list_tools", "PROWLER_MCP_ENDPOINT"),
+        # attack-stix-data read admission (2026-09-04, P4): the offline
+        # ATT&CK knowledge reads over an operator-supplied local STIX
+        # bundle - exact technique/software/group lookups and bounded
+        # relationship reads. R0 local-read with no dispatch tier; the
+        # bundle path is caller data validated by the arm's egress gate.
+        *(
+            _local_read_profile("attack-stix-data", action)
+            for action in ("technique", "software", "group", "relationships")
+        ),
         # Metasploit read admission (2026-09-04): the exploit/payload/
         # session/listener listings over the operator-run loopback SSE server
         # (GH05TCREW MetasploitMCP). Execution tools stay an unadmitted

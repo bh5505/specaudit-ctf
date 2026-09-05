@@ -221,11 +221,11 @@ entries:
     notes: Finding-writeup knowledge bases covering ATT&CK, ATLAS, CWE, and CAPEC.
 
   - id: attack-stix-data
-    kind: methodology-only
-    protocols: [none]
-    curated: false
+    kind: arm
+    protocols: [cli]
+    curated: true
     tier: research
-    notes: Canonical ATT&CK corpus as STIX 2.1 collection bundles.
+    notes: Canonical ATT&CK corpus as STIX 2.1 collection bundles. Curated first-party read arm; exact lookups (technique by ATT&CK id or name, software/group by name or alias, bounded relationship reads with a closed type allowlist) over an operator-supplied local STIX bundle. A small verbatim demo sample ships as data under the arm (see its NOTICE; not maintained here). Pure in-process stdlib reader with no subprocess, no endpoint, no network on any tier, and no dispatch tier.
 
   - id: mitreattack-python
     kind: arm

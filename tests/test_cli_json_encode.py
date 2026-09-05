@@ -415,6 +415,15 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
                 else "operator://endpoint/GTI_MCP_ENDPOINT"
             )
             assert profile.approval_ref == expected_approval
+        elif profile.arm_id == "attack-stix-data":
+            # Local-read admission (2026-09-04): in-process first-party
+            # lookups over a caller-named local STIX bundle; no
+            # endpoint, no subprocess, no dispatch tier.
+            assert profile.safety_class == "R0"
+            assert profile.side_effects == ("local-read",)
+            assert profile.default_off is True
+            assert profile.synthetic_only is True
+            assert profile.approval_ref is None
         else:
             assert profile.action == "list_tools"
             assert profile.safety_class == "R0"
@@ -513,7 +522,7 @@ def test_range_encoder_spends_one_step_under_freeze_budget(
     no_curated_tools: None,
 ) -> None:
     inner = run_range()
-    assert len(inner["coverage"]["attempted"]) == 27
+    assert len(inner["coverage"]["attempted"]) == 28
     payload = encode_range_document(
         inner,
         started_at="2026-08-25T12:00:00Z",

@@ -503,6 +503,8 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.aideepsast import AiDeepSastArm
     from .arms.agentwiz import ARM_ID as AGENT_WIZ_ARM_ID
     from .arms.agentwiz import AgentWizArm
+    from .arms.attackstix import ARM_ID as ATTACK_STIX_ARM_ID
+    from .arms.attackstix import AttackStixArm
 
     return {
         BURP_ARM_ID: BurpArm(),
@@ -532,6 +534,7 @@ def _default_arms() -> dict[str, Transport]:
         VVAH_ARM_ID: VvahArm(),
         AI_DEEP_SAST_ARM_ID: AiDeepSastArm(),
         AGENT_WIZ_ARM_ID: AgentWizArm(),
+        ATTACK_STIX_ARM_ID: AttackStixArm(),
     }
 
 

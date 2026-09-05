@@ -86,9 +86,14 @@ unchanged at
 114 stdlib modules). Re-measured 2026-09-04 for the scenario range
 library (P1, including the review follow-up that grew the
 fixture.range-observe scope grant to all ten fixtures): the run_range
-tool text now names `range.lifecycle.v3`, so the tree digest is
-`469fed24…f22c` and the normalized archive `6bb157c3…253c` (producer
-hashes only; closure still 99 producer files and 114 stdlib modules). A 5 s cold startup
+tool text now names `range.lifecycle.v3`, tree `469fed24…f22c`,
+archive `6bb157c3…253c`. Re-measured again the same
+day for the attack-stix-data admission (P4): the traced producer
+closure grows to 103 files with the new arm package (+4 package
+modules; the demo bundle is caller data, not traced), so the tree
+digest is `7ea98c00…0d13` and the normalized archive `9b461432…a4dd` after
+the review follow-ups (fail-closed guards in the arm reader;
+closure still 103 producer files and 114 stdlib modules). A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
 by this producer. Re-measure before changing the platform or dependency lock.
@@ -97,7 +102,7 @@ by this producer. Re-measure before changing the platform or dependency lock.
 
 `lock.json` fixes input URLs, names, versions, sizes and SHA-256s, the ELF
 launcher digest, the full traced module/file closure with per-file SHA-256s,
-all 99 producer source files, license/metadata bytes, and the public
+all 103 producer source files, license/metadata bytes, and the public
 `agent-wiz.list_tools` capability-manifest bytes. The lock and runtime
 metadata stay outside the measured tree to avoid self-reference.
 

@@ -14,7 +14,7 @@
   A specialized handler is
   required; curated arms never ride a generic transport. `curated` is a
   deprecated compatibility flag and does not mean maintained.
-- **Legs / methodologies**: 19 methodology-only catalog rows
+- **Legs / methodologies**: 18 methodology-only catalog rows
   (curriculum, spec, teach-only). They are not adapters.
 - **Heads**: attach profiles for Claude Code CLI, Codex CLI, and
   other agent CLIs.
@@ -95,10 +95,14 @@ python -m extension invoke agent-wiz list_tools
   `attempt_id`, no artifact files).
 
 X2-PUB admits the explicit in-process `list_tools` profiles for
-`agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `pyrit`,
-`routersploit`, `sniper`, `vvah`, `zgrab2`, `nmap`, and
+`agent-wiz`, `ai-deep-sast`, `attack-stix-data`, `dark-moon`, `deepsec`,
+`pyrit`, `routersploit`, `sniper`, `vvah`, `zgrab2`, `nmap`, and
 `semgrep-mcp`. These profiles
-read static policy metadata and do not spawn the upstream binary. Every
+read static policy metadata and do not spawn the upstream binary. The
+`attack-stix-data` row additionally admits four R0 local-read lookups
+(`technique`, `software`, `group`, `relationships`) over an
+operator-supplied local STIX bundle — exact matches only, no
+enumeration, no network on any tier. Every
 other CLI invoke action is refused before `Extension.invoke` until it has
 authoritative per-action safety, scope, side-effect, budget, cleanup, and
 tool-version metadata.

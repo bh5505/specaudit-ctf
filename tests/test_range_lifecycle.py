@@ -418,20 +418,26 @@ def test_uninstalled_curated_arm_is_skipped_held_is_error(
         if entry.kind == CATALOG_KIND_ARM and entry.curated and entry.tier == "held"
     ]
     skipped_ids = [arm_id for arm_id in curated_ids if arm_id not in held_ids]
-    assert len(curated_ids) == 27
+    assert len(curated_ids) == 28
     assert CURATED_ARM_ID in curated_ids
     # Research tier since the doc-21 dossier (2026-09-03): no endpoint
     # configured, so the arm is skipped as not-installed like other
     # uninstalled curated arms - not a held error row.
     assert CURATED_ARM_ID in skipped_ids
     assert CURATED_ARM_ID not in held_ids
+    # attack-stix-data is a pure in-process arm: its handler is always
+    # installed, so the range's observe probe is an evaluated refusal
+    # (error row), not a skip. Every other curated arm stays skipped.
+    always_installed = "attack-stix-data"
+    skipped_ids = [arm_id for arm_id in skipped_ids if arm_id != always_installed]
+    error_ids = held_ids + [always_installed]
     # RED lock: matching lifecycle plus one unavailable auto-discovered
     # arm must not report complete / ok=true.
     _assert_v3_status(document, "degraded")
     assert document["coverage"]["attempted"] == curated_ids
     assert document["coverage"]["skipped"] == skipped_ids
     assert document["coverage"]["complete"] == []
-    assert document["coverage"]["error"] == held_ids
+    assert document["coverage"]["error"] == error_ids
     for row in document["fixtures"]:
         _assert_fixture_v3(row, "degraded")
         assert row["matched_expected"] is True
@@ -447,6 +453,9 @@ def test_uninstalled_curated_arm_is_skipped_held_is_error(
             # Catalog policy text must not be keyword-mangled ("token").
             assert "[redacted]" not in err
             assert "token passthrough" in err.lower()
+        observe_row = by_id[always_installed]
+        assert observe_row["status"] == "error"
+        assert "not on the allowlist" in (observe_row.get("error") or "")
 
 
 def test_held_reason_redacted_when_notes_leak_secrets() -> None:

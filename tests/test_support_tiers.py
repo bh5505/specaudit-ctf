@@ -91,8 +91,8 @@ def test_every_catalog_row_has_tier(entries: list[dict]) -> None:
 
 def test_kind_counts_preserved(entries: list[dict]) -> None:
     kinds = [row["kind"] for row in entries]
-    assert kinds.count("arm") == 27
-    assert kinds.count("methodology-only") == 19
+    assert kinds.count("arm") == 28
+    assert kinds.count("methodology-only") == 18
     assert len(entries) == 46
 
 
