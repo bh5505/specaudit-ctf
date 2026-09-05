@@ -1163,6 +1163,7 @@
         "extension/encode.py",
         "extension/envelopes.py",
         "extension/invoke_profiles.py",
+        "extension/trace.py",
         "extension/transports/__init__.py",
         "extension/transports/cli.py",
         "extension/transports/mcp.py"
@@ -1419,8 +1420,9 @@
     "extension/encode.py": "77baec5f112d896fac08117505b0861b9b8cd370d4aaf094447abb9c013721bd",
     "extension/envelopes.py": "e35fc42d6a18140f275d060447dfff3f8c6054a706b49d3c9d9798233c4d3fcd",
     "extension/invoke_profiles.py": "9c207bf3641b80729e7fe384e5f655899530db5fc2cf96d65d4337b214a95155",
-    "extension/mcp_server.py": "04452b666b00b82d5c3ed1312552110a0e3c21dc1da30deaebe4dddd19b51576",
+    "extension/mcp_server.py": "43b314dda1d0ebc41ca507b8b6583ce5c56a5c38c3739648b808128d604558cf",
     "extension/schema/execution-result.v1.schema.json": "b5a928b2481944cd3040057934208dcb913077f31e9b0fc2ed6ab83d48b245cc",
+    "extension/trace.py": "f196c1993cac8a02b09d42944ff17ffdb464e4b7d19408752534687dfbcc2d75",
     "extension/transports/__init__.py": "c5afd05b12fd804b399e5e8ba2f3e874288e3d30ac1ccc1633d7bb3ffe150722",
     "extension/transports/cli.py": "5401fca3f35701127f4091b803b05259f6c399278b0e0dc2d16c087d7c6cd536",
     "extension/transports/mcp.py": "fbf1ea760edf63c5e6a2b6f5447debf231ff8a26b4b79824e06cbcf8059969e2"
