@@ -55,6 +55,7 @@ from typing import Any, Mapping, Sequence, TextIO
 
 from .contract import Extension, ExtensionError
 from .dispatch import DispatchOutcome, dispatch_invoke, dispatch_range
+from . import trace as trace_module
 
 TOOLS = ("list", "describe", "invoke", "run_range")
 # Legacy-era initialize handshake, newest first. 2025-11-25 is the revision
@@ -273,10 +274,21 @@ class McpServer:
         """
         inn = stdin if stdin is not None else sys.stdin
         out = stdout if stdout is not None else sys.stdout
+        # Attempt-trace capture (agent-head lane): when the trace env is
+        # set the sink MUST be usable — serving unrecorded is the one
+        # failure mode this lane cannot survive, so an unusable sink
+        # refuses startup on stderr with a nonzero exit instead.
+        try:
+            sink = trace_module.maybe_sink()
+        except trace_module.TraceUnavailable as exc:
+            trace_module.refusal_line(str(exc))
+            return 1
         while True:
             try:
                 message = _read_message(inn)
             except EOFError:
+                if sink is not None:
+                    sink.close()
                 return 0
             except _ParseError as exc:
                 if not _write_parse_error(out, exc):
@@ -289,8 +301,12 @@ class McpServer:
             except OSError:
                 return 1
             if message is None:
+                if sink is not None:
+                    sink.close()
                 return 0
             response = self.handle(message)
+            if sink is not None:
+                sink.observe(message, response)
             if response is not None:
                 try:
                     _write_message(out, response)

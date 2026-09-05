@@ -16,9 +16,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         prog="exercise",
         description=(
             "Compose the synthetic range, optional challenge grading, "
-            "optional standalone arm invocations, and an optional agent-head "
-            "readiness probe into one consolidated run report. Everything is "
-            "synthetic; the report never claims success it cannot prove."
+            "optional standalone arm invocations, and the agent-head lane "
+            "(readiness probe, executed fake-head attempt, or out-of-band "
+            "attempt grading) into one consolidated run report. Everything "
+            "is synthetic; the report never claims success it cannot prove."
         ),
     )
     parser.add_argument("--challenge", default=None, help="challenge directory name recorded in the report")
@@ -36,6 +37,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--found", default=None, help="participant found-findings document (requires --expected)")
     parser.add_argument("--expected", default=None, help="challenge expected-findings contract (requires --found)")
     parser.add_argument("--head", default=None, help="agent head to probe for readiness (claude-code | codex-cli)")
+    parser.add_argument(
+        "--attempt-dir",
+        default=None,
+        help=(
+            "grade an attempt directory (server-captured trace.ndjson + "
+            "the agent's found.json) against --expected; the trace key "
+            "must be in SPECAUDIT_CTF_MCP_TRACE_KEY"
+        ),
+    )
+    parser.add_argument(
+        "--head-execute",
+        action="store_true",
+        help=(
+            "spawn the lane-internal fake head (requires --head fake, "
+            "--attempt-dir, --expected) and grade its attempt; real agent "
+            "CLIs are never spawned by the runner — run them out-of-band "
+            "and grade with --attempt-dir"
+        ),
+    )
     parser.add_argument("--out", default=None, help="write the report JSON here as well; stdout always gets it")
     args = parser.parse_args(list(argv) if argv is not None else None)
 
@@ -69,6 +89,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             found_path=args.found,
             expected_path=args.expected,
             head=args.head,
+            attempt_dir=args.attempt_dir,
+            head_execute=args.head_execute,
         )
     except ExerciseError as exc:
         print(f"exercise: {exc}", file=sys.stderr)

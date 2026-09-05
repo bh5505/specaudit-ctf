@@ -33,3 +33,16 @@ Do not add inventory, paging, or writeback tools on this process. If the other
 CLI already speaks MCP, point it at the same command used by Claude Code CLI
 and Codex CLI. If it already has a tool runner, wrap the three CLI
 subcommands plus `python -m extension.range`.
+
+## Headless attempt (exercise head lane)
+
+A validation client can play the same attempt game: set
+`SPECAUDIT_CTF_MCP_TRACE`, `SPECAUDIT_CTF_MCP_TRACE_KEY` (64 hex), and
+optionally `SPECAUDIT_CTF_MCP_TRACE_ATTEMPT` in the SERVER process's
+environment, attempt a challenge over the four tools, and write your
+findings to `<attempt-dir>/found.json`. The server writes the trace;
+`python -m exercise --attempt-dir <dir> --expected <contract>` grades
+the attempt from server-side evidence. The repo's own deterministic
+client is `python -m exercise.fake_head` (personas `competent`,
+`blind-zero`, `blind-irrelevant`) — use it as the reference for what a
+gradable attempt looks like.

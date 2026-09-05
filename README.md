@@ -246,6 +246,56 @@ Another agent CLI or a validation client can wrap the same three CLI
 subcommands, `python -m extension.range`, or the same stdio MCP
 process. This tree does not ship a third named head profile.
 
+### Headless attempts (the exercise head lane)
+
+An agent attempting a challenge is graded on SERVER-SIDE evidence,
+never on its self-report: the stdio MCP server is this repo's own
+process, and when the trace env is set it records every `tools/call`
+(tool, redacted bounded arguments, bounded result summary with
+`isError`) into an attempt trace — ndjson, HMAC-SHA256 digest-chained,
+closed on clean shutdown. The agent never writes the trace, and the
+key never sits beside it.
+
+Env (all three reach the MCP SERVER process — per head recipes below):
+
+| Variable | Meaning |
+|---|---|
+| `SPECAUDIT_CTF_MCP_TRACE` | trace file path (attempt dir; outside the clone) |
+| `SPECAUDIT_CTF_MCP_TRACE_KEY` | 64-hex chain key, grading side only |
+| `SPECAUDIT_CTF_MCP_TRACE_ATTEMPT` | optional 64-hex attempt id stamped in every record |
+
+Grading (`exercise/attempt.py`): the trace must verify (chain intact,
+close record present — a crashed or truncated attempt is never
+gradable) and must contain at least one `tools/call`; then the found
+document grades found-vs-expected as usual, and every hit is demoted
+to `unverified` unless the trace shows a successful call covering the
+finding's fixtures (a successful `run_range` covers the shipped
+roster; a successful `invoke` covers fixtures its arguments name;
+`list`/`describe` reconnaissance covers nothing). Passing requires
+zero unverified hits. This is a claim-without-evidence tripwire, not
+proof of investigative depth.
+
+Two ways to run the lane:
+
+```text
+# hermetic: the deterministic fake head (scripted stdio-MCP client)
+python -m exercise --head fake --head-execute \
+  --attempt-dir /tmp/attempt \
+  --expected challenges/<challenge>/artifacts/expected-findings.json
+
+# real head: run the agent CLI out-of-band against the attached server
+# (recipes in the head docs), drop its found.json into the attempt dir,
+# then grade — the runner never spawns agent CLIs itself
+python -m exercise --attempt-dir /tmp/attempt \
+  --expected challenges/<challenge>/artifacts/expected-findings.json
+```
+
+A failed attempt fails the exercise run (readiness probing stays
+non-gating). The fake head (`python -m exercise.fake_head`, personas
+`competent` / `blind-zero` / `blind-irrelevant`) is the lane's
+hermetic proof and regression harness: no agent CLI, no API keys, no
+spend.
+
 ## Range
 
 ```text
