@@ -49,6 +49,9 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         "commix.scan",
         "semgrep-mcp.semgrep_scan",
         "vuls.scan",
+        "stratus-red-team.warmup",
+        "stratus-red-team.detonate",
+        "stratus-red-team.revert",
     }
     admitted = {
         capability_id
@@ -80,6 +83,9 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         ("page-fetch.fetch", "PAGE_FETCH_DISPATCH_SCOPE", 60_000),
         ("commix.scan", "COMMIX_DISPATCH_SCOPE", 600_000),
         ("vuls.scan", "VULS_DISPATCH_SCOPE", 60_000),
+        ("stratus-red-team.warmup", "STRATUS_DISPATCH_SCOPE", 120_000),
+        ("stratus-red-team.detonate", "STRATUS_DISPATCH_SCOPE", 120_000),
+        ("stratus-red-team.revert", "STRATUS_DISPATCH_SCOPE", 120_000),
     ):
         wave = INVOKE_PROFILES[capability_id]
         assert wave.safety_class == "R1"
@@ -468,6 +474,65 @@ def test_commix_scan_armed_completes(
     assert outcome.envelope["capability_id"] == "commix.scan"
 
 
+def test_stratus_dispatch_unarmed_is_an_evaluated_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setenv(
+        "STRATUS_BIN",
+        str(_fake_binary(tmp_path, "print('x')", stem="stratus")),
+    )
+    monkeypatch.delenv("STRATUS_DISPATCH_SCOPE", raising=False)
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="stratus-red-team",
+        action="detonate",
+        args={"technique": "aws.exfiltration.s3"},
+    )
+    assert outcome.contract_error is None  # admitted capability
+    assert outcome.exit_code == 1
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "failed"
+    assert outcome.envelope["capability_id"] == "stratus-red-team.detonate"
+    assert outcome.envelope["safety_class"] == "R1"
+    assert "STRATUS_DISPATCH_SCOPE" in (outcome.stderr_line or "")
+    assert "stratus-red-team.detonate" in (outcome.stderr_line or "")
+
+
+def test_stratus_dispatch_armed_scope_binds_the_technique(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    body = (
+        "import json, sys\n"
+        "print(json.dumps({'argv': sys.argv[1:]}))\n"
+    )
+    monkeypatch.setenv("STRATUS_BIN", str(_fake_binary(tmp_path, body, stem="stratus")))
+    # The armed scope must literally name the technique id (review
+    # 2026-09-05 binding) — anything else is an evaluated failure.
+    monkeypatch.setenv("STRATUS_DISPATCH_SCOPE", "anything-at-all")
+    refused = dispatch_invoke(
+        Extension(),
+        arm_id="stratus-red-team",
+        action="detonate",
+        args={"technique": "aws.exfiltration.s3"},
+    )
+    assert refused.exit_code == 1
+    assert refused.envelope is not None
+    assert refused.envelope["status"] == "failed"
+    assert "outside the armed dispatch scope" in (refused.stderr_line or "")
+
+    monkeypatch.setenv("STRATUS_DISPATCH_SCOPE", "aws.exfiltration.s3")
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="stratus-red-team",
+        action="detonate",
+        args={"technique": "aws.exfiltration.s3"},
+    )
+    assert outcome.exit_code == 0
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "complete"
+    assert outcome.envelope["capability_id"] == "stratus-red-team.detonate"
+
+
 def test_dispatch_timeouts_mirror_arm_policy() -> None:
     # Admission metadata must not drift from arm reality: each dispatch
     # profile's timeout mirrors its arm's policy timeout (zaproxy uses
@@ -482,6 +547,8 @@ def test_dispatch_timeouts_mirror_arm_policy() -> None:
     from extension.arms.osmedeus.policy import TIMEOUT_SECONDS as OSM_T
     from extension.arms.pagefetch.policy import TIMEOUT_SECONDS as PF_T
     from extension.arms.commix.policy import TIMEOUT_SECONDS as COMMIX_T
+    from extension.arms.vuls.policy import TIMEOUT_SECONDS as VULS_T
+    from extension.arms.stratus.policy import TIMEOUT_SECONDS as STRATUS_T
 
     expected_ms = {
         "nmap.scan": NMAP_T,
@@ -495,6 +562,10 @@ def test_dispatch_timeouts_mirror_arm_policy() -> None:
         "osmedeus.scan": OSM_T,
         "page-fetch.fetch": PF_T,
         "commix.scan": COMMIX_T,
+        "vuls.scan": VULS_T,
+        "stratus-red-team.warmup": STRATUS_T,
+        "stratus-red-team.detonate": STRATUS_T,
+        "stratus-red-team.revert": STRATUS_T,
     }
     for capability_id, seconds in expected_ms.items():
         profile = INVOKE_PROFILES[capability_id]

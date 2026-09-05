@@ -47,13 +47,19 @@ _SPAWN_FUNCS = {"run", "Popen", "call", "check_call", "check_output"}
 def _spawn_calls(tree: ast.AST) -> list[tuple[ast.Call, str]]:
     """Every spawn call in a module: (call, label).
 
-    Matches subprocess.<func>(...) attribute calls AND bare <func>(...)
-    calls where <func> was imported from subprocess (the
+    Matches subprocess.<func>(...) attribute calls (including an
+    aliased module: `import subprocess as sp; sp.run(...)`) AND bare
+    <func>(...) calls where <func> was imported from subprocess (the
     `from subprocess import run` bypass).
     """
+    module_aliases = {"subprocess"}
     imported_names: set[str] = set()
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom) and node.module == "subprocess":
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "subprocess":
+                    module_aliases.add(alias.asname or "subprocess")
+        elif isinstance(node, ast.ImportFrom) and node.module == "subprocess":
             imported_names.update(
                 alias.asname or alias.name
                 for alias in node.names
@@ -68,7 +74,7 @@ def _spawn_calls(tree: ast.AST) -> list[tuple[ast.Call, str]]:
             isinstance(func, ast.Attribute)
             and func.attr in _SPAWN_FUNCS
             and isinstance(func.value, ast.Name)
-            and func.value.id == "subprocess"
+            and func.value.id in module_aliases
         ):
             calls.append((node, f"subprocess.{func.attr}"))
         elif isinstance(func, ast.Name) and func.id in imported_names:
@@ -399,7 +405,8 @@ def test_stratus_child_gets_empty_stdin(
 
     binary = _fake_binary(tmp_path, "stratus", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "aws-account-lab")
+    # The scope binds the technique id (2026-09-05 review follow-up).
+    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "aws.exfiltration.s3")
     stdin_text, argv = _stdin_and_argv(
         StratusArm().invoke(
             _spec("stratus-red-team"),

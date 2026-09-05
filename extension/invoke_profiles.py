@@ -248,6 +248,19 @@ _DISPATCH_PROFILES = (
     # what is scanned. Upstream reads stdin only behind an explicit
     # --pipe flag the fixed argv never passes (verified 2026-09-05).
     ("vuls", "scan", ("subprocess", "network-egress"), 60_000, "VULS_DISPATCH_SCOPE"),
+    # stratus-red-team warmup/detonate/revert (2026-09-05, normal
+    # recipe — off-roster per doc-20 §2): cloud-side attack-technique
+    # lifecycle. Spend truth: detonation acts on the OPERATOR'S OWN
+    # cloud account through stratus (real resources are created,
+    # modified, and cleaned up); STRATUS_DISPATCH_SCOPE binds the
+    # technique ID — the armed scope must literally name the technique
+    # being lifecycle-managed (equality under the same target_in_scope
+    # containment as host arms; technique ids parse as hostnames).
+    # Never run from the lab (no operator credentials are ever spent
+    # there); the demo notes are operator-gated by construction.
+    ("stratus-red-team", "warmup", ("subprocess", "network-egress"), 120_000, "STRATUS_DISPATCH_SCOPE"),
+    ("stratus-red-team", "detonate", ("subprocess", "network-egress"), 120_000, "STRATUS_DISPATCH_SCOPE"),
+    ("stratus-red-team", "revert", ("subprocess", "network-egress"), 120_000, "STRATUS_DISPATCH_SCOPE"),
     # semgrep-mcp (2026-09-03 CLI integration packet): the first-party
     # CLI is the primary surface; scan runs locally with an inline rule
     # pack (registry/URL configs refused, --metrics=off), so the spend

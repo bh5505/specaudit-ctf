@@ -70,9 +70,13 @@ class StratusArm:
             )
         scope = None
         if dispatch:
-            # Cloud techniques are not host targets; authorize on scope
-            # presence and audit the technique id itself.
-            scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, None)
+            # Bind the technique id into the scope gate: technique ids
+            # parse as hostnames, so the armed scope must literally
+            # name the technique being lifecycle-managed (equality
+            # under the same target_in_scope check as host arms —
+            # "arms the action, any technique" was rejected in review
+            # as stronger docs than the mechanism).
+            scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, target)
             if scope is None:
                 return Result(
                     ok=False,
