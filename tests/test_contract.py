@@ -381,9 +381,13 @@ def test_main_invoke_unmanifested_action_is_refused(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """CLI refuses actions outside the bounded read-only manifest."""
-    monkeypatch.setattr("extension.arms.checkov.arm.resolve_binary", lambda: None)
-    assert main(["invoke", RESEARCH_ARM_ID, "scan"]) == 2
+    """CLI refuses actions outside the bounded read-only manifest.
+
+    sniper.scan is the standing unadmitted example (the deliberate
+    doc-20 deferral): checkov.scan was admitted on 2026-09-05, so it
+    can no longer play this role."""
+    monkeypatch.setattr("extension.arms.sniper.arm.resolve_binary", lambda: None)
+    assert main(["invoke", "sniper", "scan"]) == 2
     err = capsys.readouterr().err
     assert "read-only manifest" in err.lower()
 
