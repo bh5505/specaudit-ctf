@@ -8,7 +8,7 @@ Steps:
 1. Call run_range with arm_ids [] to load the synthetic fixture roster and confirm the track's fixtures.
 2. Reason over the planted violations in the fixtures named below (the run_range report and describe give you the surface; use invoke on catalog reads where it helps your reasoning).
 3. Optionally invoke agent-wiz list_tools {} to confirm the maintained floor, and one curated arm of your choice to observe honest envelope behavior on a scanner-less host.
-4. Write your claimed findings as valid JSON (no prose outside it) to found.json, with this shape - fixtures list and the findings array filled per below:
+4. Write your claimed findings as valid JSON (no prose outside it, no markdown fences) to found.json, with this shape - fixtures list and the findings array filled per below. IMPORTANT: every string value must be a valid JSON string (escape or avoid embedded double quotes).
 
 {
   "track": "telecom-aws-06-chain-rehearsal",
