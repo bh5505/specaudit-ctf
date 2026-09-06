@@ -73,6 +73,6 @@ is the image's declared service set.
 - The three planted listeners are inert by construction; the checklist
   content is placeholder lab material. The exercise grades the audit
   lens, not exploit depth.
-- The reconciliation row is an absence-shaped finding (challenge-01
+- The reconciliation row is an absence-shaped finding (telecom-aws-01-reachability
   precedent): phrase what was NOT found (no undeclared listener) as an
   explicit verdict, never as silence.

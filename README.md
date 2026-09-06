@@ -16,13 +16,13 @@
   A specialized handler is
   required; curated arms never ride a generic transport. `curated` is a
   deprecated compatibility flag and does not mean maintained.
-- **Legs / methodologies**: 18 methodology-only catalog rows
+- **Legs / methodologies**: 19 methodology-only catalog rows
   (curriculum, spec, teach-only). They are not adapters.
 - **Heads**: attach profiles for Claude Code CLI, Codex CLI, and
   other agent CLIs.
 - **Range**: synthetic fixtures (`live_aws: false`). No live cloud.
 
-`extension/coverage.yaml` classifies the landscape survey (46 ids,
+`extension/coverage.yaml` classifies the landscape survey (47 ids,
 frozen order). It is a **survey map**, not a ship list: a row is not
 a promise that an adapter exists. Every row has a support tier
 (`research` | `experimental` | `maintained` | `held`). In this cut

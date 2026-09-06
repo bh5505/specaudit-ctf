@@ -1,8 +1,8 @@
 {
-  "approval_ref": "operator://dispatch-scope/ZGRAB2_DISPATCH_SCOPE",
+  "approval_ref": "operator://dispatch-scope/NMAP_DISPATCH_SCOPE",
   "artifacts": [
     {
-      "digest": "sha256:bad23b60d8d05be89d3ab3c312af7d794a31f1bff8e5df04fb887eb85264cd0d",
+      "digest": "sha256:5f4a699344b02c8abf8dc4675a96b4a148c93a344c3a48b11708eed1354d20cb",
       "kind": "policy-report",
       "redaction": "credentials-stripped"
     }
@@ -12,16 +12,16 @@
       "max_output_bytes": 1048576,
       "max_spend": null,
       "max_tool_steps": 1,
-      "timeout_ms": 60000
+      "timeout_ms": 180000
     },
     "spent": {
       "elapsed_ms": 0,
-      "output_bytes": 2834,
+      "output_bytes": 2823,
       "spend": 0,
       "tool_steps": 1
     }
   },
-  "capability_id": "zgrab2.scan",
+  "capability_id": "nmap.scan",
   "cleanup": {
     "proof_digest": null,
     "required": false,
@@ -29,19 +29,19 @@
   },
   "coverage": {
     "attempted": [
-      "zgrab2.scan"
+      "nmap.scan"
     ],
     "complete": [
-      "zgrab2.scan"
+      "nmap.scan"
     ],
     "failed": [],
     "required": [
-      "zgrab2.scan"
+      "nmap.scan"
     ],
     "skipped": [],
     "unsupported": []
   },
-  "finished_at": "2026-09-06T17:17:28Z",
+  "finished_at": "2026-09-06T17:17:27Z",
   "limitations": [],
   "roe_ref": "doc://README#dispatch-doctrine",
   "safety_class": "R1",
@@ -49,17 +49,17 @@
   "schema_version": 1,
   "scope": {
     "authorized": [
-      "policy://extension/arms/zgrab2"
+      "policy://extension/arms/nmap"
     ],
     "touched": [
-      "policy://extension/arms/zgrab2"
+      "policy://extension/arms/nmap"
     ]
   },
   "side_effects": [
     "subprocess",
     "network-egress"
   ],
-  "started_at": "2026-09-06T17:17:28Z",
+  "started_at": "2026-09-06T17:17:27Z",
   "status": "complete",
   "tool": {
     "name": "specaudit-ctf",

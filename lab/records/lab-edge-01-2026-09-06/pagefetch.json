@@ -15,7 +15,7 @@
       "timeout_ms": 60000
     },
     "spent": {
-      "elapsed_ms": 1000,
+      "elapsed_ms": 0,
       "output_bytes": 110,
       "spend": 0,
       "tool_steps": 1
@@ -41,7 +41,7 @@
     "skipped": [],
     "unsupported": []
   },
-  "finished_at": "2026-09-06T17:03:13Z",
+  "finished_at": "2026-09-06T17:17:28Z",
   "limitations": [],
   "roe_ref": "doc://README#dispatch-doctrine",
   "safety_class": "R1",
@@ -59,7 +59,7 @@
     "subprocess",
     "network-egress"
   ],
-  "started_at": "2026-09-06T17:03:12Z",
+  "started_at": "2026-09-06T17:17:28Z",
   "status": "complete",
   "tool": {
     "name": "specaudit-ctf",
