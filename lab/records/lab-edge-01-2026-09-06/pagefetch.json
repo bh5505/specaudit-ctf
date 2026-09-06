@@ -1,0 +1,69 @@
+{
+  "approval_ref": "operator://dispatch-scope/PAGE_FETCH_DISPATCH_SCOPE",
+  "artifacts": [
+    {
+      "digest": "sha256:e7b11c27e94e21622e36beeba77bd1b9f513a9fefe71af96ff33bf4b83adef34",
+      "kind": "policy-report",
+      "redaction": "credentials-stripped"
+    }
+  ],
+  "budget": {
+    "reserved": {
+      "max_output_bytes": 1048576,
+      "max_spend": null,
+      "max_tool_steps": 1,
+      "timeout_ms": 60000
+    },
+    "spent": {
+      "elapsed_ms": 1000,
+      "output_bytes": 110,
+      "spend": 0,
+      "tool_steps": 1
+    }
+  },
+  "capability_id": "page-fetch.fetch",
+  "cleanup": {
+    "proof_digest": null,
+    "required": false,
+    "residual": false
+  },
+  "coverage": {
+    "attempted": [
+      "page-fetch.fetch"
+    ],
+    "complete": [
+      "page-fetch.fetch"
+    ],
+    "failed": [],
+    "required": [
+      "page-fetch.fetch"
+    ],
+    "skipped": [],
+    "unsupported": []
+  },
+  "finished_at": "2026-09-06T17:03:13Z",
+  "limitations": [],
+  "roe_ref": "doc://README#dispatch-doctrine",
+  "safety_class": "R1",
+  "schema": "specaudit.ctf.execution-result.v1",
+  "schema_version": 1,
+  "scope": {
+    "authorized": [
+      "policy://extension/arms/page-fetch"
+    ],
+    "touched": [
+      "policy://extension/arms/page-fetch"
+    ]
+  },
+  "side_effects": [
+    "subprocess",
+    "network-egress"
+  ],
+  "started_at": "2026-09-06T17:03:12Z",
+  "status": "complete",
+  "tool": {
+    "name": "specaudit-ctf",
+    "version": "0.1.0"
+  },
+  "transport_ok": true
+}
