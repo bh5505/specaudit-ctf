@@ -24,6 +24,7 @@ EXPECTED_IDS = (
     "foundry",
     "codeguard",
     "vulnhunter",
+    "edge-device-posture",
     "defending-code",
     "mantis",
     "raptor",
