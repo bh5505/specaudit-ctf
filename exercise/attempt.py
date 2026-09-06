@@ -43,7 +43,6 @@ from extension.trace import (
 from score.grading import (
     GradingError,
     LANE_FIXTURE_BACKED,
-    LANE_LIVE_SERVICE,
     grade,
     load_findings_document,
 )

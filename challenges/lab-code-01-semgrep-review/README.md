@@ -54,6 +54,9 @@ design).
 
 - The planted credential is not real and the module is never
   executed; the exercise grades the review pass, not exploitation.
+- The example `eval(...)` rule is deliberately broad (any eval
+  anywhere); on real codebases scope it (e.g. `eval($X)` inside an
+  untrusted-input function) to keep the rule quiet.
 - An example rule pack shape (one rule per planted class, anchored to
   the constructs rather than the variable names):
 
