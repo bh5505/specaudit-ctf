@@ -1,0 +1,10 @@
+{
+  "track": "telecom-aws-05-logging-gaps",
+  "seed": null,
+  "fixtures": ["tf_cloudtrail_disabled", "tf_s3_no_access_logging"],
+  "total": 2,
+  "findings": [
+    {"finding_key": "demo-trail-disabled", "control": "detection: management trail coverage", "severity": "high", "rationale": "CloudTrail logging is explicitly stopped for the 'main' trail in the provided Terraform configuration.", "traces_to": "extension/range/tf_cloudtrail_disabled/input/main.tf, aws_cloudtrail.main (logging stopped)"},
+    {"finding_key": "demo-s3-access-logging-missing", "control": "detection: storage access logging", "severity": "medium", "rationale": "The S3 bucket 'audit_logs' lacks an associated aws_s3_bucket_logging resource to enable access logging.", "traces_to": "extension/range/tf_s3_no_access_logging/input/main.tf, aws_s3_bucket.audit_logs with no aws_s3_bucket_logging resource"}
+  ]
+}

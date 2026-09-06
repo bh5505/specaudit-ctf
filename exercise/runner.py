@@ -113,7 +113,13 @@ def run_exercise(
         elif head in HEAD_IDS:
             from .real_head import armed_cmd_for, load_prompt, RealHeadError
 
-            cmd = armed_cmd_for(head)
+            try:
+                cmd = armed_cmd_for(head)
+            except RealHeadError as exc:
+                # HEAD_IDS and the arming map drifting apart would
+                # otherwise escape as a traceback past the usage
+                # boundary; unreachable today, pinned by construction.
+                raise ExerciseError(str(exc)) from None
             armed_cmd = cmd
             if cmd is None:
                 from .real_head import ARMING_ENVS

@@ -564,6 +564,25 @@ def test_codex_preflight_rejects_a_non_table_server_block(
         real_head.codex_preflight()
 
 
+def test_runner_converts_preflight_failure_to_a_usage_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
+) -> None:
+    """The full CLI path: an armed codex with a bad host config exits
+    as `exercise: ...` (ExerciseError), never a traceback."""
+    monkeypatch.setenv(ARMING_ENVS["codex-cli"], "/usr/bin/codex")
+    config = tmp_path / "config.toml"
+    config.write_text('model = "x"\n', encoding="utf-8")
+    monkeypatch.setattr(real_head, "_codex_config_path", lambda: config)
+    with pytest.raises(ExerciseError, match="codex host config missing"):
+        run_exercise(
+            head="codex-cli",
+            head_execute=True,
+            attempt_dir=str(tmp_path / "attempt"),
+            expected_path="expected.json",
+            attempt_prompt=str(prompt_file),
+        )
+
+
 def test_run_exercise_end_to_end_with_a_stubbed_head(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
 ) -> None:

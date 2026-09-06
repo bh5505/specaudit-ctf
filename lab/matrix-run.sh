@@ -34,7 +34,7 @@ for requested in "${CHALLENGES[@]}"; do
     telecom-aws-02-iam-s3-misconfig|telecom-aws-03-iam-privesc|\
 telecom-aws-04-network-exposure|telecom-aws-05-logging-gaps|\
 telecom-aws-06-chain-rehearsal) ;;
-    *) echo "[matrix] unknown challenge id: $requested" >&2; exit 2 ;;
+    *) echo "[matrix] unknown challenge id: $requested" >&2; exit 2 ;;  # 2 = usage error
   esac
 done
 

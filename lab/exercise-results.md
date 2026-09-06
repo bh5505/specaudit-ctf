@@ -179,3 +179,23 @@ envelope — transport noise, never the evidence), and
 `lab/records/claude-first-prompt.txt` (the trace key and the
 mcp-config stay on the lab host; a byte-level key-leak check ran on
 every committed artifact).
+
+---
+
+# 2026-09-06 — the head matrix: 4 head instances x 5 graded challenges, 20/20 through the runner
+
+The runner-driven head matrix (comparative report:
+[`lab/records/matrix-2026-09-06.md`](records/matrix-2026-09-06.md)):
+claude-code 2.1.261 and codex-cli 0.153.4 on both WSL lab hosts
+(kali-linux and Ubuntu — codex was replicated onto Ubuntu this
+session from the kali setup: standalone musl binary, abliteration
+provider, env-key auth, `env_vars` allowlist), each sweep driven by
+`lab/matrix-run.sh` — one runner command per cell, zero hand-held
+steps. Every cell passed: chain verified, close record present,
+claims fully verified, full scores; the flagship four-stage
+challenge 06 is the centerpiece row. All sweeps ran branch commit
+`c6622be`; per-cell `report.json` files are committed under
+`lab/records/matrix-2026-09-06/`. Honest failure on record: the
+pre-matrix smoke cell failed gradably (a head copied quote-baiting
+prompt hints into invalid JSON; grader refused; prompt fixed and
+pinned) — the failure taxonomy is part of the report.

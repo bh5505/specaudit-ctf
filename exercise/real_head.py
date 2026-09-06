@@ -223,8 +223,12 @@ def _write_claude_mcp_config(
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
     except OSError as exc:
-        # A partial write must not leave key material behind.
-        config_path.unlink(missing_ok=True)
+        # A partial write must not leave key material behind; a
+        # hostile filesystem must not mask the RealHeadError below.
+        try:
+            config_path.unlink(missing_ok=True)
+        except OSError:
+            pass
         raise RealHeadError(
             f"cannot write the private mcp-config into {directory}: {exc}"
         ) from None
