@@ -166,15 +166,27 @@ def test_every_contract_finding_parses_to_coverable_fixtures() -> None:
 
     roster = range_fixture_ids()
     contracts = sorted((ROOT / "challenges").glob("*/artifacts/*expected*.json"))
-    assert len(contracts) == 13, "the challenge library grew — keep this pin honest"
+    # 15 since the emulation-listing lanes (2026-09-06): caldera
+    # stockpile-catalog listings and metasploit module-catalog
+    # listings over locally-run first-party servers.
+    assert len(contracts) == 15, "the challenge library grew — keep this pin honest"
     for contract in contracts:
         document = json.loads(contract.read_text(encoding="utf-8"))
         live = document.get("lane") == "live-service"
+        declared = [str(item) for item in document.get("fixtures", [])]
         for finding in document["findings"]:
             if live:
-                assert "lab/target/" in finding["traces_to"], (
+                # Live findings trace into the planted lab-target content,
+                # or into the planted/shipped content the contract itself
+                # declares (a locally-run service's own shipped catalog —
+                # the emulation-listing lanes; 2026-09-06).
+                traced = "lab/target/" in finding["traces_to"] or any(
+                    item in finding["traces_to"] for item in declared
+                )
+                assert traced, (
                     f"{contract.name}:{finding['finding_key']} live finding "
-                    "does not trace to planted target content"
+                    "does not trace to planted target content or a "
+                    "contract-declared fixture"
                 )
             else:
                 named = fixtures_named(finding["traces_to"], roster)

@@ -1,0 +1,32 @@
+{
+  "track": "lab-emu-02-msf-listings",
+  "lane": "live-service",
+  "seed": 123,
+  "fixtures": [
+    "metasploit framework module catalog (Kali metasploit-framework package)"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-emu-msf-module-catalog-enumerable",
+      "control": "exploitation framework: module-catalog enumeration by authenticated clients",
+      "severity": "low",
+      "rationale": "The framework's RPC daemon hands the full exploit and payload module catalog to any client holding the RPC credential in listing calls - the enumeration surface for whoever holds the lab credential.",
+      "traces_to": "metasploit framework module catalog (Kali metasploit-framework package), listed via list_exploits/list_payloads over the loopback msfrpcd bridge"
+    },
+    {
+      "finding_key": "demo-emu-msf-no-active-sessions",
+      "control": "exploitation framework: active session population",
+      "severity": "none",
+      "rationale": "Absence-shaped verdict: the fresh lab bridge reports no active sessions - nothing on the lab network is currently under framework control.",
+      "traces_to": "metasploit framework module catalog (Kali metasploit-framework package), empty list_active_sessions result over the loopback msfrpcd bridge"
+    },
+    {
+      "finding_key": "demo-emu-msf-no-listeners",
+      "control": "exploitation framework: listener population",
+      "severity": "none",
+      "rationale": "Absence-shaped verdict: the fresh lab bridge reports no listeners - no handler is awaiting callback connections.",
+      "traces_to": "metasploit framework module catalog (Kali metasploit-framework package), empty list_listeners result over the loopback msfrpcd bridge"
+    }
+  ]
+}
