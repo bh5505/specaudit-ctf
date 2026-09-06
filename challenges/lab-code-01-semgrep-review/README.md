@@ -72,8 +72,7 @@ rules:
     languages: [python]
     severity: ERROR
     message: untrusted input interpolated into a shell command
-    patterns:
-      - pattern: subprocess.run([...,"sh","-c",$F"..."], ...)
+    pattern: subprocess.run([...,"sh","-c",f"...{$X}"], ...)
   - id: eval-input
     languages: [python]
     severity: ERROR
