@@ -1,0 +1,129 @@
+{
+  "arms": [],
+  "battery": [],
+  "challenge": "telecom-aws-01-reachability",
+  "grading": null,
+  "head": {
+    "attempt_dir": "/tmp/matrix3/claude-ubuntu/telecom-aws-01-reachability/attempt",
+    "claimed": 3,
+    "grade": {
+      "expected_total": 3,
+      "extras": [],
+      "hits": [
+        "demo-s3-no-encryption",
+        "demo-s3-no-public-access-block",
+        "demo-s3-public-read-acl"
+      ],
+      "invalid": [],
+      "misses": [],
+      "passed": true,
+      "schema": "specaudit.ctf.grade.v1",
+      "score": 1.0,
+      "severity_mismatches": [],
+      "track": "telecom-aws-01-reachability",
+      "track_match": true
+    },
+    "head": "claude-code",
+    "mode": "executed",
+    "passed": true,
+    "roster": [
+      "tf_s3_public_access",
+      "tf_iam_open",
+      "tf_iam_assume_role",
+      "tf_iam_external_trust",
+      "tf_sg_open_ingress",
+      "tf_cloudtrail_disabled",
+      "tf_s3_no_access_logging",
+      "tf_s3_policy_blocked_trap",
+      "tf_s3_unencrypted",
+      "tf_chain_ingress_role"
+    ],
+    "schema": "specaudit.ctf.attempt.v1",
+    "spawn": {
+      "argv": [
+        "/root/.local/bin/claude",
+        "-p",
+        "<prompt sha256:540240b3ed511b0021b5782e541b484bfe8cd78a1555357c58726c1383778121>",
+        "--output-format",
+        "json",
+        "--max-turns",
+        "40",
+        "--allowedTools",
+        "mcp__specaudit-ctf__*",
+        "Write",
+        "--mcp-config",
+        "/tmp/matrix3/claude-ubuntu/telecom-aws-01-reachability/attempt/mcp-config.json",
+        "--strict-mcp-config"
+      ],
+      "duration_s": 6.6,
+      "exit_code": 0,
+      "mcp": {
+        "kind": "temp-mcp-config",
+        "sha256": "4422cdc1d4eab407e4269a89ce1c41109f34ad9e53a0b067122e589634a2002f"
+      },
+      "prompt_chars": 2636,
+      "prompt_sha256": "540240b3ed511b0021b5782e541b484bfe8cd78a1555357c58726c1383778121",
+      "timeout_s": 900
+    },
+    "status": "passed",
+    "tool_calls": 1,
+    "touched_fixtures": [
+      "tf_chain_ingress_role",
+      "tf_cloudtrail_disabled",
+      "tf_iam_assume_role",
+      "tf_iam_external_trust",
+      "tf_iam_open",
+      "tf_s3_no_access_logging",
+      "tf_s3_policy_blocked_trap",
+      "tf_s3_public_access",
+      "tf_s3_unencrypted",
+      "tf_sg_open_ingress"
+    ],
+    "trace": {
+      "attempt_id": "a666adcae37e797fa427ce595c6563d5b31d051e9abca6e66ef24c40254d774d",
+      "chain_ok": true,
+      "close_ok": true,
+      "reasons": [],
+      "records": 2,
+      "tool_calls": 1
+    },
+    "unverified": [],
+    "verified": [
+      "demo-s3-no-encryption",
+      "demo-s3-no-public-access-block",
+      "demo-s3-public-read-acl"
+    ]
+  },
+  "live_aws": false,
+  "ok": true,
+  "range": {
+    "chains": [
+      {
+        "ingress_asset": "sg-jump",
+        "kind": "internet_to_identity",
+        "role_asset": "role-escalate",
+        "summary": "Internet-reachable ingress on demo-jump-sg chains into assumable role demo-escalation-role"
+      }
+    ],
+    "fixtures": [
+      "tf_s3_public_access",
+      "tf_iam_open",
+      "tf_iam_assume_role",
+      "tf_iam_external_trust",
+      "tf_sg_open_ingress",
+      "tf_cloudtrail_disabled",
+      "tf_s3_no_access_logging",
+      "tf_s3_policy_blocked_trap",
+      "tf_s3_unencrypted",
+      "tf_chain_ingress_role"
+    ],
+    "full_status": "complete",
+    "matched": true,
+    "ok": true,
+    "status": "complete"
+  },
+  "schema": "exercise.run.v1",
+  "seed": null,
+  "status": "complete",
+  "summary": "exercise complete; range complete (10 fixtures); head passed"
+}
