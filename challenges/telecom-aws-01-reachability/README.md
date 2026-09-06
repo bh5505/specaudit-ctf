@@ -72,9 +72,10 @@ Work through the objectives in order. Each ends in a concrete artifact.
    setting on the bucket, the absence of an
    `aws_s3_bucket_public_access_block` resource that would override
    any ACL, and the absence of server-side encryption configuration.
-   Produce `findings.json`: one entry per planted violation, each with
-   `finding_key`, a one-sentence exposure statement, and the exact HCL
-   lines (or absence) it traces to.
+   Produce `findings.json` in the graded findings schema: one entry
+   per planted violation, each with `finding_key`, `control`,
+   `severity`, a one-sentence `rationale`, and the exact HCL lines
+   (or explicit absence) it traces to in `traces_to`.
 
 5. **Produce the deliverable set.**
    From the same run, emit:
@@ -84,6 +85,24 @@ Work through the objectives in order. Each ends in a concrete artifact.
      findings as `results[].ruleId` / `results[].message`.
    Every finding must map to exactly one planted violation; every
    planted violation must appear at least once.
+
+## Graded lane
+
+The challenge ships an expected-findings contract
+(`artifacts/expected-findings.json`) authored from exactly the planted
+violations objective 4 describes — nothing invented. Grade your
+`findings.json` (the found document) against it:
+
+```
+python -m score --grade findings.json --expected artifacts/expected-findings.json
+```
+
+The verdict passes only on exact coverage with owned evidence, the
+same doctrine every graded challenge runs under. In the agent-head
+matrix this track is a normal graded cell (`lab/prompts/
+challenge-01-reachability.txt` is its canonical attempt prompt); the
+earlier `not-gradable-by-design` record is superseded by this
+contract.
 
 6. **(Optional, agent-head attachment.)** If you have an agent CLI that
    speaks stdio MCP, start this repository's server

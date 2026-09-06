@@ -38,7 +38,7 @@ data that cannot lie to you.
 
 ## Grading
 
-Challenges 03–06 ship an expected-findings contract
+Every challenge in this family ships an expected-findings contract
 (`artifacts/expected-findings.json`; challenge 06 adds per-stage
 contracts). Grade yourself:
 

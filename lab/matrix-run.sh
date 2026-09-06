@@ -6,10 +6,9 @@
 #   EXERCISE_HEAD_CLAUDE_CODE_CMD=/root/.local/bin/claude \
 #   lab/matrix-run.sh claude-code /tmp/matrix/claude-kali
 #
-# The graded cell list is the five challenges that ship findings
-# contracts (challenge 01 is not-gradable-by-design - see
-# lab/prompts/README.md). A cell that fails is RECORDED, not fatal:
-# the comparative matrix report reads every report.json.
+# The graded cell list is the six challenges that ship findings
+# contracts. A cell that fails is RECORDED, not fatal: the
+# comparative matrix report reads every report.json.
 set -uo pipefail
 
 HEAD="${1:?usage: matrix-run.sh <head-id> <out-dir> [challenge ...]}"
@@ -18,6 +17,7 @@ shift 2
 CHALLENGES=("$@")
 if [ ${#CHALLENGES[@]} -eq 0 ]; then
   CHALLENGES=(
+    telecom-aws-01-reachability
     telecom-aws-02-iam-s3-misconfig
     telecom-aws-03-iam-privesc
     telecom-aws-04-network-exposure
@@ -31,9 +31,9 @@ PY="${PYTHON:-python3}"
 # the shipped ids (no path games in cell/prompt/expected derivation).
 for requested in "${CHALLENGES[@]}"; do
   case "$requested" in
-    telecom-aws-02-iam-s3-misconfig|telecom-aws-03-iam-privesc|\
-telecom-aws-04-network-exposure|telecom-aws-05-logging-gaps|\
-telecom-aws-06-chain-rehearsal) ;;
+    telecom-aws-01-reachability|telecom-aws-02-iam-s3-misconfig|\
+telecom-aws-03-iam-privesc|telecom-aws-04-network-exposure|\
+telecom-aws-05-logging-gaps|telecom-aws-06-chain-rehearsal) ;;
     *) echo "[matrix] unknown challenge id: $requested" >&2; exit 2 ;;  # 2 = usage error
   esac
 done

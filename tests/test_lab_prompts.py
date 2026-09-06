@@ -17,6 +17,7 @@ import pytest
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "lab" / "prompts"
 CHALLENGES = {
+    "telecom-aws-01-reachability": "challenge-01-reachability.txt",
     "telecom-aws-02-iam-s3-misconfig": "challenge-02-iam-s3-misconfig.txt",
     "telecom-aws-03-iam-privesc": "challenge-03-iam-privesc.txt",
     "telecom-aws-04-network-exposure": "challenge-04-network-exposure.txt",
@@ -49,7 +50,20 @@ def test_prompt_hint_lines_carry_balanced_quotes(name: str) -> None:
             assert line.count('"') % 2 == 0, f"unbalanced quotes bait JSON breakage: {line}"
 
 
-def test_challenge_01_has_no_prompt_by_design() -> None:
-    assert not (PROMPTS_DIR / "challenge-01-reachability.txt").exists()
-    readme = (PROMPTS_DIR / "README.md").read_text(encoding="utf-8")
-    assert "not-gradable-by-design" in readme
+def test_contract_finding_keys_are_quote_free() -> None:
+    """finding_key is the mechanically matched string and the one a
+    head must copy exactly; embedded double quotes there would bait
+    the same JSON breakage the prompt pins guard against. Prose fields
+    (rationale, traces_to) are head-rephrased, so prose quotes in the
+    CONTRACT are not copy bait — the prompt-level pins own that line."""
+    for track in CHALLENGES:
+        contract = json.loads(
+            (
+                Path(__file__).resolve().parent.parent
+                / "challenges" / track / "artifacts" / "expected-findings.json"
+            ).read_text(encoding="utf-8")
+        )
+        for finding in contract["findings"]:
+            assert '"' not in finding["finding_key"], (
+                f"{track}/{finding['finding_key']} embeds a quote"
+            )

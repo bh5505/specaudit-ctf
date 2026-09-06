@@ -1,0 +1,31 @@
+{
+  "track": "telecom-aws-01-reachability",
+  "seed": 123,
+  "fixtures": [
+    "tf_s3_public_access"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-s3-public-read-acl",
+      "control": "storage exposure: public ACL grant",
+      "severity": "high",
+      "rationale": "The bucket carries a public-read ACL, so every object in demo-public-bucket is readable by unauthenticated parties and the bucket is effectively internet-reachable storage.",
+      "traces_to": "extension/range/tf_s3_public_access/input/main.tf, aws_s3_bucket.public_bucket, acl attribute set to public-read"
+    },
+    {
+      "finding_key": "demo-s3-no-public-access-block",
+      "control": "storage exposure: account-level public guard absent",
+      "severity": "high",
+      "rationale": "The file defines no aws_s3_bucket_public_access_block resource, so nothing at the account or bucket level overrides or contains the planted public ACL.",
+      "traces_to": "extension/range/tf_s3_public_access/input/main.tf, absent aws_s3_bucket_public_access_block resource (the file plants the absence)"
+    },
+    {
+      "finding_key": "demo-s3-no-encryption",
+      "control": "data protection: encryption at rest absent",
+      "severity": "medium",
+      "rationale": "The bucket defines no server-side encryption configuration, so objects persist unencrypted and the exposure compounds from readable to readable-and-plaintext.",
+      "traces_to": "extension/range/tf_s3_public_access/input/main.tf, absent server-side encryption configuration for aws_s3_bucket.public_bucket (the file plants the absence)"
+    }
+  ]
+}
