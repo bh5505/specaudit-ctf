@@ -1,0 +1,37 @@
+{
+  "track": "lab-emu-01-caldera-listings",
+  "lane": "live-service",
+  "seed": 123,
+  "fixtures": ["caldera stockpile catalog (abilities + adversary profiles, apache/caldera plugins/stockpile, v5.3.0)"],
+  "total": 4,
+  "findings": [
+    {
+      "finding_key": "demo-emu-caldera-adversary-catalog-exposed",
+      "control": "emulation server: adversary-profile catalog exposure to authenticated readers",
+      "severity": "low",
+      "rationale": "The emulation server hands its shipped adversary-profile catalog - pre-composed attack chains - to any holder of the red API key in a single authenticated listing call.",
+      "traces_to": "caldera stockpile catalog (abilities + adversary profiles, apache/caldera plugins/stockpile, v5.3.0), adversary profiles listed via GET /api/v2/adversaries"
+    },
+    {
+      "finding_key": "demo-emu-caldera-default-red-key",
+      "control": "emulation server: default administrative credential posture",
+      "severity": "high",
+      "rationale": "The shipped default configuration authenticates the red API with the documented default value ADMIN123 - unrotated installs leave the emulation plane open.",
+      "traces_to": "caldera stockpile catalog (abilities + adversary profiles, apache/caldera plugins/stockpile, v5.3.0) — conf/default.yml api_key_red as shipped"
+    },
+    {
+      "finding_key": "demo-emu-caldera-unauthenticated-refused",
+      "control": "emulation server: unauthenticated listing access",
+      "severity": "none",
+      "rationale": "Access-control attestation: listing endpoints refuse a wrong API key with HTTP 401.",
+      "traces_to": "caldera stockpile catalog (abilities + adversary profiles, apache/caldera plugins/stockpile, v5.3.0), 401 observed on GET /api/v2/agents with a wrong key"
+    },
+    {
+      "finding_key": "demo-emu-caldera-no-agents-enrolled",
+      "control": "emulation server: enrolled-agent population",
+      "severity": "none",
+      "rationale": "Absence-shaped verdict: the fresh lab server has no agents enrolled (empty listing).",
+      "traces_to": "caldera stockpile catalog (abilities + adversary profiles, apache/caldera plugins/stockpile, v5.3.0), empty GET /api/v2/agents listing"
+    }
+  ]
+}

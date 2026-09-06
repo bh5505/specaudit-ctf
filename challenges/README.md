@@ -25,6 +25,8 @@ fixture ground truth does not.
 | `lab-net-01-service-discovery/` | Network service-discovery live rehearsal | lab target (`lab/target/start-services.sh` planted services) |
 | `lab-knowledge-01-attack-mapping/` | AI/knowledge ATT&CK mapping rehearsal | `tf_s3_public_access`, `tf_cloudtrail_disabled`, `tf_iam_open` |
 | `lab-edge-01-device-posture/` | Edge-device posture live rehearsal | lab target (`lab/target/` planted device surface) |
+| `lab-emu-01-caldera-listings/` | Adversary-emulation listing live rehearsal | caldera stockpile ability catalog (shipped data, v5.3.0) |
+| `lab-emu-02-msf-listings/` | Exploitation-framework listing live rehearsal | metasploit framework module catalog (Kali package) |
 
 Start with `telecom-aws-01-reachability/`; each challenge assumes the
 skills of its predecessors. Challenge 06 is the flagship: four graded

@@ -212,8 +212,15 @@ def test_shipped_challenge_contracts_are_valid() -> None:
                 assert str(row[key]).strip(), (path, row["finding_key"], key)
             if document["lane"] == "live-service":
                 # Live-service findings trace into the planted lab-target
-                # content instead of the synthetic fixture tree.
-                assert "lab/target/" in row["traces_to"], (path, row["finding_key"])
+                # content instead of the synthetic fixture tree — or into
+                # the planted/shipped content the contract itself declares
+                # (a locally-run service's own shipped catalog; 2026-09-06).
+                declared = [str(item) for item in document.get("fixtures", [])]
+                traced = "lab/target/" in row["traces_to"] or any(
+                    len(item.strip()) >= 8 and item.strip() in row["traces_to"]
+                    for item in declared
+                )
+                assert traced, (path, row["finding_key"])
             else:
                 # Every expected finding traces into the synthetic fixture tree.
                 assert "extension/range/" in row["traces_to"] or "tf_" in row["traces_to"], (
