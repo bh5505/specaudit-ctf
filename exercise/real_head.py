@@ -26,6 +26,11 @@ differs per CLI in a load-bearing way:
   ``env_vars`` naming all three trace vars) and exports the vars into
   the child env. A missing allowlist fails closed BEFORE the spawn —
   a zero-call trace must never masquerade as an agent failure.
+- qwen-code (gemini-lineage) rides the claude-shaped transport: the
+  same PRIVATE ``--mcp-config`` (same shared launcher, per-server
+  ``env`` map, same deletion discipline) with no child-env mutation,
+  driving the CLI's documented one-shot positional prompt under
+  ``--yolo`` with the four MCP tools plus ``write_file`` allowlisted.
 
 Evidence stays server-side: the spawn is context, never proof; the
 attempt grades through the same ``grade_attempt`` chain as the fake
@@ -61,7 +66,7 @@ TRACE_VARS = (
 )
 
 # Per-head arming envs. Presence (non-blank) arms that head only;
-# absence of both is the mode's kill-switch.
+# absence of all three is the mode's kill-switch.
 ARMING_ENVS = {
     "claude-code": "EXERCISE_HEAD_CLAUDE_CODE_CMD",
     "codex-cli": "EXERCISE_HEAD_CODEX_CLI_CMD",

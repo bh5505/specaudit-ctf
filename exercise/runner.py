@@ -87,7 +87,8 @@ def run_exercise(
       (``claude-code`` / ``codex-cli`` / ``qwen-code``) it spawns the named agent CLI
       headless — but only when the operator armed that head on this
       host (``EXERCISE_HEAD_CLAUDE_CODE_CMD`` /
-      ``EXERCISE_HEAD_CODEX_CLI_CMD``, wired per CLI by
+      ``EXERCISE_HEAD_CODEX_CLI_CMD`` /
+      ``EXERCISE_HEAD_QWEN_CODE_CMD``, wired per CLI by
       ``exercise/real_head.py``) and supplied ``--attempt-prompt``.
       Unarmed hosts refuse exactly as before: the fake head is the
       only driver in CI and hermetic tests. Either way the captured

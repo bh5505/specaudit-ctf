@@ -51,7 +51,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "agent head: claude-code | codex-cli | qwen-code for readiness probing; "
             "under --head-execute: 'fake' (the lane-internal scripted "
             "head) or a REAL head armed on this host via "
-            "EXERCISE_HEAD_CLAUDE_CODE_CMD / EXERCISE_HEAD_CODEX_CLI_CMD"
+            "EXERCISE_HEAD_CLAUDE_CODE_CMD / EXERCISE_HEAD_CODEX_CLI_CMD / "
+            "EXERCISE_HEAD_QWEN_CODE_CMD"
         ),
     )
     parser.add_argument(
