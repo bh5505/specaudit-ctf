@@ -43,7 +43,12 @@ _FINDING_KEYS = ("finding_key", "control", "severity", "rationale", "traces_to")
 # can honestly name).
 LANE_FIXTURE_BACKED = "fixture-backed"
 LANE_LIVE_SERVICE = "live-service"
-_LANES = (LANE_FIXTURE_BACKED, LANE_LIVE_SERVICE)
+# Static planted artifacts inside the challenge itself (e.g. the
+# semgrep code-review lane's vulnerable file), graded standalone with
+# the runner's arms lane recording the scans; like live-service, the
+# attempt lane refuses it (no run_range fixture to cover).
+LANE_PLANTED_CODE = "planted-code"
+_LANES = (LANE_FIXTURE_BACKED, LANE_LIVE_SERVICE, LANE_PLANTED_CODE)
 
 
 class GradingError(ValueError):
