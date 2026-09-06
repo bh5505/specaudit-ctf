@@ -6,8 +6,9 @@
   held set closed 2026-09-04; the tier remains enforced for any
   future held row); the burp-mcp, google-mcp-security, semgrep-mcp,
   prowler-mcp, and metasploit-mcp rows are research integrations on
-  the hardened transport or the first-party CLI (prowler: discovery
-  admitted, reads handler-level; metasploit: listing reads admitted,
+  the hardened transport or the first-party CLI (prowler: exact-name
+  read admissions over the union endpoint policy - 43 source-pinned
+  reads, mutating tools exactly blocked; metasploit: listing reads admitted,
   execution tools admitted as R1 network-egress dispatch profiles
   behind METASPLOIT_DISPATCH_SCOPE); remaining
   arm rows are research except the agent-wiz read tier
@@ -165,9 +166,12 @@ and `metasploit-mcp` (listing reads over the operator-run loopback
 SSE server; execution tools admitted as R1 network-egress dispatch
 profiles behind METASPLOIT_DISPATCH_SCOPE)
 are admitted research integrations invocable through CLI/MCP `invoke`;
-`prowler-mcp` is research with discovery admitted (`list_tools` over
-the operator-configured https endpoint) - its read tools stay handler-level until upstream
-documents tool names. Pyrit scenario discovery is a
+`prowler-mcp` is research with exact-name read admissions
+(`list_tools` + 43 read lookups pinned from the first-party OSS
+server source, over the union endpoint policy: operator-fronted
+https or literal-loopback http for the first-party local server) -
+the 18 mutating tools and the hosted-only `prowler_cloud_`
+namespace stay exactly blocked. Pyrit scenario discovery is a
 separate `list_scenarios` action, which runs `pyrit_scan
 --list-scenarios`. Original fixed-argv CLIs (checkov, garak,
 mitreattack-python, wapiti, commix, zdns, vuls, stratus-red-team,
@@ -602,7 +606,7 @@ Shared gate: `extension/arms/dispatch.py`. Caveats:
 | `BURP_MCP_ENDPOINT` | burp-mcp | HTTP+SSE MCP URL |
 | `SEMGREP_MCP_ENDPOINT` | semgrep-mcp | streamable-HTTP MCP URL |
 | `CHECKOV_BIN` / `CHECKOV_SCAN_ROOT` | checkov | binary (or PATH); scan root **inside** the packaged range |
-| `PROWLER_MCP_ENDPOINT` | prowler-mcp | HTTP+SSE MCP URL; also needs `AWS_ACCESS_KEY_ID` or `AWS_PROFILE` |
+| `PROWLER_MCP_ENDPOINT` | prowler-mcp | streamable-HTTP MCP URL (https for self-hosted remote, or `http://127.0.0.1:8000/mcp` for the first-party local server; include the `/mcp` path) |
 | `GARAK_BIN` / `GARAK_TARGET` / `GARAK_REPORT_DIR` | garak | binary; required target binding; JSONL report dir |
 | `ZAP_API_ENDPOINT` / `ZAP_API_KEY` / `ZAP_DISPATCH_SCOPE` | zaproxy | native API base URL; optional API key; host-scoped dispatch |
 | `WAPITI_BIN` / `WAPITI_DISPATCH_SCOPE` | wapiti | binary; host-scoped dispatch |

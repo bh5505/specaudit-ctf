@@ -1,4 +1,4 @@
-"""Curated Prowler arm: allowlisted MCP tools over HTTP+SSE."""
+"""Curated Prowler arm: exact-name allowlisted MCP tools over streamable HTTP."""
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ from ..mcp_client import (
     MAX_MCP_BYTES,
     MAX_MCP_ROWS,
     MCP_CALL_TIMEOUT,
-    SseMcpSession,
+    StreamableHttpClient,
     configured_http_url,
     redact,
 )
@@ -24,7 +24,6 @@ from .policy import (
     ENV_ENDPOINT,
     LIST_ACTIONS,
     TRANSPORT_POLICY,
-    credentials_present,
     refuse_reason,
 )
 
@@ -32,17 +31,21 @@ SessionFactory = Callable[..., Any]
 
 
 def _default_session_factory(url: str, timeout: float = MCP_CALL_TIMEOUT) -> Any:
-    return SseMcpSession(url, timeout=timeout, policy=TRANSPORT_POLICY)
+    return StreamableHttpClient(url, timeout=timeout, policy=TRANSPORT_POLICY)
 
 
 class ProwlerArm:
     """Specialized transport for catalog id prowler-mcp.
 
-    SSE dialect on the remote-https transport policy (GTI-shaped, not
-    the loopback Burp shape), with the highest credential burden of any
-    curated arm: install requires both an endpoint and cloud
-    credentials in the environment, and every output path runs through
-    the shared redaction before it leaves the arm.
+    Streamable-HTTP dialect (the first-party OSS server's ``--transport
+    http`` serves streamable HTTP at /mcp — verified from fastmcp 3.4.5
+    source 2026-09-06; the legacy SSE dialect has no first-party
+    server). Endpoint policy is the explicit union: operator-fronted
+    https for self-hosted remote, or literal-loopback http for the
+    first-party local default. The client sends no credential; the
+    server holds everything (hub/docs need no auth at all). Every
+    output path runs through the shared redaction before it leaves the
+    arm.
     """
 
     ARM_ID = ARM_ID
@@ -67,17 +70,13 @@ class ProwlerArm:
         return configured_http_url(raw, TRANSPORT_POLICY)
 
     def installed(self, spec: ArmSpec) -> bool:
-        return (
-            spec.id == ARM_ID
-            and self.endpoint_url() is not None
-            and credentials_present()
-        )
+        return spec.id == ARM_ID and self.endpoint_url() is not None
 
     def invoke(
         self, spec: ArmSpec, action: str, args: Mapping[str, Any]
     ) -> Result:
         endpoint = self.endpoint_url()
-        if spec.id != ARM_ID or endpoint is None or not credentials_present():
+        if spec.id != ARM_ID or endpoint is None:
             raise NotInstalledError(spec.id)
         payload = dict(args)
         session = self._session_factory(endpoint, timeout=self.timeout)

@@ -1,4 +1,6 @@
-"""Unit + stub tests for the curated Prowler arm. No live cloud."""
+"""Unit + stub tests for the curated Prowler arm. No live cloud, no
+live endpoint - the exact-name inventory below mirrors the arm policy,
+which is itself pinned from first-party source (see policy docstring)."""
 
 from __future__ import annotations
 
@@ -9,12 +11,12 @@ import pytest
 
 from extension.arms.prowler import ARM_ID, ProwlerArm
 from extension.arms.prowler.policy import (
-    CREDENTIAL_ENVS,
+    ALLOWED_TOOLS,
+    BLOCKED_TOOLS,
     ENV_ENDPOINT,
-    credentials_present,
     refuse_reason,
 )
-from extension.contract import ArmSpec, Extension, NotHeldError, NotInstalledError
+from extension.contract import ArmSpec, Extension, NotInstalledError
 
 
 def _spec() -> ArmSpec:
@@ -66,17 +68,23 @@ def _factory(session: FakeSession):
     return factory
 
 
-def _arm(session: FakeSession, endpoint: str = "https://prowler.example.invalid:9") -> ProwlerArm:
+def _arm(
+    session: FakeSession, endpoint: str = "http://127.0.0.1:8000/mcp"
+) -> ProwlerArm:
     return ProwlerArm(endpoint=endpoint, session_factory=_factory(session))
 
 
+# A representative first-party server surface (subset of the pinned
+# inventory, one name per class plus the blocked shapes).
 SERVER_TOOLS = [
-    {"name": "prowler_findings_analyze"},
+    {"name": "prowler_hub_list_checks"},
     {"name": "prowler_docs_search"},
-    {"name": "prowler_hub_checks"},
-    {"name": "prowler_cloud_scan_run"},
-    {"name": "prowler_cloud_account_write"},
-    {"name": "unrelated_tool"},
+    {"name": "prowler_list_scans"},
+    {"name": "prowler_get_scan"},
+    {"name": "prowler_run_attack_paths_query"},
+    {"name": "prowler_trigger_scan"},
+    {"name": "prowler_cloud_findings_triage"},
+    {"name": "not_a_prowler_tool"},
 ]
 
 
@@ -84,13 +92,79 @@ def _names() -> set[str]:
     return {tool["name"] for tool in SERVER_TOOLS}
 
 
-@pytest.fixture(autouse=True)
-def _creds(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("AWS_PROFILE", raising=False)
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIA-fixture")
+# --- exact-name inventory pins (drift guard) ------------------------------
 
 
-# --- install gate (endpoint AND credentials) -----------------------------
+def test_inventory_counts_pinned() -> None:
+    # 43 reads (31 tenant + 10 hub + 2 docs), 18 mutating, no overlap,
+    # every name namespaced - pinned so upstream drift is a deliberate
+    # re-pin, never a quiet shift.
+    assert len(ALLOWED_TOOLS) == 43
+    assert len(BLOCKED_TOOLS) == 18
+    assert not (ALLOWED_TOOLS & BLOCKED_TOOLS)
+    for name in ALLOWED_TOOLS | BLOCKED_TOOLS:
+        assert name.startswith(("prowler_", "prowler_hub_", "prowler_docs_")), name
+    assert "prowler_cloud_scan_run" not in ALLOWED_TOOLS
+
+
+def test_read_admission_covers_each_namespace() -> None:
+    hub = [n for n in ALLOWED_TOOLS if n.startswith("prowler_hub_")]
+    docs = [n for n in ALLOWED_TOOLS if n.startswith("prowler_docs_")]
+    tenant = [
+        n
+        for n in ALLOWED_TOOLS
+        if not n.startswith(("prowler_hub_", "prowler_docs_"))
+    ]
+    assert len(hub) == 10
+    assert len(docs) == 2
+    assert len(tenant) == 31
+
+
+def test_mutating_inventory_blocked() -> None:
+    # Every mutating name pinned from the tenant tools source files:
+    # scan triggers, mutelist writers, provider/integration writers,
+    # role setting - refused even when the server lists them.
+    for name in BLOCKED_TOOLS:
+        reason = refuse_reason(name, _names() | {name})
+        assert reason is not None, name
+        assert "blocked" in reason
+
+
+# --- policy ---------------------------------------------------------------
+
+
+def test_hosted_namespace_blocked() -> None:
+    reason = refuse_reason("prowler_cloud_findings_triage", _names())
+    assert reason is not None
+    assert "hosted cloud-management namespace" in reason
+
+
+def test_unknown_names_refused_fail_closed() -> None:
+    # The exact-allowlist miss is the containment for future upstream
+    # mutating names (this replaced the 2026-09-04 keyword regex, which
+    # collided with admitted reads like list_scans/get_scan).
+    for name in ("unrelated_tool", "prowler_delete_everything", "prowler_scan_aws"):
+        reason = refuse_reason(name, _names() | {name})
+        assert reason is not None, name
+
+
+def test_admitted_reads_pass() -> None:
+    for name in (
+        "prowler_hub_list_checks",
+        "prowler_docs_search",
+        "prowler_list_scans",
+        "prowler_run_attack_paths_query",
+    ):
+        assert refuse_reason(name, _names()) is None, name
+
+
+def test_not_available_on_server_refused() -> None:
+    reason = refuse_reason("prowler_get_scan", set())
+    assert reason is not None
+    assert "not available" in reason
+
+
+# --- install gate (endpoint env alone) ------------------------------------
 
 
 def test_not_installed_without_endpoint(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -98,82 +172,46 @@ def test_not_installed_without_endpoint(monkeypatch: pytest.MonkeyPatch) -> None
     arm = ProwlerArm()
     assert arm.installed(_spec()) is False
     with pytest.raises(NotInstalledError):
-        arm.invoke(_spec(), "prowler_findings_analyze", {})
+        arm.invoke(_spec(), "prowler_hub_list_checks", {})
 
 
-def test_endpoint_without_credentials_not_installed(
+def test_endpoint_alone_installs_no_credentials_needed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(ENV_ENDPOINT, "https://prowler.example.invalid:8899")
-    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
-    monkeypatch.delenv("AWS_PROFILE", raising=False)
-    arm = ProwlerArm()
-    assert arm.installed(_spec()) is False
-    with pytest.raises(NotInstalledError):
-        arm.invoke(_spec(), "prowler_findings_analyze", {})
-
-
-def test_whitespace_credentials_do_not_install(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    # Automatic-review sweep 5: a whitespace-only credential value is
-    # absent — a stray space must not mark the arm installed.
-    monkeypatch.setenv(ENV_ENDPOINT, "https://prowler.example.invalid:8899")
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "   ")
-    monkeypatch.delenv("AWS_PROFILE", raising=False)
-    assert credentials_present() is False
-    arm = ProwlerArm()
-    assert arm.installed(_spec()) is False
-
-
-def test_endpoint_and_credentials_install(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ENV_ENDPOINT, "https://prowler.example.invalid:8899")
+    # The AWS-credential gate is withdrawn (2026-09-06): the
+    # first-party server never reads AWS credentials - hub/docs are
+    # unauthenticated, tenant tools use a server-held key. Ambient
+    # cloud credentials in the client env neither help nor block.
+    for name in ("AWS_ACCESS_KEY_ID", "AWS_PROFILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(ENV_ENDPOINT, "http://127.0.0.1:8000/mcp")
     arm = ProwlerArm()
     assert arm.installed(_spec()) is True
 
-
-# --- namespace policy ----------------------------------------------------
-
-
-def test_scan_orchestration_namespace_blocked() -> None:
-    reason = refuse_reason("prowler_cloud_scan_run", _names())
-    assert reason is not None
-    assert "cloud scan orchestration" in reason
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "AKIA-fixture")
+    assert arm.installed(_spec()) is True
 
 
-def test_mutation_keyword_blocked() -> None:
-    reason = refuse_reason("prowler_account_write", _names())
-    assert reason is not None
-    assert "mutation or scan-dispatch keyword" in reason
+# --- endpoint policy (union) ----------------------------------------------
 
 
-def test_scan_dispatch_family_blocked() -> None:
-    # The upstream live-scan family must not slip through the prefix
-    # allowlist (cross-review finding).
-    for name in ("prowler_scan_aws", "prowler_scan", "prowler_run_checks"):
-        reason = refuse_reason(name, _names())
-        assert reason is not None, name
-        assert "blocked" in reason
+def test_union_policy_shapes(monkeypatch: pytest.MonkeyPatch) -> None:
+    arm = ProwlerArm()
+    # First-party local default: literal loopback http accepted.
+    monkeypatch.setenv(ENV_ENDPOINT, "http://127.0.0.1:8000/mcp")
+    assert arm.endpoint_url() == "http://127.0.0.1:8000/mcp"
+    # Self-hosted remote behind TLS: https accepted.
+    monkeypatch.setenv(ENV_ENDPOINT, "https://prowler.example.invalid:9/mcp")
+    assert arm.endpoint_url() == "https://prowler.example.invalid:9/mcp"
+    # Plain http off-loopback: refused.
+    monkeypatch.setenv(ENV_ENDPOINT, "http://prowler.example.invalid/")
+    assert arm.endpoint_url() is None
+    # The loopback name (not literal): refused - names can rebind.
+    monkeypatch.setenv(ENV_ENDPOINT, "http://localhost:8000/mcp")
+    assert arm.endpoint_url() is None
 
 
-def test_off_namespace_refused() -> None:
-    reason = refuse_reason("unrelated_tool", _names())
-    assert reason is not None
-    assert "namespace allowlist" in reason
-
-
-def test_allowed_read_tools_pass() -> None:
-    for name in ("prowler_findings_analyze", "prowler_docs_search", "prowler_hub_checks"):
-        assert refuse_reason(name, _names()) is None, name
-
-
-def test_not_available_on_server_refused() -> None:
-    reason = refuse_reason("prowler_docs_other", _names())
-    assert reason is not None
-    assert "not available" in reason
-
-
-# --- invoke --------------------------------------------------------------
+# --- invoke ---------------------------------------------------------------
 
 
 def test_list_tools_and_allowed_call() -> None:
@@ -190,7 +228,7 @@ def test_list_tools_and_allowed_call() -> None:
 
 def test_blocked_tool_never_reaches_session() -> None:
     session = FakeSession(tools=SERVER_TOOLS)
-    result = _arm(session).invoke(_spec(), "prowler_cloud_scan_run", {})
+    result = _arm(session).invoke(_spec(), "prowler_trigger_scan", {})
     assert result.ok is False
     assert "blocked" in result.error
     assert session.calls == []
@@ -216,16 +254,16 @@ def test_output_text_redacted() -> None:
     session = FakeSession(
         tools=SERVER_TOOLS,
         results={
-            "prowler_findings_analyze": {
+            "prowler_hub_list_checks": {
                 "content": [
                     {"type": "text", "text": "api_key=abc123"},
-                    {"type": "text", "text": " finding: open s3"},
+                    {"type": "text", "text": " check: s3 public read"},
                 ],
                 "isError": False,
             }
         },
     )
-    result = _arm(session).invoke(_spec(), "prowler_findings_analyze", {})
+    result = _arm(session).invoke(_spec(), "prowler_hub_list_checks", {})
     assert result.ok is True
     text = result.output["data"]
     # Shared redaction is keyword-level (same contract as the burp arm):
@@ -234,15 +272,13 @@ def test_output_text_redacted() -> None:
     assert "api_key" not in text
 
 
-# --- extension wiring ----------------------------------------------------
+# --- extension wiring -----------------------------------------------------
 
 
 def test_default_extension_wires_prowler(monkeypatch: pytest.MonkeyPatch) -> None:
     """Research tier: without an endpoint the arm fails closed as
-    not-installed (credential-gated install is unchanged)."""
+    not-installed (install is gated by the endpoint env alone)."""
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
-    for name in ("AWS_ACCESS_KEY_ID", "AWS_PROFILE"):
-        monkeypatch.delenv(name, raising=False)
     ext = Extension()
     assert "prowler-mcp" in ext.arms
     with pytest.raises(NotInstalledError):

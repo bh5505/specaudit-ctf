@@ -271,6 +271,26 @@ def test_p1_endpoint_policy_table() -> None:
     assert endpoint_problem("ftp://127.0.0.1", LOOPBACK)
 
 
+def test_p1_union_policy_table() -> None:
+    # remote_https_or_loopback (Prowler, 2026-09-06): https off-loopback
+    # AND literal-loopback http/https are allowed; plain http
+    # off-loopback, the loopback NAME, encoded loopback forms, and
+    # bind-any are refused. Same canonical-literal and shape rules as
+    # the other two policies.
+    UNION = HttpTransportPolicy.remote_https_or_loopback()
+    assert endpoint_problem("https://mcp.prowler.example/mcp", UNION) is None
+    assert endpoint_problem("http://127.0.0.1:8000/mcp", UNION) is None
+    assert endpoint_problem("http://[::1]:8000/mcp", UNION) is None
+    assert endpoint_problem("https://127.0.0.1:8443/mcp", UNION) is None
+    assert "https" in endpoint_problem("http://mcp.example.com", UNION)
+    assert endpoint_problem("http://localhost:8000/mcp", UNION)
+    assert "written as 127.0.0.1" in endpoint_problem("http://127.0.0.2:8000", UNION)
+    assert endpoint_problem("http://[::ffff:127.0.0.1]:8000", UNION)
+    assert endpoint_problem("http://0.0.0.0:8000", UNION)
+    assert endpoint_problem("http://u:p@127.0.0.1:8000", UNION)
+    assert endpoint_problem("ftp://127.0.0.1:8000", UNION)
+
+
 def test_p1_default_policy_is_remote_https() -> None:
     assert configured_http_url("http://example.com") is None
     assert configured_http_url("https://example.com") == "https://example.com"
@@ -301,12 +321,17 @@ def test_p1_remote_arms_refuse_loopback_and_http(monkeypatch: pytest.MonkeyPatch
     assert GtiArm().endpoint_url() is None
     monkeypatch.setenv("GTI_MCP_ENDPOINT", "https://front.example.invalid/")
     assert GtiArm().endpoint_url() == "https://front.example.invalid/"
-    # Prowler rides the same remote-https policy EXPLICITLY (not via the
-    # shared client's implicit default) — pin it so a defaults change
-    # can neither open nor close the arm silently.
+    # Prowler rides the UNION policy EXPLICITLY (not via the shared
+    # client's implicit default) — pin it so a defaults change can
+    # neither open nor close the arm silently. The union accepts the
+    # first-party local shape (literal-loopback plain http, upstream
+    # ships no TLS) and self-hosted remote https; it refuses plain http
+    # off-loopback and the loopback NAME (a name can rebind).
     from extension.arms.prowler import ProwlerArm
 
-    monkeypatch.setenv("PROWLER_MCP_ENDPOINT", "http://127.0.0.1:9999")
+    monkeypatch.setenv("PROWLER_MCP_ENDPOINT", "http://127.0.0.1:8000/mcp")
+    assert ProwlerArm().endpoint_url() == "http://127.0.0.1:8000/mcp"
+    monkeypatch.setenv("PROWLER_MCP_ENDPOINT", "http://localhost:8000/mcp")
     assert ProwlerArm().endpoint_url() is None
     monkeypatch.setenv("PROWLER_MCP_ENDPOINT", "http://prowler.example.invalid/")
     assert ProwlerArm().endpoint_url() is None
