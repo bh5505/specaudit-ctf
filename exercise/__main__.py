@@ -77,10 +77,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="store_true",
         help=(
             "run the default rehearsal battery preset (exercise/battery.py: "
-            "checkov offline IaC scan over the packaged range + semgrep "
-            "inline rules under SEMGREP_SCAN_ROOT); unavailable members "
-            "are skipped (the run degrades), members that run and fail "
-            "fail the run"
+            "the offline/contained trio - checkov IaC scan over the packaged "
+            "range, semgrep inline rules under SEMGREP_SCAN_ROOT, the "
+            "attack-stix-data demo-bundle lookup - plus the dual-gated "
+            "target-facing pair wapiti/nmap, dispatched only when their "
+            "arming scope env AND LAB_TARGET_HOST are set); unavailable or "
+            "unarmed members are skipped (the run degrades), members that "
+            "run and fail fail the run"
         ),
     )
     parser.add_argument("--out", default=None, help="write the report JSON here as well; stdout always gets it")

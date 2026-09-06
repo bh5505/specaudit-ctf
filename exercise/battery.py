@@ -1,7 +1,8 @@
 """The rehearsal battery: the runner's default multi-arm composition.
 
 The preset spans the catalog's exercise domains (2026-09-06 consult:
-composition is dual-gated, never capability-limited):
+one member per domain, membership decided by the dual arming gates,
+not by capability limits):
 
 - ``checkov.scan`` — offline IaC scan whose root is contained BY
   CONSTRUCTION to the packaged synthetic range (no arming decision
@@ -11,8 +12,8 @@ composition is dual-gated, never capability-limited):
 - ``attack-stix-data.technique`` — the knowledge/reasoning member: an
   exact ATT&CK technique lookup over the shipped demo bundle, R0
   local-read, contained by construction (the bundle path is the
-  arm's own shipped sample — the only member that completes on a
-  bare host);
+  arm's own shipped sample — the only member that needs neither a
+  binary nor any env, completing in-process);
 - ``wapiti.scan`` — the web/DAST member against the operator's
   spawned target's HTTP lane (dual gate: ``WAPITI_DISPATCH_SCOPE``
   plus ``LAB_TARGET_HOST``);

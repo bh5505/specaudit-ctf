@@ -382,7 +382,12 @@ def _run_battery(ext: Extension) -> list[dict[str, Any]]:
                 rows.append(row)
                 continue
             member_args = {
-                key: value.format(target=target) if isinstance(value, str) else value
+                # Literal replacement, not str.format: a future member
+                # template with unrelated braces must fail honestly (the
+                # residual check below), never raise out of the row model.
+                key: value.replace("{target}", target)
+                if isinstance(value, str)
+                else value
                 for key, value in member_args.items()
             }
             if any(
