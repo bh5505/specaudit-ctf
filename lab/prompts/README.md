@@ -16,10 +16,14 @@ Design notes, so the matrix comparison stays honest:
   doctrine can actually measure: severity agreement, evidence-citing
   rationales, and server-recorded fixture coverage (a successful
   `run_range` through the MCP server).
-- `telecom-aws-01-reachability` has no prompt file: it is the
-  envelope-reading tutorial whose deliverables are multiple prose and
-  JSON documents, and it ships no findings contract — the graded head
-  lane does not apply (`not-gradable-by-design` in the matrix record).
+- `telecom-aws-01-reachability` used to ship no prompt file (it was
+  the envelope-reading tutorial, recorded `not-gradable-by-design`).
+  That record is superseded: the track now carries a graded contract
+  authored from its fixture's planted violations, and
+  `challenge-01-reachability.txt` is its canonical attempt prompt.
+  The track's prose deliverables (catalog summary, manifest-vs-result
+  notes, range report) stay part of the human teaching path; the head
+  lane grades the findings contract.
 - Prompt text is identical for every head attempting the same
   challenge, so cross-head differences come from the head, not the
   brief.
