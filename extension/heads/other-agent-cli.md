@@ -1,8 +1,13 @@
 # Other agent CLI
 
 Another agent CLI that already has its own tools can attach the same surface.
-A validation client may do the same. This tree does not ship a third named
-head profile.
+A validation client may do the same. The runner's real-head mode carries
+three armed head profiles (claude-code, codex-cli, and — since the
+2026-09-06 content-growth packet — qwen-code, the gemini-lineage CLI):
+each spawns headless only when its `EXERCISE_HEAD_*_CMD` env names the
+binary. A FOURTH CLI needs its own per-CLI wiring in `exercise/real_head.py`
+before the runner can drive it; below is the manual attachment path that
+requires no runner support at all.
 
 Use the CLI:
 

@@ -674,3 +674,101 @@ def test_run_exercise_end_to_end_with_a_stubbed_head(
     # The hermetic range completes and the stubbed attempt passes.
     assert document["status"] == "complete"
     assert document["ok"] is True
+
+
+def test_qwen_head_is_composed_spawned_and_graded(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path, capsys
+) -> None:
+    """The third armed head rides the shared temp-config + shared
+    launcher path, allowlists the four MCP tools by per-server name,
+    and goes one-shot on the positional prompt."""
+    monkeypatch.setenv(ARMING_ENVS["qwen-code"], "/usr/bin/qwen")
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    seen: dict = {}
+    _stub_run(monkeypatch, seen=seen)
+    _stub_grade(monkeypatch, passed=True)
+
+    prompt_text, sha, chars = load_prompt(str(prompt_file))
+    lane = execute_real_head(
+        head="qwen-code",
+        cmd="/usr/bin/qwen",
+        attempt_dir=str(attempt_dir),
+        expected_path="expected.json",
+        prompt_text=prompt_text,
+        prompt_sha256=sha,
+        prompt_chars=chars,
+        timeout_seconds=60,
+    )
+
+    assert lane["status"] == "passed" and lane["passed"] is True
+    argv = seen["argv"]
+    assert argv[0] == "/usr/bin/qwen"
+    # One-shot form: the positional prompt is last and carries the
+    # runner-owned trailer.
+    assert argv[-1] == prompt_text + PROMPT_TRAILER
+    assert "--yolo" in argv
+    allowed = argv[argv.index("--allowed-tools") + 1]
+    for tool in ("list", "describe", "invoke", "run_range"):
+        assert f"mcp__specaudit-ctf__{tool}" in allowed
+    assert "write_file" in allowed
+    assert seen["cwd"] == str(attempt_dir)
+    # Same private-config custody as claude: existed during the spawn,
+    # deleted after.
+    config_path = Path(argv[argv.index("--mcp-config") + 1])
+    assert not config_path.exists(), "temp mcp-config must be deleted after the run"
+    assert config_path.parent == attempt_dir
+    recorded = json.dumps(lane)
+    assert prompt_text not in recorded
+    assert lane["spawn"]["prompt_sha256"] == sha
+    assert lane["spawn"]["mcp"]["kind"] == "temp-mcp-config"
+    err = capsys.readouterr().err
+    assert "[head-spawn] head=qwen-code" in err
+    assert "[head-reap] head=qwen-code exit=0" in err
+
+
+def test_qwen_child_env_carries_no_stale_trace_vars(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
+) -> None:
+    """The config file is the transport on this path too: a stale trace
+    key in the operator's own shell must not ride into the head."""
+    monkeypatch.setenv(ARMING_ENVS["qwen-code"], "/usr/bin/qwen")
+    monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE_KEY", "stale-key-value")
+    monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE", "/stale/trace")
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    seen: dict = {}
+    _stub_run(monkeypatch, seen=seen)
+    _stub_grade(monkeypatch, passed=True)
+    execute_real_head(
+        head="qwen-code",
+        cmd="/usr/bin/qwen",
+        attempt_dir=str(attempt_dir),
+        expected_path="expected.json",
+        prompt_text="p",
+        prompt_sha256="a" * 64,
+        prompt_chars=1,
+        timeout_seconds=7,
+    )
+    child_env = seen["kwargs"]["env"]
+    assert "SPECAUDIT_CTF_MCP_TRACE_KEY" not in child_env
+    assert "SPECAUDIT_CTF_MCP_TRACE" not in child_env
+
+
+def test_unarmed_qwen_head_is_refused() -> None:
+    with pytest.raises(ExerciseError, match="EXERCISE_HEAD_QWEN_CODE_CMD"):
+        run_exercise(
+            head="qwen-code",
+            head_execute=True,
+            attempt_dir="x",
+            expected_path="y",
+            attempt_prompt="p",
+        )
+
+
+def test_qwen_readiness_reports_no_bundled_launcher() -> None:
+    document = run_exercise(head="qwen-code")
+    lane = document["head"]
+    assert lane["mode"] == "readiness"
+    assert lane["ready"] is False
+    assert lane["status"] == "skipped"

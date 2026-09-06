@@ -48,7 +48,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--head",
         default=None,
         help=(
-            "agent head: claude-code | codex-cli for readiness probing; "
+            "agent head: claude-code | codex-cli | qwen-code for readiness probing; "
             "under --head-execute: 'fake' (the lane-internal scripted "
             "head) or a REAL head armed on this host via "
             "EXERCISE_HEAD_CLAUDE_CODE_CMD / EXERCISE_HEAD_CODEX_CLI_CMD"
@@ -70,7 +70,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "execute the named head and grade its attempt (requires "
             "--attempt-dir, --expected, --head): 'fake' runs the "
             "lane-internal scripted head; a real head (claude-code, "
-            "codex-cli) is spawned headless only when armed via its "
+            "codex-cli, qwen-code) is spawned headless only when armed via its "
             "EXERCISE_HEAD_*_CMD env and given --attempt-prompt"
         ),
     )

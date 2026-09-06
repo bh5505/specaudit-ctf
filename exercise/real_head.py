@@ -7,6 +7,7 @@ head's arming env names its binary:
 
 - ``EXERCISE_HEAD_CLAUDE_CODE_CMD`` (claude-code)
 - ``EXERCISE_HEAD_CODEX_CLI_CMD`` (codex-cli)
+- ``EXERCISE_HEAD_QWEN_CODE_CMD`` (qwen-code)
 
 Unset → the runner refuses exactly as before (the fake head stays the
 only ``--head-execute`` driver on unarmed hosts — CI and hermetic
@@ -64,6 +65,7 @@ TRACE_VARS = (
 ARMING_ENVS = {
     "claude-code": "EXERCISE_HEAD_CLAUDE_CODE_CMD",
     "codex-cli": "EXERCISE_HEAD_CODEX_CLI_CMD",
+    "qwen-code": "EXERCISE_HEAD_QWEN_CODE_CMD",
 }
 
 # The runner-owned trailer appended to every operator prompt: the
@@ -276,6 +278,29 @@ def _codex_argv(cmd: str, prompt_text: str, attempt_dir: Path) -> list[str]:
     ]
 
 
+# qwen-code (gemini-cli lineage) speaks MCP through the same mcpServers
+# config shape claude uses, so it rides the private temp-config path and
+# the shared stdio launcher (extension/heads/other-agent-cli.md blesses
+# exactly that attachment). The four MCP tools are allowlisted by their
+# per-server names and write_file is the CLI's own file-write tool; the
+# positional prompt is the CLI's documented one-shot form.
+QWEN_ALLOWED_TOOLS = ",".join(
+    [f"mcp__{MCP_SERVER_NAME}__{tool}" for tool in MCP_TOOL_NAMES] + ["write_file"]
+)
+
+
+def _qwen_argv(cmd: str, prompt_text: str, config_path: Path) -> list[str]:
+    return [
+        cmd,
+        "--mcp-config",
+        str(config_path),
+        "--allowed-tools",
+        QWEN_ALLOWED_TOOLS,
+        "--yolo",
+        prompt_text,
+    ]
+
+
 # Internal marker for the prompt position inside an argv list; never
 # leaves this module (the spawn materializes the prompt there, the
 # record elides it to the prompt hash).
@@ -302,6 +327,16 @@ def _compose(
         )
         argv = _claude_argv(cmd, prompt_text, config_path)
         argv[2] = PROMPT_TRAILER_MARKER
+        return argv, None, {"kind": "temp-mcp-config", "sha256": config_sha256}, config_path
+    if head == "qwen-code":
+        # Same config file, same launcher, same deletion discipline as
+        # claude-code (the shared stdio launcher; the per-server env map
+        # carries the trace vars, so no child env is touched).
+        config_path, config_sha256 = _write_claude_mcp_config(
+            attempt_dir, key, attempt_id
+        )
+        argv = _qwen_argv(cmd, prompt_text, config_path)
+        argv[-1] = PROMPT_TRAILER_MARKER
         return argv, None, {"kind": "temp-mcp-config", "sha256": config_sha256}, config_path
     if head == "codex-cli":
         mcp_fact = codex_preflight()

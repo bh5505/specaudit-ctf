@@ -229,6 +229,10 @@ Attach profiles:
 - [extension/heads/codex-cli.md](extension/heads/codex-cli.md)
 - [extension/heads/other-agent-cli.md](extension/heads/other-agent-cli.md)
 
+The exercise runner's real-head mode can also drive claude-code,
+codex-cli, and qwen-code headless - default-off, per-head armed via
+`EXERCISE_HEAD_*_CMD` (see `exercise/real_head.py`).
+
 Claude Code CLI, from this clone:
 
 ```text

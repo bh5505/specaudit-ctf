@@ -31,7 +31,7 @@ STATUS_COMPLETE = "complete"
 STATUS_DEGRADED = "degraded"
 STATUS_FAILED = "failed"
 STATUS_SKIPPED = "skipped"
-HEAD_IDS = ("claude-code", "codex-cli")
+HEAD_IDS = ("claude-code", "codex-cli", "qwen-code")
 FAKE_HEAD = "fake"
 
 
@@ -84,7 +84,7 @@ def run_exercise(
       simulated here. The lane executes only over an ``attempt_dir``:
       ``head_execute=True`` with the fake head spawns the
       lane-internal scripted client; with a REAL head id
-      (``claude-code`` / ``codex-cli``) it spawns the named agent CLI
+      (``claude-code`` / ``codex-cli`` / ``qwen-code``) it spawns the named agent CLI
       headless — but only when the operator armed that head on this
       host (``EXERCISE_HEAD_CLAUDE_CODE_CMD`` /
       ``EXERCISE_HEAD_CODEX_CLI_CMD``, wired per CLI by
@@ -146,7 +146,7 @@ def run_exercise(
         elif head is None:
             raise ExerciseError(
                 "--head-execute requires --head: 'fake' for the lane-internal "
-                "scripted head, or an armed real head (claude-code, codex-cli)"
+                "scripted head, or an armed real head (claude-code, codex-cli, qwen-code)"
             )
         else:
             raise ExerciseError(f"unknown head: {head} (shipped: fake, {', '.join(HEAD_IDS)})")
