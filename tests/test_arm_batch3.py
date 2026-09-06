@@ -438,6 +438,7 @@ def test_gti_inventory_pinned() -> None:
     # "Upload and analyse the file in VirusTotal... shared with the
     # community"). Pinned so upstream drift is a deliberate re-pin.
     from extension.arms.gti.policy import BLOCKED_TOOLS as GTI_BLOCKED
+    from extension.invoke_profiles import _GTI_READ_ACTIONS
 
     assert len(GTI_TOOLS) == 32
     assert len(GTI_BLOCKED) == 4
@@ -450,13 +451,29 @@ def test_gti_inventory_pinned() -> None:
             "analyse_file",
         }
     )
+    # Registry/handler set-equality (cross-review MAJOR): a typo'd
+    # action name would keep both count pins green while the profile
+    # is handler-refused - this pins the transcription.
+    assert set(_GTI_READ_ACTIONS) == {"list_tools"} | set(GTI_TOOLS)
+    assert len(_GTI_READ_ACTIONS) == len(set(_GTI_READ_ACTIONS)) == 33
 
 
-def test_gti_mutating_tools_refused_even_when_listed() -> None:
+BLOCKED_GTI_NAMES = (
+    "analyse_file",
+    "create_collection",
+    "update_collection_attributes",
+    "update_iocs_in_collection",
+)
+
+
+@pytest.mark.parametrize("blocked_name", sorted(BLOCKED_GTI_NAMES))
+def test_gti_mutating_tools_refused_even_when_listed(
+    blocked_name: str,
+) -> None:
     session = FakeGtiSession(
-        tools=[{"name": n} for n in ("get_domain_report", "analyse_file")]
+        tools=[{"name": n} for n in ("get_domain_report", blocked_name)]
     )
-    result = _gti(session).invoke(_spec(GTI_ID), "analyse_file", {})
+    result = _gti(session).invoke(_spec(GTI_ID), blocked_name, {})
     assert result.ok is False
     assert "blocked" in result.error
     assert session.calls == []
