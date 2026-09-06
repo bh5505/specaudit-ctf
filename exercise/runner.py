@@ -170,7 +170,7 @@ def run_exercise(
             expected_probe = load_findings_document(
                 Path(expected_path), what="expected contract"
             )
-        except GradingError:
+        except (GradingError, UnicodeError):
             expected_probe = None
         if expected_probe is not None and (
             expected_probe.get("lane") == LANE_LIVE_SERVICE

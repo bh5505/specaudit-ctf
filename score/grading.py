@@ -73,7 +73,7 @@ def load_findings_document(path: Path, *, what: str) -> dict[str, Any]:
     unknown = sorted(set(raw) - allowed)
     if unknown:
         raise GradingError(f"{what} has unknown keys: {', '.join(unknown)}")
-    raw["lane"] = raw.setdefault("lane", LANE_FIXTURE_BACKED)
+    raw.setdefault("lane", LANE_FIXTURE_BACKED)
     if raw["lane"] not in _LANES:
         raise GradingError(
             f"{what} lane must be one of {', '.join(_LANES)}"

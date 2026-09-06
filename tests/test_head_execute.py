@@ -295,3 +295,17 @@ def test_cli_attempt_flags(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -
     )
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["head"]["passed"] is True
+
+
+def test_attempt_layer_refuses_live_service_contract_directly(tmp_path: Path) -> None:
+    """Defense-in-depth pin: grade_attempt itself (not just the runner
+    gate) refuses a live-service contract, after the trace verifies."""
+    attempt_dir = tmp_path / "attempt"
+    _run_persona("competent", CONTRACT_LIVE_WEB, attempt_dir)
+    document = grade_attempt(attempt_dir, expected_path=CONTRACT_LIVE_WEB, key_env=KEY_HEX)
+    assert document["status"] == "failed"
+    assert document["passed"] is False
+    assert "live-service" in document["reason"]
+    # The refusal is deliberate lane policy, not a chain failure: the
+    # trace itself verified.
+    assert document["trace"]["chain_ok"] is True
