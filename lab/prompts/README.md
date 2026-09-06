@@ -27,3 +27,16 @@ Design notes, so the matrix comparison stays honest:
 - Prompt text is identical for every head attempting the same
   challenge, so cross-head differences come from the head, not the
   brief.
+
+## Hard-mode variants (`*-hard.txt`)
+
+A hard-mode canonical prompt attempts the SAME track and contract with
+the scaffolding withheld: the finding keys still ride the prompt
+(else the attempt fails on key mismatch regardless of reasoning), but
+severity assignments, control phrasing, and `traces_to` hints do not —
+calibration and evidence-hunting are the head's own work. Difficulty
+withholds hints; it never fabricates complexity and never changes
+grading (severity stays a soft flag, so hard mode shows up as
+calibration spread in the variance stats, not as a different verdict
+bar). Pins: `tests/test_lab_prompts.py` asserts keys present and
+scaffolding absent for every `*-hard.txt`.
