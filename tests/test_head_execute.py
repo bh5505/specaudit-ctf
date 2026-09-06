@@ -169,10 +169,12 @@ def test_every_contract_finding_parses_to_coverable_fixtures() -> None:
     # 15 since the emulation-listing lanes (2026-09-06): caldera
     # stockpile-catalog listings and metasploit module-catalog
     # listings over locally-run first-party servers.
-    assert len(contracts) == 15, "the challenge library grew — keep this pin honest"
+    # 16 since the planted-code lane (2026-09-06): the semgrep
+    # inline-rule-pack review of the static planted module.
+    assert len(contracts) == 16, "the challenge library grew — keep this pin honest"
     for contract in contracts:
         document = json.loads(contract.read_text(encoding="utf-8"))
-        live = document.get("lane") == "live-service"
+        live = document.get("lane") in ("live-service", "planted-code")
         declared = [str(item) for item in document.get("fixtures", [])]
         for finding in document["findings"]:
             if live:

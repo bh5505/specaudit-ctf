@@ -1,0 +1,18 @@
+{
+  "expected_total": 4,
+  "extras": [],
+  "hits": [
+    "demo-code-command-injection",
+    "demo-code-eval-input",
+    "demo-code-hardcoded-credential",
+    "demo-code-path-traversal"
+  ],
+  "invalid": [],
+  "misses": [],
+  "passed": true,
+  "schema": "specaudit.ctf.grade.v1",
+  "score": 1.0,
+  "severity_mismatches": [],
+  "track": "lab-code-01-semgrep-review",
+  "track_match": true
+}

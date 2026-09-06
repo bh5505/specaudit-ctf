@@ -159,13 +159,16 @@ def run_exercise(
     if attempt_dir is not None and expected_path is None:
         raise ExerciseError("grading an attempt requires --expected (the challenge contract)")
     if (head_execute or attempt_dir is not None) and expected_path is not None:
-        # Refuse BEFORE any head spend: a live-service contract's findings
-        # trace to the spawned lab target, so the attempt lane's coverage
-        # doctrine can never verify them (and must never pretend to).
+        # Refuse BEFORE any head spend: any non-fixture-backed lane
+        # (live-service findings trace to the spawned lab target;
+        # planted-code findings trace to static challenge artifacts)
+        # names evidence the attempt lane's run_range coverage doctrine
+        # can never verify — and must never pretend to.
         # The probe is deliberately lenient — an absent or malformed
         # contract keeps its existing failure mode downstream; only a
-        # contract that parses AND declares the live lane is refused here.
-        from score.grading import LANE_LIVE_SERVICE, GradingError, load_findings_document
+        # contract that parses AND declares a non-fixture lane is
+        # refused here.
+        from score.grading import LANE_FIXTURE_BACKED, GradingError, load_findings_document
 
         try:
             expected_probe = load_findings_document(
@@ -174,12 +177,13 @@ def run_exercise(
         except (GradingError, UnicodeError):
             expected_probe = None
         if expected_probe is not None and (
-            expected_probe.get("lane") == LANE_LIVE_SERVICE
+            expected_probe.get("lane", LANE_FIXTURE_BACKED) != LANE_FIXTURE_BACKED
         ):
             raise ExerciseError(
-                "the attempt lane cannot grade a live-service contract: grade it "
+                "the attempt lane cannot grade a %s contract: grade it "
                 "through the standalone --found/--expected lane with the arms lane "
-                "recording the live evidence"
+                "recording the evidence"
+                % expected_probe.get("lane")
             )
 
     range_doc = run_range(extension=ext, seed=seed, arm_ids=())

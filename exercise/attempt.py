@@ -42,7 +42,7 @@ from extension.trace import (
 )
 from score.grading import (
     GradingError,
-    LANE_LIVE_SERVICE,
+    LANE_FIXTURE_BACKED,
     grade,
     load_findings_document,
 )
@@ -158,12 +158,13 @@ def grade_attempt(
         document["status"] = "failed"
         document["reason"] = f"attempt documents unusable: {exc}"
         return document
-    if expected.get("lane") == LANE_LIVE_SERVICE:
+    lane = expected.get("lane", LANE_FIXTURE_BACKED)
+    if lane != LANE_FIXTURE_BACKED:
         document["status"] = "failed"
         document["reason"] = (
-            "live-service contract: the attempt lane cannot grade it — its "
+            f"{lane} contract: the attempt lane cannot grade it — its "
             "coverage doctrine verifies run_range fixture touches, which no "
-            "live-target finding can honestly name; grade through the "
+            "non-fixture finding can honestly name; grade through the "
             "standalone found-vs-expected lane"
         )
         return document

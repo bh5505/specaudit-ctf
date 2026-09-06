@@ -210,7 +210,7 @@ def test_shipped_challenge_contracts_are_valid() -> None:
         for row in document["findings"]:
             for key in ("control", "rationale", "traces_to"):
                 assert str(row[key]).strip(), (path, row["finding_key"], key)
-            if document["lane"] == "live-service":
+            if document["lane"] in ("live-service", "planted-code"):
                 # Live-service findings trace into the planted lab-target
                 # content instead of the synthetic fixture tree — or into
                 # the planted/shipped content the contract itself declares
