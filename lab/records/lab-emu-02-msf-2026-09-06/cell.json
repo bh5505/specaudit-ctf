@@ -8,6 +8,13 @@
       "status": "complete"
     },
     {
+      "action": "list_exploits",
+      "arm_id": "metasploit-mcp",
+      "capability_id": "metasploit-mcp.list_exploits",
+      "envelope_status": "complete",
+      "status": "complete"
+    },
+    {
       "action": "list_active_sessions",
       "arm_id": "metasploit-mcp",
       "capability_id": "metasploit-mcp.list_active_sessions",
@@ -73,5 +80,5 @@
   "schema": "exercise.run.v1",
   "seed": null,
   "status": "complete",
-  "summary": "exercise complete; range complete (10 fixtures); grading passed; score 1.00; arms 3/3"
+  "summary": "exercise complete; range complete (10 fixtures); grading passed; score 1.00; arms 4/4"
 }
