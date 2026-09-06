@@ -12,7 +12,7 @@
       "control": "exploitation framework: module-catalog enumeration by authenticated clients",
       "severity": "low",
       "rationale": "The framework's RPC daemon hands the full exploit and payload module catalog to any client holding the RPC credential in listing calls - the enumeration surface for whoever holds the lab credential.",
-      "traces_to": "metasploit framework module catalog (Kali metasploit-framework package), listed via list_exploits/list_payloads over the loopback msfrpcd bridge"
+      "traces_to": "metasploit framework module catalog (Kali metasploit-framework package), listed via list_exploits over the loopback msfrpcd bridge"
     },
     {
       "finding_key": "demo-emu-msf-no-active-sessions",

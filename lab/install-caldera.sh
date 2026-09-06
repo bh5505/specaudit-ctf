@@ -36,9 +36,25 @@ else
   git -C "$BASE" reset --hard --quiet "$TAG"
 fi
 if [ -n "$KEY" ]; then
-  # rotate the red API key before start (idempotent sed on the shipped conf)
-  sed -i "s/^api_key_red:.*/api_key_red: $KEY/" "$BASE/conf/default.yml"
-  grep -q "api_key_red: $KEY" "$BASE/conf/default.yml"
+  # rotate the red API key before start; printf the whole line so KEY
+  # never rides a sed replacement (regex/slash-safe), then verify.
+  python3 - "$BASE/conf/default.yml" "$KEY" <<'PYROT'
+import sys
+path, key = sys.argv[1], sys.argv[2]
+lines = open(path, encoding="utf-8").read().splitlines(True)
+out = []
+replaced = False
+for line in lines:
+    if line.startswith("api_key_red:"):
+        out.append("api_key_red: %s
+" % key)
+        replaced = True
+    else:
+        out.append(line)
+assert replaced, "api_key_red line not found"
+open(path, "w", encoding="utf-8", newline="").writelines(out)
+PYROT
+  grep -Fq -- "api_key_red: $KEY" "$BASE/conf/default.yml"
 fi
 if [ ! -x "$VENV/bin/python" ]; then
   python3 -m venv "$VENV"
