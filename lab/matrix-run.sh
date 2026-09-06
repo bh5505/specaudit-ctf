@@ -23,6 +23,7 @@ if [ ${#CHALLENGES[@]} -eq 0 ]; then
     telecom-aws-04-network-exposure
     telecom-aws-05-logging-gaps
     telecom-aws-06-chain-rehearsal
+    lab-knowledge-01-attack-mapping
   )
 fi
 PY="${PYTHON:-python3}"
@@ -33,7 +34,8 @@ for requested in "${CHALLENGES[@]}"; do
   case "$requested" in
     telecom-aws-01-reachability|telecom-aws-02-iam-s3-misconfig|\
 telecom-aws-03-iam-privesc|telecom-aws-04-network-exposure|\
-telecom-aws-05-logging-gaps|telecom-aws-06-chain-rehearsal) ;;
+telecom-aws-05-logging-gaps|telecom-aws-06-chain-rehearsal|\
+lab-knowledge-01-attack-mapping) ;;
     *) echo "[matrix] unknown challenge id: $requested" >&2; exit 2 ;;  # 2 = usage error
   esac
 done
@@ -42,7 +44,11 @@ mkdir -p "$OUT"
 failed=0
 for CH in "${CHALLENGES[@]}"; do
   cell="$OUT/$CH"
-  prompt="lab/prompts/challenge-${CH#telecom-aws-}.txt"
+  case "$CH" in
+    telecom-aws-*) prompt="lab/prompts/challenge-${CH#telecom-aws-}.txt" ;;
+    lab-knowledge-*) prompt="lab/prompts/challenge-knowledge-${CH#lab-knowledge-}.txt" ;;
+    *) echo "[matrix] no prompt family for: $CH" >&2; exit 2 ;;
+  esac
   expected="challenges/$CH/artifacts/expected-findings.json"
   mkdir -p "$cell"
   echo "[matrix] $HEAD x $CH"
