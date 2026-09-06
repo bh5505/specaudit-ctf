@@ -243,9 +243,14 @@ flow.
 - **Measured (2026-09-06, records in
   `lab/records/lab-osmedeus-2026-09-06/`)**: `complete` envelope,
   **361 s** wall clock (inside the arm's 600 s timeout), `[dispatch]`
-  audit line recorded; engine-side, the web-analysis flow wrote a real
-  workspace — http fingerprint (3 URLs), nuclei scan (12 result rows),
-  run-completed status `completed`.
+  audit line recorded (dispatch stderr committed alongside); engine
+  run-completed status `completed` with **15/18 steps** (the three
+  unrun steps are the vigolium-dependent thorough-scan module) —
+  http fingerprint 3 rows (the same URL, three passes), nuclei scan
+  12 complete result rows. Workflow revision resolved at install
+  recorded in `workflow-rev.txt` (the engine's workflow installer
+  floats to HEAD by design — engine binary pinned, workflow content
+  attributed by revision).
 - Host dependency: `jq` must be on PATH (the vuln module's dependency
   check refuses without it — the first measured run skipped the module
   until jq was installed).

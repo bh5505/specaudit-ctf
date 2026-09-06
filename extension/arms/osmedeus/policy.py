@@ -1,4 +1,4 @@
-"""Tier rules for the osmedeus arm. The scan -t argv is provisional pending upstream flag pinning."""
+"""Tier rules for the osmedeus arm. The scan argv is pinned to v5.1.0 flow semantics (URL targets: scan -f url -t; hostnames: scan -t)."""
 
 from __future__ import annotations
 
@@ -66,7 +66,7 @@ def argv_for(binary: str, action: str, payload: dict) -> list[str] | None:
     is refused with "Target type mismatch / dependency required types:
     domain". A validated http(s) URL target therefore selects the
     `url` flow (the workflow repo's single-address web-analysis flow,
-    `osmedeus run -f url -t <url>` in its own usage header); the flow
+    `scan -f url -t <url>`); the flow
     value is arm-chosen from the validated target shape, never a
     caller-controlled fragment.
     """

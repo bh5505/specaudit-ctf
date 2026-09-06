@@ -37,12 +37,17 @@ cd "$DEST"
 if [ ! -x "$DEST/osmedeus" ]; then
   curl -sSL "https://github.com/j3ssie/osmedeus/releases/download/${VER}/$F" -o "$F"
   curl -sSL "https://github.com/j3ssie/osmedeus/releases/download/${VER}/checksums.txt" -o checksums.txt
-  grep "linux_amd64" checksums.txt | sha256sum -c -
+  grep -F " $F" checksums.txt | sha256sum -c -
   tar -xzf "$F" -C "$DEST" osmedeus
   rm -f "$F"
 fi
 ln -sf "$DEST/osmedeus" /usr/local/bin/osmedeus
 "$DEST/osmedeus" version | head -4
+# re-run assert: the pinned version must be what runs
+"$DEST/osmedeus" version | grep -F "Version: $VER"
+# community workflows (the engine's own installer - unpinned HEAD by
+# design; the resolved revision is recorded so runs are attributable)
+git ls-remote https://github.com/osmedeus/osmedeus-workflow.git HEAD > /tmp/osmedeus-workflow-rev.txt
 # community workflows (engine's own installer)
 "$DEST/osmedeus" install workflow --preset 2>&1 | tail -2 || \
   "$DEST/osmedeus" install workflow https://github.com/osmedeus/osmedeus-workflow.git 2>&1 | tail -2

@@ -1,4 +1,4 @@
-"""Tier rules for the osmedeus arm. The scan -t argv is provisional pending upstream flag pinning."""
+"""Tier rules for the osmedeus arm. The scan -t argv is pinned to v5.1.0 flow semantics."""
 
 from __future__ import annotations
 
