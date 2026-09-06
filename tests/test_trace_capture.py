@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import io
 import json
 import os
+import signal
 from pathlib import Path
 
 import pytest
@@ -370,3 +372,34 @@ def test_range_fixture_ids_come_from_the_manifest() -> None:
     assert len(roster) == 10
     assert len(set(roster)) == len(roster)
     assert "tf_iam_open" in roster
+
+
+def test_signal_handlers_not_installed_for_monkeypatched_stdio(
+    tmp_path: Path,
+) -> None:
+    """Module-attr monkeypatching of sys.stdin (the tracer-test pattern)
+    must not satisfy the real-stdio guard: an in-process serve with
+    patched stdio installs no process-global signal handlers."""
+    import extension.mcp_server as mcp_server
+
+    before_term = signal.getsignal(signal.SIGTERM)
+    before_int = signal.getsignal(signal.SIGINT)
+    saved_stdin = mcp_server.sys.stdin
+    saved_stdout = mcp_server.sys.stdout
+    trace_path = tmp_path / "trace.ndjson"
+    mcp_server.sys.stdin = io.StringIO("")  # EOF immediately
+    mcp_server.sys.stdout = io.StringIO()
+    import os
+
+    os.environ[trace.ENV_TRACE] = str(trace_path)
+    os.environ[trace.ENV_KEY] = KEY_HEX
+    os.environ[trace.ENV_ATTEMPT] = "d1" * 32
+    try:
+        mcp_server.McpServer().serve()
+    finally:
+        mcp_server.sys.stdin = saved_stdin
+        mcp_server.sys.stdout = saved_stdout
+        for var in (trace.ENV_TRACE, trace.ENV_KEY, trace.ENV_ATTEMPT):
+            os.environ.pop(var, None)
+    assert signal.getsignal(signal.SIGTERM) is before_term
+    assert signal.getsignal(signal.SIGINT) is before_int

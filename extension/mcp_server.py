@@ -56,6 +56,13 @@ from pathlib import Path
 from typing import Any, Mapping, Sequence, TextIO
 
 from .contract import Extension, ExtensionError
+
+# The process's REAL stdio, bound at import. The signal-handler guard
+# below must not fire for in-process callers whose sys.stdin/sys.stdout
+# were monkeypatched by module-attr reassignment (the tracer tests do
+# exactly that) — only for the actual server process on its own stdio.
+_REAL_STDIN = sys.stdin
+_REAL_STDOUT = sys.stdout
 from .dispatch import DispatchOutcome, dispatch_invoke, dispatch_range
 from . import trace as trace_module
 
@@ -295,11 +302,13 @@ class McpServer:
         if (
             sink is not None
             and threading.current_thread() is threading.main_thread()
-            and inn is sys.stdin
+            and inn is _REAL_STDIN
+            and out is _REAL_STDOUT
         ):
             # The real-stdio guard keeps in-process callers (tests
-            # driving serve with StringIO) from mutating process-global
-            # signal state.
+            # driving serve with StringIO, or monkeypatching the module
+            # attrs) from mutating process-global signal state; both
+            # streams must be the process's originals.
             def _graceful_close(signum: int, frame: Any) -> None:
                 # Fail closed like the EOF path: a close-record write
                 # that cannot happen is a capture loss — nonzero exit
