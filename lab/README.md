@@ -251,9 +251,12 @@ data. Hostname endpoints (including `localhost`) are refused — the
 endpoint must be a literal loopback address.
 
 **google-mcp-security — GTI remote-read.** The operator runs the
-official server (google/mcp-security `gti-mcp`) where their Google
-application-default credentials and any server-side keys live; this
-client's environment never carries them. Arm the endpoint (https
+official server (google/mcp-security `gti-mcp`) where its sole
+credential lives — `VT_APIKEY` in the server's environment, verified
+from source 2026-09-06 (no Google application-default credential is
+involved; the first-party entrypoint is stdio-only, so the https
+endpoint this arm targets is the operator's own fronting); this
+client's environment never carries the key. Arm the endpoint (https
 only) and read:
 
 ```text
@@ -264,8 +267,10 @@ python -m extension invoke google-mcp-security get_domain_report \
 ```
 
 Healthy: `complete` envelopes with R1 / `network-egress` side effects
-and `approval_ref: operator://endpoint/GTI_MCP_ENDPOINT`; the eleven
-lookup reads answer report documents.
+and `approval_ref: operator://endpoint/GTI_MCP_ENDPOINT`; the 32
+admitted lookup reads answer report documents (the 4 mutating tools —
+collection writers and the upload-and-share `analyse_file` — are
+refused even if the server lists them).
 
 **prowler-mcp — first-party OSS server, local loopback or self-hosted
 https.** Prowler's admitted shape (2026-09-06) is exact-name read

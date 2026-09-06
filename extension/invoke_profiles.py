@@ -226,21 +226,45 @@ def _remote_read_profile(arm_id: str, action: str, endpoint_env: str, tier: str 
     )
 
 
-# GTI read admission (2026-09-03): discovery plus the 11 verified
-# read-only lookups against the official gti-mcp tool inventory.
+# GTI read admission (2026-09-03, expanded 2026-09-06): discovery
+# plus the 32 verified read-only lookups against the official gti-mcp
+# tool inventory (36 tools: 32 reads, 4 mutating exactly blocked -
+# the collection create/update family and the upload-and-share
+# analyse_file).
 _GTI_READ_ACTIONS = (
     "list_tools",
     "search_iocs",
-    "get_domain_report",
-    "get_ip_address_report",
-    "get_url_report",
-    "get_file_report",
     "get_hunting_ruleset",
     "get_entities_related_to_a_hunting_ruleset",
+    "get_domain_report",
+    "get_entities_related_to_a_domain",
+    "get_ip_address_report",
+    "get_entities_related_to_an_ip_address",
+    "get_url_report",
+    "get_entities_related_to_an_url",
+    "get_file_report",
+    "get_entities_related_to_a_file",
     "get_file_behavior_report",
     "get_file_behavior_summary",
-    "get_entities_related_to_a_domain",
-    "get_entities_related_to_an_url",
+    "search_digital_threat_monitoring",
+    "list_threat_profiles",
+    "get_threat_profile",
+    "get_threat_profile_recommendations",
+    "get_threat_profile_associations_timeline",
+    "get_collection_report",
+    "get_entities_related_to_a_collection",
+    "search_threats",
+    "search_campaigns",
+    "search_threat_actors",
+    "search_malware_families",
+    "search_software_toolkits",
+    "search_threat_reports",
+    "search_vulnerabilities",
+    "get_collection_timeline_events",
+    "get_collection_mitre_tree",
+    "get_collection_feature_matches",
+    "get_collections_commonalities",
+    "get_collection_rules",
 )
 
 # Prowler read admission (2026-09-06): discovery plus the 43 exact-name

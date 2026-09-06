@@ -38,10 +38,12 @@ class GtiArm:
     """Specialized transport for catalog id google-mcp-security.
 
     Read-only threat-intelligence lookups over the shared streamable
-    HTTP client. The upstream server holds the VT/Google API key
-    (VT_APIKEY on the server side); this client needs only the endpoint.
-    No dispatch tier exists for this arm - every upstream tool is a
-    lookup.
+    HTTP client. The upstream server holds the sole credential
+    (VT_APIKEY, read per-request from the server's environment -
+    verified from source 2026-09-06); this client needs only the
+    endpoint. No dispatch tier exists for this arm - every admitted
+    upstream tool is a lookup; the 4 mutating tools are exactly
+    blocked.
     """
 
     ARM_ID = ARM_ID

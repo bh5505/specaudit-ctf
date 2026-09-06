@@ -67,9 +67,11 @@ session per arm, not a generic transport):
   namespace are exactly blocked
 - `google-mcp-security` — research; GTI lookups over the official
   gti-mcp server at an operator-configured https endpoint via the
-  hardened transport; all 11 allowlisted tools are reads (verified
-  against the current official inventory); mutating collection tools
-  stay off the allowlist; no dispatch tier
+  hardened transport; all 32 allowlisted tools are reads (re-verified
+  against the current official 36-tool inventory 2026-09-06); the 4
+  mutating tools are exactly blocked — the three collection writers
+  and `analyse_file` (upstream docstring: uploaded samples are
+  "shared with the community"); no dispatch tier
 - `metasploit-mcp` — research; SSE over the operator-run local server
   (literal-loopback endpoints only); exploit/payload/session/listener
   listings admitted as read capabilities; execution tools gated by
