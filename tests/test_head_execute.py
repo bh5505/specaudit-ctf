@@ -20,6 +20,9 @@ CONTRACT_02 = (
 CONTRACT_03 = (
     ROOT / "challenges" / "telecom-aws-03-iam-privesc" / "artifacts" / "expected-findings.json"
 )
+CONTRACT_LIVE_WEB = (
+    ROOT / "challenges" / "lab-web-01-dast-surface" / "artifacts" / "expected-findings.json"
+)
 KEY_HEX = "ab" * 32
 
 
@@ -155,18 +158,54 @@ def test_invoke_arguments_never_grant_coverage() -> None:
 
 def test_every_contract_finding_parses_to_coverable_fixtures() -> None:
     """Drift alarm: a traces_to phrasing that names no fixture would
-    fail honest agents — every shipped finding must stay parseable."""
+    fail honest agents — every shipped finding must stay parseable.
+    Live-service contracts play a different, declared game: their
+    findings must trace to the planted lab-target content instead."""
     from exercise.attempt import fixtures_named
     from extension.trace import range_fixture_ids
 
     roster = range_fixture_ids()
     contracts = sorted((ROOT / "challenges").glob("*/artifacts/*expected*.json"))
-    assert len(contracts) == 9, "the challenge library grew — keep this pin honest"
+    assert len(contracts) == 11, "the challenge library grew — keep this pin honest"
     for contract in contracts:
         document = json.loads(contract.read_text(encoding="utf-8"))
+        live = document.get("lane") == "live-service"
         for finding in document["findings"]:
-            named = fixtures_named(finding["traces_to"], roster)
-            assert named, f"{contract.name}:{finding['finding_key']} names no fixture"
+            if live:
+                assert "lab/target/" in finding["traces_to"], (
+                    f"{contract.name}:{finding['finding_key']} live finding "
+                    "does not trace to planted target content"
+                )
+            else:
+                named = fixtures_named(finding["traces_to"], roster)
+                assert named, f"{contract.name}:{finding['finding_key']} names no fixture"
+
+
+def test_attempt_lane_refuses_live_service_contract(tmp_path: Path) -> None:
+    """The declared lane boundary, enforced at the grading layer: a
+    live-service contract never grades through the attempt lane."""
+    with pytest.raises(ExerciseError) as err:
+        run_exercise(
+            challenge="lab-web-01-dast-surface",
+            attempt_dir=str(tmp_path / "attempt"),
+            expected_path=str(CONTRACT_LIVE_WEB),
+        )
+    assert "live-service" in str(err.value)
+
+
+def test_head_execute_refuses_live_service_contract(tmp_path: Path) -> None:
+    """Refusal happens BEFORE any head spend — the fake head is the
+    unarmed driver, and even it must not be spawned for this lane."""
+    with pytest.raises(ExerciseError) as err:
+        run_exercise(
+            challenge="lab-web-01-dast-surface",
+            head="fake",
+            head_execute=True,
+            attempt_dir=str(tmp_path / "attempt"),
+            expected_path=str(CONTRACT_LIVE_WEB),
+        )
+    assert "live-service" in str(err.value)
+    assert not (tmp_path / "attempt").exists()
 
 
 def test_runner_executes_the_fake_head_and_passes(tmp_path: Path) -> None:
@@ -256,3 +295,17 @@ def test_cli_attempt_flags(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -
     )
     payload = json.loads(out.read_text(encoding="utf-8"))
     assert payload["head"]["passed"] is True
+
+
+def test_attempt_layer_refuses_live_service_contract_directly(tmp_path: Path) -> None:
+    """Defense-in-depth pin: grade_attempt itself (not just the runner
+    gate) refuses a live-service contract, after the trace verifies."""
+    attempt_dir = tmp_path / "attempt"
+    _run_persona("competent", CONTRACT_LIVE_WEB, attempt_dir)
+    document = grade_attempt(attempt_dir, expected_path=CONTRACT_LIVE_WEB, key_env=KEY_HEX)
+    assert document["status"] == "failed"
+    assert document["passed"] is False
+    assert "live-service" in document["reason"]
+    # The refusal is deliberate lane policy, not a chain failure: the
+    # trace itself verified.
+    assert document["trace"]["chain_ok"] is True

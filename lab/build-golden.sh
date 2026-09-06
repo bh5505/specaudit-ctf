@@ -35,14 +35,21 @@ EOF
 for f in start-services.sh index.html form.html; do
   wsl -d "$GOLDEN" -u root -e bash -c "cat > /labstage-$f" <"$HERE/target/$f"
 done
+# The notes/ directory is planted web content: it deliberately ships
+# NO index.html, so the python http.server auto-index renders a real
+# directory listing (the web lane's inert disclosure finding).
+wsl -d "$GOLDEN" -u root -e bash -c "cat > /labstage-notes-checklist" \
+  <"$HERE/target/notes/redeploy-checklist.txt"
 wsl -d "$GOLDEN" -u root -e bash -seu <<'EOF'
 set -eu
 install -m 0755 /labstage-start-services.sh /usr/local/lab/start-services.sh
 mv /labstage-index.html /srv/lab-www/index.html
 mv /labstage-form.html /srv/lab-www/form.html
+mkdir -p /srv/lab-www/notes
+mv /labstage-notes-checklist /srv/lab-www/notes/redeploy-checklist.txt
 rm -f /labstage-*
 echo "[lab] golden content installed:"
-ls -l /usr/local/lab /srv/lab-www
+ls -l /usr/local/lab /srv/lab-www /srv/lab-www/notes
 EOF
 
 echo "[lab] exporting golden rootfs -> $TAR"

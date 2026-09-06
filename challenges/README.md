@@ -21,6 +21,8 @@ fixture ground truth does not.
 | `telecom-aws-04-network-exposure/` | Network exposure + near-miss discipline | `tf_sg_open_ingress`, `tf_s3_policy_blocked_trap` |
 | `telecom-aws-05-logging-gaps/` | Logging/detection-gap rehearsal | `tf_cloudtrail_disabled`, `tf_s3_no_access_logging` |
 | `telecom-aws-06-chain-rehearsal/` | Flagship multi-stage chain engagement | `tf_chain_ingress_role`, `tf_iam_open`, `tf_s3_public_access` |
+| `lab-web-01-dast-surface/` | Web/DAST live-service rehearsal | lab target (`lab/target/` planted web content) |
+| `lab-net-01-service-discovery/` | Network service-discovery live rehearsal | lab target (`lab/target/start-services.sh` planted services) |
 
 Start with `telecom-aws-01-reachability/`; each challenge assumes the
 skills of its predecessors. Challenge 06 is the flagship: four graded
@@ -35,6 +37,20 @@ synthetic fixture. A finding you cannot trace is wrong; a planted
 violation with no finding is a miss. This is the discipline a real audit
 cycle demands of machine-generated deliverables, rehearsed here against
 data that cannot lie to you.
+
+## Live-service lanes
+
+The `lab-*` challenges rehearse against the **spawned lab target** instead
+of the synthetic range. Their contracts declare `lane: live-service` and
+their findings trace to planted target content (`lab/target/`), built and
+read honestly: a directory listing, an implementation-disclosure header,
+planted services — real-but-inert by construction. These lanes grade
+through the standalone found-vs-expected lane; the runner's `--arms`
+envelopes recorded in the same run are the proof the live reads happened.
+The evidence-doctrined head-attempt lane **refuses** live-service
+contracts by design: its coverage gate verifies synthetic-range fixture
+touches, which no live finding can honestly name. The two lane kinds are
+never compared as like-for-like matrix cells.
 
 ## Grading
 

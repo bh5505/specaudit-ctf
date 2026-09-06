@@ -40,7 +40,12 @@ from extension.trace import (
     range_fixture_ids,
     verify_trace,
 )
-from score.grading import GradingError, grade, load_findings_document
+from score.grading import (
+    GradingError,
+    LANE_LIVE_SERVICE,
+    grade,
+    load_findings_document,
+)
 
 SCHEMA_ID = "specaudit.ctf.attempt.v1"
 
@@ -152,6 +157,15 @@ def grade_attempt(
     except GradingError as exc:
         document["status"] = "failed"
         document["reason"] = f"attempt documents unusable: {exc}"
+        return document
+    if expected.get("lane") == LANE_LIVE_SERVICE:
+        document["status"] = "failed"
+        document["reason"] = (
+            "live-service contract: the attempt lane cannot grade it — its "
+            "coverage doctrine verifies run_range fixture touches, which no "
+            "live-target finding can honestly name; grade through the "
+            "standalone found-vs-expected lane"
+        )
         return document
 
     graded = grade(found, expected)

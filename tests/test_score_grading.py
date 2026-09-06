@@ -70,6 +70,33 @@ def test_loader_rejects_unknown_and_malformed(tmp_path: Path) -> None:
         load_findings_document(doc, what="doc")
 
 
+def test_loader_normalizes_the_declared_lane(tmp_path: Path) -> None:
+    """A contract without a lane is the historical fixture-backed lane;
+    an unknown lane value is refused, a declared live-service lane is
+    preserved."""
+    doc = tmp_path / "doc.json"
+    doc.write_text(json.dumps(_contract("a")), encoding="utf-8")
+    assert load_findings_document(doc, what="doc")["lane"] == "fixture-backed"
+    doc.write_text(
+        json.dumps({**_contract("a"), "lane": "live-service"}), encoding="utf-8"
+    )
+    assert load_findings_document(doc, what="doc")["lane"] == "live-service"
+    doc.write_text(
+        json.dumps({**_contract("a"), "lane": "whatever"}), encoding="utf-8"
+    )
+    with pytest.raises(GradingError, match="lane must be one of"):
+        load_findings_document(doc, what="doc")
+
+
+def test_live_service_contract_grades_through_the_standalone_lane() -> None:
+    """The lane boundary cuts the OTHER way: the standalone lane must
+    grade a live-service contract normally — the refusal belongs to the
+    attempt lane, never to grading itself."""
+    contract = {**_contract("a"), "lane": "live-service"}
+    document = grade(_found("a"), contract)
+    assert document["passed"] is True
+
+
 # --- grading semantics ---------------------------------------------------
 
 
@@ -183,11 +210,16 @@ def test_shipped_challenge_contracts_are_valid() -> None:
         for row in document["findings"]:
             for key in ("control", "rationale", "traces_to"):
                 assert str(row[key]).strip(), (path, row["finding_key"], key)
-            # Every expected finding traces into the synthetic fixture tree.
-            assert "extension/range/" in row["traces_to"] or "tf_" in row["traces_to"], (
-                path,
-                row["finding_key"],
-            )
+            if document["lane"] == "live-service":
+                # Live-service findings trace into the planted lab-target
+                # content instead of the synthetic fixture tree.
+                assert "lab/target/" in row["traces_to"], (path, row["finding_key"])
+            else:
+                # Every expected finding traces into the synthetic fixture tree.
+                assert "extension/range/" in row["traces_to"] or "tf_" in row["traces_to"], (
+                    path,
+                    row["finding_key"],
+                )
 
 
 def test_shipped_contracts_grade_as_themselves() -> None:
