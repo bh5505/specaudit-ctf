@@ -32,16 +32,53 @@ unchanged — probed-and-awaiting, never simulated.
 
 Status: **awaiting-operator**
 
-Runbook: `lab/README.md` → "Operator-gated rows".
+Runbook: `lab/README.md` → "Operator-gated rows". Facts pinned from
+source/docs 2026-09-06 (PortSwigger/mcp-server main; BApp store
+v1.3.0, 2026-05-28, still current):
+
+- **Auto-start**: the BApp's MCP server starts with Burp once the
+  BApp is installed — `enabled` defaults true
+  (`storage.boolean(true)`) and persists in the BApp's extension
+  data; `ExtensionBase.initialize` starts the server when enabled.
+  Staging = install-once (BApp Store), then launch Burp; listener
+  default `http://127.0.0.1:9876`.
+- **Launch flags** (official "Launching Burp Suite from the command
+  line" page): `--project-file` (PRO only — the project-files doc
+  limits CE to temporary in-memory projects), `--config-file`,
+  `--user-config-file`, `-Djava.awt.headless=true` ("Open Burp in
+  headless mode"), `--disable-extensions`, Java 21 minimum. Whether a
+  CE temp-project launch completes headless (startup wizard) is not
+  documented — record any observation here rather than assuming.
+- **Tool surface re-verified** (registerTools in Tools.kt, current
+  main): 27 tools; every previously-allowlisted name still exists.
+  New read admissions here: the regex history variants
+  (`get_proxy_http_history_regex` was handler-allowed already;
+  `get_proxy_websocket_history_regex`, `get_organizer_items_regex`
+  move blocked→allowed), `output_user_options` (blocked→allowed —
+  upstream has exported-options credential filtering since v1.3.0:
+  "Broaden credential filter and fail closed on malformed JSON in
+  options export"), plus profile admission for the already-allowed
+  `output_project_options` and the Pro-gated `get_scanner_issues` /
+  `get_collaborator_interactions` (absent from a Community server's
+  tools/list — the server surface is the refusing control).
+  `get_active_editor_contents` stays blocked (live operator UI state,
+  not an audit artifact).
+- **Residual-gap update**: the burp dossier recorded "PortSwigger
+  states no server-side Origin validation" — current UNRELEASED main
+  now validates Origin and Host server-side (`isValidOrigin` /
+  allowedHosts {localhost, 127.0.0.1}, logging "Blocked DNS
+  rebinding attack from origin"). Scoped to unreleased main at
+  2026-09-06; credit it only after the next BApp release. No TLS on
+  the listener (unchanged; contained by the literal-loopback rule).
 
 | Field | Value |
 |---|---|
 | Date | _(unfilled)_ |
 | Env vars armed | `BURP_MCP_ENDPOINT=http://127.0.0.1:9876` (literal loopback only; hostname endpoints refused) |
-| Invoke commands as run | `python -m extension invoke burp-mcp list_tools` · `python -m extension invoke burp-mcp url_encode '{"content": "a b"}'` · `python -m extension invoke burp-mcp get_proxy_http_history '{}'` |
+| Invoke commands as run | `python -m extension invoke burp-mcp list_tools` · `python -m extension invoke burp-mcp url_encode '{"content": "a b"}'` · `python -m extension invoke burp-mcp get_proxy_http_history '{}'` · `python -m extension invoke burp-mcp get_proxy_http_history_regex '{"regex": "login", "count": 10, "offset": 0}'` |
 | Envelope status | _(fill: complete / degraded / failed per action)_ |
 | Artifacts | _(fill: attempt ids, artifact dirs, notable outputs — e.g. detected Burp edition from list_tools)_ |
-| Operator note | _(optional: BApp version, Burp edition, anything surprising)_ |
+| Operator note | _(optional: BApp version, Burp edition, launch shape used — GUI vs headless flag — anything surprising)_ |
 
 ---
 
