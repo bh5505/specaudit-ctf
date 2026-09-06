@@ -24,7 +24,7 @@
       "finding_key": "demo-s3-no-encryption",
       "control": "data protection: encryption at rest absent",
       "severity": "medium",
-      "rationale": "The bucket defines no server-side encryption configuration, so objects persist unencrypted and the exposure compounds from readable to readable-and-plaintext.",
+      "rationale": "The bucket defines no server-side encryption configuration, so objects persist without encryption at rest - an independent data-protection and compliance gap alongside the read exposure.",
       "traces_to": "extension/range/tf_s3_public_access/input/main.tf, absent server-side encryption configuration for aws_s3_bucket.public_bucket (the file plants the absence)"
     }
   ]

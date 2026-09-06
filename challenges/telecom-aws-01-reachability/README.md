@@ -72,7 +72,7 @@ Work through the objectives in order. Each ends in a concrete artifact.
    setting on the bucket, the absence of an
    `aws_s3_bucket_public_access_block` resource that would override
    any ACL, and the absence of server-side encryption configuration.
-   Produce `findings.json` in the graded findings schema: one entry
+   Produce `my-findings.json` in the graded findings schema: one entry
    per planted violation, each with `finding_key`, `control`,
    `severity`, a one-sentence `rationale`, and the exact HCL lines
    (or explicit absence) it traces to in `traces_to`.
@@ -91,10 +91,10 @@ Work through the objectives in order. Each ends in a concrete artifact.
 The challenge ships an expected-findings contract
 (`artifacts/expected-findings.json`) authored from exactly the planted
 violations objective 4 describes — nothing invented. Grade your
-`findings.json` (the found document) against it:
+`my-findings.json` (the found document) against it:
 
 ```
-python -m score --grade findings.json --expected artifacts/expected-findings.json
+python -m score --grade my-findings.json --expected artifacts/expected-findings.json
 ```
 
 The verdict passes only on exact coverage with owned evidence, the
