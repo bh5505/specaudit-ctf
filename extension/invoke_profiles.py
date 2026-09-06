@@ -188,12 +188,15 @@ _BURP_READ_ACTIONS = (
 
 
 def _remote_read_profile(arm_id: str, action: str, endpoint_env: str, tier: str = "research") -> InvokeProfile:
-    """Read admission for a remote-https MCP arm action.
+    """Read admission for an endpoint-armed MCP arm action.
 
     The action is a lookup (no mutation), but it egresses to the
-    operator-configured https endpoint once armed, so the profile carries
-    the dispatch-class grammar: R1, network-egress, default-off, and the
-    endpoint env as the operator's arming/approval decision
+    operator-configured endpoint once armed (https for remote-armed
+    arms; the union policy also admits the literal-loopback local
+    shape, where the client never leaves loopback but the armed
+    endpoint is still the operator decision), so the profile carries
+    the dispatch-class grammar: R1, network-egress, default-off, and
+    the endpoint env as the operator's arming/approval decision
     (operator://endpoint/<ENV>, the remote-read analog of the dispatch
     scope envs). Timeout mirrors the shared MCP_CALL_TIMEOUT the client
     applies to every call.

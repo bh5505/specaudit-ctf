@@ -53,14 +53,18 @@ session per arm, not a generic transport):
   required - no registry `p/` or URL rules; `SEMGREP_SCAN_ROOT`
   containment) admitted as `semgrep_scan`, plus MCP reads over an
   operator-configured https endpoint on the hardened transport
-- `prowler-mcp` — research; HTTP+SSE on the hardened transport
-  (operator-configured https endpoint — the arm's explicit
-  remote-https policy refuses loopback and plain-http endpoints);
-  install is credential-gated on AWS
-  envs (`AWS_ACCESS_KEY_ID` / `AWS_PROFILE`); read-only `prowler_` /
-  `prowler_docs_` / `prowler_hub_` prefixes; `prowler_cloud_*` and
-  mutation keywords blocked; discovery admitted, read tools
-  handler-level (upstream documents namespaces, not tool names)
+- `prowler-mcp` — research; streamable-HTTP (the `/mcp` path rides
+  the endpoint URL) on the hardened transport, over the first-party
+  OSS server (prowler-cloud/prowler `mcp_server/`); endpoint policy
+  is the explicit union — operator-fronted https for self-hosted
+  remote OR literal-loopback `127.0.0.1`/`[::1]` http for the
+  first-party local default (upstream ships no TLS); install is
+  gated by the endpoint env alone (the server never reads AWS
+  credentials — hub/docs are unauthenticated, tenant tools use a
+  server-held key toward api.prowler.com); exact-name admission of
+  43 read lookups (10 hub + 2 docs + 31 tenant reads) pinned from
+  source; the 18 mutating tools and the hosted-only `prowler_cloud_*`
+  namespace are exactly blocked
 - `google-mcp-security` — research; GTI lookups over the official
   gti-mcp server at an operator-configured https endpoint via the
   hardened transport; all 11 allowlisted tools are reads (verified
@@ -174,8 +178,8 @@ surface keeps its existing gates.
 Catalog `invoke` of an unconfigured admitted arm emits the honest
 `arm is not installed` failure envelope. All five HTTP-MCP rows are
 admitted research integrations: `burp-mcp`,
-`google-mcp-security`, `semgrep-mcp`, `prowler-mcp` (discovery), and
-`metasploit-mcp` (listing reads).
+`google-mcp-security`, `semgrep-mcp`, `prowler-mcp` (exact-name
+reads), and `metasploit-mcp` (listing reads).
 Burp is not installed unless
 `BURP_MCP_ENDPOINT` is set to a literal-loopback (`127.0.0.1` or
 `[::1]`) HTTP+SSE MCP URL; a configured endpoint that is unreachable fails the handler
@@ -196,14 +200,17 @@ Only `scan` runs, with a fully fixed argv and `--skip-download`; the
 scan root is contained to the packaged synthetic range
 (`CHECKOV_SCAN_ROOT` inside that tree only).
 
-Prowler (`prowler-mcp`) is installed only when BOTH
-`PROWLER_MCP_ENDPOINT` and cloud credentials (`AWS_ACCESS_KEY_ID` or
-`AWS_PROFILE`) are present. Read-only namespaces only
-(`prowler_`, `prowler_docs_`, `prowler_hub_`); the
-`prowler_cloud_*` scan-orchestration namespace and any
-mutation-named tool are blocked. Upstream tool names are not yet
-pinned in public docs, so the allowlist is prefix-based; tighten it
-when upstream documents exact names.
+Prowler (`prowler-mcp`) is installed when `PROWLER_MCP_ENDPOINT`
+names a policy-valid endpoint (https for self-hosted remote, or
+literal-loopback `http://127.0.0.1:8000/mcp` for the first-party
+local server; no client credential exists for this arm). Exact-name
+admission of 43 read lookups, pinned from the first-party OSS
+server source (10 `prowler_hub_*` + 2 `prowler_docs_*` + 31 tenant
+`prowler_*` reads); the 18 mutating tools (scan triggers,
+mutelist/integration/provider writers, role setting) and the
+hosted-only `prowler_cloud_*` namespace are refused even when the
+server lists them, and any unknown name fails closed as
+not-allowlisted.
 
 Garak is installed only when a binary (`GARAK_BIN` or PATH) AND an
 explicit `GARAK_TARGET` binding exist. Only `list_probes`,
@@ -270,7 +277,7 @@ One-liners. Full notes live on the catalog row (`describe <id>`).
 - `burp-mcp` — Community edition refused; only allowlisted reads/utilities.
 - `semgrep-mcp` — scans need an inline rule pack; no registry/URL rules.
 - `checkov` — scan root must stay inside the packaged range; offline bundle.
-- `prowler-mcp` — prefix allowlist pending exact upstream names; no cloud orchestration.
+- `prowler-mcp` — exact-name read allowlist pinned from first-party source; mutating tools and the hosted cloud namespace exactly blocked; no cloud orchestration.
 - `garak` — listing and local report only; no probe dispatch.
 - `zaproxy` — view reads unarmed; scan launch is scope-gated.
 - `wapiti` / `commix` — no read-only mode; every scan is dispatch.

@@ -107,6 +107,17 @@ def test_inventory_counts_pinned() -> None:
     assert "prowler_cloud_scan_run" not in ALLOWED_TOOLS
 
 
+def test_registry_actions_match_allowlist_exactly() -> None:
+    # Cross-review MINOR: a typo'd action name in the registry tuple
+    # would keep both count pins green while the CLI profile is
+    # handler-refused (fail-closed but silently dead). Set-equality
+    # pins the transcription (same shape as the GTI arm).
+    from extension.invoke_profiles import _PROWLER_READ_ACTIONS
+
+    assert set(_PROWLER_READ_ACTIONS) == {"list_tools"} | set(ALLOWED_TOOLS)
+    assert len(_PROWLER_READ_ACTIONS) == 44
+
+
 def test_read_admission_covers_each_namespace() -> None:
     hub = [n for n in ALLOWED_TOOLS if n.startswith("prowler_hub_")]
     docs = [n for n in ALLOWED_TOOLS if n.startswith("prowler_docs_")]
@@ -134,9 +145,16 @@ def test_mutating_inventory_blocked() -> None:
 
 
 def test_hosted_namespace_blocked() -> None:
-    reason = refuse_reason("prowler_cloud_findings_triage", _names())
-    assert reason is not None
-    assert "hosted cloud-management namespace" in reason
+    # Wholesale prefix, not name-by-name: any prowler_cloud_* shape is
+    # refused before the exact-name policy is consulted.
+    for name in (
+        "prowler_cloud_findings_triage",
+        "prowler_cloud_list_scans",
+        "prowler_cloud_",
+    ):
+        reason = refuse_reason(name, _names())
+        assert reason is not None, name
+        assert "hosted cloud-management namespace" in reason
 
 
 def test_unknown_names_refused_fail_closed() -> None:
