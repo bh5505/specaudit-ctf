@@ -271,7 +271,12 @@ def run_exercise(
     elif head_execute:
         from .real_head import execute_real_head, resolve_timeout, RealHeadError
 
-        assert prompt_facts is not None and armed_cmd is not None
+        if prompt_facts is None or armed_cmd is None:
+            # Unreachable while the arming gate above binds both; kept
+            # explicit so drift fails as a usage error, not a crash.
+            raise ExerciseError(
+                "internal: real-head execution reached without arming facts"
+            )
         prompt_text, prompt_sha256, prompt_chars = prompt_facts
         try:
             timeout_seconds = resolve_timeout()

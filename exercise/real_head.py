@@ -125,7 +125,10 @@ def load_prompt(prompt_path: str) -> tuple[str, str, int]:
         raise RealHeadError(
             f"attempt prompt exceeds {PROMPT_MAX_BYTES} bytes: {path}"
         )
-    text = data.decode("utf-8")
+    try:
+        text = data.decode("utf-8")
+    except UnicodeDecodeError:
+        raise RealHeadError(f"attempt prompt is not valid UTF-8: {path}") from None
     return text, hashlib.sha256(data).hexdigest(), len(text)
 
 
@@ -149,6 +152,8 @@ def codex_preflight() -> dict[str, Any]:
         )
     try:
         config = tomllib.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise RealHeadError(f"codex host config unreadable: {path} ({exc})") from None
     except (tomllib.TOMLDecodeError, UnicodeDecodeError) as exc:
         raise RealHeadError(f"codex host config unparsable: {path} ({exc})") from None
     servers = config.get("mcp_servers")
@@ -156,6 +161,11 @@ def codex_preflight() -> dict[str, Any]:
         raise RealHeadError(
             f"codex host config {path} has no [mcp_servers.{MCP_SERVER_NAME}] "
             "block - the trace vars would never reach the MCP server"
+        )
+    if not isinstance(servers[MCP_SERVER_NAME], dict):
+        raise RealHeadError(
+            f"codex host config {path}: [mcp_servers.{MCP_SERVER_NAME}] is "
+            "not a table - the env_vars allowlist cannot be verified"
         )
     forwarded = servers[MCP_SERVER_NAME].get("env_vars")
     if not isinstance(forwarded, list):
@@ -206,9 +216,16 @@ def _write_claude_mcp_config(
         }
     }
     payload = json.dumps(document, indent=2).encode("utf-8")
-    descriptor = os.open(config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(descriptor, "wb") as handle:
-        handle.write(payload)
+    try:
+        descriptor = os.open(
+            config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
+        )
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+    except OSError as exc:
+        raise RealHeadError(
+            f"cannot write the private mcp-config into {directory}: {exc}"
+        ) from None
     return config_path, hashlib.sha256(payload).hexdigest()
 
 
@@ -243,14 +260,15 @@ def _codex_argv(cmd: str, prompt_text: str, attempt_dir: Path) -> list[str]:
     ]
 
 
+# Internal marker for the prompt position inside an argv list; never
+# leaves this module (the spawn materializes the prompt there, the
+# record elides it to the prompt hash).
+PROMPT_TRAILER_MARKER = "\0prompt\0"
+
+
 def _elide_argv(argv: list[str], prompt_sha256: str) -> list[str]:
     marked = f"<prompt sha256:{prompt_sha256}>"
     return [marked if element == PROMPT_TRAILER_MARKER else element for element in argv]
-
-
-# Internal marker for the prompt position inside an argv list; never
-# leaves this module (the elision replaces it before any report).
-PROMPT_TRAILER_MARKER = "\0prompt\0"
 
 
 def _compose(
@@ -321,6 +339,11 @@ def execute_real_head(
     recorded_argv = _elide_argv(composed_argv, prompt_sha256)
 
     child_env = dict(os.environ)
+    # Whatever the transport (config file for claude, exported vars for
+    # codex), a STALE trace key from the operator's own shell must
+    # never ride into the child: pop first, then re-add per path.
+    for name in TRACE_VARS:
+        child_env.pop(name, None)
     if child_env_extra:
         child_env.update(child_env_extra)
 
@@ -334,16 +357,16 @@ def execute_real_head(
     try:
         proc = subprocess.run(
             spawn_argv,
-            capture_output=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
             text=True,
             encoding="utf-8",
+            errors="replace",
             timeout=timeout_seconds,
             cwd=str(directory),
             env=child_env,
             check=False,
         )
-        exit_code: int | None = proc.returncode
-        stderr_tail = (proc.stderr or "").strip()[-400:]
     except subprocess.TimeoutExpired:
         # A timed-out head was killed by the runner: its trace has no
         # close record and can never grade — fail the lane immediately
@@ -354,8 +377,6 @@ def execute_real_head(
             file=sys.stderr,
             flush=True,
         )
-        if temp_path is not None:
-            temp_path.unlink(missing_ok=True)
         return _failed_real_lane(
             directory,
             head,
@@ -372,14 +393,46 @@ def execute_real_head(
             "",
             None,
         )
+    except OSError as exc:
+        # Missing binary, missing cwd, spawn failure: fail-closed lane,
+        # never a traceback — and the grading side sees no trace at all.
+        duration_s = round(time.monotonic() - started, 1)
+        print(
+            f"[head-reap] head={head} exit=spawn-error duration={duration_s}s",
+            file=sys.stderr,
+            flush=True,
+        )
+        return _failed_real_lane(
+            directory,
+            head,
+            {
+                "argv": recorded_argv,
+                "exit_code": None,
+                "duration_s": duration_s,
+                "timeout_s": timeout_seconds,
+                "prompt_sha256": prompt_sha256,
+                "prompt_chars": prompt_chars,
+                "mcp": mcp_fact,
+            },
+            f"head spawn failed: {exc}",
+            "",
+            None,
+        )
+    finally:
+        # The temp mcp-config carries the minted key: it is deleted on
+        # EVERY exit from the spawn (success, timeout, OSError).
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+    exit_code: int | None = proc.returncode
+    stderr_tail = _scrub_secrets(
+        (proc.stderr or "").strip()[-400:], directory, key, attempt_id
+    )
     duration_s = round(time.monotonic() - started, 1)
     print(
         f"[head-reap] head={head} exit={exit_code} duration={duration_s}s",
         file=sys.stderr,
         flush=True,
     )
-    if temp_path is not None:
-        temp_path.unlink(missing_ok=True)
 
     spawn_fact = {
         "argv": recorded_argv,
@@ -424,6 +477,16 @@ def argv_and_prompt(argv: list[str], prompt_text: str) -> list[str]:
         prompt_text + PROMPT_TRAILER if element == PROMPT_TRAILER_MARKER else element
         for element in argv
     ]
+
+
+def _scrub_secrets(text: str, directory: Path, key: str, attempt_id: str) -> str:
+    """The head's own output must never become the report's leak path:
+    the minted trace facts are scrubbed from anything the child printed
+    before it can reach a persisted lane field."""
+    for secret in (key, attempt_id, str(directory / "trace.ndjson")):
+        if secret:
+            text = text.replace(secret, "<redacted>")
+    return text
 
 
 def _failed_real_lane(

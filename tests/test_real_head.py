@@ -348,8 +348,7 @@ def test_armed_codex_head_exports_trace_vars_and_preflights(
     assert child_env["SPECAUDIT_CTF_MCP_TRACE_KEY"]
     assert child_env["SPECAUDIT_CTF_MCP_TRACE"] == str(attempt_dir / "trace.ndjson")
     assert lane["spawn"]["mcp"]["kind"] == "host-config"
-    assert not hasattr(lane, "temp-config"), "codex path writes no temp config"
-    assert not (attempt_dir / "mcp-config.json").exists()
+    assert not (attempt_dir / "mcp-config.json").exists(), "codex path writes no temp config"
 
 
 def test_codex_preflight_failure_fails_closed_before_spawn(
@@ -409,6 +408,154 @@ def test_timeout_fails_the_lane_without_grading(
     assert "timeout" in lane["reason"]
     assert lane["spawn"]["exit_code"] is None
     assert lane["trace"]["chain_ok"] is False
+
+
+def test_spawn_failure_fails_closed_and_deletes_the_temp_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
+) -> None:
+    """A head binary that cannot exec (missing, bad cwd) leaves no key
+    material on disk and no traceback: a fail-closed lane with the
+    spawn error as the reason, and the temp mcp-config gone."""
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/nonexistent/claude")
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+
+    def deny(argv, **kwargs):
+        raise FileNotFoundError(f"[Errno 2] no such file: {argv[0]}")
+
+    monkeypatch.setattr(real_head.subprocess, "run", deny)
+    monkeypatch.setattr("exercise.attempt.grade_attempt", deny)
+    lane = execute_real_head(
+        head="claude-code",
+        cmd="/nonexistent/claude",
+        attempt_dir=str(attempt_dir),
+        expected_path="expected.json",
+        prompt_text="p",
+        prompt_sha256="a" * 64,
+        prompt_chars=1,
+        timeout_seconds=7,
+    )
+    assert lane["status"] == "failed" and lane["passed"] is False
+    assert "spawn failed" in lane["reason"]
+    assert not (attempt_dir / "mcp-config.json").exists()
+    assert lane["spawn"]["exit_code"] is None
+
+
+def test_child_stderr_is_scrubbed_of_the_minted_trace_facts(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
+) -> None:
+    """A chatty head that echoes its env/config must not carry the
+    minted key (or the trace path/attempt id) into the lane record."""
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    seen: dict = {}
+
+    def fake_run(argv, **kwargs):
+        # The stub cannot know the minted key up front; grab the facts
+        # from the temp config the composition just wrote.
+        import json as _json
+
+        config_path = Path(argv[argv.index("--mcp-config") + 1])
+        env = _json.loads(config_path.read_text(encoding="utf-8"))["mcpServers"][
+            "specaudit-ctf"
+        ]["env"]
+        proc = type(
+            "Proc",
+            (),
+            {
+                "stdout": "",
+                "stderr": "trace-key-is "
+                + env["SPECAUDIT_CTF_MCP_TRACE_KEY"]
+                + " attempt "
+                + env["SPECAUDIT_CTF_MCP_TRACE_ATTEMPT"],
+                "returncode": 0,
+            },
+        )()
+        seen["secrets"] = env
+        return proc
+
+    monkeypatch.setattr(real_head.subprocess, "run", fake_run)
+
+    from exercise.attempt import AttemptError
+
+    def failing_grade(*a, **k):
+        raise AttemptError("attempt documents unusable: no trace")
+
+    monkeypatch.setattr("exercise.attempt.grade_attempt", failing_grade)
+    lane = execute_real_head(
+        head="claude-code",
+        cmd="/usr/bin/claude",
+        attempt_dir=str(attempt_dir),
+        expected_path="expected.json",
+        prompt_text="p",
+        prompt_sha256="a" * 64,
+        prompt_chars=1,
+        timeout_seconds=7,
+    )
+    assert seen["secrets"]["SPECAUDIT_CTF_MCP_TRACE_KEY"] not in json.dumps(lane)
+    assert seen["secrets"]["SPECAUDIT_CTF_MCP_TRACE_ATTEMPT"] not in json.dumps(lane)
+    assert "<redacted>" in lane.get("spawn_note", "") or "<redacted>" in lane.get("reason", "")
+
+
+def test_claude_child_env_carries_no_stale_trace_vars(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
+) -> None:
+    """The config file is the claude-path transport: a stale trace key
+    in the operator's own shell must not ride into the head process."""
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE_KEY", "stale-key-value")
+    monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE", "/stale/trace")
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    seen: dict = {}
+    _stub_run(monkeypatch, seen=seen)
+    _stub_grade(monkeypatch, passed=True)
+    execute_real_head(
+        head="claude-code",
+        cmd="/usr/bin/claude",
+        attempt_dir=str(attempt_dir),
+        expected_path="expected.json",
+        prompt_text="p",
+        prompt_sha256="a" * 64,
+        prompt_chars=1,
+        timeout_seconds=7,
+    )
+    child_env = seen["kwargs"]["env"]
+    assert "SPECAUDIT_CTF_MCP_TRACE_KEY" not in child_env
+    assert "SPECAUDIT_CTF_MCP_TRACE" not in child_env
+
+
+def test_load_prompt_rejects_invalid_utf8(tmp_path: Path) -> None:
+    path = tmp_path / "bad.txt"
+    path.write_bytes(b"\xff\xfe nope")
+    with pytest.raises(RealHeadError, match="UTF-8"):
+        load_prompt(str(path))
+
+
+def test_codex_preflight_rejects_a_non_table_server_block(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    config = tmp_path / "config.toml"
+    config.write_text(
+        'mcp_servers = "not-a-table"\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(real_head, "_codex_config_path", lambda: config)
+    with pytest.raises(RealHeadError, match="no \\[mcp_servers"):
+        real_head.codex_preflight()
+    config.write_text(
+        '[mcp_servers.specaudit-ctf]\ncommand = 3\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(RealHeadError, match="does not allowlist env_vars"):
+        real_head.codex_preflight()
+    config.write_text(
+        'mcp_servers.specaudit-ctf = "scalar-not-a-table"\n',
+        encoding="utf-8",
+    )
+    with pytest.raises(RealHeadError, match="not a table"):
+        real_head.codex_preflight()
 
 
 def test_run_exercise_end_to_end_with_a_stubbed_head(
