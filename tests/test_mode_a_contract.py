@@ -490,7 +490,8 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # profiles + 11 scope-gated dispatch profiles.
     # 50 after the metasploit read admission (5 loopback listing reads)
     # closed the HTTP-MCP held set: semgrep CLI (2), GTI (12), burp (9),
-    # prowler (1), metasploit (5) on top of the original 21.
+    # prowler (44 since the 2026-09-06 exact-name admission), metasploit
+    # (5) on top of the original 21.
     # 51 since the vuls.scan admission (2026-09-05, normal recipe).
     # 54 since the stratus warmup/detonate/revert admission
     # (2026-09-05, normal recipe — cloud-side technique lifecycle).
@@ -517,7 +518,10 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # "not admitted this campaign" row) plus the 8 metasploit-mcp
     # execution surfaces (the handler-gated DISPATCH_TOOLS get registry
     # profiles behind METASPLOIT_DISPATCH_SCOPE).
-    assert len(INVOKE_PROFILES) == 70
+    # 113 since the prowler exact-name admission (2026-09-06): the
+    # discovery-only prowler profile grew to 44 (list_tools + 43
+    # source-pinned read lookups; 18 mutating names exactly blocked).
+    assert len(INVOKE_PROFILES) == 113
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.

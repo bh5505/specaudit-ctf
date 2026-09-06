@@ -188,12 +188,15 @@ _BURP_READ_ACTIONS = (
 
 
 def _remote_read_profile(arm_id: str, action: str, endpoint_env: str, tier: str = "research") -> InvokeProfile:
-    """Read admission for a remote-https MCP arm action.
+    """Read admission for an endpoint-armed MCP arm action.
 
     The action is a lookup (no mutation), but it egresses to the
-    operator-configured https endpoint once armed, so the profile carries
-    the dispatch-class grammar: R1, network-egress, default-off, and the
-    endpoint env as the operator's arming/approval decision
+    operator-configured endpoint once armed (https for remote-armed
+    arms; the union policy also admits the literal-loopback local
+    shape, where the client never leaves loopback but the armed
+    endpoint is still the operator decision), so the profile carries
+    the dispatch-class grammar: R1, network-egress, default-off, and
+    the endpoint env as the operator's arming/approval decision
     (operator://endpoint/<ENV>, the remote-read analog of the dispatch
     scope envs). Timeout mirrors the shared MCP_CALL_TIMEOUT the client
     applies to every call.
@@ -238,6 +241,58 @@ _GTI_READ_ACTIONS = (
     "get_file_behavior_summary",
     "get_entities_related_to_a_domain",
     "get_entities_related_to_an_url",
+)
+
+# Prowler read admission (2026-09-06): discovery plus the 43 exact-name
+# read lookups pinned from the first-party OSS server source
+# (prowler-cloud/prowler mcp_server/: prowler_hub catalog 10, prowler_docs
+# 2, tenant prowler_ namespace 31 reads; the 18 mutating names and the
+# hosted-only prowler_cloud_ namespace stay exactly blocked).
+_PROWLER_READ_ACTIONS = (
+    "list_tools",
+    "prowler_list_attack_paths_scans",
+    "prowler_list_attack_paths_queries",
+    "prowler_run_attack_paths_query",
+    "prowler_get_attack_paths_cartography_schema",
+    "prowler_get_compliance_overview",
+    "prowler_get_compliance_framework_state_details",
+    "prowler_list_finding_groups",
+    "prowler_get_finding_group_details",
+    "prowler_list_finding_group_resources",
+    "prowler_search_security_findings",
+    "prowler_get_finding_details",
+    "prowler_get_findings_overview",
+    "prowler_list_integrations",
+    "prowler_get_integration",
+    "prowler_get_jira_issue_types",
+    "prowler_get_mutelist",
+    "prowler_list_mute_rules",
+    "prowler_get_mute_rule",
+    "prowler_search_providers",
+    "prowler_list_resources",
+    "prowler_get_resource",
+    "prowler_get_resources_overview",
+    "prowler_get_resource_events",
+    "prowler_list_roles",
+    "prowler_get_role",
+    "prowler_get_user_roles",
+    "prowler_list_users",
+    "prowler_get_user",
+    "prowler_get_current_user",
+    "prowler_list_scans",
+    "prowler_get_scan",
+    "prowler_hub_list_checks",
+    "prowler_hub_semantic_search_checks",
+    "prowler_hub_get_check_details",
+    "prowler_hub_get_check_code",
+    "prowler_hub_get_check_fixer",
+    "prowler_hub_list_compliances",
+    "prowler_hub_semantic_search_compliances",
+    "prowler_hub_get_compliance_details",
+    "prowler_hub_list_providers",
+    "prowler_hub_get_provider_services",
+    "prowler_docs_search",
+    "prowler_docs_get_document",
 )
 
 # Dispatch-class admission (2026-09-01 operator directive: expand the MVP
@@ -418,15 +473,18 @@ INVOKE_PROFILES = {
             _remote_read_profile("google-mcp-security", action, "GTI_MCP_ENDPOINT")
             for action in _GTI_READ_ACTIONS
         ),
-        # Prowler read admission (2026-09-04): discovery over the
-        # operator-configured https endpoint speaking HTTP+SSE (the
-        # arm's explicit remote-https policy; AWS-credential-gated
-        # install; egress-capable, so the remote-read grammar applies).
-        # Only list_tools is admitted - upstream documents namespaces,
-        # not pinned tool names, so the hub/docs read tools stay
-        # handler-level (prefix allowlist + mutation keyword refusals)
-        # until names are documentable.
-        _remote_read_profile("prowler-mcp", "list_tools", "PROWLER_MCP_ENDPOINT"),
+        # Prowler read admission (2026-09-06, superseding the 2026-09-04
+        # discovery-only shape): the 43 exact-name read lookups pinned
+        # from the first-party OSS server source, over the explicit
+        # union transport policy (operator-fronted https for self-hosted
+        # remote, literal-loopback http for the first-party local
+        # default) on the streamable-HTTP dialect. The 18 mutating
+        # names and the hosted-only prowler_cloud_ namespace stay
+        # exactly blocked; the client sends no credential.
+        *(
+            _remote_read_profile("prowler-mcp", action, "PROWLER_MCP_ENDPOINT")
+            for action in _PROWLER_READ_ACTIONS
+        ),
         # attack-stix-data read admission (2026-09-04, P4): the offline
         # ATT&CK knowledge reads over an operator-supplied local STIX
         # bundle - exact technique/software/group lookups and bounded

@@ -64,23 +64,58 @@ credentials live; this client's environment never carries them.
 
 ---
 
-## prowler-mcp — discovery over the operator-configured https endpoint
+## prowler-mcp — exact-name reads over the first-party OSS server
 
 Status: **awaiting-operator**
 
 Runbook: `lab/README.md` → "Operator-gated rows". There is **no**
-API-key environment variable and no hosted-endpoint default; the
-Prowler install itself is gated on cloud credentials present in the
-operator's environment (`AWS_ACCESS_KEY_ID` or `AWS_PROFILE`).
+client-side API-key environment variable and no hosted-endpoint
+default. Staging paths, pinned from first-party source 2026-09-06
+(prowler-cloud/prowler `mcp_server/`, fastmcp 3.4.5):
+
+**Easiest — first-party local server (literal loopback):**
+
+```
+docker pull prowlercloud/prowler-mcp
+docker run --rm -p 127.0.0.1:8000:8000 prowlercloud/prowler-mcp \
+  --transport http --host 127.0.0.1 --port 8000
+# (source-run alternative, from a prowler checkout:
+#   cd mcp_server && uv run prowler-mcp --transport http \
+#     --host 127.0.0.1 --port 8000)
+export PROWLER_MCP_ENDPOINT='http://127.0.0.1:8000/mcp'
+python -m extension invoke prowler-mcp list_tools
+```
+
+The endpoint URL must include the `/mcp` path (the server serves
+streamable HTTP there; the client POSTs to the URL as given). The
+`prowler_hub_*` (10 tools) and `prowler_docs_*` (2 tools) namespaces
+need **no** server-side authentication. The 31 tenant `prowler_*`
+reads additionally need a Prowler API key in the SERVER's `.env`
+(`PROWLER_API_KEY`, talking to `api.prowler.com`) — never in this
+client's environment. Local is not offline: with the tenant key set,
+the server egresses to `api.prowler.com` on tenant reads.
+
+**Remote — self-hosted server behind the operator's TLS front:** run
+the same server with `--transport http --host 0.0.0.0 --port 8000`
+(the README's documented self-hosted HTTP shape) on a host fronted by
+a TLS terminator whose certificate the client host trusts, then arm
+`PROWLER_MCP_ENDPOINT=https://<that-host>/mcp` (https required for
+non-loopback endpoints; loopback names such as `localhost` are
+refused — literal IPs only).
+
+The arm admits exactly 43 read lookups by name; the 18 mutating tools
+(scan triggers, mutelist/integration/provider writers, role setting)
+and the hosted-only `prowler_cloud_` namespace are refused even when
+the server lists them.
 
 | Field | Value |
 |---|---|
 | Date | _(unfilled)_ |
-| Env vars armed | `PROWLER_MCP_ENDPOINT=https://<operator-configured-endpoint>` (+ operator-side cloud credentials; never in this client env) |
-| Invoke commands as run | `python -m extension invoke prowler-mcp list_tools` |
-| Envelope status | _(fill: expect complete from the hardened SSE client — remote-https policy, loopback/plain-http refused)_ |
+| Env vars armed | `PROWLER_MCP_ENDPOINT=http://127.0.0.1:8000/mcp` (local first-party server) or `https://<operator-fronted-host>/mcp` (self-hosted remote) — the union policy; no client credential exists for this arm |
+| Invoke commands as run | `python -m extension invoke prowler-mcp list_tools` · `python -m extension invoke prowler-mcp prowler_hub_list_checks '{}'` · `python -m extension invoke prowler-mcp prowler_docs_search '{"term": "s3 public"}'` |
+| Envelope status | _(fill: expect complete from the hardened streamable-HTTP client — union policy: https remote or literal-loopback http)_ |
 | Artifacts | _(fill: attempt ids, endpoint tool-inventory rows)_ |
-| Operator note | _(optional: Prowler version, endpoint shape)_ |
+| Operator note | _(optional: prowler-mcp server version — CHANGELOG 0.12.0 pairs with prowler v5.41.0 at time of writing — docker image digest, tenant-key presence)_ |
 
 ---
 

@@ -96,9 +96,18 @@ class HttpTransportPolicy:
       https. For arms whose real upstream is a local server (Burp,
       Metasploit).
     - remote_https(): https to non-loopback hosts only. The default
-      and the policy for remote-armed catalogs (GTI, Prowler,
-      Semgrep); loopback endpoints are refused outright so a rebinding
+      and the policy for remote-armed catalogs (GTI, Semgrep);
+      loopback endpoints are refused outright so a rebinding
       name or a misconfigured local front cannot smuggle traffic.
+    - remote_https_or_loopback(): https to non-loopback hosts, plus
+      literal 127.0.0.1/[::1] endpoints over http or https. For arms
+      whose first-party upstream both ships a local server with no
+      TLS story (Prowler's OSS MCP server binds 127.0.0.1 plain http
+      by default) and documents self-hosted remote HTTP behind an
+      operator's TLS front (https upstream). Loopback http is
+      confined to the two literals exactly like loopback(); a
+      hostname that resolves to loopback is still refused by the
+      DNS pin (P6).
     - general_http(): http or https to any host. NOT part of the
       HTTP-MCP gate - this shape exists for non-MCP REST arms (ZAP,
       Caldera) whose endpoints are operator-scoped lab resources.
@@ -122,6 +131,12 @@ class HttpTransportPolicy:
     @classmethod
     def remote_https(cls) -> "HttpTransportPolicy":
         return cls("remote-https", loopback_only=False, allow_loopback_http=False)
+
+    @classmethod
+    def remote_https_or_loopback(cls) -> "HttpTransportPolicy":
+        return cls(
+            "remote-https+loopback", loopback_only=False, allow_loopback_http=True
+        )
 
     @classmethod
     def general_http(cls) -> "HttpTransportPolicy":
@@ -177,9 +192,13 @@ def endpoint_problem(url: str | None, policy: HttpTransportPolicy | None = None)
             return "policy %s does not allow http" % policy.name
     else:
         if is_loopback:
-            return "policy %s refuses loopback endpoints" % policy.name
-        if parsed.scheme != "https":
-            return "policy %s requires https (http is only for literal loopback endpoints)" % policy.name
+            if not policy.allow_loopback_http:
+                return "policy %s refuses loopback endpoints" % policy.name
+        elif parsed.scheme != "https":
+            return (
+                "policy %s requires https for non-loopback endpoints"
+                " (http is only for literal loopback endpoints)" % policy.name
+            )
     return None
 
 

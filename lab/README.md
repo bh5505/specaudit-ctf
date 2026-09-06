@@ -267,25 +267,36 @@ Healthy: `complete` envelopes with R1 / `network-egress` side effects
 and `approval_ref: operator://endpoint/GTI_MCP_ENDPOINT`; the eleven
 lookup reads answer report documents.
 
-**prowler-mcp — operator-configured https endpoint.** Prowler's
-admitted shape is discovery (`list_tools`) over an
-operator-configured https endpoint speaking HTTP+SSE, with the
-Prowler install itself gated on cloud credentials being present in
-the environment (`AWS_ACCESS_KEY_ID` or `AWS_PROFILE`). There is no
-API-key environment variable and no hosted-endpoint default — an
-earlier story claiming both was withdrawn (PR #41):
+**prowler-mcp — first-party OSS server, local loopback or self-hosted
+https.** Prowler's admitted shape (2026-09-06) is exact-name read
+lookups pinned from the first-party OSS server source
+(prowler-cloud/prowler `mcp_server/`): 43 reads (10 `prowler_hub_*`
+catalog + 2 `prowler_docs_*` + 31 tenant `prowler_*`), with the 18
+mutating tools and the hosted-only `prowler_cloud_` namespace exactly
+blocked. The client sends no credential and there is no client-side
+API-key env (an earlier story claiming a hosted endpoint + key was
+withdrawn, PR #41; the AWS-credential install gate was withdrawn on
+2026-09-06 source evidence — the server never reads AWS credentials).
+Easiest staging is the first-party local server; see
+[validation-results.md](validation-results.md) for the full copy-paste
+recipe (docker or `uv run prowler-mcp --transport http --host
+127.0.0.1 --port 8000`; endpoint URL includes the `/mcp` path):
 
 ```text
-export PROWLER_MCP_ENDPOINT=https://<operator-configured-endpoint>
+export PROWLER_MCP_ENDPOINT=http://127.0.0.1:8000/mcp
 python -m extension invoke prowler-mcp list_tools
+python -m extension invoke prowler-mcp prowler_hub_list_checks '{}'
 ```
 
-Healthy: a `complete` envelope from the hardened SSE client — the
-arm's transport policy is explicitly remote-https (loopback and
-plain-http endpoints are refused fail-closed, pinned by a gate test)
-— with the endpoint's tool inventory rows. Read tools beyond
-`list_tools` stay handler-level (prefix allowlist, mutation keywords
-refused) until upstream documents individual tool names.
+Healthy: a `complete` envelope from the hardened streamable-HTTP
+client — the arm's transport policy is explicitly the union (https
+for self-hosted remote deployments, literal-loopback http for the
+first-party local default; loopback names such as `localhost` are
+refused fail-closed, pinned by a gate test) — with the endpoint's
+tool inventory rows. Hub/docs tools need no server-side
+authentication; the tenant reads need a `PROWLER_API_KEY` in the
+SERVER's `.env` (egresses to `api.prowler.com`), never in this
+client's environment.
 
 **stratus-red-team — cloud-side technique lifecycle (operator-gated
 by construction).** Detonation is cloud-side: `stratus` acts on the

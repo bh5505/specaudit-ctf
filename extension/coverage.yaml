@@ -127,7 +127,7 @@ entries:
     protocols: [mcp, http]
     curated: true
     tier: research
-    notes: First-party CSPM MCP over an operator-configured https endpoint speaking HTTP+SSE (remote-https policy; plain-http and loopback refused), on the hardened shared client. Credential-gated install requires AWS credentials in the environment (AWS_ACCESS_KEY_ID or AWS_PROFILE); read-only namespaces only - cloud scan orchestration and mutation keywords blocked. Tool names are not individually documented upstream, so only discovery is admitted; the read tools stay handler-level behind the prefix allowlist.
+    notes: First-party CSPM MCP over the official OSS server (prowler-cloud/prowler mcp_server/, fastmcp 3.4.5 streamable HTTP at /mcp) on the hardened shared client. Endpoint policy is the explicit union - operator-fronted https for self-hosted remote deployments, or literal-loopback http for the first-party local default (--transport http, --host 127.0.0.1, --port 8000; upstream ships no TLS). The client sends no credential (hub/docs tools are unauthenticated server-side; tenant tools authenticate to api.prowler.com with a server-held key). Exact-name admission - 43 read lookups pinned from first-party source (10 hub catalog + 2 docs + 31 tenant reads); the 18 mutating tools (scan triggers, mutelist/integration/provider writers, role setting) and the hosted-only prowler_cloud_ namespace are exactly blocked.
 
   - id: semgrep-mcp
     kind: arm
