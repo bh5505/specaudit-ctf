@@ -532,6 +532,60 @@ def test_claude_child_env_carries_no_stale_trace_vars(
     assert "SPECAUDIT_CTF_MCP_TRACE" not in child_env
 
 
+def test_spawn_refuses_to_overwrite_an_existing_temp_config(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
+) -> None:
+    """The temp mcp-config carries the minted key: an existing regular
+    file at its path must fail closed with a refusal and survive
+    untouched (a planted SYMLINK also fails closed on POSIX via
+    O_NOFOLLOW, though through the generic OSError branch with the
+    cannot-write message)."""
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    (attempt_dir / "mcp-config.json").write_text("sentinel", encoding="utf-8")
+    seen: dict = {}
+    _stub_run(monkeypatch, seen=seen)
+    _stub_grade(monkeypatch, passed=True)
+    with pytest.raises(RealHeadError, match="refusing to overwrite"):
+        execute_real_head(
+            head="claude-code",
+            cmd="/usr/bin/claude",
+            attempt_dir=str(attempt_dir),
+            expected_path="expected.json",
+            prompt_text="p",
+            prompt_sha256="a" * 64,
+            prompt_chars=1,
+            timeout_seconds=7,
+        )
+    assert not seen, "spawn must not be reached on refusal"
+    assert (attempt_dir / "mcp-config.json").read_text(encoding="utf-8") == "sentinel"
+
+
+def test_head_spawn_is_non_interactive(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
+) -> None:
+    """A headless spawn must not inherit the runner's stdin (a CLI that
+    probes it could block); it is wired to DEVNULL."""
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    seen: dict = {}
+    _stub_run(monkeypatch, seen=seen)
+    _stub_grade(monkeypatch, passed=True)
+    execute_real_head(
+        head="claude-code",
+        cmd="/usr/bin/claude",
+        attempt_dir=str(attempt_dir),
+        expected_path="expected.json",
+        prompt_text="p",
+        prompt_sha256="a" * 64,
+        prompt_chars=1,
+        timeout_seconds=7,
+    )
+    assert seen["kwargs"]["stdin"] == subprocess.DEVNULL
+
+
 def test_load_prompt_rejects_invalid_utf8(tmp_path: Path) -> None:
     path = tmp_path / "bad.txt"
     path.write_bytes(b"\xff\xfe nope")

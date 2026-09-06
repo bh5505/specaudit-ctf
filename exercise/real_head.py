@@ -216,12 +216,22 @@ def _write_claude_mcp_config(
         }
     }
     payload = json.dumps(document, indent=2).encode("utf-8")
+    # O_EXCL (plus O_NOFOLLOW where the platform has it): the config
+    # carries the minted key, so an existing file or symlink at this
+    # path must fail closed, never be silently followed or overwritten.
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    nofollow = getattr(os, "O_NOFOLLOW", None)
+    if nofollow is not None:
+        flags |= nofollow
     try:
-        descriptor = os.open(
-            config_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600
-        )
+        descriptor = os.open(config_path, flags, 0o600)
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
+    except FileExistsError:
+        raise RealHeadError(
+            f"refusing to overwrite an existing {config_path.name} in the "
+            "attempt directory (leftover from an earlier run?)"
+        ) from None
     except OSError as exc:
         # A partial write must not leave key material behind; a
         # hostile filesystem must not mask the RealHeadError below.
@@ -366,6 +376,7 @@ def execute_real_head(
     try:
         proc = subprocess.run(
             spawn_argv,
+            stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
