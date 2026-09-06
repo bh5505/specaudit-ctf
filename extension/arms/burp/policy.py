@@ -40,8 +40,12 @@ ALLOWED_TOOLS = frozenset(
 # output_user_options) are reads of the same proxy/organizer/config
 # data already admitted — output_user_options rides the upstream
 # credential filter (v1.3.0: "Broaden credential filter and fail
-# closed on malformed JSON in options export"), and this client's
-# keyword redaction stays on regardless.
+# closed on malformed JSON in options export"); this client's
+# error-path keyword redaction stays on regardless, and export
+# payload filtering rides the upstream credential filter.
+# get_collaborator_interactions takes only an optional payloadId
+# (upstream data class GetCollaboratorInteractions(val payloadId:
+# String? = null)) — no pagination defaults to invent.
 BLOCKED_TOOLS = frozenset(
     {
         "send_http1_request",
@@ -72,8 +76,10 @@ TOOL_DEFAULT_ARGS: dict[str, dict] = {
     "get_proxy_http_history": {"count": 200, "offset": 0},
     "get_proxy_http_history_regex": {"regex": ".*", "count": 200, "offset": 0},
     "get_proxy_websocket_history": {"count": 200, "offset": 0},
+    "get_proxy_websocket_history_regex": {"regex": ".*", "count": 200, "offset": 0},
     "get_scanner_issues": {"count": 200, "offset": 0},
     "get_organizer_items": {"count": 200, "offset": 0},
+    "get_organizer_items_regex": {"regex": ".*", "count": 200, "offset": 0},
 }
 
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})

@@ -279,7 +279,7 @@ refused).
 
 One-liners. Full notes live on the catalog row (`describe <id>`).
 
-- `burp-mcp` — only allowlisted reads/utilities; active requests, UI mutations, config writes, and the live-editor read stay blocked.
+- `burp-mcp` — only allowlisted reads/utilities; active requests, UI mutations, config writes, Collaborator payload generation, and the live-editor read stay blocked.
 - `semgrep-mcp` — scans need an inline rule pack; no registry/URL rules.
 - `checkov` — scan root must stay inside the packaged range; offline bundle.
 - `prowler-mcp` — exact-name read allowlist pinned from first-party source; mutating tools and the hosted cloud namespace exactly blocked; no cloud orchestration.
