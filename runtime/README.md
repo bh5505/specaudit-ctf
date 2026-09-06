@@ -97,7 +97,7 @@ closure still 103 producer files and 114 stdlib modules). Re-measured
 2026-09-05 for sweep 9 (strict UTF-8 decode in the arm reader; tree
 `54981773…21ae`, archive `94f0eeb3…db3f`; hashes only). Re-measured
 2026-09-05 for sweep 10 (fail-closed bundle rows, blank-id refusals,
-sorted extras; tree `38ec2304…db7f`, archive `59b89a91…a4f8` (sweep 12: import-time real-stdio signal guard); hashes
+sorted extras; tree `01a76c4e…6c73`, archive `515bd78c…837c` (sweep 12: import-time real-stdio signal guard); hashes
 only). A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
