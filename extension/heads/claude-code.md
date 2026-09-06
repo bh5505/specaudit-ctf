@@ -52,9 +52,13 @@ outside the clone, set `SPECAUDIT_CTF_ROOT` to the clone root.
 
 ## Headless attempt (exercise head lane)
 
-To have this head attempt a challenge gradably, the three trace env
-vars must reach the MCP server process this CLI spawns. Parent-env
-inheritance is not a documented guarantee — inject explicitly:
+The exercise runner can drive this head itself when the host is armed
+(`EXERCISE_HEAD_CLAUDE_CODE_CMD` names the binary; see
+`exercise/real_head.py` — the runner composes the incantation below,
+including the private `--mcp-config`). To run it by hand, the three
+trace env vars must reach the MCP server process this CLI spawns.
+Parent-env inheritance is not a documented guarantee — inject
+explicitly:
 
 - pass `-e SPECAUDIT_CTF_MCP_TRACE=<path> -e SPECAUDIT_CTF_MCP_TRACE_KEY=<hex>`
   (and optionally `SPECAUDIT_CTF_MCP_TRACE_ATTEMPT`) on the `claude -p`

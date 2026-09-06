@@ -201,9 +201,24 @@ def test_runner_executed_attempt_failure_fails_the_run(tmp_path: Path) -> None:
     assert document["ok"] is False
 
 
-def test_runner_coupling_matrix() -> None:
-    with pytest.raises(ExerciseError, match="never spawned by the runner"):
-        run_exercise(head="claude-code", head_execute=True, attempt_dir="x", expected_path="y")
+def test_runner_coupling_matrix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """B0: real heads are refused on an UNARMED host (the fake head and
+    the out-of-band --attempt-dir grading are the only unarmed drivers);
+    arming is per-head via the EXERCISE_HEAD_*_CMD envs."""
+    from exercise.real_head import ARMING_ENVS
+
+    for env in ARMING_ENVS.values():
+        monkeypatch.delenv(env, raising=False)
+    with pytest.raises(ExerciseError, match="not armed on this host"):
+        run_exercise(
+            head="claude-code",
+            head_execute=True,
+            attempt_dir="x",
+            expected_path="y",
+            attempt_prompt="p",
+        )
     with pytest.raises(ExerciseError, match="requires --attempt-dir"):
         run_exercise(head="fake", head_execute=True, expected_path="y")
     with pytest.raises(ExerciseError, match="requires --expected"):

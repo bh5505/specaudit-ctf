@@ -49,8 +49,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         default=None,
         help=(
             "agent head: claude-code | codex-cli for readiness probing; "
-            "fake only under --head-execute (or with --attempt-dir to "
-            "grade an existing fake attempt)"
+            "under --head-execute: 'fake' (the lane-internal scripted "
+            "head) or a REAL head armed on this host via "
+            "EXERCISE_HEAD_CLAUDE_CODE_CMD / EXERCISE_HEAD_CODEX_CLI_CMD"
         ),
     )
     parser.add_argument(
@@ -66,10 +67,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--head-execute",
         action="store_true",
         help=(
-            "spawn the lane-internal fake head (requires --head fake, "
-            "--attempt-dir, --expected) and grade its attempt; real agent "
-            "CLIs are never spawned by the runner — run them out-of-band "
-            "and grade with --attempt-dir"
+            "execute the named head and grade its attempt (requires "
+            "--attempt-dir, --expected, --head): 'fake' runs the "
+            "lane-internal scripted head; a real head (claude-code, "
+            "codex-cli) is spawned headless only when armed via its "
+            "EXERCISE_HEAD_*_CMD env and given --attempt-prompt"
+        ),
+    )
+    parser.add_argument(
+        "--attempt-prompt",
+        default=None,
+        help=(
+            "operator-supplied attempt prompt file for real-head "
+            "execution (the runner appends the deliverable trailer; "
+            "only the prompt's hash is recorded)"
         ),
     )
     parser.add_argument(
@@ -122,6 +133,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             attempt_dir=args.attempt_dir,
             head_execute=args.head_execute,
             battery=args.battery,
+            attempt_prompt=args.attempt_prompt,
         )
     except ExerciseError as exc:
         print(f"exercise: {exc}", file=sys.stderr)

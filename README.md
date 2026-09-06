@@ -279,7 +279,7 @@ Passing requires
 zero unverified hits. This is a claim-without-evidence tripwire, not
 proof of investigative depth.
 
-Two ways to run the lane:
+Three ways to run the lane:
 
 ```text
 # hermetic: the deterministic fake head (scripted stdio-MCP client)
@@ -287,12 +287,36 @@ python -m exercise --head fake --head-execute \
   --attempt-dir /tmp/attempt \
   --expected challenges/<challenge>/artifacts/expected-findings.json
 
-# real head: run the agent CLI out-of-band against the attached server
-# (recipes in the head docs), drop its found.json into the attempt dir,
-# then grade — the runner never spawns agent CLIs itself
+# real head, runner-driven: the runner spawns the named agent CLI
+# headless and grades the server-side trace — only when the operator
+# armed that head on this host and supplied the attempt prompt
+export EXERCISE_HEAD_CLAUDE_CODE_CMD=/usr/local/bin/claude   # or EXERCISE_HEAD_CODEX_CLI_CMD
+python -m exercise --head claude-code --head-execute \
+  --attempt-prompt prompts/challenge-02.txt \
+  --attempt-dir /tmp/attempt \
+  --expected challenges/<challenge>/artifacts/expected-findings.json
+
+# real head, out-of-band: run the agent CLI yourself against the
+# attached server (recipes in the head docs), drop its found.json into
+# the attempt dir, then grade
 python -m exercise --attempt-dir /tmp/attempt \
   --expected challenges/<challenge>/artifacts/expected-findings.json
 ```
+
+Real-head execution follows the harness's standing arming discipline:
+default-off (an unarmed host refuses — the fake head is the only
+`--head-execute` driver there, so CI and hermetic tests never spawn an
+agent CLI), operator-armed per head (the `EXERCISE_HEAD_*_CMD` env
+names the binary; the runner composes the headless incantation, wires
+the trace env to the MCP server per CLI, and audits the spawn/reap on
+stderr), and evidence stays server-side (the graded lane comes from
+the HMAC-chained trace and the attempt grader; the report records the
+prompt's hash, the argv with the prompt elided, exit code, and
+duration — never the trace key or the prompt text). Codex hosts
+additionally need the user-global `~/.codex/config.toml` to allowlist
+the three `SPECAUDIT_CTF_MCP_TRACE*` vars for the
+`specaudit-ctf` server — the runner preflights this and refuses
+before spawning.
 
 A failed attempt fails the exercise run (readiness probing stays
 non-gating). The fake head (`python -m exercise.fake_head`, personas
