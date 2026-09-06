@@ -39,7 +39,9 @@ def _cell_stats(cell: str, reports: list[dict[str, Any]]) -> dict[str, Any]:
         status = str(head.get("status") or report.get("status") or "unknown")
         trace = head.get("trace") if isinstance(head.get("trace"), dict) else {}
         calls = trace.get("tool_calls")
-        if isinstance(calls, int) and calls >= 0:
+        # bool is an int in Python; a bare True/False must never count
+        # as a tool-call count.
+        if isinstance(calls, int) and not isinstance(calls, bool) and calls >= 0:
             tool_calls.append(calls)
         verified = head.get("verified")
         if isinstance(verified, list):
@@ -94,13 +96,27 @@ def collect(root: Path) -> list[dict[str, Any]]:
         for path in grouped[cell_dir]:
             try:
                 document = json.loads(path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError) as exc:
+            except (OSError, json.JSONDecodeError, UnicodeError) as exc:
                 reports.append(
                     {"head": {"status": "failed", "passed": False, "reason": f"unreadable report: {exc}"}}
                 )
                 continue
             if isinstance(document, dict):
                 reports.append(document)
+            else:
+                # Valid JSON that is not an object (null, a list, a
+                # string) is still an unreadable REPORT: it must count
+                # as an attempt and produce a failure row, never
+                # silently vanish from the stats.
+                reports.append(
+                    {
+                        "head": {
+                            "status": "failed",
+                            "passed": False,
+                            "reason": "unreadable report: expected a JSON object",
+                        }
+                    }
+                )
         rows.append(_cell_stats(cell_dir.relative_to(root).as_posix(), reports))
     return rows
 
@@ -111,7 +127,13 @@ def markdown(rows: list[dict[str, Any]]) -> str:
         "|---|---|---|---|---|---|---|---|",
     ]
     for row in rows:
-        failures = "; ".join(row["failures"]) if row["failures"] else "none"
+        # Reasons are free text; escape pipes so a reason containing
+        # one cannot break the markdown table.
+        failures = (
+            "; ".join(failure.replace("|", "\\|") for failure in row["failures"])
+            if row["failures"]
+            else "none"
+        )
         lines.append(
             f"| {row['cell']} | {row['attempts']} | {row['passes']} ({row['pass_rate']:.0%}) "
             f"| {row['tool_calls']} | {row['verified']} | {row['severity_flags']} "
