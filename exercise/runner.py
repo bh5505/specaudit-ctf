@@ -282,16 +282,22 @@ def run_exercise(
             timeout_seconds = resolve_timeout()
         except RealHeadError as exc:
             raise ExerciseError(str(exc)) from None
-        head_lane = execute_real_head(
-            head=str(head),
-            cmd=armed_cmd,
-            attempt_dir=str(attempt_dir),  # type: ignore[arg-type]
-            expected_path=str(expected_path),  # type: ignore[arg-type]
-            prompt_text=prompt_text,
-            prompt_sha256=prompt_sha256,
-            prompt_chars=prompt_chars,
-            timeout_seconds=timeout_seconds,
-        )
+        try:
+            head_lane = execute_real_head(
+                head=str(head),
+                cmd=armed_cmd,
+                attempt_dir=str(attempt_dir),  # type: ignore[arg-type]
+                expected_path=str(expected_path),  # type: ignore[arg-type]
+                prompt_text=prompt_text,
+                prompt_sha256=prompt_sha256,
+                prompt_chars=prompt_chars,
+                timeout_seconds=timeout_seconds,
+            )
+        except RealHeadError as exc:
+            # Arming/wiring failures (codex preflight, mcp-config write,
+            # attempt-dir creation) are operator-facing usage errors:
+            # exit 2 with a reason, never a traceback.
+            raise ExerciseError(str(exc)) from None
     elif attempt_dir is not None:
         from exercise.attempt import AttemptError, grade_attempt
 

@@ -27,6 +27,17 @@ if [ ${#CHALLENGES[@]} -eq 0 ]; then
 fi
 PY="${PYTHON:-python3}"
 
+# The graded cell list is fixed; argv challenge names must be one of
+# the shipped ids (no path games in cell/prompt/expected derivation).
+for requested in "${CHALLENGES[@]}"; do
+  case "$requested" in
+    telecom-aws-02-iam-s3-misconfig|telecom-aws-03-iam-privesc|\
+telecom-aws-04-network-exposure|telecom-aws-05-logging-gaps|\
+telecom-aws-06-chain-rehearsal) ;;
+    *) echo "[matrix] unknown challenge id: $requested" >&2; exit 2 ;;
+  esac
+done
+
 mkdir -p "$OUT"
 failed=0
 for CH in "${CHALLENGES[@]}"; do
@@ -50,5 +61,5 @@ for CH in "${CHALLENGES[@]}"; do
     failed=$((failed + 1))
   fi
 done
-echo "[matrix] sweep done: $failed failed cell(s)"
+echo "[matrix] sweep done: $failed failed cell(s) (recorded, not fatal)"
 exit 0

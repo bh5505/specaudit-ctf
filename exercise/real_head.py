@@ -223,6 +223,8 @@ def _write_claude_mcp_config(
         with os.fdopen(descriptor, "wb") as handle:
             handle.write(payload)
     except OSError as exc:
+        # A partial write must not leave key material behind.
+        config_path.unlink(missing_ok=True)
         raise RealHeadError(
             f"cannot write the private mcp-config into {directory}: {exc}"
         ) from None
@@ -328,7 +330,10 @@ def execute_real_head(
     from extension.trace import mint_key
 
     directory = Path(attempt_dir)
-    directory.mkdir(parents=True, exist_ok=True)
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise RealHeadError(f"cannot create the attempt directory {directory}: {exc}") from None
     key = mint_key()
     attempt_id = os.urandom(32).hex()
     composed_argv, child_env_extra, mcp_fact, temp_path = _compose(
@@ -420,9 +425,13 @@ def execute_real_head(
         )
     finally:
         # The temp mcp-config carries the minted key: it is deleted on
-        # EVERY exit from the spawn (success, timeout, OSError).
+        # EVERY exit from the spawn (success, timeout, OSError). A
+        # hostile filesystem must not mask the lane outcome.
         if temp_path is not None:
-            temp_path.unlink(missing_ok=True)
+            try:
+                temp_path.unlink(missing_ok=True)
+            except OSError:
+                pass
     exit_code: int | None = proc.returncode
     stderr_tail = _scrub_secrets(
         (proc.stderr or "").strip()[-400:], directory, key, attempt_id

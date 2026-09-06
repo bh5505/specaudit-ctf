@@ -321,6 +321,9 @@ def test_armed_codex_head_exports_trace_vars_and_preflights(
         encoding="utf-8",
     )
     monkeypatch.setattr(real_head, "_codex_config_path", lambda: config)
+    # Stale vars in the operator's shell must be overridden by the
+    # minted ones (the allowlist forwards the child's env).
+    monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE_KEY", "stale-key-value")
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     seen: dict = {}
@@ -346,6 +349,9 @@ def test_armed_codex_head_exports_trace_vars_and_preflights(
     assert argv[-1] == prompt_text + PROMPT_TRAILER
     child_env = seen["kwargs"]["env"]
     assert child_env["SPECAUDIT_CTF_MCP_TRACE_KEY"]
+    assert child_env["SPECAUDIT_CTF_MCP_TRACE_KEY"] != "stale-key-value", (
+        "the minted key must override any stale shell value"
+    )
     assert child_env["SPECAUDIT_CTF_MCP_TRACE"] == str(attempt_dir / "trace.ndjson")
     assert lane["spawn"]["mcp"]["kind"] == "host-config"
     assert not (attempt_dir / "mcp-config.json").exists(), "codex path writes no temp config"
