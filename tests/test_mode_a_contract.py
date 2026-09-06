@@ -530,7 +530,10 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # profiles (regex history variants, organizer regex, both config
     # exports, Pro-gated scanner/Collaborator reads re-verified from
     # source; live-editor read stays blocked).
-    assert len(INVOKE_PROFILES) == 141
+    # 149 since the caldera read admission (2026-09-06,
+    # emulation-listing packet): the eight v2 GET views as
+    # endpoint-armed reads (caldera had no profiles before).
+    assert len(INVOKE_PROFILES) == 149
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.

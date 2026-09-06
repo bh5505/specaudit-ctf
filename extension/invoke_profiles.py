@@ -164,6 +164,24 @@ def _mcp_read_profile(arm_id: str, action: str, tier: str = "research") -> Invok
     )
 
 
+# Caldera read admission (2026-09-06, emulation-listing packet): the
+# eight allowlisted v2 GET views over the operator-configured
+# CALDERA_ENDPOINT (general-http policy — an operator-scoped lab
+# resource, typically the locally-run first-party server per
+# lab/install-caldera.sh; CALDERA_API_KEY is the server-side gate).
+# schedule_operation stays handler-level behind CALDERA_DISPATCH_SCOPE
+# — its dispatch admission is a separate packet, unchanged here.
+_CALDERA_READ_ACTIONS = (
+    "abilities",
+    "adversaries",
+    "agents",
+    "operations",
+    "operations_summary",
+    "operation",
+    "operation_links",
+    "operation_facts",
+)
+
 # Burp read admission (2026-09-04; expanded 2026-09-06 after
 # re-verifying the full current tool surface from source): discovery,
 # utilities, and every proxy/WebSocket/Organizer history read incl.
@@ -498,6 +516,14 @@ INVOKE_PROFILES = {
         # contained-subprocess carve-out — no scope env, no operator
         # arming decision to record; see _checkov_scan_profile.
         _checkov_scan_profile(),
+        # Caldera read admission (2026-09-06, emulation-listing packet):
+        # the eight v2 GET views as R1 network-egress reads over the
+        # operator-configured endpoint; the endpoint env is the arming
+        # decision (CALDERA_API_KEY is server-side).
+        *(
+            _remote_read_profile("caldera", action, "CALDERA_ENDPOINT")
+            for action in _CALDERA_READ_ACTIONS
+        ),
         *(_mcp_read_profile("burp-mcp", action) for action in _BURP_READ_ACTIONS),
         *(
             _remote_read_profile("google-mcp-security", action, "GTI_MCP_ENDPOINT")
