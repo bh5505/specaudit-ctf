@@ -33,10 +33,22 @@ is the seed observation for the variance packet's stability stats.
 
 ## Process evidence on the knowledge lane
 
-Both heads' knowledge traces carry exactly three `technique` invokes
-(one per mapping: T1530, T1562.008, T1078) over the shipped demo
-bundle — the lookups the challenge exists to rehearse are visible in
-the server-side trace, while coverage still comes from `run_range`.
+Server-side traces name every tool call, so the lookup claims are
+auditable per cell. Technique-lookup counts per knowledge cell
+(trace-derived histograms; the failed cell's trace survives even
+though its lane failed on the missing deliverable):
+
+| cell | run_range | technique lookups | other calls |
+|---|---|---|---|
+| claude@kali | 1 | 3 | list 1, describe 1 |
+| codex@kali | 1 | 3 | list 1, describe 1 |
+| claude@ubuntu | 1 | 9 | list 1, describe 1, list_tools 1 |
+| codex@ubuntu (failed) | 2 | 4 | list 1, describe 1 |
+
+Every cell performed the lookups the challenge rehearses; claude@ubuntu
+chose a heavier session (9 lookups across its 13 calls) — session
+shape, not a different verdict. Coverage still comes only from
+`run_range`.
 
 Records: per-cell `report.json` under
 `lab/records/matrix-2026-09-06-knowledge/<head>-<host>/<track>/`.

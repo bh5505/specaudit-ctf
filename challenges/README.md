@@ -41,8 +41,10 @@ data that cannot lie to you.
 
 ## Live-service lanes
 
-Two `lab-*` challenges (the web and network rehearsals) run against the
-**spawned lab target** instead of the synthetic range. Their contracts
+Two `lab-*` challenges (the web and network rehearsals) draw their
+findings from the **spawned lab target** instead of the synthetic range
+(their composed runner runs still record the synthetic range lane; the
+graded findings trace to planted target content). Their contracts
 declare `lane: live-service` and their findings trace to planted target
 content (`lab/target/`), built and read honestly: a directory listing, an
 implementation-disclosure header, planted services — real-but-inert by
