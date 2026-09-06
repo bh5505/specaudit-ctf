@@ -68,11 +68,15 @@ def run_exercise(
       admission path as ``python -m extension invoke``; a failed arm
       row fails the run.
     - battery (optional): the default rehearsal preset
-      (``exercise/battery.py``) — the offline/contained pair. A member
-      that is not installed or whose arming env is unset is SKIPPED
-      (designed-safe unavailability: the run degrades, never fails);
-      a member that runs and fails fails the run. Target-facing arms
-      compose through ``arms`` in the lab instead.
+      (``exercise/battery.py``) spanning the exercise domains — the
+      offline/contained trio (checkov, semgrep inline rules, the
+      ATT&CK demo-bundle lookup) plus the dual-gated target-facing
+      pair (wapiti/nmap: arming scope env AND ``LAB_TARGET_HOST``).
+      A member that is not installed, whose arming env or target env
+      is unset is SKIPPED (designed-safe unavailability: the run
+      degrades, never fails); a member that runs and fails fails the
+      run. zgrab2 composes through ``arms`` in the lab instead (it
+      needs a per-run module choice).
     - head (optional): readiness only for the shipped real-agent
       bundles — whether the named head's MCP launcher exists in this
       checkout. Attachment is an operator-driven step and is never
@@ -360,9 +364,45 @@ def _run_battery(ext: Extension) -> list[dict[str, Any]]:
             )
             rows.append(row)
             continue
+        member_args = dict(member.args)
+        if member.target_env is not None:
+            # The arming check ran first, so an unarmed host never
+            # interpolates a target. The env names the target; the
+            # template in the preset owns its shape.
+            target = os.environ.get(member.target_env, "").strip()
+            if not target:
+                row.update(
+                    status=STATUS_SKIPPED,
+                    reason=(
+                        f"battery: {member.target_env} is unset; "
+                        "target-facing member skipped (set it to the "
+                        "operator-armed target host)"
+                    ),
+                )
+                rows.append(row)
+                continue
+            member_args = {
+                # Literal replacement, not str.format: a future member
+                # template with unrelated braces must fail honestly (the
+                # residual check below), never raise out of the row model.
+                key: value.replace("{target}", target)
+                if isinstance(value, str)
+                else value
+                for key, value in member_args.items()
+            }
+            if any(
+                isinstance(value, str) and "{target}" in value
+                for value in member_args.values()
+            ):
+                row.update(
+                    status=STATUS_FAILED,
+                    reason="battery: member args left an unresolved {target}",
+                )
+                rows.append(row)
+                continue
         try:
             outcome = dispatch_invoke(
-                ext, arm_id=member.arm_id, action=member.action, args=dict(member.args)
+                ext, arm_id=member.arm_id, action=member.action, args=member_args
             )
         except Exception as exc:  # noqa: BLE001 - recorded per member, stay fail-closed
             row.update(status=STATUS_FAILED, reason=str(exc))
