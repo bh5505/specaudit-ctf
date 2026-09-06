@@ -573,7 +573,7 @@ def test_runner_converts_preflight_failure_to_a_usage_error(
     config = tmp_path / "config.toml"
     config.write_text('model = "x"\n', encoding="utf-8")
     monkeypatch.setattr(real_head, "_codex_config_path", lambda: config)
-    with pytest.raises(ExerciseError, match="codex host config missing"):
+    with pytest.raises(ExerciseError, match="has no \\[mcp_servers"):
         run_exercise(
             head="codex-cli",
             head_execute=True,
