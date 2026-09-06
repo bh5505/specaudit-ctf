@@ -1,0 +1,33 @@
+{
+  "track": "lab-knowledge-01-attack-mapping",
+  "seed": null,
+  "fixtures": [
+    "tf_s3_public_access",
+    "tf_cloudtrail_disabled",
+    "tf_iam_open"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-knowledge-t1530-public-storage",
+      "control": "S3 Block Public Access",
+      "severity": "high",
+      "rationale": "The fixture reports that aws_s3_bucket s3-public is reachable without auth, and the T1530 lookup says adversaries may access and collect sensitive data from cloud storage, making unauthenticated reads a direct data-disclosure path.",
+      "traces_to": "tf_s3_public_access: aws_s3_bucket s3-public is reachable without auth -> T1530"
+    },
+    {
+      "finding_key": "demo-knowledge-t1562-008-cloud-logs",
+      "control": "AWS CloudTrail logging",
+      "severity": "high",
+      "rationale": "The fixture reports that aws_cloudtrail trail-main is disabled and control-plane events go unrecorded, and the T1562.008 lookup says adversaries may disable or modify cloud logging to avoid detection, so this creates a high-severity audit blind spot.",
+      "traces_to": "tf_cloudtrail_disabled: aws_cloudtrail trail-main is disabled; control-plane events go unrecorded -> T1562.008"
+    },
+    {
+      "finding_key": "demo-knowledge-t1078-wildcard-accounts",
+      "control": "IAM least privilege",
+      "severity": "critical",
+      "rationale": "The fixture reports that aws_iam_policy iam-open grants Action=* on Resource=*, and the T1078 lookup says adversaries may abuse existing account credentials to bypass access controls and escalate privileges, so a wildcard IAM policy is a critical over-privilege exposure.",
+      "traces_to": "tf_iam_open: aws_iam_policy iam-open grants Action=* on Resource=* -> T1078"
+    }
+  ]
+}

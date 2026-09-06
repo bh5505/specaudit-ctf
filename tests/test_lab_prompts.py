@@ -68,3 +68,41 @@ def test_contract_finding_keys_are_quote_free() -> None:
             assert '"' not in finding["finding_key"], (
                 f"{track}/{finding['finding_key']} embeds a quote"
             )
+
+
+# Hard-mode canonical prompts: same track, same contract, same keys —
+# the scaffolding (severity assignments, controls, traces_to hints) is
+# withheld so calibration is the head's own work. Difficulty withholds
+# hints; it never fabricates complexity or changes grading.
+HARD_PROMPTS = {
+    "telecom-aws-06-chain-rehearsal": "challenge-06-chain-rehearsal-hard.txt",
+    "lab-knowledge-01-attack-mapping": "challenge-knowledge-01-attack-mapping-hard.txt",
+}
+
+
+@pytest.mark.parametrize(("track", "name"), sorted(HARD_PROMPTS.items()))
+def test_hard_prompt_keeps_keys_and_withholds_scaffolding(track: str, name: str) -> None:
+    prompt = (PROMPTS_DIR / name).read_text(encoding="utf-8")
+    contract = json.loads(
+        (
+            Path(__file__).resolve().parent.parent
+            / "challenges" / track / "artifacts" / "expected-findings.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert f'"{track}"' in prompt
+    for finding in contract["findings"]:
+        # the key must ride the prompt (else the attempt fails on key
+        # mismatch regardless of reasoning quality)
+        assert f'"{finding["finding_key"]}"' in prompt
+        # the scaffolding must not: no per-finding severity assignment,
+        # no contract control phrasing, no contract traces_to phrasing
+        assert f'"severity": "{finding["severity"]}"' not in prompt
+        assert finding["control"] not in prompt
+        assert finding["traces_to"] not in prompt
+
+
+@pytest.mark.parametrize(("track", "name"), sorted(HARD_PROMPTS.items()))
+def test_hard_prompt_hint_lines_carry_balanced_quotes(track: str, name: str) -> None:
+    for line in (PROMPTS_DIR / name).read_text(encoding="utf-8").splitlines():
+        if "finding_key" in line:
+            assert line.count('"') % 2 == 0, f"unbalanced quotes bait JSON breakage: {line}"
