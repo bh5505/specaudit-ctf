@@ -441,10 +441,16 @@ without any dispatch.
 
 **Burp** (`burp-mcp`) is a research-tier, fully usable SSE integration:
 PortSwigger's official MCP Server BApp on the free Community Edition
-admits proxy/WebSocket history, codec, Organizer, and random-text reads
-as catalog capabilities - no edition gating anywhere (a tool the
-connected Burp does not list is refused as unavailable, which is the
-server's own surface). The arm rides the hardened shared transport:
+admits proxy/WebSocket history (including the regex filter variants),
+codec, Organizer, config-export, scanner-issue (Pro), Collaborator
+interaction (Pro), and random-text reads as catalog capabilities - the
+full read surface re-verified from source 2026-09-06, no edition
+gating anywhere (a tool the connected Burp does not list is refused as
+unavailable, which is the server's own surface; active requests, UI
+mutations, config writes, and the live-editor read stay blocked). The
+BApp's MCP server auto-starts with Burp once installed (enabled
+defaults true and persists - verified from source), so staging is
+install-once-then-launch. The arm rides the hardened shared transport:
 endpoint policy is literal-loopback only (`BURP_MCP_ENDPOINT` must name
 `127.0.0.1` or `[::1]`) and the client sends no credential. Community
 Edition has no usable built-in REST API and no project-file persistence,

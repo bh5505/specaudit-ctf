@@ -15,12 +15,15 @@ ALLOWED_TOOL_PATTERN = DEFAULT_TOOL_PATTERN
 ALLOWED_TOOLS = frozenset(
     {
         "output_project_options",
+        "output_user_options",
         "get_proxy_http_history",
         "get_proxy_http_history_regex",
         "get_proxy_websocket_history",
+        "get_proxy_websocket_history_regex",
         "get_scanner_issues",
         "get_collaborator_interactions",
         "get_organizer_items",
+        "get_organizer_items_regex",
         "url_encode",
         "url_decode",
         "base64_encode",
@@ -29,7 +32,16 @@ ALLOWED_TOOLS = frozenset(
     }
 )
 
-# Active request, UI mutation, config writes, and non-allowlisted reads stay off.
+# Active request, UI mutation, config writes, and the live-editor read
+# (operator UI state, not an audit artifact) stay off. The full
+# current upstream surface was re-verified from source 2026-09-06
+# (PortSwigger/mcp-server main): every tool name below exists; the
+# reads added that day (regex history variants, organizer regex,
+# output_user_options) are reads of the same proxy/organizer/config
+# data already admitted — output_user_options rides the upstream
+# credential filter (v1.3.0: "Broaden credential filter and fail
+# closed on malformed JSON in options export"), and this client's
+# keyword redaction stays on regardless.
 BLOCKED_TOOLS = frozenset(
     {
         "send_http1_request",
@@ -43,10 +55,7 @@ BLOCKED_TOOLS = frozenset(
         "set_project_options",
         "set_user_options",
         "generate_collaborator_payload",
-        "output_user_options",
         "get_active_editor_contents",
-        "get_proxy_websocket_history_regex",
-        "get_organizer_items_regex",
     }
 )
 

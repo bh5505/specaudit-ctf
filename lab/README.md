@@ -233,10 +233,15 @@ operator credentials. A validating operator runs from their own host
 with their own assets:
 
 **burp-mcp — loopback reads over the official BApp.** Install the
-PortSwigger "MCP Server" BApp into Burp (Community Edition is fully
-usable; scanner/Collaborator tools simply do not appear on a
-Community server's surface), start it, and note its listener (default
-`http://127.0.0.1:9876`):
+PortSwigger "MCP Server" BApp into Burp once (BApp Store → install;
+Community Edition is fully usable — scanner/Collaborator tools simply
+do not appear on a Community server's surface). The BApp's MCP server
+AUTO-STARTS with Burp from then on — `enabled` defaults true and
+persists in the BApp's extension data (verified from source
+2026-09-06: `storage.boolean(true)`; `if (config.enabled)
+serverManager.start(config)` at initialize), listener default
+`http://127.0.0.1:9876`. No per-launch clicks; launching Burp is the
+only step:
 
 ```text
 export BURP_MCP_ENDPOINT=http://127.0.0.1:9876   # literal loopback only
@@ -244,6 +249,15 @@ python -m extension invoke burp-mcp list_tools
 python -m extension invoke burp-mcp url_encode '{"content": "a b"}'
 python -m extension invoke burp-mcp get_proxy_http_history '{}'
 ```
+
+Launch shapes (official docs, verified 2026-09-06): the command line
+accepts `--project-file` (PRO only — CE is limited to temporary
+in-memory projects by the project-files doc), `--config-file`,
+`--user-config-file`, and `-Djava.awt.headless=true` ("Open Burp in
+headless mode"; minimum Java 21). Whether a CE temp-project launch
+completes headless (startup wizard) is NOT documented — record any
+headless-CE observation in validation-results rather than assuming
+it; the GUI launch is the verified recipe.
 
 Healthy: `complete` envelopes; `list_tools` returns the BApp's tool
 inventory with the detected edition; the read actions return their

@@ -132,12 +132,36 @@ def test_detect_edition_unknown() -> None:
 
 
 def test_allowlist_disjoint_from_blocked() -> None:
+    # Full surface re-verified from source 2026-09-06 (PortSwigger/
+    # mcp-server main): 15 allowed reads/utilities, 12 blocked
+    # (active requests, UI mutations, config writes, collaborator
+    # payload generation, live-editor read). Pinned so upstream drift
+    # is a deliberate re-pin.
     assert ALLOWED_TOOLS.isdisjoint(BLOCKED_TOOLS)
-    assert len(ALLOWED_TOOLS) == 12
-    assert len(BLOCKED_TOOLS) == 15
+    assert len(ALLOWED_TOOLS) == 15
+    assert len(BLOCKED_TOOLS) == 12
     assert PROFESSIONAL_ONLY & ALLOWED_TOOLS
     assert "generate_collaborator_payload" in BLOCKED_TOOLS
     assert "send_http1_request" in BLOCKED_TOOLS
+    assert "get_active_editor_contents" in BLOCKED_TOOLS
+    # The 2026-09-06 additions: regex variants + config export ride
+    # the allowed set; the editor read does not.
+    for name in (
+        "get_proxy_http_history_regex",
+        "get_proxy_websocket_history_regex",
+        "get_organizer_items_regex",
+        "output_user_options",
+    ):
+        assert name in ALLOWED_TOOLS
+
+
+def test_registry_actions_match_allowlist_exactly() -> None:
+    # Cross-review pattern (prowler/GTI): a typo'd registry action
+    # would keep the count pin green while being handler-refused.
+    from extension.invoke_profiles import _BURP_READ_ACTIONS
+
+    assert set(_BURP_READ_ACTIONS) == {"list_tools"} | set(ALLOWED_TOOLS)
+    assert len(_BURP_READ_ACTIONS) == 16
 
 
 def test_normalize_sentinel_has_more_false() -> None:

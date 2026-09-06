@@ -164,16 +164,15 @@ def _mcp_read_profile(arm_id: str, action: str, tier: str = "research") -> Invok
     )
 
 
-# Burp read admission (functional-unhold packet, 2026-09-03): the
-# Community-usable surface of the official BApp - discovery, codecs,
-# random text, proxy/WebSocket history, Organizer. No edition gating:
-# tools the connected Burp does not list are refused as unavailable by
-# the arm's server-surface check (that is also what makes the Pro-only
-# scanner/Collaborator tools honest on a Community server - they are
-# allowlisted but simply absent from its tools/list). Two _regex
-# variants are arm-blocklisted and stay unadmitted;
-# get_proxy_http_history_regex is allowlisted but deliberately not
-# admitted in this cut (kept to the minimal usable read set).
+# Burp read admission (2026-09-04; expanded 2026-09-06 after
+# re-verifying the full current tool surface from source): discovery,
+# utilities, and every proxy/WebSocket/Organizer history read incl.
+# the regex variants, both config exports (credential-filtered
+# upstream since v1.3.0), and the Pro-gated scanner/Collaborator
+# reads (a Community server simply does not list them - no edition
+# gating; the arm's server-surface check refuses absent tools). The
+# live-editor read stays blocked (operator UI state, not an audit
+# artifact).
 _BURP_READ_ACTIONS = (
     "list_tools",
     "url_encode",
@@ -182,8 +181,15 @@ _BURP_READ_ACTIONS = (
     "base64_decode",
     "generate_random_string",
     "get_proxy_http_history",
+    "get_proxy_http_history_regex",
     "get_proxy_websocket_history",
+    "get_proxy_websocket_history_regex",
     "get_organizer_items",
+    "get_organizer_items_regex",
+    "output_project_options",
+    "output_user_options",
+    "get_scanner_issues",
+    "get_collaborator_interactions",
 )
 
 

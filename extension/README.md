@@ -47,7 +47,10 @@ session per arm, not a generic transport):
 - `burp-mcp` — research, fully usable on the free Community Edition;
   HTTP+SSE on the hardened transport; literal
   loopback endpoints only (`127.0.0.1`/`[::1]`, http or https);
-  history/codec/Organizer/random-text reads admitted as capabilities;
+  history (incl. regex variants)/codec/Organizer/config-export/
+  scanner-Collaborator (Pro)/random-text reads admitted as
+  capabilities; the server auto-starts with Burp (enabled defaults
+  true, persists in the BApp's extension data);
   no edition gating (unavailable tools refused by the server surface)
 - `semgrep-mcp` — research; first-party CLI scans (inline rule pack
   required - no registry `p/` or URL rules; `SEMGREP_SCAN_ROOT`
@@ -276,7 +279,7 @@ refused).
 
 One-liners. Full notes live on the catalog row (`describe <id>`).
 
-- `burp-mcp` — Community edition refused; only allowlisted reads/utilities.
+- `burp-mcp` — only allowlisted reads/utilities; active requests, UI mutations, config writes, and the live-editor read stay blocked.
 - `semgrep-mcp` — scans need an inline rule pack; no registry/URL rules.
 - `checkov` — scan root must stay inside the packaged range; offline bundle.
 - `prowler-mcp` — exact-name read allowlist pinned from first-party source; mutating tools and the hosted cloud namespace exactly blocked; no cloud orchestration.

@@ -526,7 +526,11 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # lookups grew to 32 (threat-profile reads + collection reads;
     # 4 mutating tools exactly blocked incl. upload-and-share
     # analyse_file).
-    assert len(INVOKE_PROFILES) == 134
+    # 141 since the burp read expansion (2026-09-06): 9 -> 16 read
+    # profiles (regex history variants, organizer regex, both config
+    # exports, Pro-gated scanner/Collaborator reads re-verified from
+    # source; live-editor read stays blocked).
+    assert len(INVOKE_PROFILES) == 141
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
