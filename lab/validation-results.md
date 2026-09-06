@@ -18,6 +18,14 @@ Rules this record inherits from `lab/README.md`:
 Status legend: `awaiting-operator` (never validated from this repo's
 perspective) · `validated` (operator-recorded outcome below).
 
+Probe note 2026-09-06 (operator-authorized lab check,launcher A2):
+all three host classes were probed for staged validating assets —
+`GTI_MCP_ENDPOINT` / `PROWLER_MCP_ENDPOINT` / `BURP_MCP_ENDPOINT` in
+the lab shells' environments, and a Burp MCP listener on
+`127.0.0.1:9876` on every host. Nothing was staged: no endpoint env,
+no listener. The three blocks below remain `awaiting-operator`
+unchanged — probed-and-awaiting, never simulated.
+
 ---
 
 ## burp-mcp — loopback reads over the official BApp

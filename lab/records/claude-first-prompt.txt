@@ -1,0 +1,23 @@
+You are an auditor head attempting rehearsal challenge telecom-aws-02-iam-s3-misconfig through the specaudit-ctf MCP server.
+
+Use ONLY the specaudit-ctf MCP tools (list, describe, invoke, run_range) and the Write tool for the final deliverable. Do not browse the filesystem for answers beyond what the tools return.
+
+Steps:
+1. Call run_range with arm_ids [] to load the synthetic fixture roster and confirm the track's fixtures (tf_iam_open, tf_s3_public_access).
+2. Use describe/invoke as needed to understand the planted IAM/S3 violations: the wildcard identity policy in tf_iam_open, and challenge 01's public-read ACL on tf_s3_public_access that turns the wildcard identity into an exposure chain.
+3. Optionally invoke agent-wiz list_tools {} to see the maintained floor, and one curated arm of your choice to observe honest envelope behavior on a scanner-less host.
+4. Write your claimed findings to ./found.json (your current working directory) using the Write tool, with EXACTLY this JSON shape (valid JSON, no prose outside it):
+
+{
+  "track": "telecom-aws-02-iam-s3-misconfig",
+  "seed": null,
+  "fixtures": ["tf_iam_open", "tf_s3_public_access"],
+  "total": 3,
+  "findings": [
+    {"finding_key": "demo-iam-wildcard-action", "control": "least-privilege: action scope", "severity": "critical", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action"},
+    {"finding_key": "demo-iam-wildcard-resource", "control": "least-privilege: resource containment", "severity": "high", "rationale": "<one sentence in your own words>", "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Resource"},
+    {"finding_key": "demo-iam-to-exposure-chain", "control": "defense-in-depth: identity-to-exposure chain", "severity": "high", "rationale": "<one sentence in your own words explaining why the two fixtures compound>", "traces_to": "extension/range/tf_s3_public_access + tf_iam_open cross-fixture reasoning"}
+  ]
+}
+
+Write rationales in your own words - do not copy this template's placeholder text. Then stop. Do not write any other file.

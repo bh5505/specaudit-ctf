@@ -109,3 +109,73 @@ server it produced a fully intact 6-call chain with no close record
 (agent CLIs terminate their servers with a signal, not an EOF) and the
 lane refused to grade it — the honest failure that motivated the
 graceful-termination attestation now in `mcp_server.serve`.
+
+---
+
+# 2026-09-06 — battery breadth (5/5 vs the spawned target), first claude-code attempt
+
+Third measured session on the same single-host lab (Kali-WSL dev
+instance, `/root/ctf` checkout at the battery-breadth head;
+golden-image target spawned by `lab/spawn-target.sh` at
+`172.19.89.77` and torn down after; no operator credentials spent).
+
+## Rehearsal battery, full breadth (measured)
+
+The preset grew from the offline/contained pair to one member per
+exercise domain: checkov (IaC), semgrep-mcp (code audit),
+attack-stix-data.technique (knowledge/reasoning, over the shipped demo
+bundle), and the dual-gated target-facing pair wapiti (web/DAST) and
+nmap (network) — armed by their scope envs AND `LAB_TARGET_HOST`
+(a bare host/IP; the target is never derived from the scope env).
+
+```text
+export LAB_TARGET_HOST=172.19.89.77 WAPITI_DISPATCH_SCOPE=172.19.89.77 NMAP_DISPATCH_SCOPE=172.19.89.77
+export CHECKOV_BIN=/opt/ctf/bin/checkov SEMGREP_BIN=/opt/ctf/bin/semgrep SEMGREP_SCAN_ROOT=/root/ctf/extension/range
+/opt/ctf/bin/python -m exercise --battery --challenge telecom-aws-02-iam-s3-misconfig
+```
+
+Outcome: exit 0, `exercise complete; range complete (10 fixtures);
+battery 5/5` — every member `complete`, including both live arms
+against the spawned target with their `[dispatch]` audit lines
+(`arm=wapiti … target=http://172.19.89.77:8080/`,
+`arm=nmap … target=172.19.89.77`). Committed report:
+`lab/records/battery-breadth-demo.json` (schema `exercise.run.v1`,
+deterministic).
+
+## First claude-code real-head attempt (measured, passed)
+
+The claude-code CLI (2.1.261 on the lab host, operator-installed,
+LiteLLM tier router) attempted challenge telecom-aws-02 through the
+four-tool MCP server — the first claude-code evidence in the record,
+and the calibration for the runner-driven head matrix that follows.
+MCP attach used the documented hermetic path: a private
+`--mcp-config` JSON (server `specaudit-ctf` spawning this checkout's
+`launch_mcp.py`, per-server `env` map carrying the three trace vars)
+with `--strict-mcp-config` and `--allowedTools "mcp__specaudit-ctf__*"
+Write`; the run's working directory was the attempt directory so the
+head could write `found.json`. Prompt: `claude-first-prompt.txt`
+(the per-challenge attempt prompt the matrix reuses).
+
+```text
+cd <attempt-dir> && claude -p "$(cat prompt.txt)" --output-format json \
+  --max-turns 30 --allowedTools "mcp__specaudit-ctf__*" Write \
+  --mcp-config ./mcp.json --strict-mcp-config
+python -m exercise --challenge telecom-aws-02-iam-s3-misconfig \
+  --attempt-dir <attempt-dir> --expected challenges/telecom-aws-02-iam-s3-misconfig/artifacts/expected-findings.json
+```
+
+Outcome: **run `complete`, head lane `passed`** — 3 `tools/call`
+recorded server-side, HMAC chain verified, close record present, 3
+findings claimed / 3 verified / 0 unverified / 0 misses, 5 agent
+turns. The documented per-server `env` map is thereby live-measured:
+the trace vars reached the server process through `--mcp-config` and
+the chain graded clean.
+
+Committed evidence: `lab/records/claude-first-report.json`,
+`lab/records/claude-first-found.json`,
+`lab/records/claude-first-trace.ndjson`,
+`lab/records/claude-first-claude-out.json` (the CLI's own result
+envelope — transport noise, never the evidence), and
+`lab/records/claude-first-prompt.txt` (the trace key and the
+mcp-config stay on the lab host; a byte-level key-leak check ran on
+every committed artifact).
