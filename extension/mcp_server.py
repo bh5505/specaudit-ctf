@@ -63,10 +63,10 @@ from typing import Any, Mapping, Sequence, TextIO
 _REAL_STDIN = sys.stdin
 _REAL_STDOUT = sys.stdout
 
-from .contract import Extension, ExtensionError
+from .contract import Extension, ExtensionError  # noqa: E402
 
-from .dispatch import DispatchOutcome, dispatch_invoke, dispatch_range
-from . import trace as trace_module
+from .dispatch import DispatchOutcome, dispatch_invoke, dispatch_range  # noqa: E402
+from . import trace as trace_module  # noqa: E402
 
 TOOLS = ("list", "describe", "invoke", "run_range")
 # Legacy-era initialize handshake, newest first. 2025-11-25 is the revision

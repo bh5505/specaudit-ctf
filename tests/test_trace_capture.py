@@ -386,18 +386,47 @@ def test_signal_handlers_not_installed_for_monkeypatched_stdio(
     before_int = signal.getsignal(signal.SIGINT)
     saved_stdin = mcp_server.sys.stdin
     saved_stdout = mcp_server.sys.stdout
+    # Capture prior env values so the finally restores them exactly —
+    # the lab/CI hosts leave these unset, but the suite must not
+    # destroy an operator-set value either.
+    prior_env = {
+        var: os.environ.get(var)
+        for var in (trace.ENV_TRACE, trace.ENV_KEY, trace.ENV_ATTEMPT)
+    }
     trace_path = tmp_path / "trace.ndjson"
     mcp_server.sys.stdin = io.StringIO("")  # EOF immediately
     mcp_server.sys.stdout = io.StringIO()
     os.environ[trace.ENV_TRACE] = str(trace_path)
     os.environ[trace.ENV_KEY] = KEY_HEX
     os.environ[trace.ENV_ATTEMPT] = "d1" * 32
+    after_term = after_int = None
     try:
         mcp_server.McpServer().serve()
+        # Capture the post-serve state INSIDE the try: the finally
+        # below restores the prior handlers for isolation, and the
+        # regression signal (did serve() leak a handler?) must be
+        # recorded before the restoration erases it.
+        after_term = signal.getsignal(signal.SIGTERM)
+        after_int = signal.getsignal(signal.SIGINT)
     finally:
         mcp_server.sys.stdin = saved_stdin
         mcp_server.sys.stdout = saved_stdout
-        for var in (trace.ENV_TRACE, trace.ENV_KEY, trace.ENV_ATTEMPT):
-            os.environ.pop(var, None)
-    assert signal.getsignal(signal.SIGTERM) is before_term
-    assert signal.getsignal(signal.SIGINT) is before_int
+        # Restore whatever the outer environment held (including
+        # absence); never leave the test's values behind.
+        for var, prior in prior_env.items():
+            if prior is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = prior
+        # getsignal() returns None only for handlers installed outside
+        # Python, which signal.signal() cannot restore — skip rather
+        # than mask the outcome from inside the finally.
+        if before_term is not None:
+            signal.signal(signal.SIGTERM, before_term)
+        if before_int is not None:
+            signal.signal(signal.SIGINT, before_int)
+    # The regression assertion compares the POST-SERVE state, not the
+    # just-restored state: a serve() that installs handlers under
+    # monkeypatched stdio must fail this test.
+    assert after_term is before_term
+    assert after_int is before_int
