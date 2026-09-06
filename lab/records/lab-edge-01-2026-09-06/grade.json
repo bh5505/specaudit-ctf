@@ -1,0 +1,18 @@
+{
+  "expected_total": 4,
+  "extras": [],
+  "hits": [
+    "demo-edge-admin-planes-cleartext",
+    "demo-edge-image-reconciliation",
+    "demo-edge-mgmt-version-disclosure",
+    "demo-edge-ops-docs-exposed"
+  ],
+  "invalid": [],
+  "misses": [],
+  "passed": true,
+  "schema": "specaudit.ctf.grade.v1",
+  "score": 1.0,
+  "severity_mismatches": [],
+  "track": "lab-edge-01-device-posture",
+  "track_match": true
+}

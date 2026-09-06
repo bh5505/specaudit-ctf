@@ -38,6 +38,13 @@ entries:
     tier: research
     notes: Attacker-first hunt, falsify, and verify skills. Teach-only methodology.
 
+  - id: edge-device-posture
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Network-edge device posture review (router/CPE/IoT-appliance class) - plane model (management, admin/data, config artifacts), version-disclosure posture, and offline-image vs live-surface reconciliation, with absence-shaped reconciliation verdicts stated explicitly. Instantiated by the lab-edge-01-device-posture live-service challenge against the golden lab target; generalizes to any appliance image with a declared service set.
+
   - id: defending-code
     kind: methodology-only
     protocols: [none]

@@ -24,6 +24,7 @@ fixture ground truth does not.
 | `lab-web-01-dast-surface/` | Web/DAST live-service rehearsal | lab target (`lab/target/` planted web content) |
 | `lab-net-01-service-discovery/` | Network service-discovery live rehearsal | lab target (`lab/target/start-services.sh` planted services) |
 | `lab-knowledge-01-attack-mapping/` | AI/knowledge ATT&CK mapping rehearsal | `tf_s3_public_access`, `tf_cloudtrail_disabled`, `tf_iam_open` |
+| `lab-edge-01-device-posture/` | Edge-device posture live rehearsal | lab target (`lab/target/` planted device surface) |
 
 Start with `telecom-aws-01-reachability/`; each challenge assumes the
 skills of its predecessors. Challenge 06 is the flagship: four graded
