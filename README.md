@@ -303,16 +303,25 @@ spend.
 ### The rehearsal battery
 
 `python -m exercise --battery` runs the default multi-arm composition
-(`exercise/battery.py`): `checkov.scan`, the offline IaC scan whose
-root is contained by construction to the packaged synthetic range, and
-`semgrep-mcp.semgrep_scan` with a shipped inline rule pack against
-planted fixture code under `SEMGREP_SCAN_ROOT`. Members are skipped
-honestly when their binary is absent or their arming env is unset (the
-run degrades); a member that runs and fails fails the run.
-Target-facing arms (zgrab2, wapiti, …) need a live, operator-armed
-lab target and compose through explicit `--arms` — they are never
-preset members. The unarmed/explicit contrast is pinned by tests:
-the same request that skips under `--battery` fails under `--arms`.
+(`exercise/battery.py`), one member per exercise domain: `checkov.scan`
+(the offline IaC scan contained by construction to the packaged
+synthetic range), `semgrep-mcp.semgrep_scan` with a shipped inline rule
+pack against planted fixture code under `SEMGREP_SCAN_ROOT`,
+`attack-stix-data.technique` (an exact ATT&CK lookup over the shipped
+demo bundle — the knowledge/reasoning member, contained by
+construction), and the dual-gated target-facing pair `wapiti.scan`
+(web/DAST, `http://{target}:8080/`) and `nmap.scan` (network,
+single host). Target-facing members are template members: the runner
+fills `{target}` from `LAB_TARGET_HOST` (a bare host/IP) and dispatches
+only when their arming scope env (`WAPITI_DISPATCH_SCOPE` /
+`NMAP_DISPATCH_SCOPE`) is set too — the scope env authorizes; it is
+never the source of the target. Members are skipped honestly when
+their binary is absent or an arming/target env is unset (the run
+degrades); a member that runs and fails — including a scope or URL
+refusal — fails the run. zgrab2 stays a lab opt-in through explicit
+`--arms` (it needs a per-run module choice). The unarmed/explicit
+contrast is pinned by tests: the same request that skips under
+`--battery` fails under `--arms`.
 
 ## Range
 
