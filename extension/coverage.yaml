@@ -141,7 +141,7 @@ entries:
     protocols: [mcp, http]
     curated: true
     tier: research
-    notes: Google Threat Intelligence lookups over the official gti-mcp server (Google's google/mcp-security GTI server; FastMCP-based, stdio by default, HTTP-capable by construction) deployed at an operator-configured https endpoint via the hardened shared client. All 11 allowlisted tools are read-only lookups verified against the current official tool inventory (36 tools; the collection create/update family stays off the allowlist); no client credential is sent - the upstream holds the VT/Google API key server-side. No dispatch tier.
+    notes: Google Threat Intelligence lookups over the official gti-mcp server (Google's google/mcp-security GTI server; FastMCP-based, stdio by default, HTTP-capable by construction) deployed at an operator-configured https endpoint via the hardened shared client. All 32 allowlisted tools are read-only lookups verified against the current official tool inventory (36 tools as of 2026-09-06; the 4 mutating tools - the collection create/update family and the upload-and-share analyse_file - are exactly blocked); no client credential is sent - the upstream holds the sole server-side key (VT_APIKEY, read per-request from the server's environment). No dispatch tier.
 
   - id: garak
     kind: arm

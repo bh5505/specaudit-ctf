@@ -50,17 +50,39 @@ Runbook: `lab/README.md` → "Operator-gated rows".
 Status: **awaiting-operator**
 
 Runbook: `lab/README.md` → "Operator-gated rows". The operator runs
-the official server where their Google application-default
-credentials live; this client's environment never carries them.
+the official server (google/mcp-security `server/gti`, PyPI `gti-mcp`
+0.1.3, 2026-08-27) where its sole credential lives; this client's
+environment never carries it. Verified from source 2026-09-06:
+
+- The server reads exactly one credential env, **`VT_APIKEY`**
+  (`api_key = os.getenv("VT_APIKEY")`; a per-request client factory
+  raises `ValueError("VT_APIKEY environment variable is required")`).
+  No Google application-default credential is involved.
+- The first-party entrypoint is **stdio-only**
+  (`server.run(transport='stdio')` in `main()`; the `STATELESS=1` env
+  toggles FastMCP's stateless-http constructor flag only). No
+  first-party HTTP-serving command exists as of 2026-09-06, so the
+  operator-fronted https endpoint this arm targets is the operator's
+  own fronting (documented stdio recipe below); a first-party HTTP
+  flag would supersede this note per the doc-21 drift rule.
+- Documented local run (README): `uv run --directory
+  /path/to/mcp-security/server/gti/gti_mcp server.py` with
+  `VT_APIKEY` in the environment (env file or export).
+- Tool inventory re-verified the same day: 36 tools; 32 read-only
+  lookups admitted (the original 11 plus threat-profile reads and
+  collection reads), 4 mutating exactly blocked — the three
+  collection writers and `analyse_file` (upstream docstring:
+  "Upload and analyse the file in VirusTotal... shared with the
+  community").
 
 | Field | Value |
 |---|---|
 | Date | _(unfilled)_ |
-| Env vars armed | `GTI_MCP_ENDPOINT=https://<operator-fronted-gti-endpoint>` (https only) |
-| Invoke commands as run | `python -m extension invoke google-mcp-security list_tools` · `python -m extension invoke google-mcp-security get_domain_report '{"domain": "<domain>"}'` |
+| Env vars armed | `GTI_MCP_ENDPOINT=https://<operator-fronted-gti-endpoint>` (https only; loopback refused) |
+| Invoke commands as run | `python -m extension invoke google-mcp-security list_tools` · `python -m extension invoke google-mcp-security get_domain_report '{"domain": "<domain>"}'` · `python -m extension invoke google-mcp-security search_threat_actors '{"query": "<actor>"}'` |
 | Envelope status | _(fill: expect complete with R1 / network-egress / approval_ref operator://endpoint/GTI_MCP_ENDPOINT)_ |
 | Artifacts | _(fill: attempt ids, artifact dirs, report documents returned)_ |
-| Operator note | _(optional)_ |
+| Operator note | _(optional: gti-mcp version, fronting shape, VT key tier)_ |
 
 ---
 

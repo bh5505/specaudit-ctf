@@ -431,6 +431,37 @@ def test_caldera_bad_operation_name_refused(monkeypatch: pytest.MonkeyPatch) -> 
 # --- gti -----------------------------------------------------------------
 
 
+def test_gti_inventory_pinned() -> None:
+    # 36-tool official inventory re-verified from source 2026-09-06:
+    # 32 reads admitted, 4 mutating exactly blocked (the three
+    # collection writers + analyse_file, whose upstream docstring is
+    # "Upload and analyse the file in VirusTotal... shared with the
+    # community"). Pinned so upstream drift is a deliberate re-pin.
+    from extension.arms.gti.policy import BLOCKED_TOOLS as GTI_BLOCKED
+
+    assert len(GTI_TOOLS) == 32
+    assert len(GTI_BLOCKED) == 4
+    assert not (GTI_TOOLS & GTI_BLOCKED)
+    assert GTI_BLOCKED == frozenset(
+        {
+            "create_collection",
+            "update_collection_attributes",
+            "update_iocs_in_collection",
+            "analyse_file",
+        }
+    )
+
+
+def test_gti_mutating_tools_refused_even_when_listed() -> None:
+    session = FakeGtiSession(
+        tools=[{"name": n} for n in ("get_domain_report", "analyse_file")]
+    )
+    result = _gti(session).invoke(_spec(GTI_ID), "analyse_file", {})
+    assert result.ok is False
+    assert "blocked" in result.error
+    assert session.calls == []
+
+
 class FakeGtiSession:
     def __init__(self, tools: list[dict[str, Any]] | None = None) -> None:
         self.tools = tools or [{"name": name} for name in GTI_TOOLS]
