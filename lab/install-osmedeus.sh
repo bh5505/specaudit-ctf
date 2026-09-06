@@ -47,7 +47,10 @@ ln -sf "$DEST/osmedeus" /usr/local/bin/osmedeus
 "$DEST/osmedeus" version | grep -F "Version: $VER"
 # community workflows (the engine's own installer - unpinned HEAD by
 # design; the resolved revision is recorded so runs are attributable)
-git ls-remote https://github.com/osmedeus/osmedeus-workflow.git HEAD > /tmp/osmedeus-workflow-rev.txt
+# attribution record only - a transient failure here must not abort
+# the install (kilo late-bot review on #83); 'unresolved' is the
+# honest fallback and the record says so
+git ls-remote https://github.com/osmedeus/osmedeus-workflow.git HEAD   > /tmp/osmedeus-workflow-rev.txt 2>/dev/null   || echo "unresolved (ls-remote failed at install time)" > /tmp/osmedeus-workflow-rev.txt
 # community workflows (engine's own installer)
 "$DEST/osmedeus" install workflow --preset 2>&1 | tail -2 || \
   "$DEST/osmedeus" install workflow https://github.com/osmedeus/osmedeus-workflow.git 2>&1 | tail -2
