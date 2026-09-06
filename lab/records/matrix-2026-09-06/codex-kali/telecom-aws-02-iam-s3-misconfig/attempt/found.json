@@ -1,0 +1,32 @@
+{
+  "track": "telecom-aws-02-iam-s3-misconfig",
+  "seed": null,
+  "fixtures": [
+    "tf_iam_open",
+    "tf_s3_public_access"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-iam-wildcard-action",
+      "control": "least-privilege: action scope",
+      "severity": "critical",
+      "rationale": "The IAM policy grants Action * on Resource *, which allows any permitted principal to perform any supported operation rather than only the narrowly intended action.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action"
+    },
+    {
+      "finding_key": "demo-iam-wildcard-resource",
+      "control": "least-privilege: resource containment",
+      "severity": "high",
+      "rationale": "The IAM policy scopes its statement to Resource *, so the grant is not constrained to the specific S3 bucket or other intended resource.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Resource"
+    },
+    {
+      "finding_key": "demo-iam-to-exposure-chain",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "The IAM policy grants Action * on Resource *, and the S3 bucket separately applies acl = public-read, allowing the wildcard identity policy to reach anonymously readable storage.",
+      "traces_to": "tf_iam_open Statement[0] (Action/Resource '*') chained with tf_s3_public_access aws_s3_bucket.public_bucket acl = 'public-read'"
+    }
+  ]
+}

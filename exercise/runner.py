@@ -53,6 +53,7 @@ def run_exercise(
     head_execute: bool = False,
     trace_key: str | None = None,
     battery: bool = False,
+    attempt_prompt: str | None = None,
 ) -> dict[str, Any]:
     """Compose the lanes and return the consolidated run report.
 
@@ -81,26 +82,74 @@ def run_exercise(
       bundles — whether the named head's MCP launcher exists in this
       checkout. Attachment is an operator-driven step and is never
       simulated here. The lane executes only over an ``attempt_dir``:
-      ``head_execute=True`` spawns the lane-internal fake head (never
-      a real agent CLI — real heads run out-of-band, their attempts
-      graded by passing ``attempt_dir`` afterwards), then the captured
+      ``head_execute=True`` with the fake head spawns the
+      lane-internal scripted client; with a REAL head id
+      (``claude-code`` / ``codex-cli``) it spawns the named agent CLI
+      headless — but only when the operator armed that head on this
+      host (``EXERCISE_HEAD_CLAUDE_CODE_CMD`` /
+      ``EXERCISE_HEAD_CODEX_CLI_CMD``, wired per CLI by
+      ``exercise/real_head.py``) and supplied ``--attempt-prompt``.
+      Unarmed hosts refuse exactly as before: the fake head is the
+      only driver in CI and hermetic tests. Either way the captured
       server-side trace + claimed findings grade through
       ``attempt.grade_attempt``. A failed executed attempt fails the
       run, like a failed grade.
     """
     ext = extension if extension is not None else Extension()
+    prompt_facts: tuple[str, str, int] | None = None
+    armed_cmd: str | None = None
 
     if head_execute:
-        if head != FAKE_HEAD:
+        if head == FAKE_HEAD:
+            if attempt_prompt is not None:
+                raise ExerciseError(
+                    "--attempt-prompt belongs to real-head execution; the "
+                    "fake head is scripted and takes no operator prompt"
+                )
+            if attempt_dir is None:
+                raise ExerciseError("--head-execute requires --attempt-dir")
+            if expected_path is None:
+                raise ExerciseError("--head-execute requires --expected (the challenge contract)")
+        elif head in HEAD_IDS:
+            from .real_head import armed_cmd_for, load_prompt, RealHeadError
+
+            try:
+                cmd = armed_cmd_for(head)
+            except RealHeadError as exc:
+                # HEAD_IDS and the arming map drifting apart would
+                # otherwise escape as a traceback past the usage
+                # boundary; unreachable today, pinned by construction.
+                raise ExerciseError(str(exc)) from None
+            armed_cmd = cmd
+            if cmd is None:
+                from .real_head import ARMING_ENVS
+
+                raise ExerciseError(
+                    f"head {head} is not armed on this host: set "
+                    f"{ARMING_ENVS[head]}=<command> to arm real-head execution "
+                    "(the fake head runs with --head-execute --head fake)"
+                )
+            if attempt_prompt is None:
+                raise ExerciseError(
+                    f"--head-execute --head {head} requires --attempt-prompt "
+                    "<file> (the operator-supplied attempt prompt)"
+                )
+            if attempt_dir is None:
+                raise ExerciseError("--head-execute requires --attempt-dir")
+            if expected_path is None:
+                raise ExerciseError("--head-execute requires --expected (the challenge contract)")
+            try:
+                prompt_text, prompt_sha256, prompt_chars = load_prompt(attempt_prompt)
+            except RealHeadError as exc:
+                raise ExerciseError(str(exc)) from None
+            prompt_facts = (prompt_text, prompt_sha256, prompt_chars)
+        elif head is None:
             raise ExerciseError(
-                "--head-execute only drives the lane-internal fake head; "
-                "real agent CLIs are never spawned by the runner — run the "
-                "agent out-of-band and grade its attempt with --attempt-dir"
+                "--head-execute requires --head: 'fake' for the lane-internal "
+                "scripted head, or an armed real head (claude-code, codex-cli)"
             )
-        if attempt_dir is None:
-            raise ExerciseError("--head-execute requires --attempt-dir")
-        if expected_path is None:
-            raise ExerciseError("--head-execute requires --expected (the challenge contract)")
+        else:
+            raise ExerciseError(f"unknown head: {head} (shipped: fake, {', '.join(HEAD_IDS)})")
     elif head == FAKE_HEAD and attempt_dir is None:
         raise ExerciseError(
             "the fake head has no launcher to probe; it exists only under "
@@ -217,7 +266,7 @@ def run_exercise(
 
     head_lane: dict[str, Any] | None = None
     attempt_executed = attempt_dir is not None
-    if head_execute:
+    if head_execute and head == FAKE_HEAD:
         head_lane = _execute_fake_head(
             attempt_dir=str(attempt_dir),  # type: ignore[arg-type]
             expected_path=str(expected_path),  # type: ignore[arg-type]
@@ -225,6 +274,36 @@ def run_exercise(
             if trace_key is not None
             else os.environ.get("SPECAUDIT_CTF_MCP_TRACE_KEY"),
         )
+    elif head_execute:
+        from .real_head import execute_real_head, resolve_timeout, RealHeadError
+
+        if prompt_facts is None or armed_cmd is None:
+            # Unreachable while the arming gate above binds both; kept
+            # explicit so drift fails as a usage error, not a crash.
+            raise ExerciseError(
+                "internal: real-head execution reached without arming facts"
+            )
+        prompt_text, prompt_sha256, prompt_chars = prompt_facts
+        try:
+            timeout_seconds = resolve_timeout()
+        except RealHeadError as exc:
+            raise ExerciseError(str(exc)) from None
+        try:
+            head_lane = execute_real_head(
+                head=str(head),
+                cmd=armed_cmd,
+                attempt_dir=str(attempt_dir),  # type: ignore[arg-type]
+                expected_path=str(expected_path),  # type: ignore[arg-type]
+                prompt_text=prompt_text,
+                prompt_sha256=prompt_sha256,
+                prompt_chars=prompt_chars,
+                timeout_seconds=timeout_seconds,
+            )
+        except RealHeadError as exc:
+            # Arming/wiring failures (codex preflight, mcp-config write,
+            # attempt-dir creation) are operator-facing usage errors:
+            # exit 2 with a reason, never a traceback.
+            raise ExerciseError(str(exc)) from None
     elif attempt_dir is not None:
         from exercise.attempt import AttemptError, grade_attempt
 

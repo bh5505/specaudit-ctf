@@ -56,6 +56,10 @@ clone needs `SPECAUDIT_CTF_ROOT` set to the clone root.
 
 ## Headless attempt (exercise head lane)
 
+The exercise runner can drive this head itself when the host is armed
+(`EXERCISE_HEAD_CODEX_CLI_CMD` names the binary) — it preflights the
+host config below, exports the three trace vars, and grades the
+server-side trace (see `exercise/real_head.py`). For a hand-run:
 Codex forwards parent env to stdio MCP servers only through an
 allowlist, so the trace vars must be named in the server's config
 block (user-global `~/.codex/config.toml` — project config cannot

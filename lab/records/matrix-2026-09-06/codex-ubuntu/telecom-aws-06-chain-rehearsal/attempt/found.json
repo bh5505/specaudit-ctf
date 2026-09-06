@@ -1,0 +1,47 @@
+{
+  "track": "telecom-aws-06-chain-rehearsal",
+  "seed": null,
+  "fixtures": [
+    "tf_chain_ingress_role",
+    "tf_iam_open",
+    "tf_s3_public_access"
+  ],
+  "total": 5,
+  "findings": [
+    {
+      "finding_key": "demo-chain-sg-open-admin",
+      "control": "network containment: administrative shell exposure",
+      "severity": "high",
+      "rationale": "The jump security group admits TCP/22 from 0.0.0.0/0 in extension/range/tf_chain_ingress_role/input/main.tf, exposing an administrative shell to the internet.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf, aws_security_group.jump, ingress 0.0.0.0/0 tcp/22"
+    },
+    {
+      "finding_key": "demo-chain-role-assumable",
+      "control": "least-privilege: role assumability",
+      "severity": "critical",
+      "rationale": "The escalation role permits sts:AssumeRole and is attached to an AdministratorAccess policy in extension/range/tf_chain_ingress_role/input/main.tf, allowing a broad identity assumption path.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf, aws_iam_role.escalation + aws_iam_role_policy_attachment.escalation"
+    },
+    {
+      "finding_key": "demo-chain-internet-to-identity",
+      "control": "defense-in-depth: exposure-to-identity chain",
+      "severity": "critical",
+      "rationale": "The connectivity graph records an edge from sg-jump to role-escalate through sts:AssumeRole in extension/range/tf_chain_ingress_role/input/connectivity.json, chaining internet shell exposure into identity escalation.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/connectivity.json, edge sg-jump -> role-escalate via sts:AssumeRole"
+    },
+    {
+      "finding_key": "demo-chain-iam-open-to-s3-public",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "The wildcard IAM statement in extension/range/tf_iam_open/input/main.tf can act on the bucket whose public-read ACL is declared in extension/range/tf_s3_public_access/input/main.tf, compounding identity overreach with public data exposure.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf Statement[0] chained with extension/range/tf_s3_public_access/input/main.tf public-read ACL"
+    },
+    {
+      "finding_key": "demo-chain-iam-wildcard",
+      "control": "least-privilege: wildcard identity policy",
+      "severity": "critical",
+      "rationale": "The aws_iam_policy.wildcard statement uses wildcard Action and Resource values in extension/range/tf_iam_open/input/main.tf, granting an unrestricted identity policy.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action and Statement[0].Resource"
+    }
+  ]
+}

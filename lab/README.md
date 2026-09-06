@@ -20,6 +20,7 @@ All scripts run from **Windows (Git Bash)** and orchestrate `wsl.exe`.
 | `vuls-measure.sh` | Measure the admitted `vuls scan` in LOCAL mode (loopback inventory collection, no SSH, config-decided targeting). |
 | `build-golden.sh` | One-time: configure a fresh Debian WSL distro into the golden lab-target rootfs and export it to a tar. |
 | `spawn-target.sh` | Register a **disposable** target instance from the golden tar, start its services, print its IP + arming commands. |
+| `matrix-run.sh` | Sweep one head instance across the graded challenges on this host: one runner command per cell (requires the head's `EXERCISE_HEAD_*_CMD` arming env; reports per cell, failures recorded not fatal). |
 | `teardown-target.sh` | Unregister the instance and drop its state dir. |
 | `target/` | Inert content + the service starter baked into the golden image. |
 | `local.example.conf` | The knobs; copy to `local.conf` (gitignored) to override defaults. |
