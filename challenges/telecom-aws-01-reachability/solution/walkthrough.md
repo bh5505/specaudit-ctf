@@ -70,7 +70,7 @@ In `tf_s3_public_access/input/main.tf` the planted violations are the
 an `aws_s3_bucket_public_access_block` resource (nothing stops the ACL
 or any future policy grant from making objects world-readable), and the
 absence of a server-side encryption configuration. A defensible
-`findings.json` has one entry per violation, each traced to exact lines
+`my-findings.json` has one entry per violation, each traced to exact lines
 — for example:
 
 ```json
