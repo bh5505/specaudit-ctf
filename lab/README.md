@@ -219,6 +219,41 @@ target), not the resolver transport — where the packets actually go
 is decided by resolv.conf, which is why the script pins the resolver,
 runs it on loopback, and reports which one answered.
 
+### osmedeus — measured armed scan vs the spawned target (url-flow argv pinned)
+
+`lab/install-osmedeus.sh` pins the release binary (v5.1.0, 2026-08-08;
+release tarball with checksum verification — the upstream install.sh
+has no version pinning), installs the community workflows via the
+engine's own installer, and completes the one-time engine init (the
+binaries registry download re-runs on every command until it finishes
+— observed >10 minutes on a fresh host; `osmedeus setup` is NOT a
+subcommand). The init trigger is a loopback `--dry-run` (no command
+executes under `--dry-run`).
+
+Flag pin (verified against the pinned binary, 2026-09-06): the
+DEFAULT flow requires a DOMAIN target — a URL target is refused
+upstream (`Target type mismatch / dependency required types: domain`).
+The arm's scan argv now selects the `url` flow (`scan -f url -t
+<url>`) for validated http(s) URL targets; hostnames ride the default
+flow.
+
+`lab/osmedeus-measure.sh` runs the armed scan through the catalog arm
+(`OSMEDEUS_DISPATCH_SCOPE` armed on the spawned target):
+
+- **Measured (2026-09-06, records in
+  `lab/records/lab-osmedeus-2026-09-06/`)**: `complete` envelope,
+  **361 s** wall clock (inside the arm's 600 s timeout), `[dispatch]`
+  audit line recorded; engine-side, the web-analysis flow wrote a real
+  workspace — http fingerprint (3 URLs), nuclei scan (12 result rows),
+  run-completed status `completed`.
+- Host dependency: `jq` must be on PATH (the vuln module's dependency
+  check refuses without it — the first measured run skipped the module
+  until jq was installed).
+- Honest residual: `do-scan-vuln-thorough` skips with `required
+  command not found: vigolium` — vigolium is NOT part of the engine's
+  binaries registry and has no obvious first-party install path; the
+  skip is the measured behavior, recorded verbatim.
+
 ### Operator-gated rows — validation runbooks (never run from the lab)
 
 Outcomes live in **[validation-results.md](validation-results.md)**

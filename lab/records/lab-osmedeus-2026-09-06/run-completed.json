@@ -1,0 +1,45 @@
+{
+  "run": {
+    "run_uuid": "de035383-4166-4a94-9771-7c44e7acee5d",
+    "workflow_name": "web-analysis",
+    "workflow_kind": "flow",
+    "target": "http://172.19.89.77:8000",
+    "params": {
+      "exclude_modules": "",
+      "fuzzy_exclude_modules": "",
+      "heuristics_check": "basic",
+      "space_name": "",
+      "tactic": "default",
+      "target": "http://172.19.89.77:8000",
+      "target_file": "",
+      "threads_hold": "0",
+      "workspaces_folder": ""
+    },
+    "status": "completed",
+    "workspace": "172.19.89.77",
+    "started_at": "2026-09-06T18:07:37.385698Z",
+    "completed_at": "2026-09-06T13:13:38.507954481-05:00",
+    "total_steps": 18,
+    "completed_steps": 15,
+    "hooks_enabled": false,
+    "run_mode": "local",
+    "run_priority": "critical"
+  },
+  "workspace": {
+    "name": "172.19.89.77",
+    "local_path": "/root/workspaces-osmedeus/172.19.89.77",
+    "total_assets": 6,
+    "total_subdomains": 0,
+    "total_urls": 6,
+    "total_vulns": 2,
+    "vuln_critical": 0,
+    "vuln_high": 0,
+    "vuln_medium": 0,
+    "vuln_low": 0,
+    "vuln_potential": 0,
+    "risk_score": 0,
+    "last_run": "2026-09-06T18:13:38.439491Z",
+    "run_workflow": "do-scan-vuln-thorough"
+  },
+  "updated_at": "2026-09-06T13:13:38.508383581-05:00"
+}
