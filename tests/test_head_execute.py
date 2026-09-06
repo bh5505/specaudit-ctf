@@ -181,7 +181,8 @@ def test_every_contract_finding_parses_to_coverable_fixtures() -> None:
                 # declares (a locally-run service's own shipped catalog —
                 # the emulation-listing lanes; 2026-09-06).
                 traced = "lab/target/" in finding["traces_to"] or any(
-                    item in finding["traces_to"] for item in declared
+                    len(item.strip()) >= 8 and item.strip() in finding["traces_to"]
+                    for item in declared
                 )
                 assert traced, (
                     f"{contract.name}:{finding['finding_key']} live finding "

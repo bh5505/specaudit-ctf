@@ -5,30 +5,40 @@
 # Vue UI, which needs Node; the REST/listing plane does not — verified
 # 2026-09-06 on the Ubuntu lane: server listens on 127.0.0.1:8888 in
 # ~35s, /api/v2/abilities lists the stockpile catalog, wrong key 401).
-# Idempotent; run from Windows (Git Bash).
+# Idempotent (re-checks-out the tag every run); run from Windows (Git Bash).
 #
 # Environment (all optional; see lab/local.example.conf):
 #   LAB_UBUNTU_NAME    registered distro name (Ubuntu)
 #   LAB_CALDERA_TAG    release tag to pin (5.3.0)
-#   LAB_CALDERA_KEY    value to rotate api_key_red to (default: leave
-#                      the shipped ADMIN123 — the lab-emu-01 challenge
-#                      grades exactly the shipped default; rotate on
-#                      anything non-disposable)
+#   LAB_CALDERA_KEY    value to rotate api_key_red to BEFORE start
+#                      (default: unset — the shipped ADMIN123 stays,
+#                      which is exactly what the lab-emu-01 challenge
+#                      grades; set it on anything non-disposable)
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 
 NAME="${LAB_UBUNTU_NAME:-Ubuntu}"
 TAG="${LAB_CALDERA_TAG:-5.3.0}"
+KEY="${LAB_CALDERA_KEY:-}"
 
-wsl -d "$NAME" -u root -e bash -seu -- "$TAG" <<'EOF'
+wsl -d "$NAME" -u root -e bash -seu -- "$TAG" "$KEY" <<'EOF'
 set -euo pipefail
 export DEBIAN_FRONTEND=noninteractive
-TAG="$1"
+TAG="$1"; KEY="$2"
 BASE=/root/caldera
 VENV=/root/caldera-venv
 if [ ! -d "$BASE" ]; then
   git clone --quiet --recursive --branch "$TAG" --depth 1 \
     --shallow-submodules https://github.com/apache/caldera.git "$BASE"
+else
+  git -C "$BASE" fetch --quiet --tags origin
+  git -C "$BASE" checkout --quiet "$TAG"
+  git -C "$BASE" reset --hard --quiet "$TAG"
+fi
+if [ -n "$KEY" ]; then
+  # rotate the red API key before start (idempotent sed on the shipped conf)
+  sed -i "s/^api_key_red:.*/api_key_red: $KEY/" "$BASE/conf/default.yml"
+  grep -q "api_key_red: $KEY" "$BASE/conf/default.yml"
 fi
 if [ ! -x "$VENV/bin/python" ]; then
   python3 -m venv "$VENV"
@@ -36,8 +46,9 @@ fi
 # shellcheck disable=SC1091
 source "$VENV/bin/activate"
 pip install --quiet -r "$BASE/requirements.txt"
-# stop any previous instance (idempotent restart)
-pkill -f "server.py" 2>/dev/null || true
+# stop any previous instance of THIS server only (scoped kill)
+pkill -f "caldera-venv.*server.py\|$BASE.*server.py" 2>/dev/null || true
+pkill -f "python3 server.py --insecure" 2>/dev/null || true
 sleep 1
 cd "$BASE"
 # --insecure: no TLS on the loopback listener (lab-only posture)

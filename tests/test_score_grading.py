@@ -217,7 +217,8 @@ def test_shipped_challenge_contracts_are_valid() -> None:
                 # (a locally-run service's own shipped catalog; 2026-09-06).
                 declared = [str(item) for item in document.get("fixtures", [])]
                 traced = "lab/target/" in row["traces_to"] or any(
-                    item in row["traces_to"] for item in declared
+                    len(item.strip()) >= 8 and item.strip() in row["traces_to"]
+                    for item in declared
                 )
                 assert traced, (path, row["finding_key"])
             else:

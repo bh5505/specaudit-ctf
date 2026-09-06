@@ -3,7 +3,7 @@
 # pinned to commit afc792d, 2026-02-05) plus its msfrpcd backend, both
 # loopback-only on the kali lab lane. Verified 2026-09-06: msfrpcd on
 # 127.0.0.1:55553 (no SSL), bridge SSE at http://127.0.0.1:8085/sse,
-# all four listing reads complete through the catalog arm.
+# all listing reads complete through the catalog arm.
 #
 # Distribution fact encoded here: the bridge's requirements.txt pulls
 # current `mcp`, and mcp 2.x renamed mcp.server.fastmcp to MCPServer —
@@ -38,8 +38,8 @@ fi
 source "$VENV/bin/activate"
 pip install --quiet -r "$BASE/requirements.txt"
 pip install --quiet "mcp<2"
-# idempotent restart of both halves
-pkill -f MetasploitMCP.py 2>/dev/null || true
+# idempotent restart of both halves (scoped to the bridge's path)
+pkill -f "$BASE/MetasploitMCP.py" 2>/dev/null || true
 pkill -f msfrpcd 2>/dev/null || true
 sleep 1
 # backend: loopback-only RPC daemon, no SSL, lab password
@@ -51,7 +51,9 @@ nohup python3 MetasploitMCP.py --transport http --host 127.0.0.1 --port 8085 \
   > /tmp/msf-mcp.log 2>&1 &
 for i in $(seq 1 25); do
   code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 2 http://127.0.0.1:8085/sse 2>/dev/null || true)
-  if [ "$code" != "000" ]; then
+  # any HTTP answer from the SSE endpoint (2xx/4xx) means the server is
+  # up and speaking; only transport-level failure (000) keeps waiting.
+  if [ -n "$code" ] && [ "$code" != "000" ] && [ "$code" != "500" ]; then
     echo "[lab] msf-mcp bridge up at http://127.0.0.1:8085/sse (http $code)"
     exit 0
   fi

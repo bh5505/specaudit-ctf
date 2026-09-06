@@ -44,7 +44,7 @@ after install (upstream error observed verbatim 2026-09-06).
 
 2. **Read the populations.**
    Fresh lab bridge: sessions empty, listeners empty — the two
-   absence-shaped verdicts. The exploit/payload listings are the
+   absence-shaped verdicts. The exploit listing is the
    enumeration-surface evidence.
 
 3. **Ship the found-findings document.**
