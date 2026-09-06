@@ -310,6 +310,7 @@ def execute_real_head(
     from extension.trace import mint_key
 
     directory = Path(attempt_dir)
+    directory.mkdir(parents=True, exist_ok=True)
     key = mint_key()
     attempt_id = os.urandom(32).hex()
     composed_argv, child_env_extra, mcp_fact, temp_path = _compose(
