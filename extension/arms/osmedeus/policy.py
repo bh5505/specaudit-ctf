@@ -1,4 +1,4 @@
-"""Tier rules for the osmedeus arm. The scan -t argv is provisional pending upstream flag pinning."""
+"""Tier rules for the osmedeus arm. The scan argv is pinned to v5.1.0 flow semantics (URL targets: scan -f url -t; hostnames: scan -t)."""
 
 from __future__ import annotations
 
@@ -59,10 +59,23 @@ def resolve_binary() -> str | None:
 
 
 def argv_for(binary: str, action: str, payload: dict) -> list[str] | None:
-    """Fixed argv per action; no caller-controlled fragment."""
+    """Fixed argv per action; no caller-controlled fragment.
+
+    v5.1.0 flag pin (verified 2026-09-06 against the pinned release
+    binary): the DEFAULT flow requires a DOMAIN target — a URL target
+    is refused with "Target type mismatch / dependency required types:
+    domain". A validated http(s) URL target therefore selects the
+    `url` flow (the workflow repo's single-address web-analysis flow,
+    `scan -f url -t <url>`); the flow
+    value is arm-chosen from the validated target shape, never a
+    caller-controlled fragment.
+    """
     if action == "assets":
         return [binary, "assets"]
     target = payload.get("target")
     if not isinstance(target, str) or not target.strip():
         return None
-    return [binary, "scan", "-t", target.strip()]
+    argv = [binary, "scan", "-t", target.strip()]
+    if "://" in target:
+        argv[2:2] = ["-f", "url"]
+    return argv

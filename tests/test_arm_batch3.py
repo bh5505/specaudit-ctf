@@ -157,7 +157,16 @@ def test_osmedeus_scan_dispatch_gated(
         _spec(OSMEDEUS_ID), "scan", {"target": "http://lab.internal/"}
     )
     assert result.ok is True
-    assert "http://lab.internal/" in result.output["output"]["argv"]
+    # v5.1.0 flag pin: a URL target selects the url flow (-f url ahead
+    # of -t); the default flow requires a domain target upstream.
+    argv = result.output["output"]["argv"]
+    assert argv == ["scan", "-f", "url", "-t", "http://lab.internal/"]
+    # A hostname target rides the default flow (no -f).
+    result = OsmedeusArm().invoke(
+        _spec(OSMEDEUS_ID), "scan", {"target": "lab.internal"}
+    )
+    assert result.ok is True
+    assert result.output["output"]["argv"] == ["scan", "-t", "lab.internal"]
     # Out-of-scope target refused.
     result = OsmedeusArm().invoke(
         _spec(OSMEDEUS_ID), "scan", {"target": "http://other.example/"}
