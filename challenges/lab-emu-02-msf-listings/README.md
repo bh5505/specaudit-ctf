@@ -29,13 +29,18 @@ after install (upstream error observed verbatim 2026-09-06).
    `export METASPLOIT_MCP_ENDPOINT=http://127.0.0.1:8085/sse` and:
    - `python -m extension invoke metasploit-mcp list_tools`
    - `python -m extension invoke metasploit-mcp list_exploits '{"search_term": ""}'`
-   - `python -m extension invoke metasploit-mcp list_payloads '{"platform": "windows"}'`
    - `python -m extension invoke metasploit-mcp list_active_sessions '{}'`
    - `python -m extension invoke metasploit-mcp list_listeners '{}'`
 
    Listing bodies land in the invoke artifact dir (digest-named) when
    `--attempt-id`/`--artifact-dir` custody is armed — the module
    catalog is large; the envelope carries the statuses.
+
+   Live observation (2026-09-06): `list_payloads` with a platform
+   filter enumerates the full payload catalog over RPC and did not
+   return within five minutes on the lab bridge — the exercise uses
+   the exploit-catalog listing as its enumeration evidence and leaves
+   the payload listing as an operator-side read.
 
 2. **Read the populations.**
    Fresh lab bridge: sessions empty, listeners empty — the two

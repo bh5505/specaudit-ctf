@@ -17,9 +17,11 @@ The script starts `msfrpcd -P <lab-pass> -S -a 127.0.0.1 -p 55553`
 With `METASPLOIT_MCP_ENDPOINT=http://127.0.0.1:8085/sse`:
 
 - `list_tools` confirms the bridge surface.
-- `list_exploits` / `list_payloads` return the module catalog (the
-  body lands in the artifact dir under custody; the envelope carries
-  the status).
+- `list_exploits` returns the module catalog (the body lands in the
+  artifact dir under custody; the envelope carries the status).
+  `list_payloads` with a platform filter did not return within five
+  minutes on the lab bridge (full-catalog RPC enumeration) — observed
+  2026-09-06, left as an operator-side read.
 - `list_active_sessions` / `list_listeners` return empty on the fresh
   bridge.
 
