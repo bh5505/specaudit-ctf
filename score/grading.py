@@ -32,6 +32,18 @@ SCHEMA_ID = "specaudit.ctf.grade.v1"
 _SEVERITIES = ("critical", "high", "medium", "low", "none")
 _EVIDENCE_KEYS = ("control", "rationale", "traces_to")
 _FINDING_KEYS = ("finding_key", "control", "severity", "rationale", "traces_to")
+# The lane a contract declares (2026-09-06 content-growth packet). The
+# default is the historical shape: findings tracing to the synthetic
+# range fixtures, gradeable through the evidence-doctrined attempt
+# lane. A live-service contract declares findings planted on the
+# operator's spawned lab target instead — it grades through the
+# standalone found-vs-expected lane with the runner's arms lane
+# recording the live reads; the attempt lane refuses it (its coverage
+# doctrine verifies run_range fixture touches, which no live finding
+# can honestly name).
+LANE_FIXTURE_BACKED = "fixture-backed"
+LANE_LIVE_SERVICE = "live-service"
+_LANES = (LANE_FIXTURE_BACKED, LANE_LIVE_SERVICE)
 
 
 class GradingError(ValueError):
@@ -48,10 +60,24 @@ def load_findings_document(path: Path, *, what: str) -> dict[str, Any]:
         raise GradingError(f"{what} is not valid JSON: {path}") from exc
     if not isinstance(raw, dict):
         raise GradingError(f"{what} must be a JSON object: {path}")
-    allowed = {"track", "seed", "fixtures", "total", "findings", "stage", "stages"}
+    allowed = {
+        "track",
+        "seed",
+        "fixtures",
+        "total",
+        "findings",
+        "stage",
+        "stages",
+        "lane",
+    }
     unknown = sorted(set(raw) - allowed)
     if unknown:
         raise GradingError(f"{what} has unknown keys: {', '.join(unknown)}")
+    raw["lane"] = raw.setdefault("lane", LANE_FIXTURE_BACKED)
+    if raw["lane"] not in _LANES:
+        raise GradingError(
+            f"{what} lane must be one of {', '.join(_LANES)}"
+        )
     track = raw.get("track")
     if not isinstance(track, str) or not track.strip():
         raise GradingError(f"{what} requires a non-empty track")
