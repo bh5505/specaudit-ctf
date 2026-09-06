@@ -23,6 +23,7 @@ CHALLENGES = {
     "telecom-aws-04-network-exposure": "challenge-04-network-exposure.txt",
     "telecom-aws-05-logging-gaps": "challenge-05-logging-gaps.txt",
     "telecom-aws-06-chain-rehearsal": "challenge-06-chain-rehearsal.txt",
+    "lab-knowledge-01-attack-mapping": "challenge-knowledge-01-attack-mapping.txt",
 }
 
 

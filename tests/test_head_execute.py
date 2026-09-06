@@ -166,7 +166,7 @@ def test_every_contract_finding_parses_to_coverable_fixtures() -> None:
 
     roster = range_fixture_ids()
     contracts = sorted((ROOT / "challenges").glob("*/artifacts/*expected*.json"))
-    assert len(contracts) == 11, "the challenge library grew — keep this pin honest"
+    assert len(contracts) == 12, "the challenge library grew — keep this pin honest"
     for contract in contracts:
         document = json.loads(contract.read_text(encoding="utf-8"))
         live = document.get("lane") == "live-service"

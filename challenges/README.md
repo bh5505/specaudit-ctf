@@ -23,6 +23,7 @@ fixture ground truth does not.
 | `telecom-aws-06-chain-rehearsal/` | Flagship multi-stage chain engagement | `tf_chain_ingress_role`, `tf_iam_open`, `tf_s3_public_access` |
 | `lab-web-01-dast-surface/` | Web/DAST live-service rehearsal | lab target (`lab/target/` planted web content) |
 | `lab-net-01-service-discovery/` | Network service-discovery live rehearsal | lab target (`lab/target/start-services.sh` planted services) |
+| `lab-knowledge-01-attack-mapping/` | AI/knowledge ATT&CK mapping rehearsal | `tf_s3_public_access`, `tf_cloudtrail_disabled`, `tf_iam_open` |
 
 Start with `telecom-aws-01-reachability/`; each challenge assumes the
 skills of its predecessors. Challenge 06 is the flagship: four graded
@@ -40,17 +41,21 @@ data that cannot lie to you.
 
 ## Live-service lanes
 
-The `lab-*` challenges rehearse against the **spawned lab target** instead
-of the synthetic range. Their contracts declare `lane: live-service` and
-their findings trace to planted target content (`lab/target/`), built and
-read honestly: a directory listing, an implementation-disclosure header,
-planted services — real-but-inert by construction. These lanes grade
-through the standalone found-vs-expected lane; the runner's `--arms`
-envelopes recorded in the same run are the proof the live reads happened.
-The evidence-doctrined head-attempt lane **refuses** live-service
-contracts by design: its coverage gate verifies synthetic-range fixture
-touches, which no live finding can honestly name. The two lane kinds are
-never compared as like-for-like matrix cells.
+Two `lab-*` challenges (the web and network rehearsals) draw their
+findings from the **spawned lab target** instead of the synthetic range
+(their composed runner runs still record the synthetic range lane; the
+graded findings trace to planted target content). Their contracts
+declare `lane: live-service` and their findings trace to planted target
+content (`lab/target/`), built and read honestly: a directory listing, an
+implementation-disclosure header, planted services — real-but-inert by
+construction. These lanes grade through the standalone found-vs-expected
+lane; the runner's `--arms` envelopes recorded in the same run are the
+proof the live reads happened. The evidence-doctrined head-attempt lane
+**refuses** live-service contracts by design: its coverage gate verifies
+synthetic-range fixture touches, which no live finding can honestly name.
+The two lane kinds are never compared as like-for-like matrix cells.
+(`lab-knowledge-01-attack-mapping` is lab-family but fixture-backed: it is
+a normal graded head-matrix cell.)
 
 ## Grading
 
