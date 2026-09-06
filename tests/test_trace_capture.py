@@ -386,6 +386,13 @@ def test_signal_handlers_not_installed_for_monkeypatched_stdio(
     before_int = signal.getsignal(signal.SIGINT)
     saved_stdin = mcp_server.sys.stdin
     saved_stdout = mcp_server.sys.stdout
+    # Capture prior env values so the finally restores them exactly —
+    # the lab/CI hosts leave these unset, but the suite must not
+    # destroy an operator-set value either.
+    prior_env = {
+        var: os.environ.get(var)
+        for var in (trace.ENV_TRACE, trace.ENV_KEY, trace.ENV_ATTEMPT)
+    }
     trace_path = tmp_path / "trace.ndjson"
     mcp_server.sys.stdin = io.StringIO("")  # EOF immediately
     mcp_server.sys.stdout = io.StringIO()
@@ -397,7 +404,17 @@ def test_signal_handlers_not_installed_for_monkeypatched_stdio(
     finally:
         mcp_server.sys.stdin = saved_stdin
         mcp_server.sys.stdout = saved_stdout
-        for var in (trace.ENV_TRACE, trace.ENV_KEY, trace.ENV_ATTEMPT):
-            os.environ.pop(var, None)
+        # Restore whatever the outer environment held (including
+        # absence); never leave the test's values behind.
+        for var, prior in prior_env.items():
+            if prior is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = prior
+        # The test's very claim is that serve() installed no handlers;
+        # on a regression the finally must still undo the leak so the
+        # failure does not poison the rest of the suite.
+        signal.signal(signal.SIGTERM, before_term)
+        signal.signal(signal.SIGINT, before_int)
     assert signal.getsignal(signal.SIGTERM) is before_term
     assert signal.getsignal(signal.SIGINT) is before_int
