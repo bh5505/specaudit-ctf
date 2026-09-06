@@ -55,14 +55,16 @@ import threading
 from pathlib import Path
 from typing import Any, Mapping, Sequence, TextIO
 
-from .contract import Extension, ExtensionError
-
-# The process's REAL stdio, bound at import. The signal-handler guard
-# below must not fire for in-process callers whose sys.stdin/sys.stdout
-# were monkeypatched by module-attr reassignment (the tracer tests do
-# exactly that) — only for the actual server process on its own stdio.
+# The process's REAL stdio, bound at import, before any local imports
+# or monkeypatching can run. The signal-handler guard below must not
+# fire for in-process callers whose sys.stdin/sys.stdout were patched
+# by module-attr reassignment (the tracer tests do exactly that) —
+# only for the actual server process on its own stdio.
 _REAL_STDIN = sys.stdin
 _REAL_STDOUT = sys.stdout
+
+from .contract import Extension, ExtensionError
+
 from .dispatch import DispatchOutcome, dispatch_invoke, dispatch_range
 from . import trace as trace_module
 

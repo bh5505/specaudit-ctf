@@ -389,8 +389,6 @@ def test_signal_handlers_not_installed_for_monkeypatched_stdio(
     trace_path = tmp_path / "trace.ndjson"
     mcp_server.sys.stdin = io.StringIO("")  # EOF immediately
     mcp_server.sys.stdout = io.StringIO()
-    import os
-
     os.environ[trace.ENV_TRACE] = str(trace_path)
     os.environ[trace.ENV_KEY] = KEY_HEX
     os.environ[trace.ENV_ATTEMPT] = "d1" * 32
