@@ -13,11 +13,14 @@ not need. The server listens on 127.0.0.1:8888 (allow ~40s).
 With `CALDERA_ENDPOINT=http://127.0.0.1:8888` and
 `CALDERA_API_KEY=ADMIN123`:
 
-- `caldera abilities` returns the stockpile ability inventory —
-  thousands of ATT&CK-mapped abilities, one authenticated call.
-- `caldera agents` returns `[]` on a fresh server — the enrolled
-  population is empty.
-- `caldera adversaries` returns the shipped adversary profiles.
+- `caldera adversaries` returns the shipped adversary-profile
+  catalog — pre-composed attack chains, one authenticated call.
+- `caldera agents` and `caldera operations` return `[]` on a fresh
+  server — nothing enrolled, nothing run.
+- `caldera abilities` honestly trips the arm's response cap (~2.8MB
+  of shipped stockpile data against the 512KB client cap) — the
+  containment working as designed; the catalog-exposure row grades
+  the adversary-profile catalog, which lists completely.
 
 ## 3. The boundary probe
 
@@ -26,9 +29,9 @@ call fails with the server's 401 — the attestation row's evidence.
 
 ## 4. The four rows
 
-1. **demo-emu-caldera-abilities-inventoried (low).** The catalog is
-   the server's own shipped data — the exposure is that one
-   authenticated call yields the full target-selection inventory.
+1. **demo-emu-caldera-adversary-catalog-exposed (low).** The
+   profiles are the server's own shipped data — the exposure is that
+   one authenticated call yields the pre-composed chain catalog.
 2. **demo-emu-caldera-default-red-key (high).** `api_key_red:
    ADMIN123` ships in conf/default.yml; the finding grades the shipped
    default, and the runbook says rotate on anything non-disposable.

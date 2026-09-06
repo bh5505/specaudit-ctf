@@ -8,11 +8,11 @@
   "total": 4,
   "findings": [
     {
-      "finding_key": "demo-emu-caldera-abilities-inventoried",
-      "control": "emulation server: ability-catalog exposure to authenticated readers",
+      "finding_key": "demo-emu-caldera-adversary-catalog-exposed",
+      "control": "emulation server: adversary-profile catalog exposure to authenticated readers",
       "severity": "low",
-      "rationale": "The emulation server hands its full ATT&CK-mapped ability catalog to any holder of the red API key in a single authenticated listing call - target-selection intelligence proportional to whoever holds the key.",
-      "traces_to": "caldera stockpile ability catalog (apache/caldera plugins/stockpile data, v5.3.0), listed via GET /api/v2/abilities"
+      "rationale": "The emulation server hands its full shipped adversary-profile catalog - pre-composed attack chains - to any holder of the red API key in a single authenticated listing call: target-selection and chain-planning intelligence for whoever holds the key.",
+      "traces_to": "caldera stockpile ability catalog (apache/caldera plugins/stockpile data, v5.3.0), adversary profiles listed via GET /api/v2/adversaries"
     },
     {
       "finding_key": "demo-emu-caldera-default-red-key",
