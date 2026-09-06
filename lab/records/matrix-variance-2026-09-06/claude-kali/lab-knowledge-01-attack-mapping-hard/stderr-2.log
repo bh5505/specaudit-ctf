@@ -1,0 +1,3 @@
+[head-spawn] head=claude-code attempt=54a2674625fdb13b29b0b777067ba56028123e946fe5494fd1da8370e703e952 cmd=/root/.local/bin/claude timeout=900s
+[head-reap] head=claude-code exit=1 duration=1.7s
+exercise: exercise failed; range complete (10 fixtures); head failed

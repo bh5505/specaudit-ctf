@@ -1,0 +1,33 @@
+{
+  "track": "lab-knowledge-01-attack-mapping",
+  "seed": null,
+  "fixtures": [
+    "tf_s3_public_access",
+    "tf_cloudtrail_disabled",
+    "tf_iam_open"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-knowledge-t1530-public-storage",
+      "control": "S3 public-access blocks should be enabled.",
+      "severity": "high",
+      "rationale": "The fixture disables `block_public_acls`, and the T1530 lookup identifies Data from Cloud Storage, so unauthenticated S3 reads are possible.",
+      "traces_to": "tf_s3_public_access: `block_public_acls = false` plus T1530"
+    },
+    {
+      "finding_key": "demo-knowledge-t1562-008-cloud-logs",
+      "control": "CloudTrail logging should remain enabled.",
+      "severity": "high",
+      "rationale": "The fixture sets `enable_logging = false`, and the T1562.008 lookup identifies Disable Cloud Logs, so the omitted audit trail supports stealth.",
+      "traces_to": "tf_cloudtrail_disabled: `enable_logging = false` plus T1562.008"
+    },
+    {
+      "finding_key": "demo-knowledge-t1078-wildcard-accounts",
+      "control": "IAM policies should enforce least privilege.",
+      "severity": "critical",
+      "rationale": "The fixture grants `Action = \"*\"` on `Resource = \"*\"`, and the T1078 lookup identifies Valid Accounts, so a compromised principal can misuse broad account privileges.",
+      "traces_to": "tf_iam_open: `Action = \"*\"` on `Resource = \"*\"` plus T1078"
+    }
+  ]
+}

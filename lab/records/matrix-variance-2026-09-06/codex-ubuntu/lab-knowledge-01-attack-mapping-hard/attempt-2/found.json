@@ -1,0 +1,33 @@
+{
+  "track": "lab-knowledge-01-attack-mapping",
+  "seed": null,
+  "fixtures": [
+    "tf_s3_public_access",
+    "tf_cloudtrail_disabled",
+    "tf_iam_open"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-knowledge-t1530-public-storage",
+      "control": "S3 Block Public Access",
+      "severity": "high",
+      "rationale": "The tf_s3_public_access fixture sets acl = 'public-read', and the ATT&CK lookup for T1530 describes collecting data from cloud storage, so the exposure permits unauthenticated object retrieval; high severity reflects direct, anonymous data access.",
+      "traces_to": "tf_s3_public_access: acl = 'public-read' -> T1530"
+    },
+    {
+      "finding_key": "demo-knowledge-t1562-008-cloud-logs",
+      "control": "CloudTrail logging enabled",
+      "severity": "medium",
+      "rationale": "The tf_cloudtrail_disabled fixture sets enable_logging = false, and the ATT&CK lookup for T1562.008 describes impairing cloud logging, so the missing trail removes a key detective control; medium severity reflects a broad visibility gap without inherent data exposure.",
+      "traces_to": "tf_cloudtrail_disabled: enable_logging = false -> T1562.008"
+    },
+    {
+      "finding_key": "demo-knowledge-t1078-wildcard-accounts",
+      "control": "IAM trust policy principal scoping",
+      "severity": "high",
+      "rationale": "The tf_iam_open fixture grants a wildcard trust principal, and the ATT&CK lookup for T1078 describes using valid accounts for access and persistence, so the policy permits any AWS principal to assume the role; high severity reflects broad, identity-based access.",
+      "traces_to": "tf_iam_open: Principal = '*' -> T1078"
+    }
+  ]
+}

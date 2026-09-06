@@ -81,3 +81,44 @@ operator's environment (`AWS_ACCESS_KEY_ID` or `AWS_PROFILE`).
 | Envelope status | _(fill: expect complete from the hardened SSE client — remote-https policy, loopback/plain-http refused)_ |
 | Artifacts | _(fill: attempt ids, endpoint tool-inventory rows)_ |
 | Operator note | _(optional: Prowler version, endpoint shape)_ |
+
+---
+
+## claude-code real-head lane (kali + Ubuntu) — upstream credit exhaustion
+
+Status: **awaiting-operator** (dated probe 2026-09-06)
+
+During the first variance sweep the claude-code heads began failing in
+~1.7 s with zero tool calls. Direct probe of the CLI on BOTH WSL hosts
+reproduces:
+
+```
+API Error: 402 litellm.APIError: OpenrouterException - {"error":{"message":
+"This request requires more credits ... can only afford 18983 tokens" ...}}
+Received Model Group=claude-sonnet-4-5-20250929
+```
+
+The tier router's OpenRouter key (same key on both hosts) exhausted
+its credit limit; every claude request fails until the key is topped
+up. This is an operator-asset outage, not a harness or grading
+defect — affected attempts are kept verbatim in
+`lab/records/matrix-variance-2026-09-06/`. Lane re-enters measurement
+after the top-up; codex-cli lanes were unaffected and completed the
+slice.
+
+## qwen-code real-head lane (Windows) — wired, awaiting quota reset
+
+Status: **awaiting-operator** (dated probe 2026-09-06)
+
+The third armed head (`EXERCISE_HEAD_QWEN_CODE_CMD`) is wired,
+test-pinned, and smoke-spawned on the operator-staged Windows install
+(qwen-code 0.23.0). The smoke reached the provider and was refused by
+the account, not the wiring:
+
+```
+Quota exhausted: Your token-plan 1-week quota has been exhausted.
+The quota will reset at 09-07 01:53:00 UTC.
+```
+
+First graded cells land after the reset (or on another operator-named
+key); the head's arming discipline and custody are unchanged.
