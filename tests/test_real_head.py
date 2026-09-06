@@ -535,9 +535,11 @@ def test_claude_child_env_carries_no_stale_trace_vars(
 def test_spawn_refuses_to_overwrite_an_existing_temp_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
 ) -> None:
-    """The temp mcp-config carries the minted key: an existing file at
-    its path (leftover, or a symlink planted in the attempt dir) must
-    fail closed, never be silently overwritten or followed."""
+    """The temp mcp-config carries the minted key: an existing regular
+    file at its path must fail closed with a refusal and survive
+    untouched (a planted SYMLINK also fails closed on POSIX via
+    O_NOFOLLOW, though through the generic OSError branch with the
+    cannot-write message)."""
     monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
@@ -556,6 +558,7 @@ def test_spawn_refuses_to_overwrite_an_existing_temp_config(
             prompt_chars=1,
             timeout_seconds=7,
         )
+    assert not seen, "spawn must not be reached on refusal"
     assert (attempt_dir / "mcp-config.json").read_text(encoding="utf-8") == "sentinel"
 
 
