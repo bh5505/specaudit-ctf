@@ -57,7 +57,7 @@ MASTER_KEY="$(cat "$KEYFILE")" || fail "cannot read $KEYFILE"
 
 # The key rides in a 0600 curl config file, never in argv.
 HEADER_FILE="$(mktemp "${TMPDIR:-/tmp}/router-health.XXXXXX")" || fail "mktemp failed"
-chmod 600 "$HEADER_FILE"
+chmod 600 "$HEADER_FILE" || fail "cannot restrict $HEADER_FILE"
 trap 'rm -f "$HEADER_FILE"' EXIT
 printf 'header = "Authorization: Bearer %s"\n' "$MASTER_KEY" > "$HEADER_FILE"
 
@@ -140,7 +140,8 @@ done
 for id in "${IDS[@]}"; do
   smoke="$(cd /tmp && timeout 180 "$CLAUDE_BIN" -p "Reply with just: ok" --model "$id" 2>&1)" \
     || fail "claude -p smoke failed for $id"
-  case "$smoke" in
+  lower_smoke="$(printf '%s' "$smoke" | tr '[:upper:]' '[:lower:]')"
+  case "$lower_smoke" in
     *unrecognized_model*|*"not found"*|*"access denied"*|*402*|*credit*|*quota*|*exceed*|*unauthorized*)
       fail "claude smoke for $id warns: $(printf '%s\n' "$smoke" | head -2)"
       ;;
