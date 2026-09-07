@@ -45,11 +45,14 @@ model_reasoning_effort = "low"
 ```
 
 Both hosts smoke green through `--profile chatgpt`. Caveats on
-record: (1) the access token lives ~10 days; rerun
-`/root/.claude/install-openai-auth.py` with fresh material (or the
-same blob while its refresh session lives) and the codex CLI refreshes
-its own tokens on use. (2) The two hosts share one OAuth session — a
-server-side revocation or a login elsewhere lands on both.
+record: (1) the access token lives ~10 days and the two hosts share
+ONE OAuth session, so refresh must be single-writer: rerun
+`/root/.claude/install-openai-auth.py` with fresh (or still-live)
+material on ONE host, then byte-copy the installed `auth.json` to the
+other — the codex CLI also refreshes tokens on use, so two hosts
+refreshing the shared session independently can stale each other's
+stored refresh token. (2) A server-side revocation or a login
+elsewhere lands on both hosts at once.
 
 ## Why the gateway lane stayed closed (measured, not assumed)
 
