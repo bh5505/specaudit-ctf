@@ -1,0 +1,32 @@
+{
+  "track": "telecom-aws-04-network-exposure",
+  "seed": null,
+  "fixtures": [
+    "tf_sg_open_ingress",
+    "tf_s3_policy_blocked_trap"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-sg-open-admin-port",
+      "control": "network containment: administrative shell exposure",
+      "severity": "high",
+      "rationale": "The range report shows aws_security_group sg-admin permitting 0.0.0.0/0 ingress on tcp/22, making the administrative service reachable without network restriction.",
+      "traces_to": "extension/range/tf_sg_open_ingress/input/main.tf, aws_security_group.admin, ingress 0.0.0.0/0 tcp/22"
+    },
+    {
+      "finding_key": "demo-sg-open-db-port",
+      "control": "network containment: database engine exposure",
+      "severity": "critical",
+      "rationale": "The range report identifies aws_security_group sg-db allowing 0.0.0.0/0 ingress on tcp/3306, leaving the database service broadly reachable.",
+      "traces_to": "extension/range/tf_sg_open_ingress/input/main.tf, aws_security_group.db, ingress 0.0.0.0/0 tcp/3306"
+    },
+    {
+      "finding_key": "demo-trap-anonymous-policy-contained",
+      "control": "defense-in-depth: public access block neutralizes an anonymous grant",
+      "severity": "low",
+      "rationale": "The range report shows the trap bucket’s anonymous s3:GetObject grant, while aws_s3_bucket_public_access_block trap keeps it blocked rather than exploitable.",
+      "traces_to": "extension/range/tf_s3_policy_blocked_trap/input/main.tf, aws_s3_bucket_policy.trap with aws_s3_bucket_public_access_block.trap blocking anonymous access"
+    }
+  ]
+}

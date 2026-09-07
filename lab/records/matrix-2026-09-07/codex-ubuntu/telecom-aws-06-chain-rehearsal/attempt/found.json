@@ -1,0 +1,47 @@
+{
+  "track": "telecom-aws-06-chain-rehearsal",
+  "seed": null,
+  "fixtures": [
+    "tf_chain_ingress_role",
+    "tf_iam_open",
+    "tf_s3_public_access"
+  ],
+  "total": 5,
+  "findings": [
+    {
+      "finding_key": "demo-chain-sg-open-admin",
+      "control": "network containment: administrative shell exposure",
+      "severity": "high",
+      "rationale": "The range report records demo-jump-sg permitting 0.0.0.0/0 ingress on TCP/22, leaving an administrative service reachable from the internet.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf, aws_security_group.jump, ingress 0.0.0.0/0 tcp/22"
+    },
+    {
+      "finding_key": "demo-chain-role-assumable",
+      "control": "least-privilege: role assumability",
+      "severity": "critical",
+      "rationale": "The range report records demo-escalation-role as assumable through sts:AssumeRole by a broader principal, allowing that principal to act with the role's permissions.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf, aws_iam_role.escalation and aws_iam_role_policy_attachment.escalation"
+    },
+    {
+      "finding_key": "demo-chain-internet-to-identity",
+      "control": "defense-in-depth: exposure-to-identity chain",
+      "severity": "critical",
+      "rationale": "The range report links an internet-reachable sg-jump ingress to the assumable role role-escalate via sts:AssumeRole, producing an exposure-to-identity path.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/connectivity.json, edge sg-jump to role-escalate over sts:AssumeRole"
+    },
+    {
+      "finding_key": "demo-chain-iam-open-to-s3-public",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "The range report shows the wildcard identity policy granting broad actions that can reach the publicly readable demo-public-bucket, creating an identity-to-exposure chain.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf Statement[0] combined with extension/range/tf_s3_public_access/input/main.tf public-read ACL"
+    },
+    {
+      "finding_key": "demo-chain-iam-wildcard",
+      "control": "least-privilege: wildcard identity policy",
+      "severity": "critical",
+      "rationale": "The range report records aws_iam_policy iam-open granting Action=* on Resource=*, giving an attached principal broad access across the environment.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action and Statement[0].Resource"
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "track": "telecom-aws-03-iam-privesc",
+  "seed": null,
+  "fixtures": ["tf_iam_assume_role", "tf_iam_external_trust"],
+  "total": 4,
+  "findings": [
+    {
+      "finding_key": "demo-iam-assumable-admin-role",
+      "control": "least-privilege: role assumability",
+      "severity": "critical",
+      "rationale": "The aws_iam_role.admin resource carries an aws_iam_role_policy_attachment.admin binding that grants admin-level permissions while the role's trust policy permits arbitrary assumed roles — enabling privilege escalation from any caller.",
+      "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_role.admin + aws_iam_role_policy_attachment.admin"
+    },
+    {
+      "finding_key": "demo-iam-broad-assume-grant",
+      "control": "least-privilege: sts:AssumeRole grant scope",
+      "severity": "high",
+      "rationale": "The aws_iam_policy named assume_broadly contains a Statement that authorizes sts:AssumeAction on wildcard (*) resources, granting overly permissive cross-account or cross-service assumption capability beyond the principle of least privilege.",
+      "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_policy.assume_broadly, Statement[0]"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-principal",
+      "control": "identity boundary: external principal trust",
+      "severity": "critical",
+      "rationale": "The aws_iam_role.external_trust defines a trust policy whose Statement[0] explicitly lists external account ARNs in its Principal field, permitting identity assertion from outside the organization into an internal role.",
+      "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0].Principal"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-no-mfa",
+      "control": "identity boundary: MFA condition on sensitive trust",
+      "severity": "high",
+      "rationale": "The same external trust role's Statement[0] grants sts:AssumeRole access to external principals without attaching any Condition block enforcing multi-factor authentication, meaning the role can be assumed solely by presenting valid credentials.",
+      "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0] (no Condition block)"
+    }
+  ]
+}

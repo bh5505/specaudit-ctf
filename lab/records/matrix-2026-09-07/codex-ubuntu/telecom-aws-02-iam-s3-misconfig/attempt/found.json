@@ -1,0 +1,32 @@
+{
+  "track": "telecom-aws-02-iam-s3-misconfig",
+  "seed": null,
+  "fixtures": [
+    "tf_iam_open",
+    "tf_s3_public_access"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-iam-wildcard-action",
+      "control": "least-privilege: action scope",
+      "severity": "critical",
+      "rationale": "The IAM policy sets Statement[0].Action to * rather than listing the specific AWS operations needed.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action"
+    },
+    {
+      "finding_key": "demo-iam-wildcard-resource",
+      "control": "least-privilege: resource containment",
+      "severity": "high",
+      "rationale": "The IAM policy sets Statement[0].Resource to * instead of constraining access to specific ARNs or buckets.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Resource"
+    },
+    {
+      "finding_key": "demo-iam-to-exposure-chain",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "The wildcard IAM statement is combined with an S3 bucket whose acl is public-read, creating a direct path from broad identity permissions to object exposure.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action and Statement[0].Resource; extension/range/tf_s3_public_access/input/main.tf, aws_s3_bucket.public_bucket, acl = public-read"
+    }
+  ]
+}

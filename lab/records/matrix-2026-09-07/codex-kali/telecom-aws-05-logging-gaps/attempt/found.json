@@ -1,0 +1,25 @@
+{
+  "track": "telecom-aws-05-logging-gaps",
+  "seed": null,
+  "fixtures": [
+    "tf_cloudtrail_disabled",
+    "tf_s3_no_access_logging"
+  ],
+  "total": 2,
+  "findings": [
+    {
+      "finding_key": "demo-trail-disabled",
+      "control": "detection: management trail coverage",
+      "severity": "high",
+      "rationale": "The aws_cloudtrail.main resource at line 8 explicitly sets enable_logging to false, so the management trail is disabled.",
+      "traces_to": "extension/range/tf_cloudtrail_disabled/input/main.tf, aws_cloudtrail.main (enable_logging = false)"
+    },
+    {
+      "finding_key": "demo-s3-access-logging-missing",
+      "control": "detection: storage access logging",
+      "severity": "medium",
+      "rationale": "The aws_s3_bucket.audit_logs resource at line 4 is defined without any aws_s3_bucket_logging resource, so storage access logging is missing.",
+      "traces_to": "extension/range/tf_s3_no_access_logging/input/main.tf, aws_s3_bucket.audit_logs with no aws_s3_bucket_logging resource"
+    }
+  ]
+}

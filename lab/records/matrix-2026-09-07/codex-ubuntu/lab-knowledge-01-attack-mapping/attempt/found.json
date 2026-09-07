@@ -1,0 +1,33 @@
+{
+  "track": "lab-knowledge-01-attack-mapping",
+  "seed": null,
+  "fixtures": [
+    "tf_s3_public_access",
+    "tf_cloudtrail_disabled",
+    "tf_iam_open"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-knowledge-t1530-public-storage",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "high",
+      "rationale": "The S3 bucket is configured with a public-read ACL, allowing unauthenticated retrieval of its contents, and the technique lookup shows T1530 is used by adversaries to collect data from cloud storage.",
+      "traces_to": "extension/range/tf_s3_public_access/input/main.tf public-read bucket ACL enables T1530 collection from cloud storage"
+    },
+    {
+      "finding_key": "demo-knowledge-t1562-008-cloud-logs",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "high",
+      "rationale": "The CloudTrail trail is disabled, leaving AWS activity without the intended audit trail, and the technique lookup shows T1562.008 is used by adversaries to disable cloud logs and impair detection.",
+      "traces_to": "extension/range/tf_cloudtrail_disabled/input/main.tf disabled CloudTrail trail enables T1562.008 cloud-log impairment"
+    },
+    {
+      "finding_key": "demo-knowledge-t1078-wildcard-accounts",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "critical",
+      "rationale": "The IAM identity policy uses a wildcard on both actions and resources, allowing broad operations with a valid principal, and the technique lookup shows T1078 is used by adversaries to operate through valid accounts.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf wildcard identity policy enables T1078 use of valid accounts"
+    }
+  ]
+}

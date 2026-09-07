@@ -1,0 +1,29 @@
+{
+  "track": "telecom-aws-02-iam-s3-misconfig",
+  "seed": null,
+  "fixtures": ["tf_iam_open", "tf_s3_public_access"],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-iam-wildcard-action",
+      "control": "least-privilege: action scope",
+      "severity": "critical",
+      "rationale": "The aws_iam_policy.wildcard resource in tf_iam_open declares Statement[0].Action as '*', granting every AWS API action instead of scoping to least-privilege permissions.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action[*]"
+    },
+    {
+      "finding_key": "demo-iam-wildcard-resource",
+      "control": "least-privilege: resource containment",
+      "severity": "high",
+      "rationale": "The same aws_iam_policy.wildcard policy sets Statement[0].Resource to '*', applying the wildcard actions to all resources rather than restricting to specific ARNs.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Resource[*]"
+    },
+    {
+      "finding_key": "demo-iam-to-exposure-chain",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "The tf_iam_open policy (Action '*') grants broad IAM permissions that, when combined with tf_s3_public_access setting aws_s3_bucket.public_bucket acl to 'public-read', creates an identity-to-exposure chain allowing data exfiltration to a publicly accessible endpoint.",
+      "traces_to": "tf_iam_open Statement[0] (Action/Resource '*') chained with tf_s3_public_access aws_s3_bucket.public_bucket acl = 'public-read'"
+    }
+  ]
+}

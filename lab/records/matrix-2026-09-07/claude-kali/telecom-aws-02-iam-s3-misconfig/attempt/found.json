@@ -1,0 +1,29 @@
+{
+  "track": "telecom-aws-02-iam-s3-misconfig",
+  "seed": null,
+  "fixtures": ["tf_iam_open", "tf_s3_public_access"],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-iam-wildcard-action",
+      "control": "least-privilege: action scope",
+      "severity": "critical",
+      "rationale": "The wildcard policy in tf_iam_open allows every API action because its opening statement sets Action to star.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf covering aws_iam_policy wildcard first statement Action field"
+    },
+    {
+      "finding_key": "demo-iam-wildcard-resource",
+      "control": "least-privilege: resource containment",
+      "severity": "high",
+      "rationale": "The same wildcard policy removes resource boundaries because its opening statement sets Resource to star.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf covering aws_iam_policy wildcard first statement Resource field"
+    },
+    {
+      "finding_key": "demo-iam-to-exposure-chain",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "Unrestricted identity permissions combine with the open bucket in tf_s3_public_access using a public-read ACL to form an identity to exposure path.",
+      "traces_to": "tf_iam_open opening statement with star action and star resource linked to tf_s3_public_access public bucket public-read ACL"
+    }
+  ]
+}
