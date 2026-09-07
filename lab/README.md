@@ -21,7 +21,7 @@ All scripts run from **Windows (Git Bash)** and orchestrate `wsl.exe`.
 | `build-golden.sh` | One-time: configure a fresh Debian WSL distro into the golden lab-target rootfs and export it to a tar. |
 | `spawn-target.sh` | Register a **disposable** target instance from the golden tar, start its services, print its IP + arming commands. |
 | `matrix-run.sh` | Sweep one head instance across the graded challenges on this host: one runner command per cell (requires the head's `EXERCISE_HEAD_*_CMD` arming env; reports per cell, failures recorded not fatal). |
-| `router-health.sh` | Gate before any graded claude-code sweep on a router host: asserts the served dated-id set is unchanged, every configured route is muse-backed with zero openrouter references, a direct completion per dated id returns non-empty content, and `claude -p` smokes are warning-free. |
+| `router-health.sh` | Gate before any graded claude-code sweep on a router host: asserts the served dated-id set is unchanged, the live route table pins exactly the three muse-backed routes with zero openrouter references, a direct completion per dated id returns non-empty content, and `claude -p` smokes are warning-free apart from the tolerated muse deprecation banner. |
 | `teardown-target.sh` | Unregister the instance and drop its state dir. |
 | `target/` | Inert content + the service starter baked into the golden image. |
 | `local.example.conf` | The knobs; copy to `local.conf` (gitignored) to override defaults. |

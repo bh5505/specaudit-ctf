@@ -47,19 +47,27 @@ Served set after: identical (asserted by the gate's first check).
 
 ## Probe transcript (gate output, both hosts)
 
-The gate asserts, in order: exact served-name set; structural YAML
-read of the live config (no openrouter reference in any route's
-model/api_base/api_key, every route muse-backed); a direct
-`POST /v1/chat/completions` per dated id (HTTP 200, non-empty
-content at `max_tokens=1024`); a `claude -p` smoke per dated id with
-fail-closed warning scan (the muse deprecation banner for the dated
-opus id prints on stdout and is informational).
+The gate asserts, in order: exact served-name set from
+`GET /v1/models` (bounded retry for a just-restarted router); a
+structural YAML read of the live config that must yield EXACTLY the
+three dated route names, pin every route to the exact muse model +
+api_base, and find zero openrouter references in ANY
+`litellm_params` value (a grep would also match comments and env-var
+names); a direct `POST /v1/chat/completions` per dated id (HTTP 200,
+non-whitespace-EMPTY content at `max_tokens=1024`); a `claude -p`
+smoke per dated id with a fail-closed scan for unrecognized_model,
+not-found / access-denied, and dead-credential signals (402,
+credit/quota/unauthorized) — the muse deprecation banner for the
+dated opus id prints on stdout and is informational. The master key
+travels in a 0600 curl config file (never in argv, where /proc would
+publish it) read from a key file whose group/other permission bits
+the gate asserts zero.
 
 kali-linux:
 
 ```
 [router-health] served names ok: 3 dated ids, unchanged
-config ok: 3 routes, all muse-backed, zero openrouter references
+[router-health] config ok: 3 routes, exact muse pin, zero openrouter references
 [router-health] route ok: claude-opus-4-1-20250805
 [router-health] route ok: claude-sonnet-4-5-20250929
 [router-health] route ok: claude-haiku-4-5-20251001
@@ -69,15 +77,20 @@ config ok: 3 routes, all muse-backed, zero openrouter references
 [router-health] ALL GREEN on this host: 3 muse-backed routes, smokes clean
 ```
 
-Ubuntu: identical — all seven lines green, same ids in the same
-order.
+Ubuntu: identical — the same nine lines, same ids, same order.
 
 ## Why the gate is structural
 
 A `grep openrouter` on the config would also match comments and env
 names, and name-stability alone would pass a router that still
-routes to the dead key. The gate parses the live YAML and fails on
-any route whose model/api_base/api_key values reference openrouter,
-then proves each route end-to-end with a real completion and a real
+routes to the dead key. The gate parses the live YAML and fails
+unless the route table is EXACTLY the three dated names, every
+route pins the exact muse model and api_base, and no
+`litellm_params` value on any route mentions openrouter — then it
+proves each route end-to-end with a real completion and a real
 claude-code smoke. A quota-exhausted muse (which answers 404 "Model
-not found or access denied" for every id) fails the gate.
+not found or access denied" for every id) fails the gate. The
+guarantee is deliberately narrow about one thing: an api_key that
+indirects through a RENAMED env var holding the dead key would pass
+the structural scan — the live per-id completions are the check
+that catches a dead upstream at gate time.
