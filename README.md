@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Arms**: 27 specialized adapters. No row is held (the HTTP-MCP
+- **Arms**: 28 specialized adapters. No row is held (the HTTP-MCP
   held set closed 2026-09-04; the tier remains enforced for any
   future held row); the burp-mcp, google-mcp-security, semgrep-mcp,
   prowler-mcp, and metasploit-mcp rows are research integrations on
@@ -26,11 +26,35 @@
 frozen order). It is a **survey map**, not a ship list: a row is not
 a promise that an adapter exists. Every row has a support tier
 (`research` | `experimental` | `maintained` | `held`). In this cut
-every arm row is curated (27 handlers) and every methodology-only
+every arm row is curated (28 handlers) and every methodology-only
 row stays uncurated (19). `curated` is not `maintained`.
 
 Per-arm caveats (composite egress, exploitation, LLM spend, source
 mutation): [extension/README.md](extension/README.md).
+
+## Learning program
+
+The shipped runtime and challenges are the first usable layer of a larger,
+evidence-led cybersecurity audit learning program. The program connects
+technical validation to internal-audit workpapers and extends the target
+curriculum across general cybersecurity and telecom—from subscriber identity,
+5G core and interconnect through RAN, telco cloud, network APIs, fraud and
+resilience. That target coverage is documented honestly; it does not imply that
+the corresponding labs or integrations ship.
+
+| Reader | Living guide |
+|---|---|
+| Everyone: architecture, status, sources and research register | [Program](PROGRAM.md) |
+| Trainee: pathways, shipped A–D, full module map and proposed seed packs | [Curriculum](CURRICULUM.md) |
+| Instructor or challenge author: delivery, grading, calibration and maintenance | [Instructor guide](INSTRUCTOR_GUIDE.md) |
+| Operator: authorization, environment tiers, containment, custody and cleanup | [Operations](OPERATIONS.md) |
+| Challenge user or author: shipped inventory, exact grading and authoring contract | [Challenges](challenges/README.md) |
+
+The [program research register](PROGRAM.md#candidate-register-42-unique-candidates)
+contains 42 unique candidates and 12 supplemental methodology/corpus families.
+They are **research inputs**, not runtime inventory: none becomes bundled,
+admitted, installed, licensed, validated or maintained by being listed. The
+register stays separate from `extension/coverage.yaml` and the runtime catalog.
 
 ## Install
 
@@ -597,7 +621,7 @@ prefixes.
   repo path in the scope env** — `parse_scope` refuses it as not a
   CIDR, IP, hostname, or URI.
 
-Safe default is unarmed: shipping 26 handlers does not fire a packet
+Safe default is unarmed: shipping 28 handlers does not fire a packet
 until `*_BIN` (or endpoint) **and** (for dispatch) `*_DISPATCH_SCOPE`
 are set.
 

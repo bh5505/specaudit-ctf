@@ -75,3 +75,119 @@ The verdict passes only on exact coverage — misses, extras, and
 evidence-less rows all fail it, and a partial finding set never reads
 as all-clear. Severity disagreements are surfaced as flags, not
 failures. See `score/grading.py` for the semantics.
+
+## Proposed workpaper alongside the graded finding set
+
+**Proposed, not shipped.** Nothing below changes the grading above:
+exact coverage stays the machine verdict, `score/grading.py` stays the
+semantics, and no challenge ships a workpaper contract today.
+
+The proposal is a second, human-reviewed deliverable next to
+`my-findings.json`: a short workpaper stating the criterion and subject,
+the population and period the conclusion covers, observed facts kept
+separate from inference, any disconfirming evidence, compensating
+controls, the scope left untested, and a recommendation with retest
+logic — every material statement citing the evidence it rests on.
+
+The two answer different questions. Exact coverage asks *did you find
+the planted violations and nothing else*. The workpaper asks *is the
+conclusion defensible* — and a passing finding set with an
+unsupportable workpaper is a real failure mode the coverage verdict
+cannot see. It would be reviewed by a person, never scored by the exact
+grader, and it would not soften or override a coverage failure.
+Rationale, artifacts and the human rubric are in the
+[curriculum](../CURRICULUM.md#the-workpaper-set). Delivery and custody belong to
+the [instructor](../INSTRUCTOR_GUIDE.md) and
+[operator](../OPERATIONS.md) guides.
+
+## Authoring contract for new content
+
+This section governs future modules and challenges. It does not change the
+status of the 13 shipped challenges above. A draft directory or document is not
+shipped until its assets, grading, refusal cases, reset and review evidence all
+exist.
+
+### Identity and learning design
+
+Every challenge declares:
+
+- a stable id and title, program-domain mappings, audience, proficiency level
+  and status (`shipped`, `design-ready`, `research` or `proposed`);
+- versioned learning outcomes and prerequisite tasks, knowledge and skills;
+- the exact learner deliverables and how each demonstrates an outcome;
+- criteria sources, selected versions, owner and currentness review; and
+- dependencies and an accessible equivalent route where the interaction mode
+  is not itself the competency.
+
+Choose the outcome before the tool. A candidate resource in
+[PROGRAM.md](../PROGRAM.md#candidate-register-42-unique-candidates) is an input
+to review, not a package dependency by default.
+
+### Scenario, truth and evidence
+
+Keep the learner story, observable scenario, ground truth and assessment
+material separate. The package specifies:
+
+- assets, identities, relationships and time state;
+- an evidence manifest with producer/version, time, exact subject/scope, raw
+  hash or immutable locator, custody, data class, transformations, limitations
+  and observed/declared/inferred classification;
+- positive behavior, benign or protected behavior, a negative/inapplicable
+  case and an inconclusive/missing-evidence case where relevant;
+- compensating controls and changed prerequisites where they are part of the
+  intended judgment;
+- a learner brief that never exposes the answer key; and
+- an instructor key explaining what is known, what is not knowable from the
+  supplied evidence and which alternate conclusions can be supported.
+
+Expected findings, trace keys, hidden labels, snapshots and rubric anchors must
+be unreachable from the learner, target and agent context. Prove the separation
+with a refusal or canary test rather than relying on directory names.
+
+### Environment and safety case
+
+Declare the [environment tier](../OPERATIONS.md#environment-tiers), target
+boundary, permitted and prohibited actions, identities/privileges, data class,
+egress and cost limits, time/rate/concurrency, stop triggers, monitoring,
+reset/cleanup and retention. The operator must be able to enforce these outside
+the learner or agent.
+
+No package grants authority over a real target. An E3 or E4 delivery needs its
+own written rules of engagement and go/no-go. Any external resource must pass
+the [admission checklist](../PROGRAM.md#admission-checklist) before it is
+bundled, imported or executed.
+
+### Assessment package
+
+Ship together:
+
+- the learner brief and submission schema;
+- machine expected-results contract where exact grading applies;
+- human rubric and anchored examples where a workpaper applies;
+- hint/inject schedule with its scoring effect;
+- instructor key and adjudication notes outside learner reach; and
+- versioned calibration evidence.
+
+Machine and human verdicts remain distinct. Hard failures include unauthorized
+or unsafe action, answer-key access, fabricated/tampered/replayed evidence,
+material custody failure, concealed scope expansion and an unsupported
+all-clear after required evidence is missing.
+
+### Validation and promotion
+
+Validate the normal path and the cases that can create false assurance. As
+applicable, the matrix includes:
+
+- expected positive, benign, blocked, negative and inconclusive outcomes;
+- missing tool, source, permission, log or datasource;
+- malformed or hostile input, out-of-scope target and denied egress;
+- timeout, interruption, partial result and resource limit;
+- stale version, changed prerequisite and repeated/replayed attempt;
+- answer-key or evidence-tampering attempt; and
+- cleanup/revert failure and independent reset verification.
+
+Promotion requires named technical, safety/operator and instructional
+reviewers; a successful learner-path dry-run; tested reset and stop controls;
+known limitations; owner and supported versions; and a maintenance/retirement
+trigger. Revalidate after any material criteria, asset, dependency, tool,
+policy, environment, model or rubric change.

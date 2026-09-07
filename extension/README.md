@@ -7,7 +7,7 @@ This tree is the public attach surface:
 
 - `coverage.yaml` — classified survey map (not a ship list)
 - `contract.py` — fail-closed `list` / `describe` / `invoke`
-- `arms/` — 26 specialized handlers (families below)
+- `arms/` — 28 specialized handlers (families below)
 - `heads/` — Claude Code CLI, Codex CLI, and other-agent-CLI profiles
 - `range/` — synthetic fixtures only
 - `mcp_server.py` — stdio MCP for four tools (`list`, `describe`,
@@ -38,6 +38,29 @@ support promise. A row on the map is not a promise that an adapter is
 implemented; in this cut every arm row has a specialized handler.
 
 Schema: [schema/coverage.schema.json](schema/coverage.schema.json).
+
+### The research register is not this catalog
+
+[PROGRAM.md](../PROGRAM.md) at the repository root includes a register of
+**proposed** resources and integration directions. For an operator it is
+reading material, and nothing more:
+
+- it is **not** `coverage.yaml` — an entry there adds no row here;
+- it is **not** a specialized handler — nothing in it is implemented in
+  `arms/`;
+- it is **not** an admitted action — no candidate carries per-action
+  safety, scope, side-effect, budget, cleanup, or version metadata;
+- it is **not** maintained support — no candidate has an owner, a
+  regression case, or a supported version range.
+
+Take current truth from the shipped surfaces instead: `python -m
+extension list`, `python -m extension describe <id>`, `python -m
+extension availability`, and the per-arm caveats below. Installing or
+discovering a candidate arms nothing by itself — a binary on PATH or an
+MCP server listing a tool is not authorization, and dispatch-class
+actions still require their own `*_DISPATCH_SCOPE`. Any external data or
+tool from that register must clear the admission checklist in
+[PROGRAM.md](../PROGRAM.md#admission-checklist) before it is used here at all.
 
 ### Curated arms by family
 
