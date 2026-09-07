@@ -1,68 +1,79 @@
-# OpenAI subscription provider — probed, blocked on a live operator session (2026-09-07)
+# OpenAI subscription provider — codex lane ACTIVATED 2026-09-07; gateway lane measured-blocked
 
 Directive: add the operator's OpenAI ChatGPT-subscription (OAuth) as a
 provider for the codex CLI and for claude-code through the LiteLLM
-tier router. The supplied credential material turned out to be
-expired; the provider is NOT activated, nothing dead was wired, and a
-one-command installer is staged on both hosts for fresh material.
+tier router.
 
-## What was probed (facts, measured 2026-09-07)
+**Outcome: the codex lane is live on both hosts** (ChatGPT login
+accepted, `codex exec --profile chatgpt` verified end-to-end, default
+model Daybreak Blue low per operator). The gateway lane for
+claude-code is measured-blocked: the subscription token is refused by
+the platform API (403 on `/v1/models`) — it serves only the Codex
+backend — so no LiteLLM chat-completions route can sit in front of
+it, and none was added.
 
-- The supplied access JWT is expired: `exp` 1786478571 (about ten
-  days after its `iat`), which precedes the probe date.
-- The refresh grant against `https://auth.openai.com/oauth/token`
-  with the client_id **parsed from the JWT itself**
-  (`app_EMoamEEZ73f0CkXaXp7hrann`) — JSON and form-encoded bodies,
-  with and without `scope` — returns 401 `"Your session has expired.
-  Please log in again."` The request shape is right (a deliberately
-  wrong client_id produces a different error, `invalid_client`); the
-  refresh session itself is dead server-side.
-- No live alternative exists on the machine: no `auth.json` for a
-  Windows codex install, no OpenAI OAuth cache.
-- codex 0.153.4's `~/.codex/auth.json` schema **requires a string
-  `id_token`**: installing the stale material with
-  `"id_token": null` makes `codex login status` fail with
-  ``invalid type: null, expected a string``. Only a live refresh or
-  login produces an id_token, so the stale material cannot populate a
-  valid auth.json either. The invalid file was removed; the
-  abliteration default provider was verified unaffected (`codex exec`
-  smoke still answers).
+## Activation (evening 2026-09-07, fresh operator material)
 
-Nothing here was simulated or worked around: a provider route served
-by a dead token would be a dead route, and the tier router's
-guarantee (every route live at gate time) is worth more than the
-placeholder.
+The operator supplied a fresh OAuth blob (access issued the same day,
+plan type `pro`, MFA in `amr`). The staged installer consumed it:
+refresh grant minted the id_token (the schema's required field),
+`~/.codex/auth.json` installed 0600, `codex login status` → "Logged
+in using ChatGPT". Ubuntu received kali's INSTALLED token set by
+byte-copy (not a second refresh — OAuth refresh rotation could have
+invalidated the first host's stored refresh token; both hosts share
+one session and refresh it independently thereafter).
 
-## What is staged for activation (both WSL hosts)
+Served-model discovery (server-side 400s name the account's real
+catalog): the legacy `-codex`-suffixed slugs (`gpt-5.1-codex`,
+`gpt-5.2-codex`, `gpt-5.1-codex-max`, `gpt-5.3-codex`) and bare
+`gpt-5.6` / `gpt-6` are all refused for ChatGPT accounts. Verified
+working: **`gpt-5.6-luna`**, **`gpt-6-astra`**, and — the operator
+directive — **Daybreak Blue**: stable alias
+`gpt-daybreak-blue-latest`, model id `gpt-5.6-sol`. (Daybreak Red =
+`gpt-daybreak-red-latest` / `gpt-5.6-cyber`, per the operator's
+identifier table; not probed.)
 
-`/root/.claude/install-openai-auth.py` (0600) accepts either the
-normalized blob `{refresh, access, expires, accountId}` (it runs the
-refresh grant, parsing client_id from the JWT) or a full codex
-`auth.json` export (it enforces the non-null `id_token` rule), then
-installs `/root/.codex/auth.json` (0600) and
-`/root/.claude/openai-access-token` (0600) for the gateway route.
+Default wiring on both hosts — `/root/.codex/chatgpt.config.toml`
+(0600), selected with `codex exec --profile chatgpt`; the global
+default provider stays `abliteration` so the matrix baseline lanes
+are unchanged:
 
-Activation once fresh material exists (from an interactive
-`codex login` on a host, or a live export):
-
-```text
-python3 /root/.claude/install-openai-auth.py <credential.json>
-codex login status                                    # expect: logged in
+```toml
+model_provider = "openai"
+model = "gpt-daybreak-blue-latest"
+model_reasoning_effort = "low"
 ```
 
-then add the gateway route (new `model_name`, the three dated claude
-names untouched):
+Both hosts smoke green through `--profile chatgpt`. Caveats on
+record: (1) the access token lives ~10 days and the two hosts share
+ONE OAuth session, so refresh must be single-writer: rerun
+`/root/.claude/install-openai-auth.py` with fresh (or still-live)
+material on ONE host, then byte-copy the installed `auth.json` to the
+other — the codex CLI also refreshes tokens on use, so two hosts
+refreshing the shared session independently can stale each other's
+stored refresh token. (2) A server-side revocation or a login
+elsewhere lands on both hosts at once.
 
-```yaml
-  - model_name: <subscription-served name>
-    litellm_params:
-      model: openai/<model>
-      api_base: https://api.openai.com/v1
-      api_key: os.environ/OPENAI_SUBSCRIPTION_ACCESS
-```
+## Why the gateway lane stayed closed (measured, not assumed)
 
-and extend `lab/router-health.sh`'s invariants: the three dated ids
-stay muse-pinned, the additional route pins the subscription backend,
-and `openrouter` stays banned everywhere. The access token's ~10-day
-lifetime needs a refresh hook at that point (same refresh grant) —
-wired when the live material lands, never before.
+- `GET https://api.openai.com/v1/models` with the subscription
+  bearer → **403, zero models**: the token does not authorize the
+  platform API, so an `openai/`-provider LiteLLM route has nothing to
+  serve and no chat-completions-shaped endpoint exists on the Codex
+  backend (`https://chatgpt.com/backend-api/codex`, responses wire
+  only).
+- Adding a dead route would violate the router's own guarantee (every
+  route live at gate time), so `lab/router-health.sh` keeps its
+  exact-three-muse-routes invariant. Revisit only if OpenAI ships a
+  platform-compatible endpoint for subscription tokens.
+
+## Earlier the same day: the first credential drop was dead
+
+The first supplied blob (access expired, refresh session revoked,
+plan `prolite`) could not be activated: the refresh grant returned
+401 `"Your session has expired. Please log in again."` once the
+client_id was parsed from the JWT (a hand-transcribed client_id
+produced a misleading `invalid_client` first), and codex 0.153.4's
+auth.json schema requires a string `id_token` — `"id_token": null`
+breaks `codex login status`. Nothing was fabricated; the installer
+was staged and the blocker recorded until fresh material arrived.
