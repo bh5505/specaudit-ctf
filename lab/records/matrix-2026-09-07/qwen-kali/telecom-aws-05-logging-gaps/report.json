@@ -1,0 +1,121 @@
+{
+  "arms": [],
+  "battery": [],
+  "challenge": "telecom-aws-05-logging-gaps",
+  "grading": null,
+  "head": {
+    "attempt_dir": "/tmp/matrix-2026-09-07/qwen-kali/telecom-aws-05-logging-gaps/attempt",
+    "claimed": 2,
+    "grade": {
+      "expected_total": 2,
+      "extras": [],
+      "hits": [
+        "demo-s3-access-logging-missing",
+        "demo-trail-disabled"
+      ],
+      "invalid": [],
+      "misses": [],
+      "passed": true,
+      "schema": "specaudit.ctf.grade.v1",
+      "score": 1.0,
+      "severity_mismatches": [],
+      "track": "telecom-aws-05-logging-gaps",
+      "track_match": true
+    },
+    "head": "qwen-code",
+    "mode": "executed",
+    "passed": true,
+    "roster": [
+      "tf_s3_public_access",
+      "tf_iam_open",
+      "tf_iam_assume_role",
+      "tf_iam_external_trust",
+      "tf_sg_open_ingress",
+      "tf_cloudtrail_disabled",
+      "tf_s3_no_access_logging",
+      "tf_s3_policy_blocked_trap",
+      "tf_s3_unencrypted",
+      "tf_chain_ingress_role"
+    ],
+    "schema": "specaudit.ctf.attempt.v1",
+    "spawn": {
+      "argv": [
+        "/usr/local/bin/qwen",
+        "--mcp-config",
+        "/tmp/matrix-2026-09-07/qwen-kali/telecom-aws-05-logging-gaps/attempt/mcp-config.json",
+        "--allowed-tools",
+        "mcp__specaudit-ctf__list,mcp__specaudit-ctf__describe,mcp__specaudit-ctf__invoke,mcp__specaudit-ctf__run_range,write_file",
+        "--yolo",
+        "<prompt sha256:9312c8cb85dad12ba2e0a226b5dfeee564e716d03da4c642ed36bd023daa7a48>"
+      ],
+      "duration_s": 36.4,
+      "exit_code": 0,
+      "mcp": {
+        "kind": "temp-mcp-config",
+        "sha256": "2b8f080c9a73207484a50d19412d090ed7738c507a1beed3eec551fc4134ea52"
+      },
+      "prompt_chars": 2198,
+      "prompt_sha256": "9312c8cb85dad12ba2e0a226b5dfeee564e716d03da4c642ed36bd023daa7a48",
+      "timeout_s": 900
+    },
+    "status": "passed",
+    "tool_calls": 6,
+    "touched_fixtures": [
+      "tf_chain_ingress_role",
+      "tf_cloudtrail_disabled",
+      "tf_iam_assume_role",
+      "tf_iam_external_trust",
+      "tf_iam_open",
+      "tf_s3_no_access_logging",
+      "tf_s3_policy_blocked_trap",
+      "tf_s3_public_access",
+      "tf_s3_unencrypted",
+      "tf_sg_open_ingress"
+    ],
+    "trace": {
+      "attempt_id": "ad861228eec9939b7d9d817bc92288aa486d451baa86dc4bd9bcbdcd5a6e07e8",
+      "chain_ok": true,
+      "close_ok": true,
+      "reasons": [],
+      "records": 7,
+      "tool_calls": 6
+    },
+    "unverified": [],
+    "verified": [
+      "demo-s3-access-logging-missing",
+      "demo-trail-disabled"
+    ]
+  },
+  "live_aws": false,
+  "ok": true,
+  "range": {
+    "chains": [
+      {
+        "ingress_asset": "sg-jump",
+        "kind": "internet_to_identity",
+        "role_asset": "role-escalate",
+        "summary": "Internet-reachable ingress on demo-jump-sg chains into assumable role demo-escalation-role"
+      }
+    ],
+    "fixtures": [
+      "tf_s3_public_access",
+      "tf_iam_open",
+      "tf_iam_assume_role",
+      "tf_iam_external_trust",
+      "tf_sg_open_ingress",
+      "tf_cloudtrail_disabled",
+      "tf_s3_no_access_logging",
+      "tf_s3_policy_blocked_trap",
+      "tf_s3_unencrypted",
+      "tf_chain_ingress_role"
+    ],
+    "full_status": "complete",
+    "matched": true,
+    "ok": true,
+    "status": "complete"
+  },
+  "schema": "exercise.run.v1",
+  "seed": null,
+  "status": "complete",
+  "summary": "exercise complete; range complete (10 fixtures); head passed"
+}

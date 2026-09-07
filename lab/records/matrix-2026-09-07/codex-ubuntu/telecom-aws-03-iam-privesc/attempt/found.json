@@ -1,0 +1,39 @@
+{
+  "track": "telecom-aws-03-iam-privesc",
+  "seed": null,
+  "fixtures": [
+    "tf_iam_assume_role",
+    "tf_iam_external_trust"
+  ],
+  "total": 4,
+  "findings": [
+    {
+      "finding_key": "demo-iam-assumable-admin-role",
+      "control": "least-privilege: role assumability",
+      "severity": "critical",
+      "rationale": "The aws_iam_role.admin trust policy broadly permits role assumption while aws_iam_role_policy_attachment.admin grants AdministratorAccess, exposing an unrestricted privileged escalation path.",
+      "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_role.admin + aws_iam_role_policy_attachment.admin"
+    },
+    {
+      "finding_key": "demo-iam-broad-assume-grant",
+      "control": "least-privilege: sts:AssumeRole grant scope",
+      "severity": "high",
+      "rationale": "The aws_iam_policy.assume_broadly Statement[0] grants sts:AssumeRole without constraining Resource, allowing holders to assume arbitrary roles.",
+      "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_policy.assume_broadly, Statement[0]"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-principal",
+      "control": "identity boundary: external principal trust",
+      "severity": "critical",
+      "rationale": "The aws_iam_role.external_trust trust policy names an external AWS account as Principal, creating an identity-boundary bypass for role assumption.",
+      "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0].Principal"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-no-mfa",
+      "control": "identity boundary: MFA condition on sensitive trust",
+      "severity": "high",
+      "rationale": "The aws_iam_role.external_trust Statement[0] has no Condition block, so the external principal can assume the role without an MFA check.",
+      "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0] (no Condition block)"
+    }
+  ]
+}

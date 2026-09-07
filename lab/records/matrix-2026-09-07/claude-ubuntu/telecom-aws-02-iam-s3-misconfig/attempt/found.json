@@ -1,0 +1,29 @@
+{
+  "track": "telecom-aws-02-iam-s3-misconfig",
+  "seed": null,
+  "fixtures": ["tf_iam_open", "tf_s3_public_access"],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-iam-wildcard-action",
+      "control": "least-privilege: action scope",
+      "severity": "critical",
+      "rationale": "The range roster exposes tf_iam_open whose first statement allows star action, granting all API calls with no scoping.",
+      "traces_to": "range fixture tf_iam_open main file wildcard policy first statement action star"
+    },
+    {
+      "finding_key": "demo-iam-wildcard-resource",
+      "control": "least-privilege: resource containment",
+      "severity": "high",
+      "rationale": "The same tf_iam_open first statement allows star resource, so the broad actions apply to every resource without containment.",
+      "traces_to": "range fixture tf_iam_open main file wildcard policy first statement resource star"
+    },
+    {
+      "finding_key": "demo-iam-to-exposure-chain",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "Star action plus star resource from tf_iam_open combined with the public-read bucket in tf_s3_public_access turns overbroad identity into open data exposure.",
+      "traces_to": "chained tf_iam_open star action and resource with tf_s3_public_access public bucket public-read acl"
+    }
+  ]
+}

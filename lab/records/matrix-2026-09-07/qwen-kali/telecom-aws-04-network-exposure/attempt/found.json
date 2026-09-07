@@ -1,0 +1,11 @@
+{
+  "track": "telecom-aws-04-network-exposure",
+  "seed": null,
+  "fixtures": ["tf_sg_open_ingress", "tf_s3_policy_blocked_trap"],
+  "total": 3,
+  "findings": [
+    {"finding_key": "demo-sg-open-admin-port", "control": "network containment: administrative shell exposure", "severity": "high", "rationale": "The terraform fixture tf_sg_open_ingress creates an aws_security_group resource named admin with an ingress rule allowing tcp/22 from 0.0.0.0/0, exposing the SSH administrative interface to the entire internet.", "traces_to": "extension/range/tf_sg_open_ingress/input/main.tf, aws_security_group.admin, ingress 0.0.0.0/0 tcp/22"},
+    {"finding_key": "demo-sg-open-db-port", "control": "network containment: database engine exposure", "severity": "critical", "rationale": "The same tf_sg_open_ingress fixture defines an aws_security_group resource named db with an ingress rule permitting tcp/3306 from 0.0.0.0/0, making the MySQL database engine reachable from any source on the internet.", "traces_to": "extension/range/tf_sg_open_ingress/input/main.tf, aws_security_group.db, ingress 0.0.0.0/0 tcp/3306"},
+    {"finding_key": "demo-trap-anonymous-policy-contained", "control": "defense-in-depth: public access block neutralizes an anonymous grant", "severity": "low", "rationale": "The tf_s3_policy_blocked_trap fixture plants an anonymous ReadAction grant on an S3 bucket policy but pairs it with an aws_s3_bucket_public_access_block resource that enforces PublicAccessBlock, causing the bucket policy grant to be effectively neutralized as a real-world exploitation path.", "traces_to": "extension/range/tf_s3_policy_blocked_trap/input/main.tf, aws_s3_bucket_policy.trap neutralized by aws_s3_bucket_public_access_block.trap"}
+  ]
+}

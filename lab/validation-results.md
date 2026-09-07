@@ -26,6 +26,15 @@ the lab shells' environments, and a Burp MCP listener on
 no listener. The three blocks below remain `awaiting-operator`
 unchanged — probed-and-awaiting, never simulated.
 
+Probe note 2026-09-07 (re-probe, kali-linux WSL): still nothing
+staged. Probed the login-shell environment, `/etc/environment`,
+systemd units and drop-ins, `/etc/profile.d/*`, root's bashrc and
+profile for any `GTI_MCP_ENDPOINT` / `PROWLER_MCP_ENDPOINT` /
+`BURP_MCP_ENDPOINT` / `VT_APIKEY` / `GOOGLE_APPLICATION_*` / AWS
+variable, plus Burp CE install locations — no endpoint env, no
+credential file, no Burp installation. All three blocks below remain
+`awaiting-operator`.
+
 ---
 
 ## burp-mcp — loopback reads over the official BApp
@@ -178,9 +187,23 @@ the server lists them.
 
 ---
 
-## claude-code real-head lane (kali + Ubuntu) — upstream credit exhaustion
+## claude-code real-head lane (kali + Ubuntu) — RESOLVED: all-muse router re-arm
 
-Status: **awaiting-operator** (dated probe 2026-09-06)
+Status: **resolved 2026-09-07** (was `awaiting-operator`, dated probe
+2026-09-06)
+
+The 2026-09-06 outage is recorded below for the audit trail. It was
+resolved WITHOUT an OpenRouter top-up (operator directive: the key
+will not be topped up): both hosts' tier routers were re-armed so
+every dated serving name resolves to the muse provider and the dead
+key is unreachable from any graded path — route diff, launch-env
+change, no-op-diff guarantee, and per-host gate transcripts in
+`lab/records/router-muse-2026-09-07.md`, gated going forward by
+`lab/router-health.sh`. The first fully muse-backed matrix
+(`lab/records/matrix-2026-09-07.md`) ran claude-code on both hosts
+12/12 across the six graded challenges.
+
+Original outage record (2026-09-06):
 
 During the first variance sweep the claude-code heads began failing in
 ~1.7 s with zero tool calls. Direct probe of the CLI on BOTH WSL hosts
@@ -196,23 +219,38 @@ The tier router's OpenRouter key (same key on both hosts) exhausted
 its credit limit; every claude request fails until the key is topped
 up. This is an operator-asset outage, not a harness or grading
 defect — affected attempts are kept verbatim in
-`lab/records/matrix-variance-2026-09-06/`. Lane re-enters measurement
-after the top-up; codex-cli lanes were unaffected and completed the
-slice.
+`lab/records/matrix-variance-2026-09-06/`. codex-cli lanes were
+unaffected and completed the slice.
 
-## qwen-code real-head lane (Windows) — wired, awaiting quota reset
+## qwen-code real-head lane — quota reset passed; native-Linux lane measured
 
-Status: **awaiting-operator** (dated probe 2026-09-06)
+Status: **validated 2026-09-07** (first graded cells recorded)
 
-The third armed head (`EXERCISE_HEAD_QWEN_CODE_CMD`) is wired,
-test-pinned, and smoke-spawned on the operator-staged Windows install
-(qwen-code 0.23.0). The smoke reached the provider and was refused by
-the account, not the wiring:
+The third armed head (`EXERCISE_HEAD_QWEN_CODE_CMD`) smoked against
+the operator-staged qwen install on 2026-09-06 and was refused by the
+account, not the wiring:
 
 ```
 Quota exhausted: Your token-plan 1-week quota has been exhausted.
 The quota will reset at 09-07 01:53:00 UTC.
 ```
 
-First graded cells land after the reset (or on another operator-named
-key); the head's arming discipline and custody are unchanged.
+2026-09-07 outcome, after the reset:
+
+- **The Windows npm install is transport-blocked for graded cells.**
+  A hermetic argv gate (npm-style `.cmd` shim replicated exactly,
+  multiline prompt in, recorded argv out) shows the runner's
+  multiline attempt prompt is TRUNCATED AT THE FIRST NEWLINE by
+  cmd.exe batch argument passing, and the argv count arrives wrong
+  (`argv count: 6 (expected 5)`). Single-line probes pass — which is
+  why the 2026-09-06 smoke reached the provider. Graded attempt
+  prompts are multiline (2-3 KB), so the Windows lane cannot carry
+  them.
+- **The native Linux lane works.** kali gained node 24.15.0 + npm
+  11.16.0 + `@qwen-code/qwen-code@0.23.0` (apt/npm, same version as
+  the Windows install); the operator-staged `~/.qwen/settings.json`
+  (token-plan endpoint + key) transferred 0600; the headless smoke
+  answered. Runner-driven cells grade clean end-to-end: server-side
+  trace chain verified, graceful close, full verification — the
+  first qwen-head cells in the matrix (`lab/records/matrix-2026-09-07.md`,
+  qwen annex).
