@@ -32,14 +32,21 @@ systemd units and drop-ins, `/etc/profile.d/*`, root's bashrc and
 profile for any `GTI_MCP_ENDPOINT` / `PROWLER_MCP_ENDPOINT` /
 `BURP_MCP_ENDPOINT` / `VT_APIKEY` / `GOOGLE_APPLICATION_*` / AWS
 variable, plus Burp CE install locations — no endpoint env, no
-credential file, no Burp installation. All three blocks below remain
-`awaiting-operator`.
+credential file, no Burp installation.
+
+Correction same day (operator directive: staging is agent work where
+no operator-held secret is required): prowler was staged and
+VALIDATED from this repo's perspective (block below); burp staging
+was ATTEMPTED and measured-blocked with evidence (block below); GTI
+remains operator-gated because BOTH its staging inputs are
+operator-held (the `VT_APIKEY` credential and the https front).
 
 ---
 
 ## burp-mcp — loopback reads over the official BApp
 
-Status: **awaiting-operator**
+Status: **awaiting-operator** (agent staging attempted and
+measured-blocked 2026-09-07 — details below the runbook)
 
 Runbook: `lab/README.md` → "Operator-gated rows". Facts pinned from
 source/docs 2026-09-06 (PortSwigger/mcp-server main; BApp store
@@ -89,11 +96,58 @@ v1.3.0, 2026-05-28, still current):
 | Artifacts | _(fill: attempt ids, artifact dirs, notable outputs — e.g. detected Burp edition from list_tools)_ |
 | Operator note | _(optional: BApp version, Burp edition, launch shape used — GUI vs headless flag — anything surprising)_ |
 
+**Agent staging attempt — measured 2026-09-07 (kali-linux WSL), no
+listener achieved.** The runbook's open question ("whether a CE
+temp-project launch completes headless") is now answered with
+evidence; Burp CE cannot reach a running UI in this environment, so
+the BApp's auto-started MCP listener never comes up and the
+validation commands could not run:
+
+1. Installed Burp CE from the kali repo (`apt install burpsuite`,
+   jar at `/usr/share/burpsuite/burpsuite.jar`) and the official MCP
+   extension jar (`burp-mcp-all.jar` v1.3.0 from
+   PortSwigger/mcp-server releases). Extension-load config:
+   `{"user_options":{"extensions":{"full_paths":[...]}}}`.
+2. First run demands the license on **stdin even with
+   `-Djava.awt.headless=true`** — `printf 'y\n' |` into the launch
+   accepts it, and acceptance persists.
+3. With `-Djava.awt.headless=true`: Burp then **crashes during its
+   own tools-UI construction** — `java.lang.Error: no ComponentUI
+   class for: burp.Zc52` inside `initialiseToolsUi` — before any
+   listener exists. The documented headless flag does not produce a
+   usable headless CE.
+4. Under a real X display (Xvfb, persistent `Xvfb :99`), the **same
+   ComponentUI failure** occurs on both Debian Java 25 and Java 21,
+   with and without the kali wrapper flags
+   (`--suppress-jre-check --disable-check-for-updates-dialog`) and
+   with a metal LAF override. No window is ever mapped; the JVM sits
+   idle with the EDT exception on the log. The failure is in Burp's
+   own Look-and-Feel/UI-defaults wiring in this environment, not in
+   the extension and not display-less-ness alone.
+
+Rescue paths not yet exercised: a maintained Burp-in-Docker CI image
+(the researched recipe lands here when found), or an operator-run
+GUI staging on a machine with a real desktop — the BApp install via
+the BApp Store UI remains the documented install-once path, after
+which this arm's staging is just the loopback listener this record
+expects.
+
 ---
 
 ## google-mcp-security — GTI remote reads
 
-Status: **awaiting-operator**
+Status: **awaiting-operator** (dated 2026-09-07: genuinely
+operator-gated STAGING — both required inputs are operator-held)
+
+Agent-staging assessment 2026-09-07: this arm is the one block where
+staging itself needs the operator. The server's sole credential
+(`VT_APIKEY`) is operator-held, and the arm's client refuses
+everything except an operator-fronted **https** endpoint (loopback
+refused by policy), while the first-party server is stdio-only. There
+is therefore no local, credential-free staging path an agent can
+execute honestly. Everything else is ready: the runbook below is
+current, the tool inventory is pinned, and the validation commands
+are copy-paste once the endpoint exists.
 
 Runbook: `lab/README.md` → "Operator-gated rows". The operator runs
 the official server (google/mcp-security `server/gti`, PyPI `gti-mcp`
@@ -134,7 +188,8 @@ environment never carries it. Verified from source 2026-09-06:
 
 ## prowler-mcp — exact-name reads over the first-party OSS server
 
-Status: **awaiting-operator**
+Status: **validated 2026-09-07** (agent-staged local first-party
+server; measured outcomes below)
 
 Runbook: `lab/README.md` → "Operator-gated rows". There is **no**
 client-side API-key environment variable and no hosted-endpoint
@@ -163,6 +218,36 @@ reads additionally need a Prowler API key in the SERVER's `.env`
 client's environment. Local is not offline: with the tenant key set,
 the server egresses to `api.prowler.com` on tenant reads.
 
+**Measured validation 2026-09-07 (kali-linux WSL, agent-staged):**
+source-run path used because docker is absent on this host — uv
+0.12.10 installed, prowler cloned shallow to `/opt/prowler`,
+`uv run prowler-mcp --transport http --host 127.0.0.1 --port 8001`
+(port 8000 was occupied by an unrelated listener; any free loopback
+port works). Runs from checkout `9dba632`. No Prowler API key exists
+or is needed for what ran: every validated read is a `prowler_hub_*`
+/ `prowler_docs_*` call.
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-07 |
+| Env vars armed | `PROWLER_MCP_ENDPOINT=http://127.0.0.1:8001/mcp` (local first-party server, source-run over uv; the union policy's literal-loopback http shape) |
+| Invoke commands as run | `python -m extension invoke prowler-mcp list_tools` · `python -m extension invoke prowler-mcp prowler_docs_search '{"term": "s3 public"}'` · `python -m extension invoke prowler-mcp prowler_hub_list_checks '{}'` (see finding) · `python -m extension invoke prowler-mcp prowler_hub_list_checks '{"providers": ["aws"], "services": ["s3"]}'` · direct fastmcp-client `prowler_hub_get_check_details '{"check_id": "s3_bucket_object_public"}'` |
+| Envelope status | **complete** for `list_tools`, `prowler_docs_search`, filtered `prowler_hub_list_checks` (transport_ok true, coverage complete, zero limitations); **failed** for the UNFILTERED `prowler_hub_list_checks` (finding below); server-side tool error (refused a bogus check id) for a details probe with a guessed id — retried with a real id from the filtered list, complete |
+| Artifacts | content-addressed digests per call, all `kind: policy-report`, `redaction: credentials-stripped` — list_tools `sha256:24ace50d…`, docs_search `sha256:ea36cff3…`, filtered hub list `sha256:5ca0be22…`; the direct-client probe returned the live bodies: filtered aws/s3 list = 22 checks (`s3_bucket_object_public`, severity low, first), details = full check document (id/title/description/remediation shape) |
+| Operator note | Server run from prowler main (shallow clone 2026-09-07); hub/docs reads need no auth and no tenant key; no `PROWLER_API_KEY` anywhere (per the PR-#41 correction this arm has no client credential) |
+
+**Finding (recorded, fix adopted):** the runbook's original example
+`prowler_hub_list_checks '{}'` **fails closed** — the server returns
+1000+ checks (its own docstring warns "An unfiltered request returns
+1000+ checks") and the raw response exceeds this client's
+`MAX_MCP_BYTES` transport cap (512 KiB, `extension/arms/mcp_client.py`),
+which refuses before the arm's truncation can apply. The fix is
+correct tool usage, not a weakened guard: pass the tool's documented
+filters (`{"providers": ["aws"], "services": ["s3"]}` → 22 checks,
+complete envelope). The example command in this block has been
+updated to the filtered form; a ~512 KiB-in-one-response tool would
+need upstream paging before the unfiltered shape can ever pass.
+
 **Remote — self-hosted server behind the operator's TLS front:** run
 the same server with `--transport http --host 0.0.0.0 --port 8000`
 (the README's documented self-hosted HTTP shape) on a host fronted by
@@ -175,15 +260,6 @@ The arm admits exactly 43 read lookups by name; the 18 mutating tools
 (scan triggers, mutelist/integration/provider writers, role setting)
 and the hosted-only `prowler_cloud_` namespace are refused even when
 the server lists them.
-
-| Field | Value |
-|---|---|
-| Date | _(unfilled)_ |
-| Env vars armed | `PROWLER_MCP_ENDPOINT=http://127.0.0.1:8000/mcp` (local first-party server) or `https://<operator-fronted-host>/mcp` (self-hosted remote) — the union policy; no client credential exists for this arm |
-| Invoke commands as run | `python -m extension invoke prowler-mcp list_tools` · `python -m extension invoke prowler-mcp prowler_hub_list_checks '{}'` · `python -m extension invoke prowler-mcp prowler_docs_search '{"term": "s3 public"}'` |
-| Envelope status | _(fill: expect complete from the hardened streamable-HTTP client — union policy: https remote or literal-loopback http)_ |
-| Artifacts | _(fill: attempt ids, endpoint tool-inventory rows)_ |
-| Operator note | _(optional: prowler-mcp server version — CHANGELOG 0.12.0 pairs with prowler v5.41.0 at time of writing — docker image digest, tenant-key presence)_ |
 
 ---
 
