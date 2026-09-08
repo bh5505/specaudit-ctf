@@ -62,6 +62,14 @@ def _assert_source(
     assert "path" not in output["source"]
 
 
+def _rendered_output_bytes(output: object) -> int:
+    return len(
+        json.dumps(
+            output, sort_keys=True, ensure_ascii=False, allow_nan=False
+        ).encode("utf-8")
+    )
+
+
 # --- Fixtures ---
 
 @pytest.fixture
@@ -739,6 +747,31 @@ def test_wrong_id_raises(arm_id: str, handler) -> None:
         handler.invoke(_spec("wrong-id"), "list_tools", {})
 
 
+@pytest.mark.parametrize(
+    "arm_id,handler",
+    [
+        (R02_ID, AdPathfinderArm()),
+        (R08_ID, GpohoundArm()),
+        (R25_ID, ClaudeAdArm()),
+        (R17_ID, NumasecArm()),
+        (R36_ID, RubeusArm()),
+        (R38_ID, M365PwnedArm()),
+    ],
+)
+def test_every_batch8_arm_rejects_unknown_actions_and_list_tools_arguments(
+    arm_id: str, handler
+) -> None:
+    extension = _ext(arm_id, handler)
+    unknown = extension.invoke(arm_id, "definitely_not_allowed", {})
+    discovery = extension.invoke(
+        arm_id, "list_tools", {"unexpected": "caller data"}
+    )
+    assert unknown.ok is False
+    assert "allowlist" in unknown.error
+    assert discovery.ok is False
+    assert "no caller arguments" in discovery.error
+
+
 # ======================================================================
 # Cross-arm contract and review regressions
 # ======================================================================
@@ -751,6 +784,42 @@ _LIST_CASES = [
     ("ad_telemetry", R36_ID, RubeusArm(), "list_telemetry", "telemetry_file"),
     ("m365_cases", R38_ID, M365PwnedArm(), "list_case_studies", "cases_file"),
 ]
+
+
+@pytest.mark.parametrize(
+    "module,loader,fixture_name,arm_id,handler,action,path_key",
+    [
+        (ad_pathfinder_module, "_load_export", "ad_export", R02_ID, AdPathfinderArm(), "list_paths", "export"),
+        (gpohound_module, "_load_evidence", "gpo_evidence", R08_ID, GpohoundArm(), "list_policies", "evidence"),
+        (claude_ad_module, "_load_method", "ad_method", R25_ID, ClaudeAdArm(), "list_techniques", "method_file"),
+        (numasec_module, "_load_ledger", "finding_ledger", R17_ID, NumasecArm(), "list_findings", "ledger"),
+        (rubeus_module, "_load_telemetry", "ad_telemetry", R36_ID, RubeusArm(), "list_telemetry", "telemetry_file"),
+        (m365pwned_module, "_load_cases", "m365_cases", R38_ID, M365PwnedArm(), "list_case_studies", "cases_file"),
+    ],
+)
+def test_every_batch8_direct_loader_boundary_contains_unexpected_exceptions(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+    module,
+    loader: str,
+    fixture_name: str,
+    arm_id: str,
+    handler,
+    action: str,
+    path_key: str,
+) -> None:
+    path = request.getfixturevalue(fixture_name)
+
+    def explode(*_args, **_kwargs):
+        raise AttributeError("secret input at /operator/private/feed.json")
+
+    monkeypatch.setattr(module, loader, explode)
+    result = _ext(arm_id, handler).invoke(
+        arm_id, action, {path_key: str(path)}
+    )
+    assert result.ok is False
+    assert result.output is None
+    assert result.error == "invoke failed"
 
 
 @pytest.mark.parametrize(
@@ -1134,10 +1203,16 @@ def test_list_tools_obeys_output_cap(
     arm_id: str,
     handler,
 ) -> None:
-    monkeypatch.setattr(module, "MAX_OUTPUT_CHARS", 1)
-    result = _ext(arm_id, handler).invoke(arm_id, "list_tools", {})
+    extension = _ext(arm_id, handler)
+    baseline = extension.invoke(arm_id, "list_tools", {})
+    assert baseline.ok is True
+    cap = _rendered_output_bytes(baseline.output) - 1
+    assert cap >= 64
+    monkeypatch.setattr(module, "MAX_OUTPUT_CHARS", cap)
+    result = extension.invoke(arm_id, "list_tools", {})
     assert result.ok is False
     assert result.output is None
+    assert "output cap" in result.error
 
 
 _ALL_EVIDENCE_ACTIONS = [
@@ -1162,6 +1237,62 @@ _ALL_EVIDENCE_ACTIONS = [
 ]
 
 
+@pytest.mark.parametrize(
+    "module,fixture_name,arm_id,handler,action,path_key,query",
+    _ALL_EVIDENCE_ACTIONS,
+)
+def test_every_batch8_data_action_rejects_undeclared_arguments(
+    request: pytest.FixtureRequest,
+    module,
+    fixture_name: str,
+    arm_id: str,
+    handler,
+    action: str,
+    path_key: str,
+    query: dict,
+) -> None:
+    del module
+    path = request.getfixturevalue(fixture_name)
+    extension = _ext(arm_id, handler)
+    result = extension.invoke(
+        arm_id,
+        action,
+        {path_key: str(path), **query, "unexpected": "caller data"},
+    )
+    assert result.ok is False
+    assert "unexpected" in result.error
+    non_string = extension.invoke(
+        arm_id,
+        action,
+        {path_key: str(path), **query, 1: "caller data"},
+    )
+    assert non_string.ok is False
+    assert non_string.error == "caller argument names must be strings"
+
+
+@pytest.mark.parametrize(
+    "module,fixture_name,arm_id,handler,action,path_key,query",
+    _ALL_EVIDENCE_ACTIONS,
+)
+def test_every_batch8_data_action_reports_exact_source(
+    request: pytest.FixtureRequest,
+    module,
+    fixture_name: str,
+    arm_id: str,
+    handler,
+    action: str,
+    path_key: str,
+    query: dict,
+) -> None:
+    del module
+    path = request.getfixturevalue(fixture_name)
+    result = _ext(arm_id, handler).invoke(
+        arm_id, action, {path_key: str(path), **query}
+    )
+    assert result.ok is True
+    _assert_source(result.output, path)
+
+
 @pytest.mark.parametrize("module,fixture_name,arm_id,handler,action,path_key,query", _ALL_EVIDENCE_ACTIONS)
 def test_every_evidence_action_obeys_output_cap(
     monkeypatch: pytest.MonkeyPatch,
@@ -1175,12 +1306,18 @@ def test_every_evidence_action_obeys_output_cap(
     query: dict,
 ) -> None:
     path = request.getfixturevalue(fixture_name)
-    monkeypatch.setattr(module, "MAX_OUTPUT_CHARS", 1)
-    result = _ext(arm_id, handler).invoke(
+    extension = _ext(arm_id, handler)
+    baseline = extension.invoke(
         arm_id, action, {path_key: str(path), **query}
     )
+    assert baseline.ok is True
+    cap = _rendered_output_bytes(baseline.output) - 1
+    assert cap >= 64
+    monkeypatch.setattr(module, "MAX_OUTPUT_CHARS", cap)
+    result = extension.invoke(arm_id, action, {path_key: str(path), **query})
     assert result.ok is False
     assert result.output is None
+    assert "output cap" in result.error
 
 
 @pytest.mark.parametrize(

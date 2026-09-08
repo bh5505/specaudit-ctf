@@ -82,6 +82,8 @@ class NumasecArm:
             findings, source = _load_ledger(path)
         except _LedgerError as exc:
             return _fail(spec, action, redact(str(exc)))
+        except Exception:
+            return _fail(spec, action, "invoke failed")
 
         finding_id = _optional_query(payload.get("finding_id"))
         if action == "finding":

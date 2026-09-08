@@ -82,6 +82,8 @@ class ClaudeAdArm:
             techniques, source = _load_method(path)
         except MethodError as exc:
             return _fail(spec, action, redact(str(exc)))
+        except Exception:
+            return _fail(spec, action, "invoke failed")
 
         if action == "technique":
             technique_id = _optional_query(payload.get("technique_id"))

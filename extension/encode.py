@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import stat
 from datetime import datetime, timezone
@@ -353,6 +354,23 @@ def encode_invoke_result(
     artifact_dir: ArtifactSink | None = None,
 ) -> dict[str, Any]:
     """Encode one admitted result using its authoritative action profile."""
+    if not isinstance(result, Result):
+        raise ValueError("arm returned a malformed Result")
+    if type(result.ok) is not bool:
+        raise ValueError("arm Result.ok must be a boolean")
+    if (
+        not isinstance(result.arm_id, str)
+        or not result.arm_id
+        or not isinstance(result.action, str)
+        or not result.action
+    ):
+        raise ValueError("arm Result identity must contain non-empty strings")
+    if result.error is not None and not isinstance(result.error, str):
+        raise ValueError("arm Result.error must be a string or null")
+    if result.ok and result.error is not None:
+        raise ValueError("a successful arm Result cannot contain an error")
+    if not result.ok and (result.error is None or not result.error.strip()):
+        raise ValueError("a failed arm Result must contain a non-empty error")
     cap = profile.capability_id
     blob = _canonical_bytes(result.output)
     owned = result.output not in (None, "")
@@ -362,7 +380,7 @@ def encode_invoke_result(
     artifacts = (
         [_artifact(blob, kind="policy-report")] if owned and identity_matches else []
     )
-    if result.ok and identity_matches:
+    if result.ok and identity_matches and owned:
         claimed = STATUS_COMPLETE
         coverage = _coverage(attempted=(cap,), complete=(cap,), required=(cap,))
         limitations: tuple[str, ...] = ()
@@ -370,6 +388,10 @@ def encode_invoke_result(
         claimed = STATUS_FAILED
         coverage = _coverage(attempted=(cap,), failed=(cap,), required=(cap,))
         limitations = ("arm result identity did not match admitted capability",)
+    elif result.ok:
+        claimed = STATUS_FAILED
+        coverage = _coverage(attempted=(cap,), failed=(cap,), required=(cap,))
+        limitations = ("arm returned no owned evidence",)
     else:
         claimed = STATUS_FAILED
         coverage = _coverage(attempted=(cap,), failed=(cap,), required=(cap,))
@@ -408,10 +430,18 @@ def encode_invoke_failure(
     profile: InvokeProfile | None,
     started_at: str,
     finished_at: str,
+    tool_steps: int = 0,
+    invalid_args: bool = False,
     attempt_id: str | None = None,
     artifact_dir: ArtifactSink | None = None,
 ) -> dict[str, Any]:
     """Encode a fail-closed invoke that never produced a transport Result."""
+    if type(tool_steps) is not int or tool_steps not in {0, 1}:
+        raise ValueError("failure tool_steps must be zero or one")
+    if type(invalid_args) is not bool:
+        raise ValueError("invalid_args must be a boolean")
+    if invalid_args and tool_steps != 0:
+        raise ValueError("invalid arguments cannot follow a tool step")
     cap = _capability_id(arm_id, action)
     if profile is not None:
         cap = profile.capability_id
@@ -441,7 +471,7 @@ def encode_invoke_failure(
         unsupported = (cap,)
         required = (cap,)
         limitations = (f"{arm_id} is {exc.kind}, not an arm",)
-    elif _is_invalid_args(exc):
+    elif invalid_args:
         limitations = ("invalid JSON arguments",)
     else:
         attempted = (cap,)
@@ -472,7 +502,7 @@ def encode_invoke_failure(
         ),
         limitations=limitations,
         output_bytes=0,
-        tool_steps=0,
+        tool_steps=tool_steps,
         cleanup_required=(profile.cleanup_required if profile else False),
         approval_ref=(profile.approval_ref if profile else None),
         roe_ref=(profile.roe_ref if profile else None),
@@ -758,9 +788,43 @@ def _range_touched(document: Mapping[str, Any]) -> tuple[str, ...]:
 
 
 def _canonical_bytes(payload: Any) -> bytes:
+    _require_json_value(payload)
     return json.dumps(
-        payload, sort_keys=True, separators=(",", ":"), default=str
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
     ).encode("utf-8")
+
+
+def _require_json_value(value: Any, *, active: set[int] | None = None) -> None:
+    """Refuse values that JSON encoding would coerce or render non-portably."""
+    if value is None or type(value) in {bool, int, str}:
+        return
+    if type(value) is float:
+        if not math.isfinite(value):
+            raise ValueError("artifact payload contains a non-finite number")
+        return
+    if type(value) not in {dict, list}:
+        raise ValueError("artifact payload is not strict JSON data")
+
+    if active is None:
+        active = set()
+    marker = id(value)
+    if marker in active:
+        raise ValueError("artifact payload contains a container cycle")
+    active.add(marker)
+    try:
+        if type(value) is dict:
+            for key, item in value.items():
+                if type(key) is not str:
+                    raise ValueError("artifact payload contains a non-string key")
+                _require_json_value(item, active=active)
+        else:
+            for item in value:
+                _require_json_value(item, active=active)
+    finally:
+        active.remove(marker)
 
 
 def _elapsed_ms(started_at: str, finished_at: str) -> int:
@@ -772,11 +836,6 @@ def _elapsed_ms(started_at: str, finished_at: str) -> int:
         return 0
     delta = int((finish - start).total_seconds() * 1000)
     return max(delta, 0)
-
-
-def _is_invalid_args(exc: BaseException) -> bool:
-    text = str(exc).lower()
-    return "invalid json" in text or "json arguments" in text
 
 
 def _str_tuple(value: Any) -> tuple[str, ...]:

@@ -81,6 +81,8 @@ class AdPathfinderArm:
             paths, source = _load_export(path)
         except _ExportError as exc:
             return _fail(spec, action, redact(str(exc)))
+        except Exception:
+            return _fail(spec, action, "invoke failed")
 
         if action == "path":
             path_id = _optional_query(payload.get("path_id"))

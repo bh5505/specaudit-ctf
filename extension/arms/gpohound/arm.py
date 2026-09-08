@@ -83,6 +83,8 @@ class GpohoundArm:
             policies, source = _load_evidence(path)
         except _EvidenceError as exc:
             return _fail(spec, action, redact(str(exc)))
+        except Exception:
+            return _fail(spec, action, "invoke failed")
 
         if action == "policy":
             policy_id = _optional_query(payload.get("policy_id"))

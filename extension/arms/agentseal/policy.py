@@ -73,6 +73,8 @@ def fixture_refusal(
 
 def args_refusal(action: str, payload: dict) -> str | None:
     """Refuse unknown or missing caller arguments per action."""
+    if any(not isinstance(key, str) for key in payload):
+        return "caller argument names must be strings"
     allowed = ARG_KEYS.get(action)
     if allowed is None:
         return f"action {action!r} is not on the read allowlist"

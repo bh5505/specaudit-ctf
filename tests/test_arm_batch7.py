@@ -22,6 +22,7 @@ from extension.contract import (
     NotInstalledError,
 )
 from extension.arms.strict_data import StrictDataError, strict_json_loads
+import extension.arms.strict_data as strict_data_module
 
 # --- Arm imports --------------------------------------------------------
 
@@ -122,6 +123,14 @@ def _assert_file_source(
     }
 
 
+def _rendered_output_bytes(output: object) -> int:
+    return len(
+        json.dumps(
+            output, sort_keys=True, ensure_ascii=False, allow_nan=False
+        ).encode("utf-8")
+    )
+
+
 @pytest.mark.parametrize("document", ["NaN", "Infinity", "-Infinity", "1e999", "-1e999"])
 def test_strict_json_decoder_refuses_every_nonfinite_spelling(document: str) -> None:
     with pytest.raises(StrictDataError, match="non-finite"):
@@ -134,11 +143,22 @@ def test_strict_json_decoder_refuses_float_underflow(document: str) -> None:
         strict_json_loads(document)
 
 
-def test_strict_json_decoder_bounds_structure_before_materialization() -> None:
+def test_strict_json_decoder_bounds_structure_before_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls = 0
+
+    def forbidden_decode(*_args, **_kwargs):
+        nonlocal calls
+        calls += 1
+        pytest.fail("over-budget JSON reached the materializing decoder")
+
+    monkeypatch.setattr(strict_data_module.json, "loads", forbidden_decode)
     with pytest.raises(StrictDataError, match="node cap"):
         strict_json_loads("[0,0,0,0]", max_nodes=1)
     with pytest.raises(StrictDataError, match="nesting-depth cap"):
         strict_json_loads("[[0]]", max_depth=1)
+    assert calls == 0
 
 
 def test_strict_json_decoder_refuses_lone_surrogates() -> None:
@@ -379,6 +399,7 @@ class TestR43SecurityDetectionsMcp:
         assert result.output["returned"] == 1
         assert result.output["capped"] is True
         assert result.output["rules"][0]["rule_id"] == "R001"
+        _assert_file_source(result.output, detections_index)
 
     def test_get_rule(self, detections_index: Path) -> None:
         ext = _ext(R43_ID, SecurityDetectionsMcpArm())
@@ -475,6 +496,7 @@ class TestR35AgentSeal:
         assert result.output["scenario_total"] == 2
         assert result.output["finding_total"] == 1
         assert result.output["total"] == result.output["returned"] == 3
+        _assert_file_source(result.output, agentseal_fixture)
 
         limited = _ext(R35_ID, AgentSealArm()).invoke(
             R35_ID,
@@ -1372,10 +1394,43 @@ def test_unexpected_loader_failures_do_not_escape_or_echo(
 def test_every_success_path_uses_the_output_cap(
     module, arm_id: str, handler, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(module, "MAX_OUTPUT_CHARS", 1)
-    result = _ext(arm_id, handler).invoke(arm_id, "list_tools", {})
+    extension = _ext(arm_id, handler)
+    baseline = extension.invoke(arm_id, "list_tools", {})
+    assert baseline.ok is True
+    cap = _rendered_output_bytes(baseline.output) - 1
+    assert cap >= 64
+    monkeypatch.setattr(module, "MAX_OUTPUT_CHARS", cap)
+    result = extension.invoke(arm_id, "list_tools", {})
     assert result.ok is False
     assert result.output is None
+    assert "output cap" in result.error
+
+
+@pytest.mark.parametrize(
+    "arm_id,handler",
+    [
+        (R43_ID, SecurityDetectionsMcpArm()),
+        (R35_ID, AgentSealArm()),
+        (R01_ID, VulnifyArm()),
+        (R33_ID, LeonidasArm()),
+        (R03_ID, SpecteropsSkillsArm()),
+        (R34_ID, DetectionInTheCloudArm()),
+        (R42_ID, PentestkitArm()),
+        (R15_ID, CollinearArm()),
+    ],
+)
+def test_every_batch7_arm_rejects_unknown_actions_and_list_tools_arguments(
+    arm_id: str, handler
+) -> None:
+    extension = _ext(arm_id, handler)
+    unknown = extension.invoke(arm_id, "definitely_not_allowed", {})
+    discovery = extension.invoke(
+        arm_id, "list_tools", {"unexpected": "caller data"}
+    )
+    assert unknown.ok is False
+    assert "allowlist" in unknown.error
+    assert discovery.ok is False
+    assert "no caller arguments" in discovery.error
 
 
 _ALL_BATCH7_DATA_ACTIONS = [
@@ -1431,12 +1486,75 @@ def test_every_data_action_obeys_the_output_cap(
     query: dict,
 ) -> None:
     path = request.getfixturevalue(fixture_name)
-    monkeypatch.setattr(module, "MAX_OUTPUT_CHARS", 1)
+    extension = _ext(arm_id, handler)
+    baseline = extension.invoke(
+        arm_id, action, {path_key: str(path), **query}
+    )
+    assert baseline.ok is True
+    cap = _rendered_output_bytes(baseline.output) - 1
+    assert cap >= 64
+    monkeypatch.setattr(module, "MAX_OUTPUT_CHARS", cap)
+    result = extension.invoke(arm_id, action, {path_key: str(path), **query})
+    assert result.ok is False
+    assert result.output is None
+    assert "output cap" in result.error
+
+
+@pytest.mark.parametrize(
+    "module,fixture_name,arm_id,handler,action,path_key,query",
+    [row for row in _ALL_BATCH7_DATA_ACTIONS if row[0] is not r34_arm],
+)
+def test_every_batch7_data_action_reports_exact_source(
+    request: pytest.FixtureRequest,
+    module,
+    fixture_name: str,
+    arm_id: str,
+    handler,
+    action: str,
+    path_key: str,
+    query: dict,
+) -> None:
+    # Detection-in-the-cloud binds two selected files and one canonical
+    # directory listing; its three action tests above assert those exact forms.
+    del module
+    path = request.getfixturevalue(fixture_name)
     result = _ext(arm_id, handler).invoke(
         arm_id, action, {path_key: str(path), **query}
     )
+    assert result.ok is True
+    _assert_file_source(result.output, path)
+
+
+@pytest.mark.parametrize(
+    "module,fixture_name,arm_id,handler,action,path_key,query",
+    _ALL_BATCH7_DATA_ACTIONS,
+)
+def test_every_batch7_data_action_rejects_undeclared_arguments(
+    request: pytest.FixtureRequest,
+    module,
+    fixture_name: str,
+    arm_id: str,
+    handler,
+    action: str,
+    path_key: str,
+    query: dict,
+) -> None:
+    del module
+    path = request.getfixturevalue(fixture_name)
+    result = _ext(arm_id, handler).invoke(
+        arm_id,
+        action,
+        {path_key: str(path), **query, "unexpected": "caller data"},
+    )
     assert result.ok is False
-    assert result.output is None
+    assert "unexpected" in result.error
+    non_string = _ext(arm_id, handler).invoke(
+        arm_id,
+        action,
+        {path_key: str(path), **query, 1: "caller data"},
+    )
+    assert non_string.ok is False
+    assert non_string.error == "caller argument names must be strings"
 
 
 @pytest.mark.parametrize(

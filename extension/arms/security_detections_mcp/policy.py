@@ -71,6 +71,8 @@ def index_refusal(raw: object, *, max_bytes: int = MAX_INDEX_BYTES) -> tuple[Pat
 
 def args_refusal(action: str, payload: dict) -> str | None:
     """Refuse unknown or missing caller arguments per action."""
+    if any(not isinstance(key, str) for key in payload):
+        return "caller argument names must be strings"
     allowed = ARG_KEYS.get(action)
     if allowed is None:
         return f"action {action!r} is not on the read allowlist"

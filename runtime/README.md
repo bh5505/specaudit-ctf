@@ -35,6 +35,16 @@ The builder itself uses only the Python standard library. Network access is
 confined to the explicit fetch step; every subsequent step fails closed if a
 locked cache input is absent or has the wrong size or SHA-256.
 
+`build` and `selfcheck` also require Git and bind `source_revision` to a full
+commit ID. Every locked producer file, the capability manifest, the repository
+license, and the exact `runtime/lock.json` snapshot must be regular files whose
+current bytes match both the lock inputs and that commit. The runtime
+builder/tracer/hash tools must also be regular files whose current bytes match
+the commit. Unrelated worktree changes and `runtime/README.md` are outside this
+source-status scope. The manifest records the exact committed lock snapshot
+separately by SHA-256 as well. After `lock-write`, commit the trusted inputs and
+lock before running `build` or `selfcheck`.
+
 ```text
 python3 -m runtime.build fetch
 python3 -m runtime.build lock-check --full
@@ -128,7 +138,12 @@ For an intentional source/dependency update:
 2. run `fetch` explicitly;
 3. run `python3 -m runtime.build lock-write`;
 4. inspect every closure/content change;
-5. run the runtime tests, `build`, and `selfcheck` before review.
+5. run the focused tests and commit the reviewed producer sources and lock;
+6. from that committed producer snapshot, run the runtime tests, `build`, and
+   `selfcheck` before review or handoff.
+
+If a later documentation-only commit should be the artifact's recorded source
+revision, rebuild from that final commit; do not relabel an older manifest.
 
 Do not hand-edit a digest to silence drift. An unexpected import, source byte,
 extra/missing file, write bit, link, non-regular file, archive difference, or

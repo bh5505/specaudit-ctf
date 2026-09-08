@@ -70,6 +70,8 @@ class RubeusArm:
             events, source = _load_telemetry(path)
         except _TelemetryError as exc:
             return _fail(spec, action, redact(str(exc)))
+        except Exception:
+            return _fail(spec, action, "invoke failed")
 
         if action == "telemetry":
             event_id = payload["event_id"].strip()

@@ -84,6 +84,8 @@ class M365PwnedArm:
             cases, source = _load_cases(path)
         except _CasesError as exc:
             return _fail(spec, action, redact(str(exc)))
+        except Exception:
+            return _fail(spec, action, "invoke failed")
 
         if action == "case_study":
             case_id = _optional_query(payload.get("case_id"))

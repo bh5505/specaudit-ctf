@@ -21,6 +21,7 @@ from .contract import (
     ExtensionError,
     NotCuratedError,
     NotHeldError,
+    NotInstalledError,
     UnmanifestedCapabilityError,
 )
 from .encode import (
@@ -91,6 +92,7 @@ def dispatch_invoke(
             return DispatchOutcome(None, 2, str(exc), exc)
         started = utc_now()
         profile = None
+        invoked = False
         try:
             spec = extension.arm_spec(arm_id)
             if spec.tier == TIER_HELD:
@@ -103,6 +105,7 @@ def dispatch_invoke(
             if args_error is not None:
                 raise args_error
             payload = dict(args) if args is not None else {}
+            invoked = True
             result = extension.invoke(arm_id, action, payload)
         except ExtensionError as exc:
             envelope = encode_invoke_failure(
@@ -112,9 +115,13 @@ def dispatch_invoke(
                 profile=profile,
                 started_at=started,
                 finished_at=utc_now(),
+                tool_steps=1 if invoked else 0,
+                invalid_args=exc is args_error and not invoked,
                 attempt_id=parsed_attempt,
                 artifact_dir=sink,
             )
+            if invoked and not isinstance(exc, NotInstalledError):
+                return DispatchOutcome(envelope, 1, "invoke failed")
             return DispatchOutcome(envelope, 2, str(exc))
         except Exception as exc:
             # An arm consumes operator-controlled data.  A missed parser edge
@@ -128,6 +135,7 @@ def dispatch_invoke(
                 profile=profile,
                 started_at=started,
                 finished_at=utc_now(),
+                tool_steps=1 if invoked else 0,
                 attempt_id=parsed_attempt,
                 artifact_dir=sink,
             )
@@ -155,6 +163,7 @@ def dispatch_invoke(
                     profile=profile,
                     started_at=started,
                     finished_at=utc_now(),
+                    tool_steps=1,
                     attempt_id=parsed_attempt,
                     artifact_dir=sink,
                 )
@@ -163,10 +172,13 @@ def dispatch_invoke(
                     handoff_exc.envelope, 2, str(handoff_exc)
                 )
             return DispatchOutcome(envelope, 1, "invoke failed")
-        stderr_line = None
-        if not result.ok and result.error:
-            stderr_line = f"Invoke failed for {arm_id}.{action}: {result.error}"
-        return DispatchOutcome(envelope, 0 if result.ok else 1, stderr_line)
+        status = envelope.get("status")
+        if status == STATUS_COMPLETE:
+            return DispatchOutcome(envelope, 0, None)
+        # The admitted envelope, not a child-controlled Result field, owns the
+        # process/MCP success signal. Keep child error text out of stderr: an
+        # arm may accidentally include caller paths, evidence, or secrets.
+        return DispatchOutcome(envelope, 1, "invoke failed")
     finally:
         if sink is not None:
             sink.close()

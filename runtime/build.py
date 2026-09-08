@@ -52,6 +52,7 @@ import hashlib
 import json
 import os
 import platform
+import re
 import shutil
 import stat
 import subprocess
@@ -69,6 +70,10 @@ from runtime import _tracer, tree_hash  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_DIR = Path(__file__).resolve().parent
+_GIT_FROM_PATH = shutil.which("git")
+GIT_EXECUTABLE = (
+    str(Path(_GIT_FROM_PATH).resolve()) if _GIT_FROM_PATH is not None else None
+)
 CACHE_DIR = RUNTIME_DIR / ".cache"
 LOCK_PATH = RUNTIME_DIR / "lock.json"
 TRACER_PATH = RUNTIME_DIR / "_tracer.py"
@@ -104,6 +109,12 @@ EXTRA_PRODUCER_FILES = (
     "extension/arms/assetrecon/fixtures/dns.json",
     "extension/arms/assetrecon/fixtures/registry.json",
     "extension/arms/assetrecon/fixtures/shodan.json",
+)
+TRUSTED_PRODUCER_TOOL_FILES = (
+    "runtime/__init__.py",
+    "runtime/build.py",
+    "runtime/_tracer.py",
+    "runtime/tree_hash.py",
 )
 _ATTEMPT_ID = "attempt-" + ("0" * 64)
 
@@ -766,7 +777,9 @@ def assemble(out_dir: Path) -> dict:
         raise BuildError("bundle output path must be absolute")
     _require_supported_platform()
     lock, lock_sha256 = _load_lock_snapshot()
-    source_revision = _git_source_revision()
+    source_revision = _require_committed_source_revision(
+        lock, runtime_lock_sha256=lock_sha256
+    )
     _verify_locked_cache(lock)
     with staged_inputs() as (staged_cpython, staged_yaml):
         traces = run_tracers(staged_cpython, staged_yaml)
@@ -801,6 +814,11 @@ def assemble(out_dir: Path) -> dict:
         # Bind copied bytes back to the same lock snapshot. This catches a
         # producer-source change during copy and prevents old/new lock mixing.
         _verify_locked_output_bytes(out_dir, lock)
+        _require_committed_source_revision(
+            lock,
+            runtime_lock_sha256=lock_sha256,
+            expected_revision=source_revision,
+        )
     _seal_directory_modes(out_dir)
 
     for required in REQUIRED_BUNDLE_FILES:
@@ -1094,19 +1112,292 @@ def unpack(tar_path: Path, dest_dir: Path) -> None:
 # --------------------------------------------------------------------------
 
 
-def _git_source_revision() -> str:
-    revision = "unknown"
+def _source_revision_paths(lock: dict) -> tuple[str, ...]:
+    """Repo inputs whose committed identity makes a runtime claim truthful."""
+
+    paths = {
+        _safe_relpath(path) for path in lock["producer_source_files"]
+    }
+    paths.add(_safe_relpath(lock["capability_manifest"]["path"]))
+    paths.add("LICENSE")
+    paths.add("runtime/lock.json")
+    paths.update(TRUSTED_PRODUCER_TOOL_FILES)
+    return tuple(sorted(paths))
+
+
+def _run_git_for_source_revision(
+    *args: str, input_bytes: bytes | None = None
+) -> bytes:
+    if GIT_EXECUTABLE is None:
+        raise BuildError(
+            "cannot bind the runtime bundle to a committed source revision"
+        )
     try:
-        revision = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
+        git_env = {
+            key: value
+            for key, value in os.environ.items()
+            if not key.startswith("GIT_")
+        }
+        git_env.update(
+            {
+                "GIT_CONFIG_GLOBAL": os.devnull,
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_LITERAL_PATHSPECS": "1",
+                "GIT_NO_LAZY_FETCH": "1",
+                "GIT_NO_REPLACE_OBJECTS": "1",
+                "GIT_OPTIONAL_LOCKS": "0",
+            }
+        )
+        return subprocess.run(
+            [
+                GIT_EXECUTABLE,
+                "--no-replace-objects",
+                "-c",
+                "core.fsmonitor=false",
+                *args,
+            ],
             cwd=str(REPO_ROOT),
             capture_output=True,
-            text=True,
+            input=input_bytes,
+            env=git_env,
             timeout=10,
             check=True,
-        ).stdout.strip()
-    except (OSError, subprocess.CalledProcessError):
-        pass
+        ).stdout
+    except (
+        OSError,
+        subprocess.CalledProcessError,
+        subprocess.TimeoutExpired,
+    ) as exc:
+        raise BuildError(
+            "cannot bind the runtime bundle to a committed source revision"
+        ) from exc
+
+
+def _parse_git_revision(raw: bytes) -> str:
+    try:
+        revision = raw.decode("ascii", errors="strict").strip()
+    except UnicodeDecodeError as exc:
+        raise BuildError("git returned a malformed source revision") from exc
+    if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", revision) is None:
+        raise BuildError("git returned a malformed source revision")
+    return revision
+
+
+def _committed_source_hashes(
+    revision: str, paths: tuple[str, ...]
+) -> dict[str, str]:
+    """Read exact commit blobs in one batch and hash their stored bytes."""
+
+    queries = b"".join(
+        f"{revision}:{path}\n".encode("utf-8") for path in paths
+    )
+    response = _run_git_for_source_revision(
+        "cat-file", "--batch", input_bytes=queries
+    )
+    cursor = 0
+    hashes: dict[str, str] = {}
+    for path in paths:
+        header_end = response.find(b"\n", cursor)
+        if header_end < 0:
+            raise BuildError("git returned a truncated committed-source response")
+        header = response[cursor:header_end]
+        cursor = header_end + 1
+        fields = header.rsplit(b" ", 2)
+        if len(fields) != 3 or fields[1] != b"blob":
+            raise BuildError(
+                f"source revision does not contain a regular blob: {path}"
+            )
+        try:
+            size = int(fields[2])
+        except ValueError as exc:
+            raise BuildError("git returned a malformed committed-source size") from exc
+        if size < 0:
+            raise BuildError("git returned a malformed committed-source size")
+        end = cursor + size
+        if end >= len(response) or response[end : end + 1] != b"\n":
+            raise BuildError("git returned a truncated committed-source blob")
+        hashes[path] = hashlib.sha256(response[cursor:end]).hexdigest()
+        cursor = end + 1
+    if cursor != len(response):
+        raise BuildError("git returned excess committed-source data")
+    return hashes
+
+
+def _require_committed_source_modes(
+    revision: str, paths: tuple[str, ...]
+) -> None:
+    """Require every trusted path to be a regular file in the commit tree."""
+
+    response = _run_git_for_source_revision(
+        "ls-tree", "-z", "--full-tree", revision, "--", *paths
+    )
+    if response and not response.endswith(b"\0"):
+        raise BuildError("git returned a truncated committed-source tree")
+    records: dict[str, tuple[bytes, bytes]] = {}
+    for entry in response.split(b"\0"):
+        if not entry:
+            continue
+        try:
+            header, raw_path = entry.split(b"\t", 1)
+            mode, object_type, _object_id = header.split(b" ", 2)
+            path = raw_path.decode("utf-8", errors="strict")
+        except (ValueError, UnicodeDecodeError) as exc:
+            raise BuildError("git returned a malformed committed-source tree") from exc
+        if path in records:
+            raise BuildError("git returned duplicate committed-source tree entries")
+        records[path] = (mode, object_type)
+    missing = sorted(set(paths) - set(records))
+    excess = sorted(set(records) - set(paths))
+    if missing or excess:
+        raise BuildError(
+            "source revision tree did not exactly match trusted producer inputs"
+        )
+    invalid = sorted(
+        path
+        for path, (mode, object_type) in records.items()
+        if object_type != b"blob" or mode not in {b"100644", b"100755"}
+    )
+    if invalid:
+        raise BuildError(
+            "source revision does not contain regular-file modes: "
+            + ", ".join(invalid)
+        )
+
+
+def _require_locked_revision_inputs(
+    lock: dict, *, runtime_lock_sha256: str
+) -> str:
+    if re.fullmatch(r"sha256:[0-9a-f]{64}", runtime_lock_sha256) is None:
+        raise BuildError("runtime-lock snapshot digest is malformed")
+    lock_hex = runtime_lock_sha256.split(":", 1)[1]
+    mismatched: list[str] = []
+    for relpath, expected_hex in sorted(lock["producer_source_files"].items()):
+        relpath = _safe_relpath(relpath)
+        path = REPO_ROOT / relpath
+        if (
+            path.is_symlink()
+            or not path.is_file()
+            or _sha256_file_hex(path) != expected_hex
+        ):
+            mismatched.append(relpath)
+
+    capability = lock["capability_manifest"]
+    capability_path = _safe_relpath(capability["path"])
+    path = REPO_ROOT / capability_path
+    if (
+        path.is_symlink()
+        or not path.is_file()
+        or _sha256_file_hex(path) != capability["sha256"]
+    ):
+        mismatched.append(capability_path)
+
+    license_path = REPO_ROOT / "LICENSE"
+    expected_license = lock["license_files"][
+        "licenses/specaudit-ctf-LICENSE.txt"
+    ]["sha256"]
+    if (
+        license_path.is_symlink()
+        or not license_path.is_file()
+        or _sha256_file_hex(license_path) != expected_license
+    ):
+        mismatched.append("LICENSE")
+
+    runtime_lock_path = REPO_ROOT / "runtime" / "lock.json"
+    if (
+        runtime_lock_path.is_symlink()
+        or not runtime_lock_path.is_file()
+        or _sha256_file_hex(runtime_lock_path) != lock_hex
+    ):
+        mismatched.append("runtime/lock.json")
+
+    if mismatched:
+        raise BuildError(
+            "runtime lock does not match committed source inputs: "
+            + ", ".join(sorted(set(mismatched)))
+        )
+    return lock_hex
+
+
+def _require_committed_source_revision(
+    lock: dict,
+    *,
+    runtime_lock_sha256: str,
+    expected_revision: str | None = None,
+) -> str:
+    """Return HEAD only when every trusted producer input is committed.
+
+    The exact runtime-lock snapshot is included in this commit binding even
+    though it stays outside the assembled tree. Unrelated worktree state and
+    runtime documentation cannot invalidate an otherwise exact producer
+    snapshot.
+    """
+
+    revision = _parse_git_revision(
+        _run_git_for_source_revision("rev-parse", "--verify", "HEAD^{commit}")
+    )
+    if expected_revision is not None and revision != expected_revision:
+        raise BuildError("source revision changed while assembling the bundle")
+
+    lock_hex = _require_locked_revision_inputs(
+        lock, runtime_lock_sha256=runtime_lock_sha256
+    )
+    paths = _source_revision_paths(lock)
+    _require_committed_source_modes(revision, paths)
+    committed_hashes = _committed_source_hashes(revision, paths)
+    expected_locked = {
+        _safe_relpath(path): digest
+        for path, digest in lock["producer_source_files"].items()
+    }
+    expected_locked[_safe_relpath(lock["capability_manifest"]["path"])] = lock[
+        "capability_manifest"
+    ]["sha256"]
+    expected_locked["LICENSE"] = lock["license_files"][
+        "licenses/specaudit-ctf-LICENSE.txt"
+    ]["sha256"]
+    expected_locked["runtime/lock.json"] = lock_hex
+    committed_mismatches = sorted(
+        path
+        for path, expected in expected_locked.items()
+        if committed_hashes.get(path) != expected
+    )
+    for path in TRUSTED_PRODUCER_TOOL_FILES:
+        current = REPO_ROOT / path
+        if (
+            current.is_symlink()
+            or not current.is_file()
+            or _sha256_file_hex(current) != committed_hashes.get(path)
+        ):
+            committed_mismatches.append(path)
+    if committed_mismatches:
+        raise BuildError(
+            "committed revision bytes do not match trusted producer inputs: "
+            + ", ".join(sorted(set(committed_mismatches)))
+        )
+
+    # Current worktree bytes were compared directly to the raw commit blobs
+    # above. Only a staged-only divergence can remain invisible to that check.
+    # Disable both external diff drivers and textconv so repository-local Git
+    # configuration cannot execute a helper while this offline gate runs.
+    staged_dirty = _run_git_for_source_revision(
+        "diff",
+        "--cached",
+        "--no-ext-diff",
+        "--no-textconv",
+        "--name-only",
+        "-z",
+        revision,
+        "--",
+        *paths,
+    )
+    if staged_dirty:
+        raise BuildError(
+            "trusted producer inputs have uncommitted changes; commit them before building"
+        )
+    final_revision = _parse_git_revision(
+        _run_git_for_source_revision("rev-parse", "--verify", "HEAD^{commit}")
+    )
+    if final_revision != revision:
+        raise BuildError("source revision changed while checking producer inputs")
     return revision
 
 
@@ -1123,7 +1414,15 @@ def manifest_for(
         snapshot_sha256 = runtime_lock_sha256
     if snapshot_sha256 is None:
         raise BuildError("manifest requires the exact runtime-lock snapshot digest")
-    revision = source_revision if source_revision is not None else _git_source_revision()
+    revision = (
+        source_revision
+        if source_revision is not None
+        else _require_committed_source_revision(
+            lock, runtime_lock_sha256=snapshot_sha256
+        )
+    )
+    if re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", revision) is None:
+        raise BuildError("manifest source_revision must be a full commit id")
     capability_manifest = lock["capability_manifest"]
     return {
         "schema": "specaudit-ctf.runtime-bundle.v1",
