@@ -1,11 +1,11 @@
 """Authoritative X2-PUB profiles for the bounded CLI invoke surface.
 
 Only actions listed here may run through ``python -m extension invoke``:
-in-process, read-only policy discovery (``list_tools``) plus the
-scope-gated dispatch-class actions admitted since 2026-09-01 under the
-honest R1 manifest recipe. Every action that spawns a subprocess,
-reaches a network, spends model tokens, or mutates state still requires
-its own admitted dispatch profile; anything unlisted is refused.
+in-process policy discovery (``list_tools``), bounded caller-file reads,
+and the scope-gated dispatch-class actions admitted since 2026-09-01 under
+the honest R1 manifest recipe. Every action that spawns a subprocess,
+reaches a network, spends model tokens, or mutates state still requires its
+own admitted dispatch profile; anything unlisted is refused.
 
 Capability manifests for these profiles are encoded from this registry.
 A child-returned or caller-constructed document is not authority.
@@ -44,10 +44,11 @@ class InvokeProfile:
     # Support tier carried into the capability manifest. X5-PROMOTE: the
     # agent-wiz read tier is the catalog's only maintained capability.
     tier: str = "research"
-    # Manifest truth carried per profile. Read profiles are static metadata
-    # (default-off in the validator sense, synthetic-only by construction).
-    # Dispatch profiles stay default-off (the <ARM>_DISPATCH_SCOPE gate)
-    # but are NOT synthetic-only: the operator arms a real lab target.
+    # Manifest truth carried per profile. Static policy reads are synthetic-only;
+    # reads of caller-named files override this because those files may contain
+    # real data. Dispatch profiles stay default-off (the
+    # <ARM>_DISPATCH_SCOPE gate) and are not synthetic-only because the operator
+    # can arm a real lab target.
     default_off: bool = True
     synthetic_only: bool = True
 
@@ -67,6 +68,20 @@ _STATIC_POLICY_ARMS = (
     "sniper",
     "vvah",
     "zgrab2",
+    "security-detections-mcp",
+    "agentseal",
+    "vulnify",
+    "leonidas",
+    "specterops-skills",
+    "detection-in-the-cloud",
+    "pentestkit",
+    "collinear",
+    "ad-pathfinder",
+    "gpohound",
+    "claude-ad",
+    "numasec",
+    "rubeus",
+    "m365pwned",
 )
 
 
@@ -97,11 +112,11 @@ def _policy_profile(arm_id: str, tier: str = "research") -> InvokeProfile:
 def _local_read_profile(arm_id: str, action: str, tier: str = "research") -> InvokeProfile:
     """Read admission for first-party in-process planning or file parsing.
 
-    Same grammar as the static policy arms (R0, local-read, default-off
-    in the validator sense, synthetic-only by construction), scoped per
-    action. Each arm validates its own closed input and bounded local-file
-    contract; the admitted actions do not contact an endpoint or start a
-    subprocess.
+    This base shape is for repository-owned or otherwise synthetic inputs. Each
+    arm validates its own closed input contract; the admitted actions do not
+    contact an endpoint or start a subprocess. Caller-selected file readers use
+    :func:`_caller_file_read_profile` so their manifests do not claim the input
+    is synthetic.
     """
     capability_id = f"{arm_id}.{action}"
     scope = (f"policy://extension/arms/{arm_id}",)
@@ -123,6 +138,22 @@ def _local_read_profile(arm_id: str, action: str, tier: str = "research") -> Inv
         approval_ref=None,
         roe_ref=None,
         tier=tier,
+    )
+
+
+def _caller_file_read_profile(
+    arm_id: str, action: str, tier: str = "research"
+) -> InvokeProfile:
+    """R0 read admission for a caller-named local file or directory.
+
+    Local and read-only does not imply synthetic: an operator can pass real
+    evidence. The v1 profile keeps its static policy scope; binding the actual
+    caller path needs a versioned dynamic-scope contract and remains documented
+    governance debt.
+    """
+
+    return replace(
+        _local_read_profile(arm_id, action, tier), synthetic_only=False
     )
 
 
@@ -617,9 +648,10 @@ INVOKE_PROFILES = {
         # ATT&CK knowledge reads over an operator-supplied local STIX
         # bundle - exact technique/software/group lookups and bounded
         # relationship reads. R0 local-read with no dispatch tier; the
-        # bundle path is caller data validated by the arm's egress gate.
+        # bundle path is caller data validated by the arm's egress gate,
+        # so it is not necessarily synthetic.
         *(
-            _local_read_profile("attack-stix-data", action)
+            _caller_file_read_profile("attack-stix-data", action)
             for action in ("technique", "software", "group", "relationships")
         ),
         # rpz-decoder decode admission (2026-09-08): in-process AXFR
@@ -631,6 +663,86 @@ INVOKE_PROFILES = {
         # a local-write side effect; no subprocess, no endpoint, no
         # schedule (ad-hoc by design).
         _rpz_decode_profile(),
+        # security-detections-mcp read admission: local rule reads over
+        # operator-supplied frozen detection indexes. R0 local-read with
+        # no dispatch tier; the index path is caller data validated by
+        # the arm's egress gate.
+        *(
+            _caller_file_read_profile("security-detections-mcp", action)
+            for action in ("list_rules", "search_rules", "get_rule")
+        ),
+        # agentseal read admission: offline static fixture analysis.
+        # R0 local-read; fixture path is caller data.
+        *(
+            _caller_file_read_profile("agentseal", action)
+            for action in ("analyze", "list_scenarios")
+        ),
+        # vulnify read admission: bounded local vulnerability reads.
+        # R0 local-read; feed path is caller data.
+        *(
+            _caller_file_read_profile("vulnify", action)
+            for action in ("lookup", "list_vulns")
+        ),
+        # leonidas read admission: declarative cloud attack corpus reads.
+        # R0 local-read; corpus path is caller data.
+        *(
+            _caller_file_read_profile("leonidas", action)
+            for action in ("technique", "list_techniques")
+        ),
+        # specterops-skills read admission: curated methodology skill reads.
+        # R0 local-read; catalog path is caller data.
+        *(
+            _caller_file_read_profile("specterops-skills", action)
+            for action in ("skill", "list_skills")
+        ),
+        # detection-in-the-cloud read admission: cloud detection playbook reads.
+        # R0 local-read; playbook_dir is caller data.
+        *(
+            _caller_file_read_profile("detection-in-the-cloud", action)
+            for action in ("playbook", "list_playbooks", "list_rules")
+        ),
+        # pentestkit read admission: experiment accounting reads.
+        # R0 local-read; ledger path is caller data.
+        *(
+            _caller_file_read_profile("pentestkit", action)
+            for action in ("result", "list_results", "summary")
+        ),
+        # collinear read admission: simulated world scenario reads.
+        # R0 local-read; scenarios_file is caller data.
+        *(
+            _caller_file_read_profile("collinear", action)
+            for action in ("scenario", "list_scenarios", "verify")
+        ),
+        # ad-pathfinder read admission: imported AD path results.
+        *(
+            _caller_file_read_profile("ad-pathfinder", action)
+            for action in ("path", "list_paths", "list_datasources")
+        ),
+        # gpohound read admission: GPO policy evidence reads.
+        *(
+            _caller_file_read_profile("gpohound", action)
+            for action in ("policy", "list_policies", "list_links")
+        ),
+        # claude-ad read admission: AD methodology reads.
+        *(
+            _caller_file_read_profile("claude-ad", action)
+            for action in ("technique", "list_techniques", "list_prerequisites")
+        ),
+        # numasec read admission: finding lifecycle reads.
+        *(
+            _caller_file_read_profile("numasec", action)
+            for action in ("finding", "list_findings", "list_transitions")
+        ),
+        # rubeus read admission: deweaponized AD telemetry reads.
+        *(
+            _caller_file_read_profile("rubeus", action)
+            for action in ("telemetry", "list_telemetry", "list_indicators")
+        ),
+        # m365pwned read admission: synthetic M365 consent case reads.
+        *(
+            _caller_file_read_profile("m365pwned", action)
+            for action in ("case_study", "list_case_studies", "list_permissions")
+        ),
         # Metasploit read admission (2026-09-04): the exploit/payload/
         # session/listener listings over the operator-run loopback SSE server
         # (GH05TCREW MetasploitMCP).

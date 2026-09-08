@@ -91,14 +91,14 @@ def test_every_catalog_row_has_tier(entries: list[dict]) -> None:
 
 def test_kind_counts_preserved(entries: list[dict]) -> None:
     kinds = [row["kind"] for row in entries]
-    # 30 since the rpz-decoder and asset-recon admissions (2026-09-08).
-    assert kinds.count("arm") == 30
+    # 44 after asset-recon and the 14 research-candidate readers.
+    assert kinds.count("arm") == 44
     # 19 since the edge-device-posture methodology row (2026-09-06
     # IoT packet: plane model + reconciliation, instantiated by the
     # lab-edge-01 live challenge).
     assert kinds.count("methodology-only") == 19
-    # 49 since the rpz-decoder and asset-recon admissions (2026-09-08).
-    assert len(entries) == 49
+    # 63 after asset-recon and the 14 research-candidate readers.
+    assert len(entries) == 63
 
 
 def test_schema_rejects_missing_tier() -> None:

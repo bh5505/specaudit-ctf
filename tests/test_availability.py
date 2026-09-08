@@ -67,7 +67,7 @@ def test_build_report_shape_and_install_probe(
     assert report["host"]["is_kali"] is True
     assert report["armed_scopes"] == []
     by_id = {row["id"]: row for row in report["arms"]}
-    assert len(by_id) == 30  # rpz-decoder + asset-recon arms (2026-09-08)
+    assert len(by_id) == 44  # asset-recon plus 14 research-candidate readers
     assert by_id["nmap"] == {
         "id": "nmap",
         "tier": "research",
@@ -95,7 +95,7 @@ def test_availability_is_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
     rows = ext.availability()
     # The report completed without dispatching, and one exploding probe
     # degrades to a row instead of killing the report.
-    assert len(rows) == 30  # rpz-decoder + asset-recon arms (2026-09-08)
+    assert len(rows) == 44  # asset-recon plus 14 research-candidate readers
     assert all(row["installed"] is False for row in rows)
 
 

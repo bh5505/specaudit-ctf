@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import io
 import json
@@ -16,6 +17,22 @@ from runtime import _tracer, build, tree_hash
 
 ROOT = Path(__file__).resolve().parents[1]
 VECTOR = ROOT / "runtime" / "tree-v1-vector.json"
+RESEARCH_READER_PACKAGES = (
+    "security_detections_mcp",
+    "agentseal",
+    "vulnify",
+    "leonidas",
+    "specterops_skills",
+    "detection_in_the_cloud",
+    "pentestkit",
+    "collinear",
+    "ad_pathfinder",
+    "gpohound",
+    "claude_ad",
+    "numasec",
+    "rubeus",
+    "m365pwned",
+)
 
 
 def _chmod_tree(root: Path, *, dirs: int, files: int) -> None:
@@ -44,8 +61,85 @@ def _unseal(root: Path) -> None:
         _chmod_tree(root, dirs=0o755, files=0o644)
 
 
+def _init_revision_repo(
+    tmp_path: Path, *, object_format: str = "sha1"
+) -> tuple[Path, dict, str, str]:
+    git = build.GIT_EXECUTABLE
+    assert git is not None
+    repo = tmp_path / "revision-repo"
+    producer = repo / "extension" / "producer.py"
+    capability = repo / "tests" / "goldens" / "capability.json"
+    producer.parent.mkdir(parents=True)
+    capability.parent.mkdir(parents=True)
+    producer.write_text("producer = 1\n", encoding="utf-8")
+    capability.write_text("{}\n", encoding="utf-8")
+    (repo / "LICENSE").write_text("test license\n", encoding="utf-8")
+    for relpath in build.TRUSTED_PRODUCER_TOOL_FILES:
+        path = repo / relpath
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"# {relpath}\n", encoding="utf-8")
+    (repo / "notes.txt").write_text("initial\n", encoding="utf-8")
+    lock = {
+        "producer_source_files": {
+            "extension/producer.py": hashlib.sha256(producer.read_bytes()).hexdigest()
+        },
+        "capability_manifest": {
+            "path": "tests/goldens/capability.json",
+            "sha256": hashlib.sha256(capability.read_bytes()).hexdigest(),
+        },
+        "license_files": {
+            "licenses/specaudit-ctf-LICENSE.txt": {
+                "sha256": hashlib.sha256((repo / "LICENSE").read_bytes()).hexdigest()
+            }
+        },
+    }
+    lock_path = repo / "runtime" / "lock.json"
+    lock_path.write_text(
+        json.dumps(lock, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    lock_sha256 = "sha256:" + hashlib.sha256(lock_path.read_bytes()).hexdigest()
+    init_argv = [git, "init", "-q"]
+    if object_format != "sha1":
+        init_argv.append(f"--object-format={object_format}")
+    initialized = subprocess.run(
+        init_argv, cwd=repo, capture_output=True, check=False
+    )
+    if initialized.returncode != 0 and object_format == "sha256":
+        pytest.skip("installed Git does not support SHA-256 repositories")
+    initialized.check_returncode()
+    subprocess.run([git, "add", "."], cwd=repo, check=True)
+    subprocess.run(
+        [
+            git,
+            "-c",
+            "user.name=Runtime Test",
+            "-c",
+            "user.email=runtime-test@example.invalid",
+            "commit",
+            "-qm",
+            "initial",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    revision = subprocess.run(
+        [git, "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    return repo, lock, lock_sha256, revision
+
+
 def test_locked_inputs_and_source_closure_are_exact() -> None:
     lock = json.loads(build.LOCK_PATH.read_text())
+    assert build.TRUSTED_PRODUCER_TOOL_FILES == (
+        "runtime/__init__.py",
+        "runtime/build.py",
+        "runtime/_tracer.py",
+        "runtime/tree_hash.py",
+    )
     assert lock["schema"] == "specaudit-ctf.runtime-lock.v1"
     assert lock["cpython"] == {
         "asset": "cpython-3.11.16+20260825-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
@@ -77,15 +171,25 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
     # agent-head lane's server-side capture; 2026-09-05). Previously 103:
     # the attack-stix-data arm's +4 package files (__init__, arm, policy,
     # reader — the demo bundle is caller data, not part of the closure).
-    # 108 since the rpz-decoder arm admission (2026-09-08): policy,
-    # decoder, arm, __init__ join the producer source closure.
-    # Unified recon adds ten Python modules and four offline fixture roots
-    # to that 108-file base. Worker XML parsing adds four
-    # file-backed stdlib modules; compiled parser/resource support is built
-    # into the unchanged locked interpreter.
-    assert len(lock["producer_source_files"]) == 122
+    # Asset recon established a 122-file producer closure; the 14 readers
+    # add three imported Python modules apiece, plus their shared strict-data
+    # decoder/structure guard.
+    assert len(lock["producer_source_files"]) == 165
     assert len(lock["included_stdlib_files"]) == 118
     assert len(lock["included_yaml_files"]) == 18
+    expected_reader_sources = {"extension/arms/strict_data.py"}
+    expected_reader_sources.update(
+        f"extension/arms/{package}/{filename}"
+        for package in RESEARCH_READER_PACKAGES
+        for filename in ("__init__.py", "arm.py", "policy.py")
+    )
+    assert expected_reader_sources <= set(lock["producer_source_files"])
+    traced_sources = {
+        path
+        for invocation in lock["invocations"].values()
+        for path in invocation["extension_paths"]
+    }
+    assert expected_reader_sources <= traced_sources
     assert lock["capability_manifest"] == {
         "path": "tests/goldens/capability-manifest/agent-wiz.list_tools.json",
         "sha256": "5bbb55e6c8cb8ceb143f4a72740802b31e451375b3f1e780ca94a5ca6b76efcc",
@@ -104,6 +208,640 @@ def test_fast_lock_check_is_network_free(monkeypatch: pytest.MonkeyPatch) -> Non
         lambda *_args, **_kwargs: pytest.fail("lock-check touched the network"),
     )
     build.lock_check(full=False)
+
+
+def test_committed_source_revision_binds_only_clean_trusted_inputs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, lock, lock_sha256, revision = _init_revision_repo(tmp_path)
+    monkeypatch.setattr(build, "REPO_ROOT", repo)
+    monkeypatch.setenv("GIT_DIR", str(tmp_path / "hostile-git-dir"))
+    monkeypatch.setenv("GIT_INDEX_FILE", str(tmp_path / "hostile-index"))
+    assert (
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+        == revision
+    )
+
+    # Documentation and unrelated work do not supply executable producer bytes.
+    (repo / "runtime" / "README.md").write_text("dirty docs\n", encoding="utf-8")
+    (repo / "unrelated.txt").write_text("unrelated\n", encoding="utf-8")
+    assert (
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+        == revision
+    )
+
+    # The exact lock snapshot is itself part of the committed source identity.
+    (repo / "runtime" / "lock.json").write_text("dirty lock\n", encoding="utf-8")
+    dirty_lock_sha256 = "sha256:" + hashlib.sha256(
+        (repo / "runtime" / "lock.json").read_bytes()
+    ).hexdigest()
+    with pytest.raises(build.BuildError, match="trusted producer inputs"):
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=dirty_lock_sha256
+        )
+
+
+@pytest.mark.parametrize(
+    "relpath,lock_section",
+    [
+        ("extension/producer.py", "producer"),
+        ("tests/goldens/capability.json", "capability"),
+        ("LICENSE", "license"),
+        ("runtime/build.py", "tool"),
+        ("runtime/lock.json", "lock"),
+    ],
+)
+@pytest.mark.parametrize("staged", [False, True], ids=["unstaged", "staged"])
+def test_committed_source_revision_refuses_dirty_trusted_inputs_even_if_relocked(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    relpath: str,
+    lock_section: str,
+    staged: bool,
+) -> None:
+    repo, lock, lock_sha256, _revision = _init_revision_repo(tmp_path)
+    git = build.GIT_EXECUTABLE
+    assert git is not None
+    path = repo / relpath
+    path.write_text(path.read_text(encoding="utf-8") + "dirty\n", encoding="utf-8")
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    if lock_section == "producer":
+        lock["producer_source_files"][relpath] = digest
+    elif lock_section == "capability":
+        lock["capability_manifest"]["sha256"] = digest
+    elif lock_section == "license":
+        lock["license_files"]["licenses/specaudit-ctf-LICENSE.txt"]["sha256"] = digest
+    elif lock_section == "lock":
+        lock_sha256 = "sha256:" + digest
+    if staged:
+        subprocess.run([git, "add", relpath], cwd=repo, check=True)
+    monkeypatch.setattr(build, "REPO_ROOT", repo)
+    with pytest.raises(build.BuildError, match="trusted producer inputs"):
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+
+
+@pytest.mark.parametrize(
+    "relpath",
+    [
+        "extension/producer.py",
+        "tests/goldens/capability.json",
+        "LICENSE",
+        "runtime/lock.json",
+        "runtime/_tracer.py",
+    ],
+    ids=["producer", "capability", "license", "lock", "tool"],
+)
+def test_committed_source_revision_refuses_staged_only_trusted_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relpath: str
+) -> None:
+    repo, lock, lock_sha256, _revision = _init_revision_repo(tmp_path)
+    git = build.GIT_EXECUTABLE
+    assert git is not None
+    trusted_path = repo / relpath
+    committed = trusted_path.read_bytes()
+    trusted_path.write_bytes(committed + b"staged-only divergence\n")
+    subprocess.run([git, "add", relpath], cwd=repo, check=True)
+    trusted_path.write_bytes(committed)
+    monkeypatch.setattr(build, "REPO_ROOT", repo)
+    with pytest.raises(build.BuildError, match="uncommitted changes"):
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+
+
+def test_committed_source_revision_refuses_untracked_locked_producer(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, lock, lock_sha256, _revision = _init_revision_repo(tmp_path)
+    untracked = repo / "extension" / "new_producer.py"
+    untracked.write_text("new = True\n", encoding="utf-8")
+    lock["producer_source_files"]["extension/new_producer.py"] = hashlib.sha256(
+        untracked.read_bytes()
+    ).hexdigest()
+    monkeypatch.setattr(build, "REPO_ROOT", repo)
+    with pytest.raises(build.BuildError, match="exactly match trusted producer inputs"):
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+
+
+def test_committed_source_revision_refuses_missing_git_or_changed_head(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, lock, lock_sha256, revision = _init_revision_repo(tmp_path)
+    git = build.GIT_EXECUTABLE
+    assert git is not None
+    monkeypatch.setattr(build, "GIT_EXECUTABLE", None)
+    with pytest.raises(build.BuildError, match="committed source revision"):
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+
+    monkeypatch.setattr(build, "GIT_EXECUTABLE", git)
+    monkeypatch.setattr(build, "REPO_ROOT", tmp_path / "not-a-repository")
+    with pytest.raises(build.BuildError, match="committed source revision"):
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+
+    monkeypatch.setattr(build, "REPO_ROOT", repo)
+    (repo / "notes.txt").write_text("next\n", encoding="utf-8")
+    subprocess.run([git, "add", "notes.txt"], cwd=repo, check=True)
+    subprocess.run(
+        [
+            git,
+            "-c",
+            "user.name=Runtime Test",
+            "-c",
+            "user.email=runtime-test@example.invalid",
+            "commit",
+            "-qm",
+            "advance unrelated head",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    with pytest.raises(build.BuildError, match="revision changed"):
+        build._require_committed_source_revision(
+            lock,
+            runtime_lock_sha256=lock_sha256,
+            expected_revision=revision,
+        )
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b"",
+        b"a" * 39,
+        b"A" * 40,
+        b"g" * 40,
+        b"a" * 40 + b"\n" + b"b" * 40,
+        b"\xff" * 40,
+    ],
+)
+def test_git_source_revision_parser_refuses_malformed_ids(raw: bytes) -> None:
+    with pytest.raises(build.BuildError, match="malformed source revision"):
+        build._parse_git_revision(raw)
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [(b"sha1\n", ("sha1", 40)), (b"sha256\n", ("sha256", 64))],
+)
+def test_git_object_format_parser_accepts_supported_storage_formats(
+    raw: bytes, expected: tuple[str, int]
+) -> None:
+    assert build._parse_git_object_format(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [b"", b"sha512\n", b"sha1\nsha256\n", b"SHA1\n", b"\xff\n"],
+)
+def test_git_object_format_parser_refuses_ambiguous_or_unknown_values(
+    raw: bytes,
+) -> None:
+    with pytest.raises(build.BuildError, match="object format"):
+        build._parse_git_object_format(raw)
+
+
+@pytest.mark.parametrize(
+    "object_format,revision",
+    [(b"sha1\n", "a" * 64), (b"sha256\n", "a" * 40)],
+)
+def test_git_object_integrity_refuses_revision_width_mismatch(
+    monkeypatch: pytest.MonkeyPatch, object_format: bytes, revision: str
+) -> None:
+    monkeypatch.setattr(
+        build,
+        "_run_git_for_source_revision",
+        lambda *_args, **_kwargs: object_format,
+    )
+    with pytest.raises(build.BuildError, match="revision width"):
+        build._require_git_object_integrity(revision)
+
+
+def test_git_object_integrity_uses_strict_full_non_connectivity_fsck(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def run(*args: str, input_bytes: bytes | None = None) -> bytes:
+        assert input_bytes is None
+        calls.append(args)
+        if args == ("rev-parse", "--show-object-format=storage"):
+            return b"sha1\n"
+        return b""
+
+    monkeypatch.setattr(build, "_run_git_for_source_revision", run)
+    revision = "a" * 40
+    build._require_git_object_integrity(revision)
+    assert calls == [
+        ("rev-parse", "--show-object-format=storage"),
+        (
+            "-c",
+            f"fsck.skipList={os.devnull}",
+            "fsck",
+            "--strict",
+            "--full",
+            "--no-connectivity-only",
+            "--no-dangling",
+            "--no-reflogs",
+            "--no-progress",
+            "--no-cache",
+            "--no-references",
+            revision,
+        ),
+    ]
+    assert "--connectivity-only" not in calls[1]
+
+
+@pytest.mark.parametrize("object_format", ["sha1", "sha256"])
+def test_committed_source_revision_refuses_substituted_loose_object(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    object_format: str,
+) -> None:
+    repo, lock, lock_sha256, _revision = _init_revision_repo(
+        tmp_path, object_format=object_format
+    )
+    git = build.GIT_EXECUTABLE
+    assert git is not None
+    tracer = repo / "runtime" / "_tracer.py"
+    old_object_id = subprocess.run(
+        [git, "rev-parse", "HEAD:runtime/_tracer.py"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    alternate = b"# substituted trusted tracer\nchanged = True\n"
+    new_object_id = subprocess.run(
+        [git, "hash-object", "-w", "--stdin"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        input=alternate,
+    ).stdout.decode("ascii").strip()
+    assert new_object_id != old_object_id
+    old_object = repo / ".git" / "objects" / old_object_id[:2] / old_object_id[2:]
+    new_object = repo / ".git" / "objects" / new_object_id[:2] / new_object_id[2:]
+    assert old_object.is_file() and new_object.is_file()
+    old_object.chmod(old_object.stat().st_mode | stat.S_IWUSR)
+    old_object.write_bytes(new_object.read_bytes())
+    tracer.write_bytes(alternate)
+
+    returned = subprocess.run(
+        [git, "cat-file", "blob", old_object_id],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    ).stdout
+    returned_object_id = subprocess.run(
+        [git, "hash-object", "--stdin"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        input=returned,
+    ).stdout.decode("ascii").strip()
+    assert returned == alternate
+    assert returned_object_id == new_object_id
+    assert returned_object_id != old_object_id
+
+    monkeypatch.setattr(build, "REPO_ROOT", repo)
+    with pytest.raises(build.BuildError, match="object graph.*integrity"):
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+
+
+def test_git_source_runner_translates_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def timeout(*_args, **_kwargs):
+        raise subprocess.TimeoutExpired(cmd="git", timeout=10)
+
+    monkeypatch.setattr(build.subprocess, "run", timeout)
+    with pytest.raises(build.BuildError, match="committed source revision"):
+        build._run_git_for_source_revision("rev-parse", "HEAD")
+
+
+def test_git_source_runner_uses_isolated_literal_offline_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, object] = {}
+
+    def run(argv, **kwargs):
+        captured["argv"] = argv
+        captured.update(kwargs)
+        return subprocess.CompletedProcess(argv, 0, stdout=b"ok\n")
+
+    monkeypatch.setenv("GIT_DIR", "/hostile/repository")
+    monkeypatch.setenv("GIT_INDEX_FILE", "/hostile/index")
+    monkeypatch.setenv("GIT_OBJECT_DIRECTORY", "/hostile/objects")
+    monkeypatch.setattr(build.subprocess, "run", run)
+
+    assert build._run_git_for_source_revision("rev-parse", "HEAD") == b"ok\n"
+    assert captured["argv"] == [
+        build.GIT_EXECUTABLE,
+        "--no-replace-objects",
+        "-c",
+        "core.fsmonitor=false",
+        "rev-parse",
+        "HEAD",
+    ]
+    git_env = captured["env"]
+    assert isinstance(git_env, dict)
+    assert "GIT_DIR" not in git_env
+    assert "GIT_INDEX_FILE" not in git_env
+    assert "GIT_OBJECT_DIRECTORY" not in git_env
+    assert {
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_LITERAL_PATHSPECS": "1",
+        "GIT_NO_LAZY_FETCH": "1",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "GIT_OPTIONAL_LOCKS": "0",
+    }.items() <= git_env.items()
+    assert captured["check"] is True
+    assert captured["timeout"] == 10
+
+
+def test_committed_source_revision_refuses_head_change_during_check(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, lock, lock_sha256, _revision = _init_revision_repo(tmp_path)
+    git = build.GIT_EXECUTABLE
+    assert git is not None
+    monkeypatch.setattr(build, "REPO_ROOT", repo)
+    original_runner = build._run_git_for_source_revision
+    advanced = False
+
+    def advance_after_status(*args: str, input_bytes: bytes | None = None) -> bytes:
+        nonlocal advanced
+        output = original_runner(*args, input_bytes=input_bytes)
+        if args[:2] == ("diff", "--cached") and not advanced:
+            advanced = True
+            (repo / "notes.txt").write_text("advanced\n", encoding="utf-8")
+            subprocess.run([git, "add", "notes.txt"], cwd=repo, check=True)
+            subprocess.run(
+                [
+                    git,
+                    "-c",
+                    "user.name=Runtime Test",
+                    "-c",
+                    "user.email=runtime-test@example.invalid",
+                    "commit",
+                    "-qm",
+                    "advance during check",
+                ],
+                cwd=repo,
+                check=True,
+            )
+        return output
+
+    monkeypatch.setattr(build, "_run_git_for_source_revision", advance_after_status)
+    with pytest.raises(build.BuildError, match="changed while checking"):
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+    assert advanced is True
+
+
+def test_committed_source_revision_checks_only_staged_diff_without_helpers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, lock, lock_sha256, revision = _init_revision_repo(tmp_path)
+    monkeypatch.setattr(build, "REPO_ROOT", repo)
+    original_runner = build._run_git_for_source_revision
+    calls: list[tuple[str, ...]] = []
+
+    def record(*args: str, input_bytes: bytes | None = None) -> bytes:
+        calls.append(args)
+        return original_runner(*args, input_bytes=input_bytes)
+
+    monkeypatch.setattr(build, "_run_git_for_source_revision", record)
+    assert (
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+        == revision
+    )
+    diff_calls = [call for call in calls if call[:1] == ("diff",)]
+    assert len(diff_calls) == 1
+    assert diff_calls[0][:4] == (
+        "diff",
+        "--cached",
+        "--no-ext-diff",
+        "--no-textconv",
+    )
+    separator = diff_calls[0].index("--")
+    assert set(diff_calls[0][separator + 1 :]) == {
+        "LICENSE",
+        "extension/producer.py",
+        "runtime/__init__.py",
+        "runtime/_tracer.py",
+        "runtime/build.py",
+        "runtime/lock.json",
+        "runtime/tree_hash.py",
+        "tests/goldens/capability.json",
+    }
+
+
+def test_committed_source_revision_refuses_committed_symlink_materialized_as_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, lock, _lock_sha256, _revision = _init_revision_repo(tmp_path)
+    git = build.GIT_EXECUTABLE
+    assert git is not None
+    producer = repo / "extension" / "producer.py"
+    producer.unlink()
+    producer.symlink_to("producer-target.py")
+    lock["producer_source_files"]["extension/producer.py"] = hashlib.sha256(
+        b"producer-target.py"
+    ).hexdigest()
+    lock_path = repo / "runtime" / "lock.json"
+    lock_path.write_text(
+        json.dumps(lock, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+    lock_sha256 = "sha256:" + hashlib.sha256(lock_path.read_bytes()).hexdigest()
+    subprocess.run(
+        [git, "add", "extension/producer.py", "runtime/lock.json"],
+        cwd=repo,
+        check=True,
+    )
+    subprocess.run(
+        [
+            git,
+            "-c",
+            "user.name=Runtime Test",
+            "-c",
+            "user.email=runtime-test@example.invalid",
+            "commit",
+            "-qm",
+            "commit symlink producer",
+        ],
+        cwd=repo,
+        check=True,
+    )
+
+    # Reproduce a core.symlinks=false checkout: the symlink blob is materialized
+    # as a regular file, so a worktree-only type check would incorrectly admit it.
+    producer.unlink()
+    subprocess.run(
+        [
+            git,
+            "-c",
+            "core.symlinks=false",
+            "checkout",
+            "HEAD",
+            "--",
+            "extension/producer.py",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    assert producer.is_file() and not producer.is_symlink()
+    assert producer.read_bytes() == b"producer-target.py"
+
+    monkeypatch.setattr(build, "REPO_ROOT", repo)
+    with pytest.raises(build.BuildError, match="regular-file modes"):
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+
+
+def test_committed_source_revision_ignores_local_replace_refs(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    repo, lock, lock_sha256, revision = _init_revision_repo(tmp_path)
+    git = build.GIT_EXECUTABLE
+    assert git is not None
+    producer = repo / "extension" / "producer.py"
+    producer.write_text("producer = 2\n", encoding="utf-8")
+    subprocess.run([git, "add", "extension/producer.py"], cwd=repo, check=True)
+    subprocess.run(
+        [
+            git,
+            "-c",
+            "user.name=Runtime Test",
+            "-c",
+            "user.email=runtime-test@example.invalid",
+            "commit",
+            "-qm",
+            "replacement commit",
+        ],
+        cwd=repo,
+        check=True,
+    )
+    replacement = subprocess.run(
+        [git, "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        [git, "checkout", "--detach", "-q", revision], cwd=repo, check=True
+    )
+    subprocess.run([git, "replace", revision, replacement], cwd=repo, check=True)
+
+    monkeypatch.setattr(build, "REPO_ROOT", repo)
+    assert (
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
+        == revision
+    )
+
+
+@pytest.mark.parametrize(
+    "response,match",
+    [
+        (b"", "truncated committed-source response"),
+        (b"object missing\n", "regular blob"),
+        (b"object blob nope\n", "malformed committed-source size"),
+        (b"object blob -1\n", "malformed committed-source size"),
+        (b"object blob 2\nx\n", "truncated committed-source blob"),
+        (b"object blob 1\nx\nextra", "excess committed-source data"),
+    ],
+)
+def test_committed_source_batch_parser_refuses_malformed_responses(
+    monkeypatch: pytest.MonkeyPatch, response: bytes, match: str
+) -> None:
+    monkeypatch.setattr(
+        build, "_run_git_for_source_revision", lambda *_args, **_kwargs: response
+    )
+    with pytest.raises(build.BuildError, match=match):
+        build._committed_source_hashes("a" * 40, ("extension/producer.py",))
+
+
+def test_assemble_rechecks_same_committed_revision_after_copy(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    lock: dict = {}
+    lock_sha256 = "sha256:" + ("1" * 64)
+    revision = "a" * 40
+    events: list[str] = []
+
+    def require_revision(
+        received_lock: dict,
+        *,
+        runtime_lock_sha256: str,
+        expected_revision: str | None = None,
+    ) -> str:
+        assert received_lock is lock
+        assert runtime_lock_sha256 == lock_sha256
+        events.append(f"revision:{expected_revision or 'none'}")
+        return revision
+
+    staged_cpython = tmp_path / "cpython"
+    staged_yaml = tmp_path / "yaml"
+    monkeypatch.setattr(build, "_require_supported_platform", lambda: None)
+    monkeypatch.setattr(build, "_load_lock_snapshot", lambda: (lock, lock_sha256))
+    monkeypatch.setattr(build, "_require_committed_source_revision", require_revision)
+    monkeypatch.setattr(build, "_verify_locked_cache", lambda _lock: None)
+    monkeypatch.setattr(
+        build,
+        "staged_inputs",
+        lambda: contextlib.nullcontext((staged_cpython, staged_yaml)),
+    )
+    monkeypatch.setattr(build, "run_tracers", lambda *_args: {})
+    monkeypatch.setattr(
+        build,
+        "merge_traces",
+        lambda _traces: {"stdlib": [], "yaml": [], "extension": []},
+    )
+    monkeypatch.setattr(build, "_validate_locked_sources", lambda *_args: None)
+    monkeypatch.setattr(build, "_launcher_path", lambda _root: tmp_path / "python")
+    monkeypatch.setattr(build, "_require_real_launcher", lambda _path: None)
+    monkeypatch.setattr(build, "_copy_regular_file", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(build, "_stdlib_root", lambda _root: tmp_path / "stdlib")
+    monkeypatch.setattr(build, "_unique_relpaths", lambda *_args: [])
+    monkeypatch.setattr(build, "_write_licenses", lambda *_args: None)
+    monkeypatch.setattr(
+        build,
+        "_verify_locked_output_bytes",
+        lambda *_args: events.append("output-bytes-verified"),
+    )
+    monkeypatch.setattr(build, "_seal_directory_modes", lambda _root: None)
+    monkeypatch.setattr(build, "REQUIRED_BUNDLE_FILES", ())
+
+    result = build.assemble((tmp_path / "bundle").resolve())
+
+    assert result["source_revision"] == revision
+    assert events == [
+        "revision:none",
+        "output-bytes-verified",
+        f"revision:{revision}",
+    ]
 
 
 def test_offline_fetch_refuses_missing_cache_without_network(
@@ -448,8 +1186,9 @@ def test_artifact_manifest_is_deterministic_and_separates_timings(
         "launcher_sha256": "sha256:" + "1" * 64,
         "bundle_tree_sha256": "sha256:" + "2" * 64,
     }
-    first = build.manifest_for(digests)
-    second = build.manifest_for(digests)
+    reviewed_revision = "a" * 40
+    first = build.manifest_for(digests, source_revision=reviewed_revision)
+    second = build.manifest_for(digests, source_revision=reviewed_revision)
     assert first == second
     assert "timings" not in first
     assert first["capability_manifest"]["sha256"] == (
@@ -474,7 +1213,7 @@ def test_artifact_manifest_is_deterministic_and_separates_timings(
         digests,
         lock=lock,
         runtime_lock_sha256=lock_sha256,
-        source_revision="reviewed-revision",
+        source_revision=reviewed_revision,
     )
     assert bound["runtime_lock_sha256"] == lock_sha256
-    assert bound["source_revision"] == "reviewed-revision"
+    assert bound["source_revision"] == reviewed_revision

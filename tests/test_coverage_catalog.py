@@ -69,6 +69,20 @@ EXPECTED_IDS = (
     "routersploit",
     "rpz-decoder",
     "asset-recon",
+    "security-detections-mcp",
+    "agentseal",
+    "vulnify",
+    "leonidas",
+    "specterops-skills",
+    "detection-in-the-cloud",
+    "pentestkit",
+    "collinear",
+    "ad-pathfinder",
+    "gpohound",
+    "claude-ad",
+    "numasec",
+    "rubeus",
+    "m365pwned",
 )
 CURATED_ARM_ID = "burp-mcp"
 
@@ -175,6 +189,20 @@ def test_curated_arms_are_exactly_the_curated_set(entries: list[dict]) -> None:
         "attack-stix-data",
         "rpz-decoder",
         "asset-recon",
+        "security-detections-mcp",
+        "agentseal",
+        "vulnify",
+        "leonidas",
+        "specterops-skills",
+        "detection-in-the-cloud",
+        "pentestkit",
+        "collinear",
+        "ad-pathfinder",
+        "gpohound",
+        "claude-ad",
+        "numasec",
+        "rubeus",
+        "m365pwned",
     }
     for arm in curated:
         assert arm["kind"] == "arm"

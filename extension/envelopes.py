@@ -82,6 +82,10 @@ REASON_CLEANUP_POLICY = "cleanup-policy-mismatch"
 REASON_SIDE_EFFECT_MISMATCH = "side-effect-mismatch"
 REASON_SAFETY_CLASS_MISMATCH = "safety-class-mismatch"
 REASON_PROFILE_MISMATCH = "capability-profile-mismatch"
+POST_ENTRY_PARTIAL_EFFECTS_LIMITATION = (
+    "arm failed after entry; reported scope and side effects are conservative "
+    "bounds because effects may be partial or unknown"
+)
 
 _FAILED_REASONS = frozenset(
     {
@@ -861,11 +865,51 @@ def _invoke_profile_mismatch(payload: Mapping[str, Any]) -> bool:
         }
         if coverage != expected_coverage:
             return True
-    if payload.get("transport_ok") is True:
-        return scope.get("touched") != list(profile.touched_scope) or payload.get(
-            "side_effects"
-        ) != list(profile.side_effects)
-    return scope.get("touched") != [] or payload.get("side_effects") != ["none"]
+    budget = payload.get("budget")
+    spent = budget.get("spent") if isinstance(budget, dict) else None
+    tool_steps = spent.get("tool_steps") if isinstance(spent, dict) else None
+    # A transport exception after the arm was entered cannot establish that
+    # the declared effects did not start.  Bind such failures to the same
+    # conservative profile boundary as a returned Result; only a zero-step
+    # pre-invocation refusal may claim no effects and no touched scope.
+    arm_entered = (
+        isinstance(tool_steps, int)
+        and not isinstance(tool_steps, bool)
+        and tool_steps > 0
+    )
+    transport_ok = payload.get("transport_ok")
+    if transport_ok is True and not arm_entered:
+        return True
+    expected_failed_coverage = {
+        "attempted": [profile.capability_id],
+        "complete": [],
+        "skipped": [],
+        "unsupported": [],
+        "failed": [profile.capability_id],
+        "required": [profile.capability_id],
+    }
+    failed_coverage = coverage == expected_failed_coverage
+    if transport_ok is False:
+        # Failed required coverage means the admitted arm was entered.  Make
+        # that implication bidirectional so a forged envelope cannot retain
+        # the failed-coverage claim while coherently rewriting the other
+        # post-entry fields to a zero-step, no-effects shape.
+        if arm_entered != failed_coverage:
+            return True
+    if transport_ok is False and arm_entered:
+        limitations = payload.get("limitations")
+        if (
+            not isinstance(limitations, list)
+            or POST_ENTRY_PARTIAL_EFFECTS_LIMITATION not in limitations
+            or cleanup.get("residual") is not profile.cleanup_required
+        ):
+            return True
+    report_profile_boundary = transport_ok is True or arm_entered
+    expected_touched = list(profile.touched_scope) if report_profile_boundary else []
+    expected_effects = list(profile.side_effects) if report_profile_boundary else ["none"]
+    return scope.get("touched") != expected_touched or payload.get(
+        "side_effects"
+    ) != expected_effects
 
 
 def _derive_status(reasons: Sequence[str], payload: Mapping[str, Any]) -> str:

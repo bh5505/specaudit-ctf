@@ -197,6 +197,9 @@ def test_zap_scan_admitted_but_requires_endpoint_and_scope(
     assert outcome.exit_code == 2
     assert outcome.envelope is not None
     assert outcome.envelope["limitations"] == ["arm is not installed"]
+    assert outcome.envelope["budget"]["spent"]["tool_steps"] == 0
+    assert outcome.envelope["scope"]["touched"] == []
+    assert outcome.envelope["side_effects"] == ["none"]
 
 
 def test_zgrab2_scan_unarmed_is_an_evaluated_failure(

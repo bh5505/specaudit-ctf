@@ -14,10 +14,11 @@ import jsonschema
 import pytest
 
 from extension.__main__ import main as invoke_main
-from extension.contract import Result
+from extension.contract import Extension, Result
 from extension.encode import encode_range_document
 from extension.envelopes import RESULT_SCHEMA_ID, accept_pair, parse_execution_result
 from extension.invoke_profiles import INVOKE_PROFILES, PACKAGE_VERSION
+from extension.mcp_server import McpServer
 from extension.range import run_range
 from extension.range.__main__ import main as range_main
 from tests.test_range_lifecycle import apply_no_curated_tools
@@ -27,6 +28,93 @@ RESULT_SCHEMA_PATH = ROOT / "extension" / "schema" / "execution-result.v1.schema
 MANIFESTS = ROOT / "tests" / "goldens" / "capability-manifest"
 PREV1_INVOKE_KEYS = frozenset({"ok", "arm_id", "action", "output", "error"})
 RANGE_LIFECYCLE_V3 = "range.lifecycle.v3"
+EXPECTED_RESEARCH_READER_ACTIONS = {
+    "security-detections-mcp": ("list_rules", "search_rules", "get_rule"),
+    "agentseal": ("analyze", "list_scenarios"),
+    "vulnify": ("lookup", "list_vulns"),
+    "leonidas": ("technique", "list_techniques"),
+    "specterops-skills": ("skill", "list_skills"),
+    "detection-in-the-cloud": ("playbook", "list_playbooks", "list_rules"),
+    "pentestkit": ("result", "list_results", "summary"),
+    "collinear": ("scenario", "list_scenarios", "verify"),
+    "ad-pathfinder": ("path", "list_paths", "list_datasources"),
+    "gpohound": ("policy", "list_policies", "list_links"),
+    "claude-ad": ("technique", "list_techniques", "list_prerequisites"),
+    "numasec": ("finding", "list_findings", "list_transitions"),
+    "rubeus": ("telemetry", "list_telemetry", "list_indicators"),
+    "m365pwned": ("case_study", "list_case_studies", "list_permissions"),
+}
+EXPECTED_RESEARCH_READER_ARG_KEYS = {
+    "security-detections-mcp": {
+        "list_rules": ("index", "limit"),
+        "search_rules": ("index", "limit", "query"),
+        "get_rule": ("index", "rule_id"),
+    },
+    "agentseal": {
+        "analyze": ("fixture", "limit", "scenario_id"),
+        "list_scenarios": ("fixture", "limit"),
+    },
+    "vulnify": {
+        "lookup": ("cve_id", "feed", "name"),
+        "list_vulns": ("feed", "limit"),
+    },
+    "leonidas": {
+        "technique": ("corpus", "name", "technique_id"),
+        "list_techniques": ("corpus", "limit"),
+    },
+    "specterops-skills": {
+        "skill": ("catalog", "name", "skill_id"),
+        "list_skills": ("catalog", "category", "limit"),
+    },
+    "detection-in-the-cloud": {
+        "playbook": ("name", "playbook_dir"),
+        "list_playbooks": ("limit", "playbook_dir"),
+        "list_rules": ("category", "limit", "playbook_dir"),
+    },
+    "pentestkit": {
+        "result": ("ledger", "run_id"),
+        "list_results": ("ledger", "limit", "phase"),
+        "summary": ("ledger",),
+    },
+    "collinear": {
+        "scenario": ("name", "scenario_id", "scenarios_file"),
+        "list_scenarios": ("limit", "scenarios_file"),
+        "verify": ("scenario_id", "scenarios_file", "submission"),
+    },
+    "ad-pathfinder": {
+        "path": ("export", "path_id", "source", "target"),
+        "list_paths": ("export", "limit"),
+        "list_datasources": ("export",),
+    },
+    "gpohound": {
+        "policy": ("evidence", "name", "policy_id"),
+        "list_policies": ("evidence", "limit", "status"),
+        "list_links": ("evidence", "gpo_id"),
+    },
+    "claude-ad": {
+        "technique": ("method_file", "name", "technique_id"),
+        "list_techniques": ("category", "limit", "method_file"),
+        "list_prerequisites": ("method_file",),
+    },
+    "numasec": {
+        "finding": ("finding_id", "ledger"),
+        "list_findings": ("ledger", "limit", "status"),
+        "list_transitions": ("finding_id", "ledger"),
+    },
+    "rubeus": {
+        "telemetry": ("event_id", "telemetry_file"),
+        "list_telemetry": ("category", "limit", "telemetry_file"),
+        "list_indicators": ("indicator_type", "telemetry_file"),
+    },
+    "m365pwned": {
+        "case_study": ("case_id", "cases_file", "name"),
+        "list_case_studies": ("cases_file", "limit"),
+        "list_permissions": ("case_id", "cases_file"),
+    },
+}
+CALLER_FILE_READ_ARM_IDS = frozenset(
+    {"attack-stix-data", *EXPECTED_RESEARCH_READER_ACTIONS}
+)
 
 
 def _schema() -> dict[str, Any]:
@@ -289,7 +377,7 @@ def test_default_parser_binds_complete_coverage_to_profile_capability(
     assert "capability-profile-mismatch" in parsed.reasons
 
 
-def test_invoke_transport_ok_exit_zero_can_be_non_complete(
+def test_invoke_unowned_evidence_is_nonzero_even_when_arm_says_ok(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     fake = Result(
@@ -302,11 +390,12 @@ def test_invoke_transport_ok_exit_zero_can_be_non_complete(
     code = invoke_main(["invoke", "agent-wiz", "list_tools", "{}"])
     payload = _stdout_json(capsys)
     parsed = _assert_execution_result(payload)
-    assert code == 0
+    assert code == 1
     assert payload["transport_ok"] is True
     assert payload["status"] == "failed"
     assert parsed.status == "failed"
-    assert "unowned-evidence" in parsed.reasons
+    assert "required-step-failed" in parsed.reasons
+    assert payload["limitations"] == ["arm returned no owned evidence"]
 
 
 def test_invoke_arm_error_emits_failed_envelope_exit_one(
@@ -393,6 +482,28 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
         "metasploit-mcp.start_listener",
         "metasploit-mcp.stop_job",
     }
+    caller_file_reads = {
+        capability_id
+        for capability_id, profile in INVOKE_PROFILES.items()
+        if profile.arm_id in CALLER_FILE_READ_ARM_IDS
+        and profile.action != "list_tools"
+    }
+    # Four ATT&CK bundle lookups plus all 38 actions from the 14 added readers.
+    assert len(INVOKE_PROFILES) == 212
+    assert len(caller_file_reads) == 42
+    expected_reader_capabilities = {
+        f"{arm_id}.{action}"
+        for arm_id, actions in EXPECTED_RESEARCH_READER_ACTIONS.items()
+        for action in ("list_tools", *actions)
+    }
+    actual_reader_capabilities = {
+        capability_id
+        for capability_id, profile in INVOKE_PROFILES.items()
+        if profile.arm_id in EXPECTED_RESEARCH_READER_ACTIONS
+    }
+    assert len(EXPECTED_RESEARCH_READER_ACTIONS) == 14
+    assert sum(map(len, EXPECTED_RESEARCH_READER_ACTIONS.values())) == 38
+    assert actual_reader_capabilities == expected_reader_capabilities
     for capability_id, profile in INVOKE_PROFILES.items():
         assert capability_id == f"{profile.arm_id}.{profile.action}"
         assert profile.cleanup_required is False
@@ -447,12 +558,9 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
             assert profile.default_off is True
             assert profile.synthetic_only is False
             assert profile.approval_ref and profile.roe_ref
-        elif profile.arm_id == "attack-stix-data" or (
-            profile.arm_id == "asset-recon" and profile.action in ("plan", "parse")
-        ):
-            # Local-read admission (2026-09-04): in-process first-party
-            # lookups over a caller-named local STIX bundle; no
-            # endpoint, no subprocess, no dispatch tier.
+        elif profile.arm_id == "asset-recon" and profile.action in ("plan", "parse"):
+            # Asset-recon's offline profiles retain their established
+            # synthetic exercise contract.
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.default_off is True
@@ -498,10 +606,159 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
                 assert profile.approval_ref == (
                     "operator://dispatch-scope/RPZDECODER_DISPATCH_SCOPE"
                 )
-        else:
-            assert profile.action == "list_tools"
+        elif profile.action == "list_tools":
+            # Static policy discovery reads repository-owned metadata only.
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
+            assert profile.synthetic_only is True
+        elif profile.arm_id in CALLER_FILE_READ_ARM_IDS:
+            # R0 in-process reads over operator-supplied local files. A
+            # read can be side-effect-free without its input being synthetic.
+            assert profile.safety_class == "R0"
+            assert profile.side_effects == ("local-read",)
+            assert profile.default_off is True
+            assert profile.synthetic_only is False
+        else:
+            pytest.fail(f"unclassified invoke profile: {capability_id}")
+
+
+def test_research_reader_discovery_matches_every_admitted_action() -> None:
+    extension = Extension()
+    for arm_id, actions in EXPECTED_RESEARCH_READER_ACTIONS.items():
+        expected_arg_keys = EXPECTED_RESEARCH_READER_ARG_KEYS[arm_id]
+        assert set(expected_arg_keys) == set(actions)
+        for discovery_action in ("list_tools", "tools/list"):
+            result = extension.invoke(arm_id, discovery_action, {})
+            assert result.ok is True
+            assert set(result.output["read_actions"]) == {
+                "list_tools",
+                "tools/list",
+                *actions,
+            }
+            assert result.output["dispatch_actions"] == []
+            assert result.output["arg_keys"] == {
+                action: list(keys)
+                for action, keys in expected_arg_keys.items()
+            }
+            assert discovery_action not in result.output["arg_keys"]
+
+            refused = extension.invoke(
+                arm_id, discovery_action, {"unexpected": "caller data"}
+            )
+            assert refused.ok is False
+            assert "no caller arguments" in refused.error
+
+
+@pytest.mark.parametrize(
+    "arm_id,action",
+    [
+        (arm_id, action)
+        for arm_id, actions in EXPECTED_RESEARCH_READER_ACTIONS.items()
+        for action in actions
+    ],
+)
+def test_every_research_reader_action_forwards_exact_cli_and_mcp_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    arm_id: str,
+    action: str,
+) -> None:
+    expected_args = {
+        "sentinel": {"arm_id": arm_id, "action": action},
+        "values": [0, False, ""],
+    }
+    calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def observe(
+        _self: Extension,
+        observed_arm_id: str,
+        observed_action: str,
+        args: dict[str, Any] | None = None,
+    ) -> Result:
+        calls.append((observed_arm_id, observed_action, dict(args or {})))
+        return Result(
+            True,
+            observed_arm_id,
+            observed_action,
+            {"received": dict(args or {})},
+            None,
+        )
+
+    monkeypatch.setattr(Extension, "invoke", observe)
+    code = invoke_main(
+        ["invoke", arm_id, action, json.dumps(expected_args)]
+    )
+    cli_payload = _stdout_json(capsys)
+    assert code == 0
+    assert cli_payload["status"] == "complete"
+
+    response = McpServer().handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "invoke",
+                "arguments": {
+                    "id": arm_id,
+                    "action": action,
+                    "args": expected_args,
+                },
+            },
+        }
+    )
+    assert response is not None and "error" not in response
+    assert response["result"]["isError"] is False
+    assert calls == [
+        (arm_id, action, expected_args),
+        (arm_id, action, expected_args),
+    ]
+
+
+def test_real_caller_file_read_succeeds_through_cli_and_mcp(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    feed = tmp_path / "feed.json"
+    feed.write_text(
+        json.dumps(
+            [
+                {
+                    "cve_id": "CVE-2026-0001",
+                    "name": "Synthetic issue",
+                    "severity": "high",
+                    "description": "Synthetic fixture only",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    args = {"feed": str(feed), "cve_id": "CVE-2026-0001"}
+    code = invoke_main(["invoke", "vulnify", "lookup", json.dumps(args)])
+    cli_payload = _stdout_json(capsys)
+    assert code == 0
+    assert cli_payload["status"] == "complete"
+
+    response = McpServer().handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "invoke",
+                "arguments": {
+                    "id": "vulnify",
+                    "action": "lookup",
+                    "args": args,
+                },
+            },
+        }
+    )
+    assert response is not None and "error" not in response
+    assert response["result"]["isError"] is False
+    mcp_payload = json.loads(response["result"]["content"][0]["text"])
+    assert mcp_payload["status"] == "complete"
+    assert mcp_payload["artifacts"] == cli_payload["artifacts"]
+    assert str(feed) not in json.dumps([cli_payload, mcp_payload])
 
 
 def test_module_invoke_cli_emits_v1_subprocess() -> None:
@@ -596,8 +853,8 @@ def test_range_encoder_spends_one_step_under_freeze_budget(
     no_curated_tools: None,
 ) -> None:
     inner = run_range()
-    # 30 since the rpz-decoder and asset-recon admissions (2026-09-08).
-    assert len(inner["coverage"]["attempted"]) == 30
+    # 44 after asset-recon and the 14 research-candidate readers.
+    assert len(inner["coverage"]["attempted"]) == 44
     payload = encode_range_document(
         inner,
         started_at="2026-08-25T12:00:00Z",
