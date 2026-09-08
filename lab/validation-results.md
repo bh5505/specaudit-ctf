@@ -363,24 +363,36 @@ assessments, geo/ASN payload). Note the correct API host is
 redirects to the marketing site (404). An arm-admission packet would
 wrap this REST API directly.
 
-**Censys — credentials refused in every supplied form
-(2026-09-07).** The operator first supplied a single-token key
-(`censys_…`), refused by `https://search.censys.io/api/v2/hosts/
-8.8.8.8` as Bearer and as Basic-with-token-as-ID (401 "You must
-authenticate with a valid API ID and secret."). The operator then
-confirmed the **API ID** is the token's middle segment; the secret
-was derived as the token's tail. That pair, staged (0600) and sent
-as RFC 7617 Basic over the v2 hosts endpoint and the v1 account
-endpoint, was refused in all six permutations tried: Basic(id,
-secret), Basic(id, full token), Basic(secret, id), Bearer(secret),
-plus the two original forms. The error is identical and immediate
-(401 v2 / 403 v1), i.e. the credentials parse but do not
-authenticate — the actual API SECRET must differ from the token
-tail. The dedicated community MCP server (`nickpending/mcp-censys`)
-is archived and expects exactly this ID+secret Basic pair, so the
-moment the true secret is staged the same probe validates it.
-Recorded as-is: ID staged (0600), secret not accepted, never
-simulated.
+**Censys — VALIDATED 2026-09-07 (Platform API, Personal Access
+Token).** The saga took three turns, each measured: (1) the
+operator's first token (`censys_LNM5T1Ys_…`) was refused by the
+LEGACY search API (`search.censys.io/api/v2/hosts/8.8.8.8`) in all
+six Basic/Bearer permutations including the operator-confirmed ID
+with the token-tail as secret (401/403, immediate) — retained
+below as the legacy-refusal record; (2) the operator then created
+a **Platform Personal Access Token** (`censys_76htAKKK_…`,
+accounts.censys.io) — the NEW Censys Platform scheme, disjoint
+from legacy ID+secret: `Authorization: Bearer <full PAT>` against
+`https://api.platform.censys.io/v3/…`; (3) staged (0600) and
+validated with clean differentiation on the documented get-a-host
+endpoint: **GET /v3/global/asset/host/8.8.8.8 with the PAT →
+HTTP 200** (real host resource: geo/location payload for
+Mountain View); same request **without the Authorization header →
+HTTP 401** "Access credentials are invalid". Two measurement
+gotchas worth the record: the platform host is behind Cloudflare
+bot protection that rejects python-urllib's default signature
+(error 1010, both with and without auth — send a normal UA such
+as curl's); and an intermediate curl probe returned a FALSE 401
+because the Git Bash → wsl.exe argv layer emptied the `$(cat)`
+expansion (curl -v showed `Authorization: Bearer ` with nothing
+after it) — any header-bearing probe across that boundary must
+read the token inside the remote process, not via argv
+substitution. Scope note (docs confirmed by operator): Free tier
+entitles host/web-property/certificate lookups, one concurrent
+request, no organization ID. An arm-admission packet would wrap
+the Platform v3 reads (the archived community MCP server wants
+the legacy pair and does not apply). Never simulated — every
+number above is a live response.
 
 **abuse.ch — VALIDATED 2026-09-07 (all three endpoints).** Key
 staged at a 0600 file, sent as the `Auth-Key` header. Request
