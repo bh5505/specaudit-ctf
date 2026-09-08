@@ -39,6 +39,7 @@ from .encode import (
 from .invoke_profiles import invoke_profile
 
 STATUS_COMPLETE = "complete"
+_DISPATCH_SCOPE_APPROVAL_PREFIX = "operator://dispatch-scope/"
 
 
 class RangeRunnerUnavailable(Exception):
@@ -178,10 +179,28 @@ def dispatch_invoke(
         # The admitted envelope, not a child-controlled Result field, owns the
         # process/MCP success signal. Keep child error text out of stderr: an
         # arm may accidentally include caller paths, evidence, or secrets.
-        return DispatchOutcome(envelope, 1, "invoke failed")
+        return DispatchOutcome(envelope, 1, _safe_result_failure_line(profile))
     finally:
         if sink is not None:
             sink.close()
+
+
+def _safe_result_failure_line(profile: Any) -> str:
+    """Return actionable producer-owned guidance without child error text."""
+    approval_ref = getattr(profile, "approval_ref", None)
+    if isinstance(approval_ref, str) and approval_ref.startswith(
+        _DISPATCH_SCOPE_APPROVAL_PREFIX
+    ):
+        scope_env = approval_ref.removeprefix(_DISPATCH_SCOPE_APPROVAL_PREFIX)
+        capability_id = getattr(profile, "capability_id", "admitted capability")
+        if scope_env and all(
+            ch.isupper() or ch.isdigit() or ch == "_" for ch in scope_env
+        ):
+            return (
+                f"invoke failed for {capability_id}; verify {scope_env} arming "
+                "and whether the request is outside the armed dispatch scope"
+            )
+    return "invoke failed"
 
 
 def _load_range_runner() -> tuple[type[Exception], Any]:

@@ -377,3 +377,82 @@ def test_admitted_envelope_owns_direct_cli_and_mcp_failure_signal(
     rendered = json.dumps([outcome.envelope, cli_payload, response])
     assert "secret input" not in rendered
     assert "/operator/private" not in rendered
+
+
+def test_dispatch_scope_failure_guidance_is_producer_owned_and_redacted(
+    monkeypatch, capsys
+) -> None:
+    returned = Result(
+        False,
+        "nmap",
+        "scan",
+        None,
+        "secret input at /operator/private/targets.txt",
+    )
+    monkeypatch.setattr(Extension, "invoke", lambda *_args, **_kwargs: returned)
+    expected_line = (
+        "invoke failed for nmap.scan; verify NMAP_DISPATCH_SCOPE arming and "
+        "whether the request is outside the armed dispatch scope"
+    )
+
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="nmap",
+        action="scan",
+        args={"target": "10.10.0.5"},
+    )
+    assert outcome.exit_code == 1
+    assert outcome.stderr_line == expected_line
+    assert outcome.envelope is not None
+
+    code = cli_main(
+        ["invoke", "nmap", "scan", '{"target":"10.10.0.5"}']
+    )
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.err.strip() == expected_line
+    cli_payload = json.loads(captured.out)
+
+    response = McpServer().handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "invoke",
+                "arguments": {
+                    "id": "nmap",
+                    "action": "scan",
+                    "args": {"target": "10.10.0.5"},
+                },
+            },
+        }
+    )
+    assert response is not None and "error" not in response
+    assert response["result"]["isError"] is True
+    rendered = json.dumps([outcome.envelope, cli_payload, response])
+    assert "secret input" not in rendered
+    assert "/operator/private" not in rendered
+
+    # The same producer-owned prompt remains non-causal when the actual defect
+    # is an identity mismatch rather than an arming or scope refusal.
+    mismatch = Result(
+        True,
+        "wrong-arm",
+        "scan",
+        {"value": "wrong identity"},
+        None,
+    )
+    monkeypatch.setattr(Extension, "invoke", lambda *_args, **_kwargs: mismatch)
+    mismatched = dispatch_invoke(
+        Extension(),
+        arm_id="nmap",
+        action="scan",
+        args={"target": "10.10.0.5"},
+    )
+    assert mismatched.exit_code == 1
+    assert mismatched.stderr_line == expected_line
+    assert mismatched.envelope is not None
+    assert mismatched.envelope["limitations"] == [
+        "arm result identity did not match admitted capability"
+    ]
