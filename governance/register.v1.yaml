@@ -1,0 +1,2255 @@
+schema: specaudit.ctf.governance.register.v1
+schema_version: 1
+register_revision: 1
+scope:
+  id: pr97-readers
+  description: Additive GOV-01 foundation for the 14 PR97 research readers; all-repository governance remains incomplete.
+  repository_complete: false
+runtime_inventory:
+  authority: extension.invoke_profiles.INVOKE_PROFILES
+  expected_count: 212
+  capability_ids:
+  - ad-pathfinder.list_datasources
+  - ad-pathfinder.list_paths
+  - ad-pathfinder.list_tools
+  - ad-pathfinder.path
+  - agent-wiz.list_tools
+  - agentseal.analyze
+  - agentseal.list_scenarios
+  - agentseal.list_tools
+  - ai-deep-sast.list_tools
+  - asset-recon.ct
+  - asset-recon.discover
+  - asset-recon.list_tools
+  - asset-recon.parse
+  - asset-recon.plan
+  - asset-recon.probe
+  - asset-recon.ptr
+  - attack-stix-data.group
+  - attack-stix-data.list_tools
+  - attack-stix-data.relationships
+  - attack-stix-data.software
+  - attack-stix-data.technique
+  - burp-mcp.base64_decode
+  - burp-mcp.base64_encode
+  - burp-mcp.generate_random_string
+  - burp-mcp.get_collaborator_interactions
+  - burp-mcp.get_organizer_items
+  - burp-mcp.get_organizer_items_regex
+  - burp-mcp.get_proxy_http_history
+  - burp-mcp.get_proxy_http_history_regex
+  - burp-mcp.get_proxy_websocket_history
+  - burp-mcp.get_proxy_websocket_history_regex
+  - burp-mcp.get_scanner_issues
+  - burp-mcp.list_tools
+  - burp-mcp.output_project_options
+  - burp-mcp.output_user_options
+  - burp-mcp.url_decode
+  - burp-mcp.url_encode
+  - caldera.abilities
+  - caldera.adversaries
+  - caldera.agents
+  - caldera.operation
+  - caldera.operation_facts
+  - caldera.operation_links
+  - caldera.operations
+  - caldera.operations_summary
+  - checkov.scan
+  - claude-ad.list_prerequisites
+  - claude-ad.list_techniques
+  - claude-ad.list_tools
+  - claude-ad.technique
+  - collinear.list_scenarios
+  - collinear.list_tools
+  - collinear.scenario
+  - collinear.verify
+  - commix.scan
+  - dark-moon.campaign
+  - dark-moon.list_tools
+  - dark-moon.run
+  - deepsec.list_tools
+  - detection-in-the-cloud.list_playbooks
+  - detection-in-the-cloud.list_rules
+  - detection-in-the-cloud.list_tools
+  - detection-in-the-cloud.playbook
+  - google-mcp-security.get_collection_feature_matches
+  - google-mcp-security.get_collection_mitre_tree
+  - google-mcp-security.get_collection_report
+  - google-mcp-security.get_collection_rules
+  - google-mcp-security.get_collection_timeline_events
+  - google-mcp-security.get_collections_commonalities
+  - google-mcp-security.get_domain_report
+  - google-mcp-security.get_entities_related_to_a_collection
+  - google-mcp-security.get_entities_related_to_a_domain
+  - google-mcp-security.get_entities_related_to_a_file
+  - google-mcp-security.get_entities_related_to_a_hunting_ruleset
+  - google-mcp-security.get_entities_related_to_an_ip_address
+  - google-mcp-security.get_entities_related_to_an_url
+  - google-mcp-security.get_file_behavior_report
+  - google-mcp-security.get_file_behavior_summary
+  - google-mcp-security.get_file_report
+  - google-mcp-security.get_hunting_ruleset
+  - google-mcp-security.get_ip_address_report
+  - google-mcp-security.get_threat_profile
+  - google-mcp-security.get_threat_profile_associations_timeline
+  - google-mcp-security.get_threat_profile_recommendations
+  - google-mcp-security.get_url_report
+  - google-mcp-security.list_threat_profiles
+  - google-mcp-security.list_tools
+  - google-mcp-security.search_campaigns
+  - google-mcp-security.search_digital_threat_monitoring
+  - google-mcp-security.search_iocs
+  - google-mcp-security.search_malware_families
+  - google-mcp-security.search_software_toolkits
+  - google-mcp-security.search_threat_actors
+  - google-mcp-security.search_threat_reports
+  - google-mcp-security.search_threats
+  - google-mcp-security.search_vulnerabilities
+  - gpohound.list_links
+  - gpohound.list_policies
+  - gpohound.list_tools
+  - gpohound.policy
+  - leonidas.list_techniques
+  - leonidas.list_tools
+  - leonidas.technique
+  - m365pwned.case_study
+  - m365pwned.list_case_studies
+  - m365pwned.list_permissions
+  - m365pwned.list_tools
+  - metasploit-mcp.generate_payload
+  - metasploit-mcp.list_active_sessions
+  - metasploit-mcp.list_exploits
+  - metasploit-mcp.list_listeners
+  - metasploit-mcp.list_payloads
+  - metasploit-mcp.list_tools
+  - metasploit-mcp.run_auxiliary_module
+  - metasploit-mcp.run_exploit
+  - metasploit-mcp.run_post_module
+  - metasploit-mcp.send_session_command
+  - metasploit-mcp.start_listener
+  - metasploit-mcp.stop_job
+  - metasploit-mcp.terminate_session
+  - nmap.list_tools
+  - nmap.scan
+  - numasec.finding
+  - numasec.list_findings
+  - numasec.list_tools
+  - numasec.list_transitions
+  - osmedeus.scan
+  - page-fetch.fetch
+  - pentestkit.list_results
+  - pentestkit.list_tools
+  - pentestkit.result
+  - pentestkit.summary
+  - prowler-mcp.list_tools
+  - prowler-mcp.prowler_docs_get_document
+  - prowler-mcp.prowler_docs_search
+  - prowler-mcp.prowler_get_attack_paths_cartography_schema
+  - prowler-mcp.prowler_get_compliance_framework_state_details
+  - prowler-mcp.prowler_get_compliance_overview
+  - prowler-mcp.prowler_get_current_user
+  - prowler-mcp.prowler_get_finding_details
+  - prowler-mcp.prowler_get_finding_group_details
+  - prowler-mcp.prowler_get_findings_overview
+  - prowler-mcp.prowler_get_integration
+  - prowler-mcp.prowler_get_jira_issue_types
+  - prowler-mcp.prowler_get_mute_rule
+  - prowler-mcp.prowler_get_mutelist
+  - prowler-mcp.prowler_get_resource
+  - prowler-mcp.prowler_get_resource_events
+  - prowler-mcp.prowler_get_resources_overview
+  - prowler-mcp.prowler_get_role
+  - prowler-mcp.prowler_get_scan
+  - prowler-mcp.prowler_get_user
+  - prowler-mcp.prowler_get_user_roles
+  - prowler-mcp.prowler_hub_get_check_code
+  - prowler-mcp.prowler_hub_get_check_details
+  - prowler-mcp.prowler_hub_get_check_fixer
+  - prowler-mcp.prowler_hub_get_compliance_details
+  - prowler-mcp.prowler_hub_get_provider_services
+  - prowler-mcp.prowler_hub_list_checks
+  - prowler-mcp.prowler_hub_list_compliances
+  - prowler-mcp.prowler_hub_list_providers
+  - prowler-mcp.prowler_hub_semantic_search_checks
+  - prowler-mcp.prowler_hub_semantic_search_compliances
+  - prowler-mcp.prowler_list_attack_paths_queries
+  - prowler-mcp.prowler_list_attack_paths_scans
+  - prowler-mcp.prowler_list_finding_group_resources
+  - prowler-mcp.prowler_list_finding_groups
+  - prowler-mcp.prowler_list_integrations
+  - prowler-mcp.prowler_list_mute_rules
+  - prowler-mcp.prowler_list_resources
+  - prowler-mcp.prowler_list_roles
+  - prowler-mcp.prowler_list_scans
+  - prowler-mcp.prowler_list_users
+  - prowler-mcp.prowler_run_attack_paths_query
+  - prowler-mcp.prowler_search_providers
+  - prowler-mcp.prowler_search_security_findings
+  - pyrit.list_tools
+  - pyrit.scan
+  - routersploit.list_tools
+  - routersploit.run
+  - rpz-decoder.decode
+  - rpz-decoder.fetch
+  - rpz-decoder.list_tools
+  - rpz-decoder.status
+  - rubeus.list_indicators
+  - rubeus.list_telemetry
+  - rubeus.list_tools
+  - rubeus.telemetry
+  - security-detections-mcp.get_rule
+  - security-detections-mcp.list_rules
+  - security-detections-mcp.list_tools
+  - security-detections-mcp.search_rules
+  - semgrep-mcp.list_tools
+  - semgrep-mcp.semgrep_scan
+  - sniper.list_tools
+  - specterops-skills.list_skills
+  - specterops-skills.list_tools
+  - specterops-skills.skill
+  - stratus-red-team.detonate
+  - stratus-red-team.revert
+  - stratus-red-team.warmup
+  - vulnify.list_tools
+  - vulnify.list_vulns
+  - vulnify.lookup
+  - vuls.scan
+  - vvah.list_tools
+  - wapiti.scan
+  - zaproxy.ascan_scan
+  - zaproxy.spider_scan
+  - zdns.lookup
+  - zgrab2.list_tools
+  - zgrab2.scan
+  contract_sha256: sha256:ff3c363389fff45506fcc9f8649c9fa18e71669595256f1260aee8312af6514a
+contract_templates:
+- id: policy-read-v1
+  safety_class: R0
+  side_effects:
+  - local-read
+  egress: none
+  cleanup_required: false
+  default_off: true
+  synthetic_only: true
+  timeout_ms: 30000
+  max_output_bytes: 1048576
+  max_tool_steps: 1
+  max_spend: null
+  scope_mode: static-policy-uri
+  input_binding: not-applicable
+  approval_required: false
+  limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- id: caller-file-read-v1
+  safety_class: R0
+  side_effects:
+  - local-read
+  egress: none
+  cleanup_required: false
+  default_off: true
+  synthetic_only: false
+  timeout_ms: 30000
+  max_output_bytes: 1048576
+  max_tool_steps: 1
+  max_spend: null
+  scope_mode: static-policy-uri
+  input_binding: caller-selected-unbound
+  approval_required: false
+  limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+modules:
+- id: CYB-05
+  record_version: 1
+  title: Vulnerability and exposure
+  status: design-ready
+  owner: specaudit-ctf-maintainers
+  audiences:
+  - internal-audit-and-security-practitioners
+  level: practitioner
+  outcomes:
+  - separate affected-version applicability, reachability, severity, exploitation evidence, probability, and organizational
+    impact
+  - preserve unknown and incomplete enrichment instead of turning absence into an all-clear
+  dependencies:
+  - EVID-01
+  - GOV-01
+  - DATA-01
+  deliverables:
+  - applicability record
+  - prioritized findings or supported non-findings
+  - exception analysis
+  - targeted evidence requests
+  validation_evidence: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - criteria-or-threat-change
+    - scenario-or-grading-change
+    - dependency-or-source-change
+  promotion_evidence: []
+  limitations:
+  - no-frozen-vulnerability-corpus-ships
+  - trusted-observation-and-data-admission-work-remain-incomplete
+  - design-ready-does-not-mean-runnable-or-shipped
+sources:
+- id: R01
+  record_version: 1
+  name: vulnify
+  url: https://github.com/mez-0/vulnify/
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R02
+  record_version: 1
+  name: AD-PathFinder
+  url: https://github.com/NetSPI/AD-PathFinder
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R03
+  record_version: 1
+  name: SpecterOps skills
+  url: https://github.com/SpecterOps/skills
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R08
+  record_version: 1
+  name: GPOHound
+  url: https://github.com/cogiceo/GPOHound
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R15
+  record_version: 1
+  name: Collinear cybersecurity simulated worlds
+  url: https://blog.collinear.ai/p/cybersecurity-simulated-worlds-agi
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R17
+  record_version: 1
+  name: numasec
+  url: https://github.com/FrancescoStabile/numasec
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R25
+  record_version: 1
+  name: Claude-AD
+  url: https://github.com/ADScanPro/Claude-AD
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R33
+  record_version: 1
+  name: Leonidas
+  url: https://github.com/reverseclabs/leonidas
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R34
+  record_version: 1
+  name: Detection in the Cloud
+  url: https://detectioninthe.cloud
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R35
+  record_version: 1
+  name: AgentSeal
+  url: https://github.com/getagentseal/agentseal
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R36
+  record_version: 1
+  name: Rubeus
+  url: https://github.com/ghostpack/rubeus
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R38
+  record_version: 1
+  name: M365Pwned
+  url: https://github.com/OtterHacker/M365Pwned
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R42
+  record_version: 1
+  name: pentestkit
+  url: https://github.com/lordx64/pentestkit
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+- id: R43
+  record_version: 1
+  name: Security-Detections-MCP
+  url: https://github.com/mhaggis/security-detections-mcp
+  status: research
+  owner: specaudit-ctf-maintainers
+  selected_revision: null
+  content_digests: []
+  rights:
+    license_review: unreviewed
+    data_rights_review: unreviewed
+    permitted_uses:
+    - reference-link-only
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - upstream-revision-change
+    - license-or-data-rights-change
+    - link-or-availability-change
+  replacement: null
+  promotion_evidence: []
+  limitations:
+  - no-upstream-revision-selected
+  - no-license-or-data-rights-clearance
+  - research-mapping-does-not-establish-runtime-consumption
+runtime:
+- capability_id: ad-pathfinder.list_datasources
+  record_version: 1
+  arm_id: ad-pathfinder
+  action: list_datasources
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - export
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: ad-pathfinder.list_paths
+  record_version: 1
+  arm_id: ad-pathfinder
+  action: list_paths
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - export
+  - limit
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: ad-pathfinder.list_tools
+  record_version: 1
+  arm_id: ad-pathfinder
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: ad-pathfinder.path
+  record_version: 1
+  arm_id: ad-pathfinder
+  action: path
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - export
+  - path_id
+  - source
+  - target
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: agentseal.analyze
+  record_version: 1
+  arm_id: agentseal
+  action: analyze
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - fixture
+  - limit
+  - scenario_id
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: agentseal.list_scenarios
+  record_version: 1
+  arm_id: agentseal
+  action: list_scenarios
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - fixture
+  - limit
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: agentseal.list_tools
+  record_version: 1
+  arm_id: agentseal
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: claude-ad.list_prerequisites
+  record_version: 1
+  arm_id: claude-ad
+  action: list_prerequisites
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - method_file
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: claude-ad.list_techniques
+  record_version: 1
+  arm_id: claude-ad
+  action: list_techniques
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - category
+  - limit
+  - method_file
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: claude-ad.list_tools
+  record_version: 1
+  arm_id: claude-ad
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: claude-ad.technique
+  record_version: 1
+  arm_id: claude-ad
+  action: technique
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - method_file
+  - name
+  - technique_id
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: collinear.list_scenarios
+  record_version: 1
+  arm_id: collinear
+  action: list_scenarios
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - limit
+  - scenarios_file
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: collinear.list_tools
+  record_version: 1
+  arm_id: collinear
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: collinear.scenario
+  record_version: 1
+  arm_id: collinear
+  action: scenario
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - name
+  - scenario_id
+  - scenarios_file
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: collinear.verify
+  record_version: 1
+  arm_id: collinear
+  action: verify
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - scenario_id
+  - scenarios_file
+  - submission
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: detection-in-the-cloud.list_playbooks
+  record_version: 1
+  arm_id: detection-in-the-cloud
+  action: list_playbooks
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - limit
+  - playbook_dir
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: detection-in-the-cloud.list_rules
+  record_version: 1
+  arm_id: detection-in-the-cloud
+  action: list_rules
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - category
+  - limit
+  - playbook_dir
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: detection-in-the-cloud.list_tools
+  record_version: 1
+  arm_id: detection-in-the-cloud
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: detection-in-the-cloud.playbook
+  record_version: 1
+  arm_id: detection-in-the-cloud
+  action: playbook
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - name
+  - playbook_dir
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: gpohound.list_links
+  record_version: 1
+  arm_id: gpohound
+  action: list_links
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - evidence
+  - gpo_id
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: gpohound.list_policies
+  record_version: 1
+  arm_id: gpohound
+  action: list_policies
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - evidence
+  - limit
+  - status
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: gpohound.list_tools
+  record_version: 1
+  arm_id: gpohound
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: gpohound.policy
+  record_version: 1
+  arm_id: gpohound
+  action: policy
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - evidence
+  - name
+  - policy_id
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: leonidas.list_techniques
+  record_version: 1
+  arm_id: leonidas
+  action: list_techniques
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - corpus
+  - limit
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: leonidas.list_tools
+  record_version: 1
+  arm_id: leonidas
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: leonidas.technique
+  record_version: 1
+  arm_id: leonidas
+  action: technique
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - corpus
+  - name
+  - technique_id
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: m365pwned.case_study
+  record_version: 1
+  arm_id: m365pwned
+  action: case_study
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - case_id
+  - cases_file
+  - name
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: m365pwned.list_case_studies
+  record_version: 1
+  arm_id: m365pwned
+  action: list_case_studies
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - cases_file
+  - limit
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: m365pwned.list_permissions
+  record_version: 1
+  arm_id: m365pwned
+  action: list_permissions
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - case_id
+  - cases_file
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: m365pwned.list_tools
+  record_version: 1
+  arm_id: m365pwned
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: numasec.finding
+  record_version: 1
+  arm_id: numasec
+  action: finding
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - finding_id
+  - ledger
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: numasec.list_findings
+  record_version: 1
+  arm_id: numasec
+  action: list_findings
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - ledger
+  - limit
+  - status
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: numasec.list_tools
+  record_version: 1
+  arm_id: numasec
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: numasec.list_transitions
+  record_version: 1
+  arm_id: numasec
+  action: list_transitions
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - finding_id
+  - ledger
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: pentestkit.list_results
+  record_version: 1
+  arm_id: pentestkit
+  action: list_results
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - ledger
+  - limit
+  - phase
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: pentestkit.list_tools
+  record_version: 1
+  arm_id: pentestkit
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: pentestkit.result
+  record_version: 1
+  arm_id: pentestkit
+  action: result
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - ledger
+  - run_id
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: pentestkit.summary
+  record_version: 1
+  arm_id: pentestkit
+  action: summary
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - ledger
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: rubeus.list_indicators
+  record_version: 1
+  arm_id: rubeus
+  action: list_indicators
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - indicator_type
+  - telemetry_file
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: rubeus.list_telemetry
+  record_version: 1
+  arm_id: rubeus
+  action: list_telemetry
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - category
+  - limit
+  - telemetry_file
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: rubeus.list_tools
+  record_version: 1
+  arm_id: rubeus
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: rubeus.telemetry
+  record_version: 1
+  arm_id: rubeus
+  action: telemetry
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - event_id
+  - telemetry_file
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: security-detections-mcp.get_rule
+  record_version: 1
+  arm_id: security-detections-mcp
+  action: get_rule
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - index
+  - rule_id
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: security-detections-mcp.list_rules
+  record_version: 1
+  arm_id: security-detections-mcp
+  action: list_rules
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - index
+  - limit
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: security-detections-mcp.list_tools
+  record_version: 1
+  arm_id: security-detections-mcp
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: security-detections-mcp.search_rules
+  record_version: 1
+  arm_id: security-detections-mcp
+  action: search_rules
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - index
+  - limit
+  - query
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: specterops-skills.list_skills
+  record_version: 1
+  arm_id: specterops-skills
+  action: list_skills
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - catalog
+  - category
+  - limit
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: specterops-skills.list_tools
+  record_version: 1
+  arm_id: specterops-skills
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: specterops-skills.skill
+  record_version: 1
+  arm_id: specterops-skills
+  action: skill
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - catalog
+  - name
+  - skill_id
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: vulnify.list_tools
+  record_version: 1
+  arm_id: vulnify
+  action: list_tools
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: policy-read-v1
+  input_keys: []
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - policy-metadata-only
+  - catalog-presence-does-not-imply-support
+- capability_id: vulnify.list_vulns
+  record_version: 1
+  arm_id: vulnify
+  action: list_vulns
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - feed
+  - limit
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+- capability_id: vulnify.lookup
+  record_version: 1
+  arm_id: vulnify
+  action: lookup
+  presence: admitted
+  support_tier: research
+  owner: specaudit-ctf-maintainers
+  tool_version: 0.1.0
+  implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
+  contract_ref: caller-file-read-v1
+  input_keys:
+  - cve_id
+  - feed
+  - name
+  result_schema: specaudit.ctf.execution-result.v1
+  supported_versions: []
+  regression_cases: []
+  currentness:
+    reviewed_on: null
+    review_due_on: null
+    triggers:
+    - profile-contract-change
+    - implementation-or-dependency-change
+    - supported-version-change
+  promotion_evidence: []
+  known_limitations:
+  - caller-selected-path-is-not-bound-in-capability-manifest-v1
+  - input-custody-and-upstream-equivalence-are-not-attested
+relationships:
+- id: map-r01-vulnify
+  record_version: 1
+  kind: research-mapping
+  from: source:R01
+  to:
+  - runtime:vulnify.list_tools
+  - runtime:vulnify.list_vulns
+  - runtime:vulnify.lookup
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r02-ad-pathfinder
+  record_version: 1
+  kind: research-mapping
+  from: source:R02
+  to:
+  - runtime:ad-pathfinder.list_datasources
+  - runtime:ad-pathfinder.list_paths
+  - runtime:ad-pathfinder.list_tools
+  - runtime:ad-pathfinder.path
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r03-specterops-skills
+  record_version: 1
+  kind: research-mapping
+  from: source:R03
+  to:
+  - runtime:specterops-skills.list_skills
+  - runtime:specterops-skills.list_tools
+  - runtime:specterops-skills.skill
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r08-gpohound
+  record_version: 1
+  kind: research-mapping
+  from: source:R08
+  to:
+  - runtime:gpohound.list_links
+  - runtime:gpohound.list_policies
+  - runtime:gpohound.list_tools
+  - runtime:gpohound.policy
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r15-collinear
+  record_version: 1
+  kind: research-mapping
+  from: source:R15
+  to:
+  - runtime:collinear.list_scenarios
+  - runtime:collinear.list_tools
+  - runtime:collinear.scenario
+  - runtime:collinear.verify
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r17-numasec
+  record_version: 1
+  kind: research-mapping
+  from: source:R17
+  to:
+  - runtime:numasec.finding
+  - runtime:numasec.list_findings
+  - runtime:numasec.list_tools
+  - runtime:numasec.list_transitions
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r25-claude-ad
+  record_version: 1
+  kind: research-mapping
+  from: source:R25
+  to:
+  - runtime:claude-ad.list_prerequisites
+  - runtime:claude-ad.list_techniques
+  - runtime:claude-ad.list_tools
+  - runtime:claude-ad.technique
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r33-leonidas
+  record_version: 1
+  kind: research-mapping
+  from: source:R33
+  to:
+  - runtime:leonidas.list_techniques
+  - runtime:leonidas.list_tools
+  - runtime:leonidas.technique
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r34-detection-in-the-cloud
+  record_version: 1
+  kind: research-mapping
+  from: source:R34
+  to:
+  - runtime:detection-in-the-cloud.list_playbooks
+  - runtime:detection-in-the-cloud.list_rules
+  - runtime:detection-in-the-cloud.list_tools
+  - runtime:detection-in-the-cloud.playbook
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r35-agentseal
+  record_version: 1
+  kind: research-mapping
+  from: source:R35
+  to:
+  - runtime:agentseal.analyze
+  - runtime:agentseal.list_scenarios
+  - runtime:agentseal.list_tools
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r36-rubeus
+  record_version: 1
+  kind: research-mapping
+  from: source:R36
+  to:
+  - runtime:rubeus.list_indicators
+  - runtime:rubeus.list_telemetry
+  - runtime:rubeus.list_tools
+  - runtime:rubeus.telemetry
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r38-m365pwned
+  record_version: 1
+  kind: research-mapping
+  from: source:R38
+  to:
+  - runtime:m365pwned.case_study
+  - runtime:m365pwned.list_case_studies
+  - runtime:m365pwned.list_permissions
+  - runtime:m365pwned.list_tools
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r42-pentestkit
+  record_version: 1
+  kind: research-mapping
+  from: source:R42
+  to:
+  - runtime:pentestkit.list_results
+  - runtime:pentestkit.list_tools
+  - runtime:pentestkit.result
+  - runtime:pentestkit.summary
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: map-r43-security-detections-mcp
+  record_version: 1
+  kind: research-mapping
+  from: source:R43
+  to:
+  - runtime:security-detections-mcp.get_rule
+  - runtime:security-detections-mcp.list_rules
+  - runtime:security-detections-mcp.list_tools
+  - runtime:security-detections-mcp.search_rules
+  evidence_refs:
+  - PROGRAM.md#candidate-register-42-unique-candidates
+  limitations:
+  - mapping-does-not-assert-upstream-consumption-or-provenance
+- id: cyb-05-proposed-source-r01
+  record_version: 1
+  kind: proposed-source
+  from: module:CYB-05
+  to:
+  - source:R01
+  evidence_refs:
+  - CURRICULUM.md#t03--risk-based-vulnerability-prioritization
+  limitations:
+  - source-is-unselected-and-unadmitted
+- id: cyb-05-proposed-use-vulnify-lookup
+  record_version: 1
+  kind: proposed-use
+  from: module:CYB-05
+  to:
+  - runtime:vulnify.lookup
+  evidence_refs:
+  - PROGRAM.md#first-proposed-vertical-slice
+  limitations:
+  - proposed-use-grants-no-execution-or-grading-authority
+  - trusted-observation-and-frozen-source-work-remain-separate
+promotion_events: []
