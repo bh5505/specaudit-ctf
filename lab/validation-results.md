@@ -16,7 +16,10 @@ Rules this record inherits from `lab/README.md`:
   unfilled block stays awaiting-operator rather than guessing.
 
 Status legend: `awaiting-operator` (never validated from this repo's
-perspective) · `validated` (operator-recorded outcome below).
+perspective) · `validated` (recorded outcome below — since the
+2026-09-07 agent-staging directive, either operator-run or
+agent-staged-and-run in the lab with operator-provided credentials;
+each block states which).
 
 Probe note 2026-09-06 (operator-authorized lab check,launcher A2):
 all three host classes were probed for staged validating assets —
@@ -125,7 +128,7 @@ VALIDATION (runbook commands, `BURP_MCP_ENDPOINT=http://127.0.0.1:9876`) —
 |---|---|
 | Date | 2026-09-07 |
 | Env vars armed | `BURP_MCP_ENDPOINT=http://127.0.0.1:9876` (literal loopback only; hostname endpoints refused) |
-| Invoke commands as run | `python -m extension invoke burp-mcp list_tools` · `url_encode '{"content": "a b"}'` · `get_proxy_http_history '{}'` · `get_proxy_http_history_regex '{"regex": "login", "count": 10, "offset": 0}'` |
+| Invoke commands as run | `python -m extension invoke burp-mcp list_tools` · `python -m extension invoke burp-mcp url_encode '{"content": "a b"}'` · `python -m extension invoke burp-mcp get_proxy_http_history '{}'` · `python -m extension invoke burp-mcp get_proxy_http_history_regex '{"regex": "login", "count": 10, "offset": 0}'` |
 | Envelope status | **complete** for all four (transport_ok true, coverage complete) |
 | Artifacts | digests per call, `kind: policy-report`, `redaction: credentials-stripped` — list_tools `sha256:4aa44d13…`; live SSE handshake captured (`event: endpoint`, `data: ?sessionId=…`) |
 | Operator note | server v1.3.0 on Burp CE 2026.3.2; the shipped server ALREADY validates Origin+Host (the 09-06 note scoped that to unreleased main — v1.3.0 refuses port-less origins with 403, measured) |

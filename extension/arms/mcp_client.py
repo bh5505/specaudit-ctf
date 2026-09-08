@@ -934,6 +934,10 @@ class SseMcpSession:
         if problem is not None:
             raise RuntimeError("invalid SSE endpoint URL: %s" % problem)
         self.base_url = base_url.strip().rstrip("/")
+        # Same shape as StreamableHttpClient: an attribute computed once
+        # from the normalized base_url, so neither class can mix up a
+        # method call with an attribute read.
+        self._origin_str = origin_string(urllib_parse.urlparse(self.base_url))
         self.timeout = timeout
         self._credential = credential
         self._secret_values: set[str] = set()
@@ -989,11 +993,8 @@ class SseMcpSession:
             self._opener = self._pin.opener()
         return self._pin
 
-    def _origin_str(self) -> str:
-        return origin_string(urllib_parse.urlparse(self.base_url))
-
     def _auth_headers(self) -> dict[str, str]:
-        headers = {"Origin": self._origin_str(), "User-Agent": USER_AGENT}
+        headers = {"Origin": self._origin_str, "User-Agent": USER_AGENT}
         if self._credential is not None:
             headers[self._credential.header_name] = self._credential.header_value
         return headers
@@ -1004,7 +1005,7 @@ class SseMcpSession:
                 "upstream requires OAuth (RFC 9728 resource metadata present) "
                 "and this transport has no OAuth configuration - refusing"
             )
-        origin = self._origin_str()
+        origin = self._origin_str
         token = self._oauth_manager.token_for(origin)
         if token is None:
             token = self._oauth_manager.authorize(challenge.resource_metadata_url, origin, self.timeout)
