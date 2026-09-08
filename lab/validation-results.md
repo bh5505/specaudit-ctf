@@ -45,8 +45,9 @@ operator-held (the `VT_APIKEY` credential and the https front).
 
 ## burp-mcp — loopback reads over the official BApp
 
-Status: **awaiting-operator** (agent staging attempted and
-measured-blocked 2026-09-07 — details below the runbook)
+Status: **degraded-validated 2026-09-07** (agent-staged: listener live,
+transport + non-data reads validated; data reads blocked by the
+server's interactive approval gate — measured below)
 
 Runbook: `lab/README.md` → "Operator-gated rows". Facts pinned from
 source/docs 2026-09-06 (PortSwigger/mcp-server main; BApp store
@@ -87,50 +88,57 @@ v1.3.0, 2026-05-28, still current):
   2026-09-06; credit it only after the next BApp release. No TLS on
   the listener (unchanged; contained by the literal-loopback rule).
 
+**Agent staging + validation — measured 2026-09-07 (kali-linux WSL).**
+
+STAGING: COMPLETE. Burp CE 2026.3.2 (kali repo) + the official
+`burp-mcp-all.jar` v1.3.0, loaded headlessly via the CLI's own
+developer-extension mechanism (no BApp Store UI needed):
+`java -cp burpsuite.jar:burp-mcp-all.jar burp.StartBurp
+--developer-extension-class-name=net.portswigger.mcp.ExtensionBase`
+under a display (Xvfb or WSLg), license prompt answered on stdin, the
+project wizard walked (Temporary project → Use Burp defaults → Start
+Burp), and the extension's MCP server LISTENING on
+`127.0.0.1:9876`. Measured boot requirements along the way: a FULL
+JRE (the headless JRE lacks `libawt_xawt.so` — Burp dies in its own
+UI init with `no ComponentUI class for: burp.Zc52` both under
+`-Djava.awt.headless=true` AND under a real display); the first-run
+license reads stdin even headless; `--use-defaults` does NOT skip the
+project wizard; `--user-config-file` does not load extensions (the
+classpath flag does). The shipped server validates Origin strictly:
+same-origin INCLUDING port passes, a port-less loopback Origin gets
+403, and the SSE endpoint is the ROOT path (`GET /`), not `/sse`.
+
+ARM FIX (this repo, measured driver of the validation): the shared
+HTTP-MCP client's Origin emission changed from the port-less
+`http://127.0.0.1` constant to the endpoint's own RFC 6454 origin —
+with that fix the SSE handshake completes (`event: endpoint` with
+sessionId) and invokes flow. P5's property (Origin emitted; session
+pinning) is unchanged; the pinned expectation in
+`tests/test_mcp_transport_gate.py` now asserts the endpoint-derived
+origin.
+
+VALIDATION (runbook commands, `BURP_MCP_ENDPOINT=http://127.0.0.1:9876`):
+
 | Field | Value |
 |---|---|
-| Date | _(unfilled)_ |
+| Date | 2026-09-07 |
 | Env vars armed | `BURP_MCP_ENDPOINT=http://127.0.0.1:9876` (literal loopback only; hostname endpoints refused) |
-| Invoke commands as run | `python -m extension invoke burp-mcp list_tools` · `python -m extension invoke burp-mcp url_encode '{"content": "a b"}'` · `python -m extension invoke burp-mcp get_proxy_http_history '{}'` · `python -m extension invoke burp-mcp get_proxy_http_history_regex '{"regex": "login", "count": 10, "offset": 0}'` |
-| Envelope status | _(fill: complete / degraded / failed per action)_ |
-| Artifacts | _(fill: attempt ids, artifact dirs, notable outputs — e.g. detected Burp edition from list_tools)_ |
-| Operator note | _(optional: BApp version, Burp edition, launch shape used — GUI vs headless flag — anything surprising)_ |
+| Invoke commands as run | `python -m extension invoke burp-mcp list_tools` · `url_encode '{"content": "a b"}'` · `get_proxy_http_history '{}'` · `get_proxy_http_history_regex '{"regex": "login", "count": 10, "offset": 0}'` |
+| Envelope status | **complete**: `list_tools` (27-tool surface served; artifact `sha256:4aa44d13…`, credentials-stripped), `url_encode`. **failed (timed out, 30 s budget)**: `get_proxy_http_history`, `get_proxy_http_history_regex` — see approval gate |
+| Artifacts | digests per call, `kind: policy-report`, `redaction: credentials-stripped`; live SSE handshake captured (`event: endpoint`, `data: ?sessionId=…`) |
+| Operator note | server v1.3.0 on Burp CE 2026.3.2; the shipped server ALREADY validates Origin+Host (the 09-06 note scoped that to unreleased main — v1.3.0 refuses port-less origins with 403, measured) |
 
-**Agent staging attempt — measured 2026-09-07 (kali-linux WSL), no
-listener achieved.** The runbook's open question ("whether a CE
-temp-project launch completes headless") is now answered with
-evidence; Burp CE cannot reach a running UI in this environment, so
-the BApp's auto-started MCP listener never comes up and the
-validation commands could not run:
-
-1. Installed Burp CE from the kali repo (`apt install burpsuite`,
-   jar at `/usr/share/burpsuite/burpsuite.jar`) and the official MCP
-   extension jar (`burp-mcp-all.jar` v1.3.0 from
-   PortSwigger/mcp-server releases). Extension-load config:
-   `{"user_options":{"extensions":{"full_paths":[...]}}}`.
-2. First run demands the license on **stdin even with
-   `-Djava.awt.headless=true`** — `printf 'y\n' |` into the launch
-   accepts it, and acceptance persists.
-3. With `-Djava.awt.headless=true`: Burp then **crashes during its
-   own tools-UI construction** — `java.lang.Error: no ComponentUI
-   class for: burp.Zc52` inside `initialiseToolsUi` — before any
-   listener exists. The documented headless flag does not produce a
-   usable headless CE.
-4. Under a real X display (Xvfb, persistent `Xvfb :99`), the **same
-   ComponentUI failure** occurs on both Debian Java 25 and Java 21,
-   with and without the kali wrapper flags
-   (`--suppress-jre-check --disable-check-for-updates-dialog`) and
-   with a metal LAF override. No window is ever mapped; the JVM sits
-   idle with the EDT exception on the log. The failure is in Burp's
-   own Look-and-Feel/UI-defaults wiring in this environment, not in
-   the extension and not display-less-ness alone.
-
-Rescue paths not yet exercised: a maintained Burp-in-Docker CI image
-(the researched recipe lands here when found), or an operator-run
-GUI staging on a machine with a real desktop — the BApp install via
-the BApp Store UI remains the documented install-once path, after
-which this arm's staging is just the loopback listener this record
-expects.
+**Why the data reads stop at the approval gate**: the extension's
+config (`McpConfig`) defaults `requireHttpRequestApproval` on with an
+empty `autoApproveTargets` list, so history reads block awaiting an
+interactive approval in the extension's MCP tab. That control is
+UI-only: the config lives in Burp's runtime storage (never written to
+disk in this setup), no CLI flag/env pre-arms it, and synthetic X11
+input (xdotool mouse + keyboard, absolute and window-relative) did
+not register on the Swing UI under WSLg/Xvfb. Unblock = one human
+interaction (MCP tab → approve the pending request or add an
+auto-approve target), after which the remaining runbook reads should
+flow unchanged; headless-only hosts stay at this measured boundary.
 
 ---
 

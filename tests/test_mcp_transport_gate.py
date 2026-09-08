@@ -828,8 +828,12 @@ def test_p5_origin_header_emitted_on_streamable_requests(gate_streamable_server)
     client.connect()
     client.list_tools()
     assert state["requests"]
+    # The Origin names the endpoint's own origin (port included): strict
+    # same-origin validators (e.g. the Burp MCP server's DNS-rebinding
+    # guard) reject a port-less loopback constant.
+    expected_origin = url.rsplit("/", 1)[0]
     for request in state["requests"]:
-        assert request["headers"].get("origin") == "http://127.0.0.1"
+        assert request["headers"].get("origin") == expected_origin
 
 
 def test_p5_origin_header_emitted_on_sse_requests(gate_sse_server) -> None:
@@ -840,8 +844,9 @@ def test_p5_origin_header_emitted_on_sse_requests(gate_sse_server) -> None:
         tools = session.list_tools()
         assert tools == [{"name": "get_proxy_http_history"}]
         assert state["requests"]
+        expected_origin = url.rsplit("/", 1)[0]
         for request in state["requests"]:
-            assert request["headers"].get("origin") == "http://127.0.0.1"
+            assert request["headers"].get("origin") == expected_origin
     finally:
         session.close()
 
