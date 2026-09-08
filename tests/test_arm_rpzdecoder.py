@@ -503,9 +503,9 @@ def test_arm_fetch_non_utf8_keyfile_is_evaluated_failure(
 def test_fetch_non_utf8_dump_is_fail_closed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.setenv("RPZDECODER_DIG_BIN", str(_fake_dig(tmp_path, "ok")))
     bad = tmp_path / "fixture.txt"
     bad.write_bytes(b"\xff\xfe not a zone\n")
-    monkeypatch.setenv("RPZDECODER_DIG_BIN", str(_fake_dig(tmp_path, "ok")))
     monkeypatch.setenv(ENV_DISPATCH_SCOPE, MASTER)
     arm = RpzDecoderArm(timeout=30)
     result = arm.invoke(
