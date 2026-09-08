@@ -1,5 +1,7 @@
 # specaudit-ctf
 
+Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
+
 ## Overview
 
 - **Arms**: 28 specialized adapters. No row is held (the HTTP-MCP
