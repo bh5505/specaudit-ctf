@@ -338,3 +338,9 @@ entries:
     curated: true
     tier: research
     notes: Exploitation framework for embedded and CPE devices. Curated CLI arm; non-interactive -m run is gated by ROUTERSPLOIT_DISPATCH_SCOPE. Default unarmed. Every run executes the module (not a check-only path).
+  - id: rpz-decoder
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Ad-hoc threat-intel extraction from an operator-supplied DNS Response Policy Zone. decode turns an AXFR dump into raw IP/CIDR and domain indicator lists (action-tagged, written to files, sampled in the result); fetch is a dispatch-gated dig AXFR using a 0600 TSIG key file, status a keyless SOA probe. No schedule, no appliance; no zone data or account identifiers ship in the repo.

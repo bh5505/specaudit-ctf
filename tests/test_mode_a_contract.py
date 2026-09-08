@@ -503,17 +503,19 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # packet): the contained-subprocess carve-out — offline scan pinned
     # inside the packaged synthetic range, no scope env, no operator
     # arming decision to record.
-    # Structural carve-out pin: the contained-subprocess shape (a
-    # policy://extension/arms/<arm> approval on a non-read profile) has
-    # EXACTLY one member — a second member needs a reviewed disposition,
-    # never a quiet extension.
+    # Structural carve-out pin: the policy://extension/arms/<arm>
+    # approval on a non-read profile. TWO members since 2026-09-08
+    # (rpz-decoder arm packet): checkov.scan (contained synthetic
+    # subprocess) and rpz-decoder.decode (in-process dump decode whose
+    # local-write is confined to the caller-named outdir). A third
+    # member needs a reviewed disposition, never a quiet extension.
     contained = {
         capability_id
         for capability_id, profile in INVOKE_PROFILES.items()
         if (profile.approval_ref or "").startswith("policy://extension/arms/")
         and profile.side_effects != ("local-read",)
     }
-    assert contained == {"checkov.scan"}
+    assert contained == {"checkov.scan", "rpz-decoder.decode"}
     # 70 since the riders admission (2026-09-05, normal recipe):
     # dark-moon campaign/run (2 dispatch profiles superseding the doc-20
     # "not admitted this campaign" row) plus the 8 metasploit-mcp
@@ -533,7 +535,10 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 149 since the caldera read admission (2026-09-06,
     # emulation-listing packet): the eight v2 GET views as
     # endpoint-armed reads (caldera had no profiles before).
-    assert len(INVOKE_PROFILES) == 149
+    # 153 since the rpz-decoder admission (2026-09-08, arm packet):
+    # list_tools + decode (local read with caller-named outdir write)
+    # + fetch/status scope-gated dig dispatches.
+    assert len(INVOKE_PROFILES) == 153
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.

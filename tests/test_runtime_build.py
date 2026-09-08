@@ -77,7 +77,9 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
     # agent-head lane's server-side capture; 2026-09-05). Previously 103:
     # the attack-stix-data arm's +4 package files (__init__, arm, policy,
     # reader — the demo bundle is caller data, not part of the closure).
-    assert len(lock["producer_source_files"]) == 104
+    # 108 since the rpz-decoder arm admission (2026-09-08): policy,
+    # decoder, arm, __init__ join the producer source closure.
+    assert len(lock["producer_source_files"]) == 108
     # 107 at the 2026-08 nmap regen; +7 for the transport-gate imports
     # (base64, hashlib, http.server, secrets and their traced deps).
     assert len(lock["included_stdlib_files"]) == 114

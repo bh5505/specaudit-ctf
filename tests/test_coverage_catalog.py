@@ -67,6 +67,7 @@ EXPECTED_IDS = (
     "sniper",
     "dark-moon",
     "routersploit",
+    "rpz-decoder",
 )
 CURATED_ARM_ID = "burp-mcp"
 
@@ -171,6 +172,7 @@ def test_curated_arms_are_exactly_the_curated_set(entries: list[dict]) -> None:
         "ai-deep-sast",
         "agent-wiz",
         "attack-stix-data",
+        "rpz-decoder",
     }
     for arm in curated:
         assert arm["kind"] == "arm"
