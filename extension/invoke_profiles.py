@@ -56,6 +56,7 @@ _STATIC_POLICY_ARMS = (
     "agent-wiz",
     "ai-deep-sast",
     "attack-stix-data",
+    "rpz-decoder",
     "dark-moon",
     "deepsec",
     "nmap",
@@ -359,6 +360,13 @@ _DISPATCH_PROFILES = (
     ("zgrab2", "scan", ("subprocess", "network-egress"), 60_000, "ZGRAB2_DISPATCH_SCOPE"),
     ("wapiti", "scan", ("subprocess", "network-egress"), 600_000, "WAPITI_DISPATCH_SCOPE"),
     ("zdns", "lookup", ("subprocess", "network-egress"), 60_000, "ZDNS_DISPATCH_SCOPE"),
+    # rpz-decoder (2026-09-08): ad-hoc ThreatStop RPZ zone reads. fetch
+    # AXFR-transfers the operator's zone with the staged 0600 TSIG key
+    # (secret rides the dig argv transiently) and writes the decoded raw
+    # indicator lists to the caller-named outdir; status is a keyless
+    # SOA freshness probe.
+    ("rpz-decoder", "fetch", ("subprocess", "network-egress", "local-write"), 300_000, "RPZDECODER_DISPATCH_SCOPE"),
+    ("rpz-decoder", "status", ("subprocess", "network-egress"), 300_000, "RPZDECODER_DISPATCH_SCOPE"),
     # Wave B (offensive/pyrit families; doc-20 dispositions): pyrit spends
     # model tokens on operator-configured endpoints (caveat + catalog note,
     # not a side-effect enum value); routersploit's run always executes the
@@ -412,6 +420,36 @@ _DISPATCH_PROFILES = (
     # is subprocess only. Arming/containment is the scan root env.
     ("semgrep-mcp", "semgrep_scan", ("subprocess",), 120_000, "SEMGREP_SCAN_ROOT"),
 )
+
+
+def _rpz_decode_profile() -> InvokeProfile:
+    """Admission for the rpz-decoder decode action (2026-09-08)."""
+    scope = (f"policy://extension/arms/rpz-decoder",)
+    return InvokeProfile(
+        arm_id="rpz-decoder",
+        action="decode",
+        capability_id="rpz-decoder.decode",
+        tool_name=PACKAGE_NAME,
+        tool_version=PACKAGE_VERSION,
+        authorized_scope=scope,
+        touched_scope=scope + ("file://caller-named-dump", "file://caller-named-outdir"),
+        safety_class="R1",
+        side_effects=("local-read", "local-write"),
+        timeout_ms=30_000,
+        max_output_bytes=1_048_576,
+        max_tool_steps=1,
+        max_spend=None,
+        cleanup_required=False,
+        # Write-capable profiles are dispatch-class in the frozen
+        # grammar and must name an approval: the policy anchor is the
+        # containment (the caller-named outdir is validated by the
+        # arm's egress gate), mirroring the checkov.scan shape.
+        approval_ref="policy://extension/arms/rpz-decoder",
+        roe_ref="doc://README#dispatch-doctrine",
+        tier="research",
+        default_off=True,
+        synthetic_only=False,
+    )
 
 
 def _dispatch_profile(
@@ -550,6 +588,14 @@ INVOKE_PROFILES = {
             _local_read_profile("attack-stix-data", action)
             for action in ("technique", "software", "group", "relationships")
         ),
+        # rpz-decoder decode admission (2026-09-08): in-process AXFR
+        # decode of the caller-named dump into raw IP/CIDR + domain
+        # indicator lists. Honest truth: real local files are touched
+        # (read dump, optionally write the lists to the caller-named
+        # outdir), so this is NOT synthetic-only and carries a
+        # filesystem-write side effect; no subprocess, no endpoint,
+        # no schedule (ad-hoc by design).
+        _rpz_decode_profile(),
         # Metasploit read admission (2026-09-04): the exploit/payload/
         # session/listener listings over the operator-run loopback SSE server
         # (GH05TCREW MetasploitMCP).

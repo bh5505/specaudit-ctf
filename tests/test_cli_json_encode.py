@@ -462,6 +462,34 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
             assert profile.synthetic_only is True
             assert profile.approval_ref == "policy://extension/arms/checkov"
             assert profile.roe_ref == "doc://README#dispatch-doctrine"
+        elif profile.arm_id == "rpz-decoder" and profile.action != "list_tools":
+            # rpz-decoder admission (2026-09-08): decode is an
+            # in-process local read that optionally writes the raw
+            # indicator lists to the caller-named outdir (honest
+            # filesystem-write side effect, not synthetic-only);
+            # fetch/status are scope-gated dig dispatches.
+            assert profile.safety_class == "R1"
+            assert profile.default_off is True
+            assert profile.synthetic_only is False
+            if profile.action == "decode":
+                assert profile.side_effects == ("local-read", "local-write")
+                assert profile.approval_ref == "policy://extension/arms/rpz-decoder"
+                assert profile.roe_ref == "doc://README#dispatch-doctrine"
+            elif profile.action == "fetch":
+                assert profile.side_effects == (
+                    "subprocess",
+                    "network-egress",
+                    "local-write",
+                )
+                assert profile.approval_ref == (
+                    "operator://dispatch-scope/RPZDECODER_DISPATCH_SCOPE"
+                )
+            else:
+                assert profile.action == "status"
+                assert profile.side_effects == ("subprocess", "network-egress")
+                assert profile.approval_ref == (
+                    "operator://dispatch-scope/RPZDECODER_DISPATCH_SCOPE"
+                )
         else:
             assert profile.action == "list_tools"
             assert profile.safety_class == "R0"
@@ -560,7 +588,8 @@ def test_range_encoder_spends_one_step_under_freeze_budget(
     no_curated_tools: None,
 ) -> None:
     inner = run_range()
-    assert len(inner["coverage"]["attempted"]) == 28
+    # 29 since the rpz-decoder arm admission (2026-09-08).
+    assert len(inner["coverage"]["attempted"]) == 29
     payload = encode_range_document(
         inner,
         started_at="2026-08-25T12:00:00Z",

@@ -42,6 +42,8 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         "zgrab2.scan",
         "wapiti.scan",
         "zdns.lookup",
+        "rpz-decoder.fetch",
+        "rpz-decoder.status",
         "pyrit.scan",
         "routersploit.run",
         "osmedeus.scan",
@@ -87,6 +89,8 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
         ("zgrab2.scan", "ZGRAB2_DISPATCH_SCOPE", 60_000),
         ("wapiti.scan", "WAPITI_DISPATCH_SCOPE", 600_000),
         ("zdns.lookup", "ZDNS_DISPATCH_SCOPE", 60_000),
+        ("rpz-decoder.fetch", "RPZDECODER_DISPATCH_SCOPE", 300_000),
+        ("rpz-decoder.status", "RPZDECODER_DISPATCH_SCOPE", 300_000),
         ("pyrit.scan", "PYRIT_DISPATCH_SCOPE", 600_000),
         ("routersploit.run", "ROUTERSPLOIT_DISPATCH_SCOPE", 120_000),
         ("osmedeus.scan", "OSMEDEUS_DISPATCH_SCOPE", 600_000),
@@ -101,7 +105,14 @@ def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
     ):
         wave = INVOKE_PROFILES[capability_id]
         assert wave.safety_class == "R1"
-        assert wave.side_effects == ("subprocess", "network-egress")
+        if capability_id == "rpz-decoder.fetch":
+            assert wave.side_effects == (
+                "subprocess",
+                "network-egress",
+                "local-write",
+            )
+        else:
+            assert wave.side_effects == ("subprocess", "network-egress")
         assert wave.default_off is True and wave.synthetic_only is False
         assert wave.tier == "research"
         assert wave.timeout_ms == timeout_ms
