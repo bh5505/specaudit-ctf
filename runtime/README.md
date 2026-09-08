@@ -111,14 +111,14 @@ closure still 103 producer files and 114 stdlib modules). Re-measured
 sorted extras; tree `01a76c4e…6c73`, archive `515bd78c…837c` (sweep 12: import-time real-stdio signal guard); hashes
 only). Re-measured 2026-09-08 for the fourteen research-reader admissions
 and their shared strict-data boundary: 165 producer files, 118 stdlib files,
-and 18 YAML files across three sealed invocations; assemble 3.8491 s, lock
-verification 0.2609 s, pack 4.9538 s, unpack 0.2373 s, cold/warm full-tree
-verification 0.2572 s / 0.2531 s, cold/repeat Mode-A CLI launch
-0.6506 s / 0.6464 s, and cold/repeat stdio-MCP launch
-0.7018 s / 0.6441 s. The tree digest is
-`af3a8b29259080e7c06b7d49635afc3318de3960cf35c050cabf70c010c28d86`
+and 18 YAML files across three sealed invocations; assemble 3.9683 s, lock
+verification 0.2830 s, pack 4.9719 s, unpack 0.2418 s, cold/warm full-tree
+verification 0.2563 s / 0.2551 s, cold/repeat Mode-A CLI launch
+0.6564 s / 0.6493 s, and cold/repeat stdio-MCP launch
+0.6928 s / 0.6378 s. The tree digest is
+`f685087b85d1249ed101e9d1903e0a03bc2f1e7e75e718488581a1c30a347545`
 and the normalized archive digest is
-`16a3df65e36384756a0ca61fde9ac5509792faceb99bd86d602a8f29b18b5ca1`.
+`6a7d99e62f7cdcb87c6540a0ea83d88cf54dda959b6e20016fdf6d0998053006`.
 A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
