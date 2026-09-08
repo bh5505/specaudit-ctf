@@ -223,6 +223,23 @@ def test_report_binds_exact_loaded_bytes_and_authoritative_inventory(
     )
 
 
+@pytest.mark.parametrize("mutation", ["nested-edit", "added-key"])
+def test_post_load_register_document_mutation_is_refused(
+    inventory, mutation: str
+) -> None:
+    loaded = load_register()
+    assert isinstance(loaded.document, dict)
+    if mutation == "nested-edit":
+        loaded.document["scope"]["description"] = "mutated after loading"
+    else:
+        loaded.document["unexpected"] = True
+
+    with pytest.raises(
+        ValueError, match="loaded register document changed after its byte snapshot"
+    ):
+        _validate(loaded, inventory)
+
+
 def test_default_complete_cli_fails_closed(capsys) -> None:
     exit_code = main(["check", "--as-of", "2026-09-08", "--format", "json"])
     captured = capsys.readouterr()
