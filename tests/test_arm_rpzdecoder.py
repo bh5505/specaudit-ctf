@@ -332,7 +332,7 @@ def _fake_dig(tmp_path: Path, mode: str) -> Path:
         "if os.environ.get('FAKE_DIG_MODE') == 'fail':\n"
         "    sys.stderr.write('dig args: ' + ' '.join(sys.argv[1:]) + '\\n')\n"
         "    sys.exit(9)\n"
-        "sys.stdout.write(open(os.environ['FAKE_DIG_FIXTURE'], encoding='utf-8').read())\n",
+        "sys.stdout.buffer.write(open(os.environ['FAKE_DIG_FIXTURE'], 'rb').read())\n",
         encoding="utf-8",
     )
     if os.name == "nt":
@@ -345,7 +345,7 @@ def _fake_dig(tmp_path: Path, mode: str) -> Path:
         "if os.environ.get('FAKE_DIG_MODE') == 'fail':\n"
         "    sys.stderr.write('dig args: ' + ' '.join(sys.argv[1:]) + '\\n')\n"
         "    sys.exit(9)\n"
-        f"sys.stdout.write(open(r'{tmp_path / 'fixture.txt'}', encoding='utf-8').read())\n",
+        f"sys.stdout.buffer.write(open(r'{tmp_path / 'fixture.txt'}', 'rb').read())\n",
         encoding="utf-8",
     )
     wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
