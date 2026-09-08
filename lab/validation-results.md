@@ -545,6 +545,55 @@ dedicated feed). Net: the US government's zero-credential
 machine-readable tier is exactly the validated block above, and
 the lab now stages all of it.
 
+**ThreatStop RPZ device — FEASIBLE and VALIDATED as a threat-intel
+feed, 2026-09-08 (operator-supplied device credential; TSIG pair
+staged 0600 at `/root/.threatstop-tsig`).** The operator supplied
+credentials for a ThreatStop virtual device (device id `tdid_…`,
+RPZ zone `Extended-DNS-Monitor.rpz.threatstop.local`, TSIG key
+name + secret, master `192.124.129.51`) and asked whether they are
+usable for threat-intel purposes. Verdict: **yes — the zone IS
+the threat intel feed**, consumable by a plain `dig` AXFR with no
+appliance required (the docs' own "Generic DNS" path confirms
+BIND-secondary consumption is intended use:
+docs.threatstop.com/generic_dnsfw.html). Measured:
+- **The TSIG algorithm is HMAC-MD5** (as ThreatStop's docs
+  prescribe). Probing with hmac-sha256 first got REFUSED with
+  "tsig verify failure" — a full algorithm/port matrix settled
+  it: **hmac-md5 verifies clean on both TCP 53 and 5353**;
+  sha224/256/384/512 all refuse. Recorded so nobody re-trips on
+  the 64-byte secret (which reads like a SHA-2 key but is not).
+- **Full AXFR succeeded**: 1,629,943 lines / 1,220,113 records /
+  144.8 MB — **99,860 `rpz-ip` IP triggers** (reverse-octet
+  encoding, decode recipe validated live: `32.67.115.78.5.rpz-ip`
+  → 5.78.115.67/32), 4 `rpz-nsdname`, **~970,721 QNAME domain
+  rules** (real malicious domains), 25,658 NXDOMAIN-action
+  records (including the `bad.threatstop.com` canary the docs
+  use for validation, and `*.cloudflare-dns.com`), snapshot kept
+  at `/var/lib/threatstop-rpz/`.
+- **Monitor semantics confirmed in the data**: 1,194,449 records
+  carry the `rpz-passthru.` action — the Extended-DNS-Monitor
+  policy observes without enforcing, so scraping it has zero DNS
+  side effects. Ideal for intel extraction.
+- **Freshness**: SOA serial is a last-update epoch and MOVED 380 s
+  between probes during this session (zone refresh timer 900 s) —
+  updates land at sub-15-minute cadence. The SOA itself is
+  publicly queryable without TSIG.
+- **No source-IP allowlist was hit**: the transfer succeeded from
+  the lab's ordinary egress IP (not registered to the device) —
+  the TSIG key+secret is the operative gate.
+- **Policy swapping**: the zone name embeds the policy name
+  (`<Policy>.rpz.threatstop.local`) and policies are assigned to
+  devices portal-side (1 device : 1 zone), so swapping to another
+  policy (e.g. a Basic-DNSFW block policy) is a portal
+  reassignment plus a local zone-name/TSIG update — and would
+  ENFORCE actions instead of observing. For pure threat-intel
+  purposes the current Monitor zone is the right one to consume.
+- Cleaner bulk paths exist but are plan-gated upstream
+  (ThreatList SFTP files every 2 h; TAXII at taxii.threatstop.com
+  — both "must be enabled in your plan"): the RPZ AXFR with the
+  supplied device credential needs nothing beyond what the
+  operator already provided.
+
 **Cyware ThreatFeed TAXII subscription — VALIDATED 2026-09-07.** The
 operator staged subscriber credentials for a TAXII 2.1 threat-feed
 aggregation (ThreatFox, Malware Bazaar, abuse.ch, Emerging Threats,
