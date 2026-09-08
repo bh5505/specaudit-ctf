@@ -12,8 +12,10 @@ import ast
 import copy
 import hashlib
 import json
+import os
+import stat
 import tomllib
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
 from typing import Any, Mapping
@@ -21,6 +23,7 @@ from typing import Any, Mapping
 import pytest
 import yaml
 
+from extension import invoke_profiles as invoke_profiles_module
 from extension.invoke_profiles import INVOKE_PROFILES
 from extension.arms.vulnify import policy as vulnify_policy
 import governance.check as governance_check
@@ -36,6 +39,7 @@ from governance.check import (
     Registry,
     _contract_digest,
     _governance_subject_digest,
+    _github_heading_anchors,
     _module_contract_digest,
     _profile_digest,
     _source_contract_digest,
@@ -419,7 +423,7 @@ def test_unresolved_local_schema_ref_is_normalized_to_cli_exit_two(
     assert exit_code == 2
     assert captured.out == ""
     assert json.loads(captured.err)["ok"] is False
-    assert "validation failed closed" in captured.err
+    assert "canonical v1 schema digest" in captured.err
 
 
 def test_permissive_custom_schema_cannot_turn_malformed_input_into_traceback(
@@ -446,7 +450,62 @@ def test_permissive_custom_schema_cannot_turn_malformed_input_into_traceback(
     assert exit_code == 2
     assert captured.out == ""
     assert json.loads(captured.err)["ok"] is False
-    assert "validation failed closed" in captured.err
+    assert "canonical v1 schema digest" in captured.err
+
+
+def test_custom_schema_cannot_redefine_the_closed_v1_gate(
+    registry, tmp_path: Path, capsys
+) -> None:
+    document = _copy_document(registry)
+    document["schema"] = "attacker.schema"
+    document["schema_version"] = 999
+    document["register_revision"] = "not-an-integer"
+    document["extra_authority"] = {"self_certified": True}
+    register = _write_register(tmp_path, document)
+    schema = tmp_path / "permissive.json"
+    schema.write_text("{}", encoding="utf-8")
+
+    exit_code = main(
+        [
+            "check",
+            "--register",
+            str(register),
+            "--schema",
+            str(schema),
+            "--scope",
+            "pr97-readers",
+            "--require",
+            "integrity",
+            "--as-of",
+            "2026-09-08",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.out == ""
+    assert json.loads(captured.err)["ok"] is False
+    assert "canonical v1 schema digest" in captured.err
+
+
+def test_raw_mapping_cannot_self_certify_v1_metadata(registry, inventory) -> None:
+    document = _copy_document(registry)
+    document["schema"] = "attacker.schema"
+    document["schema_version"] = 999
+    document["register_revision"] = "not-an-integer"
+    document["extra_authority"] = {"self_certified": True}
+
+    report = _validate(document, inventory)
+
+    assert not report.integrity_ok
+    assert not report.ok
+    assert report.register_revision is None
+    assert {
+        "register-schema-id-mismatch",
+        "register-schema-version-mismatch",
+        "register-revision-invalid",
+        "register-top-level-shape-mismatch",
+    } <= _codes(report)
 
 
 def test_loader_rejects_register_symlink(tmp_path: Path) -> None:
@@ -455,6 +514,56 @@ def test_loader_rejects_register_symlink(tmp_path: Path) -> None:
 
     with pytest.raises(RegisterLoadError, match="must not be a symlink"):
         load_register(path)
+
+
+@pytest.mark.parametrize("kind", ["directory", "fifo"])
+def test_loader_refuses_nonregular_path_before_open(
+    tmp_path: Path, monkeypatch, kind: str
+) -> None:
+    path = tmp_path / kind
+    if kind == "directory":
+        path.mkdir()
+    else:
+        os.mkfifo(path)
+    open_calls: list[object] = []
+
+    def unexpected_open(*args, **kwargs):
+        open_calls.append((args, kwargs))
+        raise AssertionError("os.open must not be called for a non-regular path")
+
+    monkeypatch.setattr(governance_check.os, "open", unexpected_open)
+
+    with pytest.raises(RegisterLoadError, match="must be a regular file"):
+        governance_check._read_file_snapshot(
+            path,
+            label="test input",
+            max_bytes=1024,
+        )
+    assert open_calls == []
+
+
+def test_loader_refuses_device_mode_before_open(tmp_path: Path, monkeypatch) -> None:
+    path = tmp_path / "simulated-device"
+    device_stat = os.stat_result(
+        (stat.S_IFCHR | 0o600, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+    )
+    open_calls: list[object] = []
+
+    monkeypatch.setattr(governance_check.os, "lstat", lambda unused: device_stat)
+
+    def unexpected_open(*args, **kwargs):
+        open_calls.append((args, kwargs))
+        raise AssertionError("os.open must not be called for a device")
+
+    monkeypatch.setattr(governance_check.os, "open", unexpected_open)
+
+    with pytest.raises(RegisterLoadError, match="must be a regular file"):
+        governance_check._read_file_snapshot(
+            path,
+            label="test input",
+            max_bytes=1024,
+        )
+    assert open_calls == []
 
 
 @pytest.mark.parametrize(
@@ -532,6 +641,33 @@ def test_deleting_authoritative_profile_cannot_pass(registry) -> None:
     )
 
 
+def test_inventory_only_profile_deletion_is_caught_by_global_snapshot(registry) -> None:
+    profiles = dict(INVOKE_PROFILES)
+    profiles.pop("nmap.list_tools")
+
+    report = _validate(registry, snapshot_invoke_profiles(profiles))
+
+    assert not report.integrity_ok
+    assert "inventory-id-mismatch" in _codes(report)
+    assert "inventory-contract-mismatch" in _codes(report)
+    assert "missing-authoritative-profile" not in _codes(report)
+
+
+def test_inventory_only_profile_drift_is_caught_by_global_snapshot(registry) -> None:
+    profiles = dict(INVOKE_PROFILES)
+    profiles["nmap.list_tools"] = replace(
+        profiles["nmap.list_tools"], side_effects=()
+    )
+
+    report = _validate(registry, snapshot_invoke_profiles(profiles))
+
+    assert not report.integrity_ok
+    assert {
+        issue.code for issue in report.issues if issue.category == "integrity"
+    } == {"inventory-contract-mismatch"}
+    assert "runtime-contract-mismatch" not in _codes(report)
+
+
 def test_profile_contract_drift_cannot_pass(registry) -> None:
     profiles = dict(INVOKE_PROFILES)
     profiles["vulnify.lookup"] = replace(
@@ -557,6 +693,34 @@ def test_nonfinite_authoritative_profile_cannot_enter_snapshot_digest() -> None:
         snapshot_invoke_profiles(profiles)
 
 
+def test_future_authoritative_profile_field_cannot_be_silently_ignored(
+    monkeypatch,
+) -> None:
+    @dataclass(frozen=True)
+    class FutureInvokeProfile(invoke_profiles_module.InvokeProfile):
+        future_authority: str = "network-write"
+
+    monkeypatch.setattr(
+        invoke_profiles_module,
+        "InvokeProfile",
+        FutureInvokeProfile,
+    )
+
+    with pytest.raises(ValueError, match="field roster differs"):
+        snapshot_invoke_profiles(INVOKE_PROFILES)
+
+
+def test_omitted_snapshot_field_cannot_be_silently_ignored(monkeypatch) -> None:
+    monkeypatch.setattr(
+        governance_check,
+        "_PROFILE_FIELDS",
+        governance_check._PROFILE_FIELDS[:-1],
+    )
+
+    with pytest.raises(ValueError, match="field roster differs"):
+        snapshot_invoke_profiles(INVOKE_PROFILES)
+
+
 def test_authoritative_profile_key_mismatch_is_explicit_even_after_refreeze(
     registry
 ) -> None:
@@ -575,6 +739,68 @@ def test_authoritative_profile_key_mismatch_is_explicit_even_after_refreeze(
     assert "authoritative-profile-key-mismatch" in _codes(
         report, path="inventory:vulnify.lookup"
     )
+
+
+def test_coordinated_action_relabel_cannot_preserve_capability_identity(
+    registry,
+) -> None:
+    profiles = dict(INVOKE_PROFILES)
+    profiles["vulnify.lookup"] = replace(
+        profiles["vulnify.lookup"], action="list_vulns"
+    )
+    relabeled_inventory = snapshot_invoke_profiles(profiles)
+    document = _copy_document(registry)
+    document["runtime_inventory"]["contract_sha256"] = (
+        relabeled_inventory.contract_sha256
+    )
+    runtime = _runtime(document, "vulnify.lookup")
+    runtime["action"] = "list_vulns"
+    runtime["input_keys"] = ["feed", "limit"]
+
+    report = _validate(document, relabeled_inventory)
+
+    assert not report.integrity_ok
+    assert "authoritative-profile-structural-id-mismatch" in _codes(
+        report, path="inventory:vulnify.lookup"
+    )
+    assert "runtime-structural-id-mismatch" in _codes(
+        report, path="runtime:vulnify.lookup"
+    )
+
+
+def test_inventory_only_structural_identity_is_independently_bound(registry) -> None:
+    profiles = dict(INVOKE_PROFILES)
+    profiles["nmap.list_tools"] = replace(
+        profiles["nmap.list_tools"], action="scan"
+    )
+    relabeled_inventory = snapshot_invoke_profiles(profiles)
+    document = _copy_document(registry)
+    document["runtime_inventory"]["contract_sha256"] = (
+        relabeled_inventory.contract_sha256
+    )
+
+    report = _validate(document, relabeled_inventory)
+
+    assert "authoritative-profile-structural-id-mismatch" in _codes(
+        report, path="inventory:nmap.list_tools"
+    )
+    assert "runtime-structural-id-mismatch" not in _codes(report)
+
+
+def test_runtime_structural_identity_is_independently_bound(
+    registry, inventory
+) -> None:
+    document = _copy_document(registry)
+    runtime = _runtime(document, "vulnify.lookup")
+    runtime["action"] = "list_vulns"
+    runtime["input_keys"] = ["feed", "limit"]
+
+    report = _validate(document, inventory)
+
+    assert "runtime-structural-id-mismatch" in _codes(
+        report, path="runtime:vulnify.lookup"
+    )
+    assert "authoritative-profile-structural-id-mismatch" not in _codes(report)
 
 
 def test_actual_policy_arg_keys_are_an_independent_action_anchor(
@@ -1097,6 +1323,35 @@ def test_v1_refuses_extra_unsupported_relationship(registry, inventory) -> None:
 
 
 @pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        (
+            "limitations",
+            ["mapping-establishes-provenance-and-runtime-consumption"],
+        ),
+        ("record_version", 2),
+    ],
+)
+def test_relationship_safety_caveat_and_version_are_exact(
+    registry, inventory, field: str, value: object
+) -> None:
+    document = _copy_document(registry)
+    relationship = next(
+        item
+        for item in document["relationships"]
+        if item["id"] == "map-r01-vulnify"
+    )
+    relationship[field] = value
+
+    report = _validate(document, inventory)
+
+    assert not report.integrity_ok
+    assert "relationship-baseline-mismatch" in _codes(
+        report, path="relationship:map-r01-vulnify"
+    )
+
+
+@pytest.mark.parametrize(
     ("evidence_ref", "expected_code"),
     [
         ("../../outside-secret.md#invented-anchor", "invalid-evidence-ref"),
@@ -1118,6 +1373,67 @@ def test_relationship_evidence_must_resolve_inside_repo_to_real_heading(
     assert "relationship-baseline-mismatch" in _codes(report)
 
 
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        "```markdown\n## Candidate register: 42 unique candidates\n```\n",
+        "~~~\n<a id='candidate-register-42-unique-candidates'></a>\n~~~\n",
+        "<!--\n## Candidate register: 42 unique candidates\n-->\n",
+        "<!-- <a id='candidate-register-42-unique-candidates'></a> -->\n",
+    ],
+)
+def test_evidence_anchor_parser_ignores_inert_markdown(markdown: str) -> None:
+    assert (
+        "candidate-register-42-unique-candidates"
+        not in _github_heading_anchors(markdown)
+    )
+
+
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        "Candidate register {#candidate-register-42-unique-candidates}\n",
+        "`{#candidate-register-42-unique-candidates}`\n",
+        "<a id='candidate-register-42-unique-candidates'></a>\n",
+    ],
+)
+def test_evidence_anchor_parser_rejects_nonheading_anchor_syntax(
+    markdown: str,
+) -> None:
+    assert (
+        "candidate-register-42-unique-candidates"
+        not in _github_heading_anchors(markdown)
+    )
+
+
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        "<pre>\n## Candidate register: 42 unique candidates\n</pre>\n",
+        "<script>\n## Candidate register: 42 unique candidates\n</script>\n",
+        "<div>\n## Candidate register: 42 unique candidates\n</div>\n",
+    ],
+)
+def test_evidence_anchor_parser_ignores_raw_html_blocks(markdown: str) -> None:
+    assert (
+        "candidate-register-42-unique-candidates"
+        not in _github_heading_anchors(markdown)
+    )
+
+
+def test_evidence_anchor_parser_resumes_after_fence_and_comment() -> None:
+    markdown = (
+        "```\n## Not rendered\n```\n"
+        "<!-- ## Also not rendered -->\n"
+        "<pre>\n## Still not rendered\n</pre>\n"
+        "## Candidate register: 42 unique candidates\n"
+    )
+
+    assert "candidate-register-42-unique-candidates" in _github_heading_anchors(
+        markdown
+    )
+
+
 def test_currentness_is_derived_from_fixed_as_of(registry, inventory) -> None:
     document = _copy_document(registry)
     currentness = _runtime(document, "vulnify.lookup")["currentness"]
@@ -1133,6 +1449,46 @@ def test_currentness_is_derived_from_fixed_as_of(registry, inventory) -> None:
     assert "drift-triggers-unverified" in _codes(on_due, path=target_path)
     assert not on_due.current_ok
     assert "stale" in _codes(after_due, path=target_path)
+
+
+@pytest.mark.parametrize(
+    ("collection", "record_id", "target_path"),
+    [
+        ("modules", "CYB-05", "module:CYB-05.currentness"),
+        ("sources", "R01", "source:R01.currentness"),
+        ("runtime", "vulnify.lookup", "runtime:vulnify.lookup.currentness"),
+    ],
+)
+def test_each_register_has_a_causal_currentness_gate(
+    registry,
+    inventory,
+    collection: str,
+    record_id: str,
+    target_path: str,
+) -> None:
+    baseline = _validate(registry, inventory)
+    assert "unreviewed" in _codes(baseline, path=target_path)
+
+    reviewed_document = _copy_document(registry)
+    key = "capability_id" if collection == "runtime" else "id"
+    reviewed_row = next(
+        row for row in reviewed_document[collection] if row[key] == record_id
+    )
+    reviewed_row["currentness"]["reviewed_on"] = "2026-03-08"
+    reviewed_row["currentness"]["review_due_on"] = "2026-09-08"
+    reviewed = _validate(reviewed_document, inventory)
+    assert "unreviewed" not in _codes(reviewed, path=target_path)
+    assert "drift-triggers-unverified" in _codes(reviewed, path=target_path)
+
+    future_document = _copy_document(registry)
+    future_row = next(
+        row for row in future_document[collection] if row[key] == record_id
+    )
+    future_row["currentness"]["reviewed_on"] = "2099-01-01"
+    future_row["currentness"]["review_due_on"] = "2099-12-31"
+    future = _validate(future_document, inventory)
+    assert "review-in-future" in _codes(future, path=target_path)
+    assert "drift-triggers-unverified" in _codes(future, path=target_path)
 
 
 def test_future_dated_reviews_cannot_satisfy_current_requirement(

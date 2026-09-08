@@ -19,7 +19,7 @@ import re
 import stat
 import sys
 import unicodedata
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from datetime import date
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
@@ -32,6 +32,26 @@ DEFAULT_REGISTER_PATH = Path(__file__).resolve().with_name("register.v1.yaml")
 DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parent / "schema" / "register.v1.schema.json"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
+REGISTER_SCHEMA_ID = "specaudit.ctf.governance.register.v1"
+REGISTER_SCHEMA_VERSION = 1
+CANONICAL_SCHEMA_SHA256 = (
+    "sha256:480328eabdbd5b8692d8059b3c567811417a29e719c29cb2b349c4facd1776b5"
+)
+REGISTER_TOP_LEVEL_KEYS = frozenset(
+    {
+        "schema",
+        "schema_version",
+        "register_revision",
+        "scope",
+        "runtime_inventory",
+        "contract_templates",
+        "modules",
+        "sources",
+        "runtime",
+        "relationships",
+        "promotion_events",
+    }
+)
 PR97_SCOPE_ID = "pr97-readers"
 FULL_SCOPE_ID = "full"
 REQUIREMENTS = ("integrity", "current", "complete")
@@ -511,9 +531,25 @@ def snapshot_invoke_profiles(profiles: Mapping[str, Any]) -> Inventory:
     is always recomputed from the independently authoritative profile mapping.
     """
 
+    # Bind the serializer to the authoritative type itself. A newly added
+    # authorization/egress field must stop the check until this explicit
+    # snapshot contract and the stored digest are deliberately updated.
+    from extension.invoke_profiles import InvokeProfile
+
+    declared_fields = tuple(field.name for field in fields(InvokeProfile))
+    if declared_fields != _PROFILE_FIELDS:
+        raise ValueError(
+            "InvokeProfile field roster differs from the governance snapshot: "
+            f"declared={declared_fields!r}, snapshotted={_PROFILE_FIELDS!r}"
+        )
+
     records: dict[str, Mapping[str, Any]] = {}
     for capability_id in sorted(profiles):
         profile = profiles[capability_id]
+        if type(profile) is not InvokeProfile:
+            raise ValueError(
+                f"{capability_id!r} is not an exact InvokeProfile instance"
+            )
         record = _profile_record(profile)
         if record["capability_id"] != capability_id:
             # Preserve the mismatch in the digest and expose the actual key so a
@@ -535,6 +571,8 @@ def _read_file_snapshot(path: Path, *, label: str, max_bytes: int) -> _FileSnaps
         initial_path_stat = os.lstat(path)
         if stat.S_ISLNK(initial_path_stat.st_mode):
             raise RegisterLoadError(f"{label} must not be a symlink: {path}")
+        if not stat.S_ISREG(initial_path_stat.st_mode):
+            raise RegisterLoadError(f"{label} must be a regular file: {path}")
         fd = os.open(path, flags)
     except RegisterLoadError:
         raise
@@ -724,6 +762,11 @@ def load_register(
         raise RegisterLoadError(f"cannot load register schema {schema_file}: {exc}") from exc
     _validate_bounded_tree(schema, label="register schema")
     _reject_nonlocal_refs(schema)
+    if schema_snapshot.sha256 != CANONICAL_SCHEMA_SHA256:
+        raise RegisterLoadError(
+            "register schema does not match the canonical v1 schema digest: "
+            f"expected {CANONICAL_SCHEMA_SHA256}, got {schema_snapshot.sha256}"
+        )
     try:
         jsonschema.Draft7Validator.check_schema(schema)
         validator = jsonschema.Draft7Validator(
@@ -886,22 +929,31 @@ def _expected_relationship_signatures() -> dict[str, tuple[Any, ...]]:
             )
         )
         signatures[relationship_id] = (
+            1,
             "research-mapping",
             f"source:{source_id}",
             targets,
             ("PROGRAM.md#candidate-register-42-unique-candidates",),
+            ("mapping-does-not-assert-upstream-consumption-or-provenance",),
         )
     signatures["cyb-05-proposed-source-r01"] = (
+        1,
         "proposed-source",
         "module:CYB-05",
         ("source:R01",),
         ("CURRICULUM.md#t03-risk-based-vulnerability-prioritization",),
+        ("source-is-unselected-and-unadmitted",),
     )
     signatures["cyb-05-proposed-use-vulnify-lookup"] = (
+        1,
         "proposed-use",
         "module:CYB-05",
         ("runtime:vulnify.lookup",),
         ("PROGRAM.md#first-proposed-vertical-slice",),
+        (
+            "proposed-use-grants-no-execution-or-grading-authority",
+            "trusted-observation-and-frozen-source-work-remain-separate",
+        ),
     )
     return signatures
 
@@ -909,15 +961,49 @@ def _expected_relationship_signatures() -> dict[str, tuple[Any, ...]]:
 def _github_heading_anchors(markdown: str) -> set[str]:
     anchors: set[str] = set()
     counts: dict[str, int] = {}
-    explicit = re.compile(
-        r"(?:\{#([A-Za-z][A-Za-z0-9._-]*)\}|"
-        r"<a\s+(?:id|name)=[\"']([A-Za-z][A-Za-z0-9._-]*)[\"'])",
+    heading = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
+    fence_open = re.compile(r"^\s{0,3}(`{3,}|~{3,})(.*)$")
+    raw_html_open = re.compile(
+        r"^\s{0,3}<(pre|script|style|textarea)(?:\s|>|$)",
         re.IGNORECASE,
     )
-    heading = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
-    for line in markdown.splitlines():
-        for match in explicit.finditer(line):
-            anchors.add(match.group(1) or match.group(2))
+    other_html_open = re.compile(r"^\s{0,3}<(?:[!?]|/?[A-Za-z])")
+    # Headings inside HTML comments are not rendered.
+    visible_markdown = re.sub(r"<!--.*?(?:-->|$)", "", markdown, flags=re.DOTALL)
+    fence: tuple[str, int] | None = None
+    raw_html_tag: str | None = None
+    other_html_block = False
+    for line in visible_markdown.splitlines():
+        if raw_html_tag is not None:
+            if re.search(rf"</{re.escape(raw_html_tag)}\s*>", line, re.IGNORECASE):
+                raw_html_tag = None
+            continue
+        if other_html_block:
+            if not line.strip():
+                other_html_block = False
+            continue
+        if fence is not None:
+            fence_character, fence_length = fence
+            if re.fullmatch(
+                rf"\s{{0,3}}{re.escape(fence_character)}{{{fence_length},}}\s*",
+                line,
+            ):
+                fence = None
+            continue
+        fence_match = fence_open.match(line)
+        if fence_match is not None:
+            marker = fence_match.group(1)
+            fence = (marker[0], len(marker))
+            continue
+        raw_html_match = raw_html_open.match(line)
+        if raw_html_match is not None:
+            tag = raw_html_match.group(1).lower()
+            if re.search(rf"</{re.escape(tag)}\s*>", line, re.IGNORECASE) is None:
+                raw_html_tag = tag
+            continue
+        if other_html_open.match(line) is not None:
+            other_html_block = True
+            continue
         match = heading.match(line)
         if match is None:
             continue
@@ -1232,6 +1318,45 @@ def validate_register(
     issues: list[ValidationIssue] = []
     register_scope = document["scope"]["id"]
     register_revision = document.get("register_revision")
+    observed_top_level_keys = set(document)
+    if observed_top_level_keys != REGISTER_TOP_LEVEL_KEYS:
+        _add(
+            issues,
+            "integrity",
+            "register-top-level-shape-mismatch",
+            "$",
+            f"missing={sorted(REGISTER_TOP_LEVEL_KEYS - observed_top_level_keys)!r}; "
+            f"added={sorted(observed_top_level_keys - REGISTER_TOP_LEVEL_KEYS)!r}",
+        )
+    if document.get("schema") != REGISTER_SCHEMA_ID:
+        _add(
+            issues,
+            "integrity",
+            "register-schema-id-mismatch",
+            "schema",
+            f"expected {REGISTER_SCHEMA_ID!r}",
+        )
+    if document.get("schema_version") != REGISTER_SCHEMA_VERSION:
+        _add(
+            issues,
+            "integrity",
+            "register-schema-version-mismatch",
+            "schema_version",
+            f"expected {REGISTER_SCHEMA_VERSION}",
+        )
+    valid_register_revision = (
+        isinstance(register_revision, int)
+        and not isinstance(register_revision, bool)
+        and register_revision >= 1
+    )
+    if not valid_register_revision:
+        _add(
+            issues,
+            "integrity",
+            "register-revision-invalid",
+            "register_revision",
+            "must be an integer greater than or equal to one",
+        )
     if register_scope != PR97_SCOPE_ID:
         _add(
             issues,
@@ -1382,6 +1507,17 @@ def validate_register(
                 f"inventory:{capability_id}",
                 "INVOKE_PROFILES key differs from profile.capability_id",
             )
+        structural_id = (
+            f"{profile_record.get('arm_id')}.{profile_record.get('action')}"
+        )
+        if profile_record.get("capability_id") != structural_id:
+            _add(
+                issues,
+                "integrity",
+                "authoritative-profile-structural-id-mismatch",
+                f"inventory:{capability_id}",
+                "profile.capability_id must equal profile.arm_id + '.' + profile.action",
+            )
 
     contracts = _index_unique(
         document["contract_templates"], name="contract_templates", issues=issues
@@ -1467,6 +1603,14 @@ def validate_register(
 
     for capability_id, row in runtime.items():
         row_path = f"runtime:{capability_id}"
+        if capability_id != f"{row['arm_id']}.{row['action']}":
+            _add(
+                issues,
+                "integrity",
+                "runtime-structural-id-mismatch",
+                row_path,
+                "capability_id must equal arm_id + '.' + action",
+            )
         actual = inventory.records.get(capability_id)
         if actual is None:
             _add(
@@ -1866,10 +2010,12 @@ def validate_register(
         relationship_signatures.setdefault(
             rel_id,
             (
+                relationship["record_version"],
                 relationship["kind"],
                 source_ref,
                 tuple(targets),
                 tuple(relationship["evidence_refs"]),
+                tuple(relationship["limitations"]),
             ),
         )
         for evidence_index, evidence_ref in enumerate(relationship["evidence_refs"]):
@@ -1986,7 +2132,8 @@ def validate_register(
                 "integrity",
                 "relationship-baseline-mismatch",
                 f"relationship:{relationship_id}",
-                "kind, endpoints, or evidence refs differ from the exact v1 baseline",
+                "version, kind, endpoints, evidence refs, or limitations differ "
+                "from the exact v1 baseline",
             )
 
     for source_id, row in sources.items():
@@ -2122,7 +2269,7 @@ def validate_register(
         requested_scope=scope,
         register_scope=register_scope,
         register_revision=(
-            register_revision if isinstance(register_revision, int) else None
+            register_revision if valid_register_revision else None
         ),
         register_sha256=(
             loaded_registry.register_sha256 if loaded_registry is not None else None
@@ -2156,7 +2303,12 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     check = subparsers.add_parser("check", help="validate governance state")
     check.add_argument("--register", type=Path, default=DEFAULT_REGISTER_PATH)
-    check.add_argument("--schema", type=Path, default=DEFAULT_SCHEMA_PATH)
+    check.add_argument(
+        "--schema",
+        type=Path,
+        default=DEFAULT_SCHEMA_PATH,
+        help="path to byte-identical canonical v1 schema",
+    )
     check.add_argument("--scope", choices=(PR97_SCOPE_ID, FULL_SCOPE_ID), default=FULL_SCOPE_ID)
     check.add_argument("--require", choices=REQUIREMENTS, default="complete")
     check.add_argument("--as-of", type=_iso_date, required=True)
