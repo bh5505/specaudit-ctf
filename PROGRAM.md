@@ -329,6 +329,17 @@ accepting agent-supplied file paths, or granting every claimed finding
 credit because one invocation succeeded are all explicitly out of
 scope.
 
+**Initial mechanism, not bridge completion.** The opt-in
+`extension.observations` sidecar implements one pre-grading slice for an exact
+`vulnify.lookup` CVE record. It binds validator-supplied source admission,
+execution envelope, Mode-A policy-report bytes and raw feed bytes while leaving
+the fixture lane and every invocation surface unchanged. The record remains
+source-`declared`, freshness/applicability remain `not-assessed`, custody is
+validator-attested, and no finding or grading credit follows. EVID-01 remains
+open for authenticated/durable custody, workpaper/adjudication integration and
+the complete refusal/evaluation boundary; DATA-01 remains open for an admitted
+source revision, rights decision and empirical containment.
+
 ## First proposed vertical slice
 
 One useful slice, proven end to end, beats breadth across the register.

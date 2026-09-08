@@ -210,6 +210,22 @@ def _load_feed(
             raw = handle.read(MAX_FEED_BYTES + 1)
     except OSError as exc:
         raise FeedError("args.feed could not be read") from exc
+    return parse_feed_bytes(raw, format=_feed_format(path.suffix))
+
+
+def parse_feed_bytes(
+    raw: bytes, *, format: str
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    """Parse bounded feed bytes without performing I/O.
+
+    The arm and the opt-in trusted-observation verifier share this function so
+    the verifier replays the exact normalization contract over validator-held
+    bytes instead of trusting producer-reported provenance.
+    """
+    if type(raw) is not bytes:
+        raise FeedError("args.feed bytes must be immutable bytes")
+    if type(format) is not str:
+        raise FeedError("args.feed format is not supported")
     if len(raw) > MAX_FEED_BYTES:
         raise FeedError(f"args.feed exceeds the {MAX_FEED_BYTES} byte read cap")
     try:
@@ -219,19 +235,20 @@ def _load_feed(
     if not text.strip():
         raise FeedError("args.feed is empty")
 
-    suffix = path.suffix.lower()
-    if suffix == ".jsonl":
+    if format not in {"json", "jsonl", "yaml"}:
+        raise FeedError("args.feed format is not supported")
+    if format == "jsonl":
         records = _parse_jsonl(text)
     else:
         try:
-            if suffix == ".json":
+            if format == "json":
                 data = strict_json_loads(text)
             else:
                 data = yaml.load(text, Loader=_BoundedSafeLoader)
         except StrictDataError as exc:
             raise FeedError(str(exc)) from exc
         except (json.JSONDecodeError, RecursionError, yaml.YAMLError, ValueError) as exc:
-            label = "JSON" if suffix == ".json" else "YAML"
+            label = "JSON" if format == "json" else "YAML"
             raise FeedError(f"args.feed is not valid {label}") from exc
         refusal = _tree_refusal(data)
         if refusal:
@@ -253,6 +270,17 @@ def _load_feed(
         },
     }
     return records, _source(raw), provenance
+
+
+def _feed_format(suffix: str) -> str:
+    normalized = suffix.lower()
+    if normalized == ".json":
+        return "json"
+    if normalized == ".jsonl":
+        return "jsonl"
+    if normalized in {".yaml", ".yml"}:
+        return "yaml"
+    raise FeedError("args.feed format is not supported")
 
 
 def _parse_jsonl(text: str) -> list[Any]:
@@ -421,11 +449,16 @@ def _bounded_text(value: Any, label: str) -> str:
     return value
 
 
+def render_producer_output_bytes(output: Any) -> bytes:
+    """Render the exact UTF-8 form used by vulnify's pre-encoder size gate."""
+    return json.dumps(
+        output, sort_keys=True, ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+
+
 def _ok(spec: ArmSpec, action: str, output: Any) -> Result:
     try:
-        rendered = json.dumps(
-            output, sort_keys=True, ensure_ascii=False, allow_nan=False
-        ).encode("utf-8")
+        rendered = render_producer_output_bytes(output)
     except (TypeError, ValueError):
         return _fail(spec, action, "result could not be encoded safely")
     if len(rendered) > MAX_OUTPUT_CHARS:

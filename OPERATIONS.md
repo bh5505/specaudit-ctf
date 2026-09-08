@@ -219,6 +219,42 @@ in [README.md](README.md). Their HMAC-chained traces and validator-owned artifac
 channels must not be generalized into proof for evidence types they do not
 cover.
 
+### Opt-in vulnify observation slice
+
+The first EVID-01 sidecar covers only a declared CVE record returned by
+`vulnify.lookup`. It is not enabled by invoking the arm. A trusted validator
+must, before dispatch:
+
+1. hold and classify the exact raw feed bytes;
+2. supply its own issuer identity, authority reference, source id/revision,
+   source time (or explicit unknown), logical and custody locators, exact CVE
+   subject, producer revision and a validity window no longer than 24 hours;
+3. mint one source admission bound to the validator-created attempt id; and
+4. invoke through Mode A using that attempt id and a fresh validator-owned
+   artifact directory.
+
+After dispatch, the validator reads the one policy-report artifact through its
+own retained Mode-A channel and passes those immutable bytes, the execution
+envelope, admission and original raw bytes to
+`derive_trusted_observation`. Retain the admission, raw bytes, envelope,
+artifact bytes and observation separately. On retry, call
+`verify_trusted_observation` with the durable set of already-seen observation
+ids; the pure library stores no replay state.
+
+Do not mint an admission from the repository's R01 research mapping alone.
+That row currently has no selected revision and no license/data-rights
+clearance. A per-attempt admission is also not a governance promotion or an
+upstream-equivalence decision. The derived record stays `declared`, with
+freshness and applicability `not-assessed`; it supplies no finding, grading,
+workpaper or lifecycle authority.
+
+The observation says `validator-attested-mode-a`, not “custody verified.”
+Execution-result v1 cannot distinguish `--attempt-id` alone from an invocation
+that also used `--artifact-dir`, and the pure sidecar does not open a descriptor
+or receipt. The evidence custodian must verify that channel outside the
+library. Content hashes detect later mismatch but do not authenticate the
+issuer or prove that the admission existed before execution.
+
 ## Close, reset and retain
 
 1. Stop new learner actions and close the attempt/evidence channel.
@@ -266,6 +302,8 @@ For this checkout:
 - installing or discovering a research candidate never adds it to the catalog,
   admits its actions, provides support or authorizes execution.
 
-The [program roadmap](PROGRAM.md#proposed-roadmap) includes hard-containment and
-trusted-observation work that does not ship today. Do not operate a proposed
-environment or evidence lane as though its documentation were implementation.
+The [program roadmap](PROGRAM.md#proposed-roadmap) includes remaining
+hard-containment and trusted-observation/grading work that does not ship today.
+The opt-in vulnify sidecar above is only a partial binding mechanism; do not
+operate a proposed environment or evidence lane as though its documentation
+were implementation.
