@@ -471,6 +471,30 @@ validated per spec — auth is `?api_token=` (query) or HTTP Basic
   feature; refused by upstream entitlement, recorded as-is (a
   license upgrade unlocks it with zero client changes).
 
+**Unit 42 Timely Threat Intel (GitHub) — STAGED + VALIDATED as a
+feed resource 2026-09-08 (no credential; NOT a real-time API
+feed).** `PaloAltoNetworks/Unit42-timely-threat-intel` is Unit 42's
+public dissemination channel for indicators supporting its social
+media posts. Determination (operator asked whether it is a
+real-time threat intel feed): it is **not** — there is no API, no
+query interface, and no per-event stream; it is a flat repo of
+self-contained dated IOC briefs (`YYYY-MM-DD-<title>.txt`: header,
+author, social-post references, NOTES, then raw indicator lists),
+consumed by `git clone`/`git pull`. "Timely" in the cadence sense:
+86 briefs dated 2026 YTD, commits every few days, and the newest
+file lands the same day it is pushed (freshest:
+`2026-09-04-VoidShadow-framework.txt`; repo `pushed_at` 2026-09-04).
+Staging: shallow clone at `/opt/unit42-timely-threat-intel` on the
+staging host (0700 root tree; update path = `git pull --ff-only`,
+no key, no rate limit). Measured: **430 files**; corpus-wide rough
+uniques via grep — **3343 sha256** and **139 IPv4** indicators
+(text-format briefs; C2 URL/path IOCs additionally appear inline in
+NOTES, e.g. the VoidShadow Microsoft-Graph/WordPress/GCS disguise
+paths). An arm-admission packet would parse the dated briefs into
+structured indicators and diff on pull — the repo's flat format
+makes that trivial. Validated by live clone + content measurement;
+no simulation involved.
+
 **Cyware ThreatFeed TAXII subscription — VALIDATED 2026-09-07.** The
 operator staged subscriber credentials for a TAXII 2.1 threat-feed
 aggregation (ThreatFox, Malware Bazaar, abuse.ch, Emerging Threats,
