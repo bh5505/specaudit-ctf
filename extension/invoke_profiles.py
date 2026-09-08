@@ -592,9 +592,10 @@ INVOKE_PROFILES = {
         # decode of the caller-named dump into raw IP/CIDR + domain
         # indicator lists. Honest truth: real local files are touched
         # (read dump, optionally write the lists to the caller-named
-        # outdir), so this is NOT synthetic-only and carries a
-        # filesystem-write side effect; no subprocess, no endpoint,
-        # no schedule (ad-hoc by design).
+        # outdir — the arm creates that directory itself and performs
+        # no other writes), so this is NOT synthetic-only and carries
+        # a local-write side effect; no subprocess, no endpoint, no
+        # schedule (ad-hoc by design).
         _rpz_decode_profile(),
         # Metasploit read admission (2026-09-04): the exploit/payload/
         # session/listener listings over the operator-run loopback SSE server

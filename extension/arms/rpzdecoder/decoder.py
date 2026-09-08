@@ -1,10 +1,13 @@
 """RPZ AXFR decoder: raw indicator extraction from a zone dump.
 
 Stdlib-only, in-process, fail-closed. The dump is the plain text a
-``dig ... axfr`` run prints; every record that is not a usable
-indicator is counted into an explicit bucket (control, skipped,
-unparsed) rather than dropped silently, and undecodable triggers
-never raise — they are counted so the caller can see the residue.
+``dig ... axfr`` run prints. Records outside the zone or outside the
+IN class (the SOA/NS bookends, the dig TSIG trailer) are skipped;
+in-zone records that are not usable indicators are counted into
+explicit buckets (control, unparsed) rather than dropped silently,
+and undecodable triggers never raise — they are counted so the
+caller can see the residue. Zone data must be valid UTF-8; anything
+else is a ZoneDecodeError, never a silent replacement decode.
 """
 
 from __future__ import annotations
@@ -32,7 +35,10 @@ class ZoneDecodeError(ValueError):
 
 def read_dump_bytes(raw: bytes, zone: str) -> str:
     """Strict-UTF8 decode with sanity guards; corruption is an error."""
-    text = raw.decode("utf-8")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise ZoneDecodeError(f"dump is not valid UTF-8: {exc}") from exc
     if not text.strip():
         raise ZoneDecodeError("dump is empty")
     if f"{zone}." not in text:
@@ -137,7 +143,8 @@ def decode_axfr(text: str, zone: str, include_control: bool = False) -> dict[str
 
 
 def _is_control(base: str) -> bool:
-    return base in CONTROL_DOMAINS or base.endswith(".threatstop.com")
+    lowered = base.lower()
+    return lowered in CONTROL_DOMAINS or lowered.endswith(".threatstop.com")
 
 
 def _ip_trigger_kind(base: str) -> tuple[str, str]:
@@ -155,15 +162,16 @@ def _action_of(rtype: str, rdata: str) -> str:
     if rtype != "CNAME":
         return rtype.lower()
     target = rdata.strip().rstrip(".").strip('"')
-    if target == "":
+    lowered = target.lower()
+    if lowered == "":
         return "nxdomain"
-    if target == "*":
+    if lowered == "*":
         return "nodata"
-    if target == "rpz-passthru":
+    if lowered == "rpz-passthru":
         return "passthru"
-    if target == "rpz-drop":
+    if lowered == "rpz-drop":
         return "drop"
-    if target == "rpz-tcp-only":
+    if lowered == "rpz-tcp-only":
         return "tcp-only"
     return f"redirect:{target}"
 
@@ -218,12 +226,21 @@ def _decode_ipv6(labels: list[str], prefix: int) -> str | None:
 
 
 def _decode_ipv6_nibble(labels: list[str]) -> list[int] | None:
-    """Single hex digits reversed; trailing nibbles are zero."""
+    """Single hex digits reversed; trailing nibbles are zero.
+
+    Multi-char hex labels are NOT accepted here — a hextet-form trigger
+    without its zz marker must land in the unparsed bucket, never be
+    reinterpreted as nibbles (that would fabricate bogus CIDRs).
+    """
+    if any(len(label) != 1 for label in labels):
+        return None
     try:
         nibbles_rev = [int(label, 16) for label in labels]
     except ValueError:
         return None
     if len(nibbles_rev) * 4 > 128:
+        return None
+    if any(nibble > 0xF for nibble in nibbles_rev):
         return None
     nibbles = list(reversed(nibbles_rev))
     while len(nibbles) < 32:

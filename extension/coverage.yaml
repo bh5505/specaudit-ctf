@@ -343,4 +343,4 @@ entries:
     protocols: [cli]
     curated: true
     tier: research
-    notes: Ad-hoc threat-intel extraction from an operator-supplied DNS Response Policy Zone. decode turns an AXFR dump into raw IP/CIDR and domain indicator lists (action-tagged, written to files, sampled in the result); fetch/status are dispatch-gated dig runs using a 0600 TSIG key file. No schedule, no appliance; no zone data or account identifiers ship in the repo.
+    notes: Ad-hoc threat-intel extraction from an operator-supplied DNS Response Policy Zone. decode turns an AXFR dump into raw IP/CIDR and domain indicator lists (action-tagged, written to files, sampled in the result); fetch is a dispatch-gated dig AXFR using a 0600 TSIG key file, status a keyless SOA probe. No schedule, no appliance; no zone data or account identifiers ship in the repo.

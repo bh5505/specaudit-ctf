@@ -67,6 +67,8 @@ def zone_refusal(zone: str) -> str | None:
     if not isinstance(zone, str) or not zone.strip():
         return "zone is required (args.zone or RPZDECODER_ZONE)"
     zone = zone.strip().rstrip(".")
+    if zone.startswith("-"):
+        return "zone must not be flag-shaped"
     if not zone.endswith(ZONE_SUFFIX):
         return f"zone must end with {ZONE_SUFFIX}"
     if any(ch not in "abcdefghijklmnopqrstuvwxyz0123456789.-" for ch in zone.lower()):
@@ -110,14 +112,21 @@ def args_refusal(action: str, payload: dict) -> str | None:
         return "decode requires args.dump (path to an AXFR dump)"
     if action == "fetch" and not _opt_str(payload.get("keyfile")):
         return "fetch requires args.keyfile (0600 two-line TSIG key file)"
+    if action == "fetch" and not _opt_str(payload.get("outdir")):
+        return "fetch requires args.outdir (the decoded lists are written there)"
     return None
 
 
+MAX_KEYFILE_BYTES = 64 * 1024
+
+
 def keyfile_refusal(path: Path) -> str | None:
-    """Fail-closed credential-file check: exists, non-empty, 0600."""
+    """Fail-closed credential-file check: exists, bounded, 0600."""
     if not path.is_file():
         return f"keyfile not found: {path}"
     try:
+        if path.stat().st_size > MAX_KEYFILE_BYTES:
+            return f"keyfile exceeds {MAX_KEYFILE_BYTES} bytes"
         raw = path.read_bytes()
     except OSError as exc:
         return f"keyfile unreadable: {exc}"

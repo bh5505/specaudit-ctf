@@ -42,6 +42,7 @@ from .policy import (
     MAX_OUTPUT_CHARS,
     SAMPLE_INDICATORS,
     TIMEOUT_SECONDS,
+    ZONE_SUFFIX,
     args_refusal,
     keyfile_refusal,
     master_refusal,
@@ -131,13 +132,19 @@ class RpzDecoderArm:
         expected = payload.get("zone")
         if isinstance(expected, str) and expected.strip():
             expected = expected.strip().rstrip(".")
-            if expected != zone:
+            if expected.lower() != zone.lower():
                 return _fail(
                     spec,
                     action,
                     f"dump holds zone {zone!r}, args.zone said {expected!r}",
                 )
-        include_control = bool(payload.get("include_control"))
+        include_control = _strict_bool(payload.get("include_control", False))
+        if include_control is None:
+            return _fail(
+                spec,
+                action,
+                "include_control must be a boolean (true/false)",
+            )
         report = decoder.decode_axfr(text, zone, include_control=include_control)
         output: dict[str, Any] = {
             "zone": zone,
@@ -151,7 +158,12 @@ class RpzDecoderArm:
             "caveats": list(CAVEATS),
         }
         if payload.get("outdir"):
-            output["files"] = _write_lists(Path(str(payload["outdir"])), report)
+            try:
+                output["files"] = _write_lists(
+                    Path(str(payload["outdir"])), report
+                )
+            except _WriteError as exc:
+                return _fail(spec, action, str(exc))
         return Result(
             ok=True,
             arm_id=spec.id,
@@ -166,9 +178,11 @@ class RpzDecoderArm:
             parts = line.split()
             if len(parts) >= 7 and parts[2] == "IN" and parts[3] == "SOA":
                 owner = parts[0].rstrip(".")
-                if owner.endswith(".rpz.threatstop.local"):
+                if owner.endswith(ZONE_SUFFIX):
                     return owner
-        raise ZoneDecodeError("no SOA for a *.rpz.threatstop.local zone in dump")
+        raise ZoneDecodeError(
+            f"no SOA for a *{ZONE_SUFFIX} zone in dump"
+        )
 
     # ------------------------------------------------------------------
     # fetch / status (dispatch tier)
@@ -201,12 +215,7 @@ class RpzDecoderArm:
                 "dig binary not found (set RPZDECODER_DIG_BIN or install dig)",
             )
 
-        target = f"//{master}:{port}/{zone}"
-        scope, dispatch_refusal = authorize(ENV_DISPATCH_SCOPE, action, target)
-        if scope is None:
-            return _fail(spec, action, dispatch_refusal or "dispatch not armed")
-        log_dispatch(ARM_ID, action, scope, target)
-
+        target = f"dns://{master}:{port}/{zone}"
         secret: str | None = None
         query = ["soa"] if action == "status" else ["axfr"]
         cmd = [
@@ -223,27 +232,30 @@ class RpzDecoderArm:
             "+answer",
         ]
         if action == "fetch":
+            # Validate the credential BEFORE auditing the dispatch: a
+            # dispatch line must describe a dispatch that can run.
             keyfile = Path(str(payload["keyfile"]))
             key_refusal = keyfile_refusal(keyfile)
             if key_refusal:
                 return _fail(spec, action, key_refusal)
-            lines = [
-                line.strip()
-                for line in keyfile.read_text(encoding="utf-8").splitlines()
-                if line.strip()
-            ]
+            try:
+                key_text = keyfile.read_bytes().decode("utf-8")
+            except UnicodeDecodeError:
+                return _fail(spec, action, "keyfile is not valid UTF-8")
+            lines = [line.strip() for line in key_text.splitlines() if line.strip()]
             key_name, secret = lines[0], lines[1]
             cmd = [binary, "-y", f"hmac-md5:{key_name}:{secret}", *cmd[1:]]
+
+        scope, dispatch_refusal = authorize(ENV_DISPATCH_SCOPE, action, target)
+        if scope is None:
+            return _fail(spec, action, dispatch_refusal or "dispatch not armed")
+        log_dispatch(ARM_ID, action, scope, target)
 
         dump_bytes = b""
         stdout_text = ""
         try:
             if action == "fetch":
-                outdir = (
-                    Path(str(payload["outdir"]))
-                    if payload.get("outdir")
-                    else Path(".")
-                )
+                outdir = Path(str(payload["outdir"]))
                 outdir.mkdir(parents=True, exist_ok=True)
                 raw_path = outdir / "zone-axfr.txt"
                 with raw_path.open("wb") as handle:
@@ -256,7 +268,10 @@ class RpzDecoderArm:
                         check=False,
                     )
                 stderr_text = (proc.stderr or b"").decode("utf-8", errors="replace")
-                dump_bytes = raw_path.read_bytes()
+                try:
+                    dump_bytes = raw_path.read_bytes()
+                except OSError as exc:
+                    return _fail(spec, action, f"transfer unreadable: {exc}")
             else:
                 proc = subprocess.run(
                     cmd,
@@ -277,7 +292,12 @@ class RpzDecoderArm:
 
         stdout_text = _scrub(stdout_text, secret)
         stderr_text = _scrub(stderr_text, secret)
-        if proc.returncode != 0 or "Transfer failed" in stdout_text:
+        # On fetch, dig's stdout goes to the dump file — the failure
+        # banner only ever appears on stderr.
+        transfer_failed = "Transfer failed" in stdout_text or (
+            "Transfer failed" in stderr_text
+        )
+        if proc.returncode != 0 or transfer_failed:
             detail = (stderr_text or stdout_text or f"{action} failed").strip()
             return _fail(spec, action, detail[:MAX_OUTPUT_CHARS])
 
@@ -305,7 +325,12 @@ class RpzDecoderArm:
             "caveats": list(CAVEATS),
         }
         if payload.get("outdir"):
-            output["files"] = _write_lists(Path(str(payload["outdir"])), report)
+            try:
+                output["files"] = _write_lists(
+                    Path(str(payload["outdir"])), report
+                )
+            except _WriteError as exc:
+                return _fail(spec, action, str(exc))
         return Result(
             ok=True,
             arm_id=spec.id,
@@ -335,6 +360,10 @@ class RpzDecoderArm:
                     refresh = int(parts[7])
                 except (IndexError, ValueError):
                     serial = refresh = None
+        if serial is None:
+            # Fail-closed: a status answer without a parseable SOA is an
+            # evaluated failure, not an ok=True with nulls.
+            return _fail(spec, action, "no SOA in status response")
         output: dict[str, Any] = {
             "zone": zone,
             "master": master,
@@ -367,6 +396,20 @@ class RpzDecoderArm:
         )
 
 
+class _WriteError(OSError):
+    """Internal: indicator-list writing failed; converted to a failure."""
+
+
+def _strict_bool(value: object) -> bool | None:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):
+        return bool(value)
+    if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+        return value.strip().lower() == "true"
+    return None
+
+
 def _env(name: str) -> str | None:
     value = os.environ.get(name)
     if isinstance(value, str) and value.strip():
@@ -381,13 +424,21 @@ def _scrub(text: str, secret: str | None) -> str:
 
 
 def _write_lists(outdir: Path, report: dict[str, Any]) -> dict[str, str]:
-    outdir.mkdir(parents=True, exist_ok=True)
-    ips_path = outdir / "ips.txt"
-    domains_path = outdir / "domains.txt"
-    ndjson_path = outdir / "indicators.ndjson"
-    ips_path.write_text("\n".join(report["ips"]) + "\n", encoding="utf-8")
-    domains_path.write_text("\n".join(report["domains"]) + "\n", encoding="utf-8")
-    ndjson_path.write_text("\n".join(report["ndjson"]) + "\n", encoding="utf-8")
+    """Write the raw indicator lists; caller-named dir is the containment."""
+    try:
+        outdir.mkdir(parents=True, exist_ok=True)
+        ips_path = outdir / "ips.txt"
+        domains_path = outdir / "domains.txt"
+        ndjson_path = outdir / "indicators.ndjson"
+        ips_path.write_text("\n".join(report["ips"]) + "\n", encoding="utf-8")
+        domains_path.write_text(
+            "\n".join(report["domains"]) + "\n", encoding="utf-8"
+        )
+        ndjson_path.write_text(
+            "\n".join(report["ndjson"]) + "\n", encoding="utf-8"
+        )
+    except OSError as exc:
+        raise _WriteError(f"failed to write indicator lists: {exc}") from exc
     return {
         "ips": str(ips_path),
         "domains": str(domains_path),

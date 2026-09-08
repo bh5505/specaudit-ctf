@@ -28,9 +28,10 @@ from extension.arms.rpzdecoder.policy import (
     zone_refusal,
 )
 
-ZONE = "Extended-DNS-Monitor.rpz.threatstop.local"
+ZONE = "Example-Policy.rpz.threatstop.local"
 SUFFIX = f".{ZONE}."
 MASTER = "192.0.2.53"
+# synthetic fixture secret (fake base64); never a real credential
 SECRET = "Zm9vYmFyYmF6cXV1eHRyaWNreXNlY3JldGxlbmd0aG9mNjRieXRlcw=="
 
 FIXTURE_AXFR = "\n".join(
@@ -53,7 +54,7 @@ FIXTURE_AXFR = "\n".join(
         f"dropme.example.org.{SUFFIX} 900 IN CNAME rpz-drop.",
         f"tcp.example.org.{SUFFIX} 900 IN CNAME rpz-tcp-only.",
         f"garden.example.org.{SUFFIX} 900 IN CNAME garden.threatstop.com.",
-        "garbage-label.rpz-ip.Extended-DNS-Monitor.rpz.threatstop.local. 900 IN CNAME rpz-passthru.",
+        f"garbage-label.rpz-ip.{SUFFIX} 900 IN CNAME rpz-passthru.",
         "threatstop-charte02. 0 ANY TSIG hmac-md5.sig-alg.reg.int. 1788838573 300 16 xxxxx 0 NOERROR 0",
     ]
 )
@@ -371,7 +372,7 @@ def _arm_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     }
 
 
-def test_fetch_unarmed_is_evaluated_failure(monkeypatch) -> None:
+def test_fetch_unarmed_is_evaluated_failure(monkeypatch, tmp_path) -> None:
     monkeypatch.delenv(ENV_DISPATCH_SCOPE, raising=False)
     monkeypatch.setenv("RPZDECODER_DIG_BIN", str(sys.executable))
     arm = RpzDecoderArm()
@@ -381,8 +382,8 @@ def test_fetch_unarmed_is_evaluated_failure(monkeypatch) -> None:
         {
             "zone": ZONE,
             "master": MASTER,
-            "keyfile": "irrelevant",
-            "outdir": "out",
+            "keyfile": str(_keyfile(tmp_path)),
+            "outdir": str(tmp_path / "out"),
         },
     )
     assert result.ok is False
@@ -448,3 +449,99 @@ def test_fetch_failure_redacts_tsig_secret(
 def test_decoder_ext_registered_in_extension() -> None:
     ext = _ext()
     assert ext.arms[ARM_ID].installed(_spec()) is True
+
+
+def test_decode_zzless_hextet_and_multichar_nibble_are_unparsed() -> None:
+    text = (
+        f"{ZONE}. 60 IN SOA ns1.threatstop.com. hostmaster.threatstop.com. 1 900 900 86400 60\n"
+        f"32.2001.db8.0.0.0.0.0.0.rpz-ip.{SUFFIX} 0 IN CNAME rpz-passthru.\n"
+        f"32.ab.cd.ef.12.rpz-ip.{SUFFIX} 0 IN CNAME rpz-passthru.\n"
+    )
+    report = decode_axfr(text, ZONE)
+    assert report["counts"]["unparsed"] == 2
+    assert report["ips"] == []
+
+
+def test_arm_decode_outdir_is_a_file_is_evaluated_failure(tmp_path: Path) -> None:
+    arm = RpzDecoderArm()
+    blocker = tmp_path / "blocker"
+    blocker.write_text("not a dir", encoding="utf-8")
+    result = arm.invoke(
+        _spec(),
+        "decode",
+        {"dump": str(_write_dump(tmp_path)), "outdir": str(blocker)},
+    )
+    assert result.ok is False
+    assert "write indicator lists" in (result.error or "")
+
+
+def test_arm_fetch_non_utf8_keyfile_is_evaluated_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    key = tmp_path / "tsig"
+    key.write_bytes(b"threatstop-key\n\xff\xfe-not-utf8\n")
+    if os.name == "posix":
+        key.chmod(0o600)
+    monkeypatch.setenv("RPZDECODER_DIG_BIN", str(_fake_dig(tmp_path, "ok")))
+    monkeypatch.setenv(ENV_DISPATCH_SCOPE, MASTER)
+    arm = RpzDecoderArm(timeout=30)
+    result = arm.invoke(
+        _spec(),
+        "fetch",
+        {
+            "zone": ZONE,
+            "master": MASTER,
+            "keyfile": str(key),
+            "outdir": str(tmp_path / "out"),
+        },
+    )
+    assert result.ok is False
+    assert "not valid UTF-8" in (result.error or "")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fake dig wrapper is POSIX-only")
+def test_fetch_non_utf8_dump_is_fail_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    bad = tmp_path / "fixture.txt"
+    bad.write_bytes(b"\xff\xfe not a zone\n")
+    monkeypatch.setenv("RPZDECODER_DIG_BIN", str(_fake_dig(tmp_path, "ok")))
+    monkeypatch.setenv(ENV_DISPATCH_SCOPE, MASTER)
+    arm = RpzDecoderArm(timeout=30)
+    result = arm.invoke(
+        _spec(),
+        "fetch",
+        {
+            "zone": ZONE,
+            "master": MASTER,
+            "keyfile": str(_keyfile(tmp_path)),
+            "outdir": str(tmp_path / "out"),
+        },
+    )
+    assert result.ok is False
+    assert "not valid UTF-8" in (result.error or "")
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fake dig wrapper is POSIX-only")
+def test_status_without_soa_is_evaluated_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    empty = tmp_path / "fixture.txt"
+    empty.write_text("", encoding="utf-8")
+    script = tmp_path / "fake-dig.py"
+    script.write_text(
+        "import sys\n"
+        f"sys.stdout.write(open(r'{empty}', encoding='utf-8').read())\n",
+        encoding="utf-8",
+    )
+    wrapper = tmp_path / "dig"
+    wrapper.write_text(
+        f"#!{sys.executable}\nexec(open(r'{script}').read())\n", encoding="utf-8"
+    )
+    wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
+    monkeypatch.setenv("RPZDECODER_DIG_BIN", str(wrapper))
+    monkeypatch.setenv(ENV_DISPATCH_SCOPE, MASTER)
+    arm = RpzDecoderArm(timeout=30)
+    result = arm.invoke(_spec(), "status", {"zone": ZONE, "master": MASTER})
+    assert result.ok is False
+    assert "no SOA in status response" in (result.error or "")
