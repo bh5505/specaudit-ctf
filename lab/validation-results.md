@@ -168,18 +168,33 @@ recipe note):
 
 ## google-mcp-security — GTI remote reads
 
-Status: **awaiting-operator** (dated 2026-09-07: genuinely
-operator-gated STAGING — both required inputs are operator-held)
+Status: **validated 2026-09-07** (agent-staged https deployment with
+the operator-provided `VT_APIKEY`; two of three runbook reads
+complete, one refused by upstream key entitlement — measured below)
 
-Agent-staging assessment 2026-09-07: this arm is the one block where
-staging itself needs the operator. The server's sole credential
-(`VT_APIKEY`) is operator-held, and the arm's client refuses
-everything except an operator-fronted **https** endpoint (loopback
-refused by policy), while the first-party server is stdio-only. There
-is therefore no local, credential-free staging path an agent can
-execute honestly. Everything else is ready: the runbook below is
-current, the tool inventory is pinned, and the validation commands
-are copy-paste once the endpoint exists.
+Agent-staging assessment 2026-09-07, SUPERSEDED same day: the
+operator supplied the `VT_APIKEY`, and the arm's https-only policy
+was satisfied by running the OFFICIAL `gti_mcp` server itself (PyPI
+`gti-mcp`, FastMCP-based — HTTP-capable by construction) over TLS on
+the host's WSL address. No third-party front is involved: uvicorn
+terminates TLS with a self-signed cert (SAN = the host IP, installed
+into the system CA store), the app is the server's own
+`streamable_http_app()`, and the SDK's DNS-rebinding guard was
+widened from its loopback-only defaults to the staging IP (the
+client-side transport-gate properties — https, DNS pin, Origin
+emission — remain the enforcing layer). `VT_APIKEY` lives only in a
+0600 file read into the server process env.
+
+**Measured validation 2026-09-07** (`GTI_MCP_ENDPOINT=https://<host-ip>:8443/mcp`):
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-07 |
+| Env vars armed | `GTI_MCP_ENDPOINT=https://<host-ip>:8443/mcp` (https to a non-loopback host — the arm's remote_https policy; the IP is the staging host's own WSL address) |
+| Invoke commands as run | `python -m extension invoke google-mcp-security list_tools` · `get_domain_report '{"domain": "example.com"}'` · `search_threat_actors '{"query": "apt"}'` |
+| Envelope status | **complete**: `list_tools`, `get_domain_report` (a real VirusTotal report retrieved end-to-end with the operator key). **failed (upstream authorization)**: `search_threat_actors` — the GTI backend refused with `ForbiddenError: You are not authorized to perform the requested operation`, i.e. the supplied key tier does not carry Google Threat Intelligence threat-actor search entitlement |
+| Artifacts | digests per call, `kind: policy-report`, `redaction: credentials-stripped`; the initialize handshake over TLS returned HTTP 200 |
+| Operator note | server: gti-mcp 0.1.3 (official google/mcp-security server/gti code) serving streamable HTTP directly; key tier determines which GTI capabilities the backend serves — a GTI-entitled key would unlock the refused reads with zero client changes |
 
 Runbook: `lab/README.md` → "Operator-gated rows". The operator runs
 the official server (google/mcp-security `server/gti`, PyPI `gti-mcp`
@@ -292,6 +307,37 @@ The arm admits exactly 43 read lookups by name; the 18 mutating tools
 (scan triggers, mutelist/integration/provider writers, role setting)
 and the hosted-only `prowler_cloud_` namespace are refused even when
 the server lists them.
+
+---
+
+## staged threat-intelligence capabilities without curated arms (2026-09-07)
+
+The operator staged API keys for additional threat-intel services.
+None has a curated catalog arm yet, so staging + validation here runs
+the upstream MCP servers directly and measures their reads — the
+evidence base for any future arm-admission packet. Keys live in 0600
+files read into server process envs; none appears in this record.
+
+**AlienVault OTX + GreyNoise — VALIDATED 2026-09-07.** Server:
+`mcp-threatintel-server` 1.0.2 (npm; community — the research note
+recorded that no official AlienVault/LevelBlue MCP server exists).
+One stdio server fronts both keys (`OTX_API_KEY`,
+`GREYNOISE_API_KEY`) plus abuse.ch feodo. Measured over a stdio MCP
+client: 9 tools served (`otx_get_pulses`, `otx_search_pulses`,
+`greynoise_ip`, `threatintel_lookup_{ip,domain,hash,url}`,
+`feodo_tracker`, `threatintel_status`); `threatintel_status` → OK
+with `configured_services: otx, greynoise, feodo`; `otx_get_pulses`
+→ **OK** (real OTX API read with the operator key);
+`greynoise_ip 8.8.8.8` → the GreyNoise API answered with its
+key-authenticated negative (`noise: false`, "IP not observed
+scanning the internet", surfaced by the server as a 404 ToolError —
+the transport and key both work; the queried IP simply has no noise
+record).
+
+**ThreatJammer — CEASED OPERATIONS (operator, 2026-09-07).** The
+API key is staged (0600) but the upstream service has shut down:
+there is nothing to stage a server against and nothing to validate.
+Recorded awaiting-revival; never simulated.
 
 ---
 
