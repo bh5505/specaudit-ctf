@@ -26,8 +26,10 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 
 CAVEATS = (
     "offline read tier over an operator-supplied local AD path export",
-    "a missing datasource field reads as 'not assessed', never clean",
-    "no real hashes or credentials are stored or returned",
+    "a null datasource value reads as 'not assessed', never clean",
+    "an export with no paths is rejected; zero rows never means assessed coverage",
+    "the bounded schema rejects unknown fields, but operators must still exclude "
+    "real credentials and sensitive identifiers from accepted text fields",
     "a blocked path does not mean demonstrated compromise",
 )
 
@@ -55,15 +57,15 @@ def export_refusal(
         return None, "args.export contains control characters"
     path = Path(text).expanduser()
     if not path.is_file():
-        return None, f"args.export is not an existing file: {text}"
+        return None, "args.export is not an existing file"
     if path.suffix.lower() not in EXPORT_SUFFIXES:
         return None, (
             f"args.export must be a JSON or YAML file, got suffix {path.suffix!r}"
         )
     try:
         size = path.stat().st_size
-    except OSError as exc:
-        return None, f"args.export could not be read: {exc}"
+    except OSError:
+        return None, "args.export could not be read"
     if size > max_bytes:
         return None, (
             f"args.export exceeds the {max_bytes} byte read cap "
@@ -74,6 +76,8 @@ def export_refusal(
 
 def args_refusal(action: str, payload: dict) -> str | None:
     """Refuse unknown or missing caller arguments per action."""
+    if any(not isinstance(key, str) for key in payload):
+        return "caller argument names must be strings"
     allowed = ARG_KEYS.get(action)
     if allowed is None:
         return f"action {action!r} is not on the read allowlist"
@@ -87,11 +91,23 @@ def args_refusal(action: str, payload: dict) -> str | None:
     if "export" not in payload:
         return "this action requires a local export path in args.export"
     if action == "path":
-        has_path_id = isinstance(payload.get("path_id"), str) and payload["path_id"].strip()
-        has_source = isinstance(payload.get("source"), str) and payload["source"].strip()
-        has_target = isinstance(payload.get("target"), str) and payload["target"].strip()
-        if not has_path_id and not (has_source and has_target):
+        has_path_id = isinstance(payload.get("path_id"), str) and bool(
+            payload["path_id"].strip()
+        )
+        has_source = isinstance(payload.get("source"), str) and bool(
+            payload["source"].strip()
+        )
+        has_target = isinstance(payload.get("target"), str) and bool(
+            payload["target"].strip()
+        )
+        if has_path_id == bool(has_source and has_target):
             return "path requires either args.path_id or both args.source and args.target"
+        if (has_source and not has_target) or (has_target and not has_source):
+            return "path requires either args.path_id or both args.source and args.target"
+    if action == "list_paths":
+        _limit, refusal = limit_refusal(payload.get("limit"))
+        if refusal:
+            return refusal
     return None
 
 
@@ -102,11 +118,8 @@ def limit_refusal(raw: object) -> tuple[int | None, str | None]:
     """
     if raw is None:
         return MAX_RESULTS, None
-    try:
-        value = int(raw)
-    except (TypeError, ValueError):
-        return None, "args.limit must be a positive integer"
-    if value < 1:
-        return None, "args.limit must be a positive integer"
-    capped = min(value, MAX_RESULTS)
-    return capped, None
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        return None, f"args.limit must be an integer between 1 and {MAX_RESULTS}"
+    if raw < 1 or raw > MAX_RESULTS:
+        return None, f"args.limit must be between 1 and {MAX_RESULTS}"
+    return raw, None

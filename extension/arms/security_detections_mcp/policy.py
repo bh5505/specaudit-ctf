@@ -1,6 +1,6 @@
 """Exact-allowlist rules for the security-detections-mcp read arm.
 
-Curated local rule reads over pinned detection indexes.  No rule
+Curated local rule reads over operator-supplied frozen detection indexes.  No rule
 generation, index mutation, deployment, or hosted fallback on the read
 path.  Every result is source-attributable.  Per-corpus licensing must
 be reviewed by the operator before use.
@@ -19,9 +19,12 @@ MAX_OUTPUT_CHARS = 200_000
 MAX_INDEX_BYTES = 64 * 1024 * 1024
 INDEX_SUFFIXES = (".json", ".yaml", ".yml")
 MAX_RESULTS = 200
+MAX_RECORDS = 10_000
+MAX_DOCUMENT_NODES = 50_000
+MAX_DOCUMENT_DEPTH = 64
 
 ARG_KEYS: dict[str, frozenset[str]] = {
-    "list_rules": frozenset({"index"}),
+    "list_rules": frozenset({"index", "limit"}),
     "search_rules": frozenset({"index", "query", "limit"}),
     "get_rule": frozenset({"index", "rule_id"}),
 }
@@ -29,8 +32,9 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 CAVEATS = (
     "offline read tier over operator-supplied local detection indexes",
     "no rule generation, index mutation, deployment, or hosted fallback",
-    "every result is source-attributable to the pinned index",
-    "per-corpus licensing must be reviewed before use",
+    "data-action results identify the exact input bytes but do not establish "
+    "source revision, custody, or authenticity",
+    "per-corpus revision and licensing must be reviewed before use",
 )
 
 ARMING = (
@@ -50,13 +54,13 @@ def index_refusal(raw: object, *, max_bytes: int = MAX_INDEX_BYTES) -> tuple[Pat
         return None, "args.index contains control characters"
     path = Path(text).expanduser()
     if not path.is_file():
-        return None, f"args.index is not an existing file: {text}"
+        return None, "args.index is not an existing file"
     if path.suffix.lower() not in INDEX_SUFFIXES:
         return None, f"args.index must be a JSON or YAML file, got suffix {path.suffix!r}"
     try:
         size = path.stat().st_size
-    except OSError as exc:
-        return None, f"args.index could not be read: {exc}"
+    except OSError:
+        return None, "args.index could not be read"
     if size > max_bytes:
         return None, (
             f"args.index exceeds the {max_bytes} byte read cap "
@@ -79,8 +83,18 @@ def args_refusal(action: str, payload: dict) -> str | None:
         )
     if not {"index"} <= set(payload):
         return "this action requires a local index path in args.index"
-    if action == "get_rule" and not str(payload.get("rule_id") or "").strip():
-        return "get_rule requires args.rule_id"
+    if action == "get_rule":
+        rule_id = payload.get("rule_id")
+        if not isinstance(rule_id, str) or not rule_id.strip():
+            return "get_rule requires args.rule_id as a non-empty string"
+    if action == "search_rules":
+        query = payload.get("query")
+        if not isinstance(query, str) or not query.strip():
+            return "search_rules requires args.query as a non-empty string"
+    if action in {"list_rules", "search_rules"}:
+        _, refusal = limit_refusal(payload.get("limit"))
+        if refusal:
+            return refusal
     return None
 
 
@@ -88,8 +102,6 @@ def limit_refusal(raw: object) -> tuple[int | None, str | None]:
     """Validate an optional result limit."""
     if raw is None:
         return None, None
-    if isinstance(raw, str) and raw.isdigit():
-        raw = int(raw)
     if not isinstance(raw, int) or isinstance(raw, bool):
         return None, "args.limit must be a positive integer"
     if raw < 1 or raw > MAX_RESULTS:

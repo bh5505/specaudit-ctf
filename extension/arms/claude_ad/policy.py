@@ -60,7 +60,7 @@ def method_refusal(
         return None, "args.method_file contains control characters"
     path = Path(text).expanduser()
     if not path.is_file():
-        return None, f"args.method_file is not an existing file: {text}"
+        return None, "args.method_file is not an existing file"
     if path.suffix.lower() not in METHOD_SUFFIXES:
         return (
             None,
@@ -69,8 +69,8 @@ def method_refusal(
         )
     try:
         size = path.stat().st_size
-    except OSError as exc:
-        return None, f"args.method_file could not be read: {exc}"
+    except OSError:
+        return None, "args.method_file could not be read"
     if size > max_bytes:
         return None, (
             f"args.method_file exceeds the {max_bytes} byte read cap "
@@ -81,6 +81,8 @@ def method_refusal(
 
 def args_refusal(action: str, payload: dict) -> str | None:
     """Refuse unknown or missing caller arguments per action."""
+    if any(not isinstance(key, str) for key in payload):
+        return "caller argument names must be strings"
     allowed = ARG_KEYS.get(action)
     if allowed is None:
         return f"action {action!r} is not on the read allowlist"
@@ -96,13 +98,13 @@ def args_refusal(action: str, payload: dict) -> str | None:
             "this action requires a local methodology file in args.method_file"
         )
     if action == "technique":
-        has_id = isinstance(payload.get("technique_id"), str) and payload[
-            "technique_id"
-        ].strip()
-        has_name = isinstance(payload.get("name"), str) and payload[
-            "name"
-        ].strip()
-        if not has_id and not has_name:
+        has_id = isinstance(payload.get("technique_id"), str) and bool(
+            payload["technique_id"].strip()
+        )
+        has_name = isinstance(payload.get("name"), str) and bool(
+            payload["name"].strip()
+        )
+        if has_id == has_name:
             return (
                 "technique requires exactly one of args.technique_id or args.name"
             )
@@ -110,6 +112,10 @@ def args_refusal(action: str, payload: dict) -> str | None:
         limit_err = limit_refusal(payload.get("limit"))
         if limit_err:
             return limit_err
+        if "category" in payload and (
+            not isinstance(payload["category"], str) or not payload["category"].strip()
+        ):
+            return "args.category must be a non-empty string"
     return None
 
 
@@ -117,7 +123,7 @@ def limit_refusal(raw: object) -> str | None:
     """Validate an optional limit argument (1-200)."""
     if raw is None:
         return None
-    if not isinstance(raw, int):
+    if not isinstance(raw, int) or isinstance(raw, bool):
         return "args.limit must be an integer between 1 and 200"
     if raw < 1 or raw > 200:
         return "args.limit must be between 1 and 200"

@@ -116,6 +116,22 @@ def dispatch_invoke(
                 artifact_dir=sink,
             )
             return DispatchOutcome(envelope, 2, str(exc))
+        except Exception as exc:
+            # An arm consumes operator-controlled data.  A missed parser edge
+            # must therefore become an evaluated failure, never a traceback or
+            # a dropped MCP response.  Keep the concrete exception out of the
+            # wire/stderr surface: it may contain a local path or input text.
+            envelope = encode_invoke_failure(
+                exc,
+                arm_id=arm_id,
+                action=action,
+                profile=profile,
+                started_at=started,
+                finished_at=utc_now(),
+                attempt_id=parsed_attempt,
+                artifact_dir=sink,
+            )
+            return DispatchOutcome(envelope, 1, "invoke failed")
         try:
             envelope = encode_invoke_result(
                 result,
@@ -127,6 +143,26 @@ def dispatch_invoke(
             )
         except ArtifactHandoffError as exc:
             return DispatchOutcome(exc.envelope, 2, str(exc))
+        except Exception as exc:
+            # A malformed Result or an encoder edge is still part of the
+            # transport boundary.  Convert it to the same admitted failure
+            # envelope without exposing the exception or caller data.
+            try:
+                envelope = encode_invoke_failure(
+                    exc,
+                    arm_id=arm_id,
+                    action=action,
+                    profile=profile,
+                    started_at=started,
+                    finished_at=utc_now(),
+                    attempt_id=parsed_attempt,
+                    artifact_dir=sink,
+                )
+            except ArtifactHandoffError as handoff_exc:
+                return DispatchOutcome(
+                    handoff_exc.envelope, 2, str(handoff_exc)
+                )
+            return DispatchOutcome(envelope, 1, "invoke failed")
         stderr_line = None
         if not result.ok and result.error:
             stderr_line = f"Invoke failed for {arm_id}.{action}: {result.error}"

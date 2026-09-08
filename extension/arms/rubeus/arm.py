@@ -1,18 +1,16 @@
-"""Curated rubeus arm: deweaponized AD telemetry reads."""
+"""Curated rubeus arm: strict reads over deweaponized AD telemetry."""
 
 from __future__ import annotations
 
+import hashlib
+import io
 import json
 from pathlib import Path
 from typing import Any, Mapping
 
-from ...contract import (
-    TRANSPORT_CLI,
-    ArmSpec,
-    NotInstalledError,
-    Result,
-)
+from ...contract import TRANSPORT_CLI, ArmSpec, NotInstalledError, Result
 from ..mcp_client import redact
+from ..strict_data import StrictDataError, strict_json_loads
 from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
@@ -21,25 +19,27 @@ from .policy import (
     CAVEATS,
     LIST_ACTIONS,
     MAX_OUTPUT_CHARS,
+    MAX_RESULTS,
+    MAX_TELEMETRY_BYTES,
     args_refusal,
     limit_refusal,
     telemetry_refusal,
 )
 
+_EVENT_KEYS = frozenset({"event_id", "category", "description", "severity", "indicators"})
+_INDICATOR_KEYS = frozenset({"type", "value"})
+_SEVERITIES = frozenset({"critical", "high", "medium", "low", "info", "informational"})
+_REDACTED_VALUES = frozenset({"[REDACTED]", "<REDACTED>", "REDACTED"})
+_MAX_TEXT = 16_384
+_MAX_RECORDS = 50_000
+
+
+class _TelemetryError(ValueError):
+    """Telemetry is malformed or contains non-deweaponized values."""
+
 
 class RubeusArm:
-    """Specialized transport for catalog id rubeus.
-
-    First-party in-process read arm: a stdlib reader over a local
-    deweaponized AD telemetry JSON file with no subprocess and no
-    endpoint.  ``installed`` reports handler presence only — the
-    telemetry file is per-invoke caller data (args.telemetry_file),
-    the same contract as every other file-consuming arm.
-
-    No real Kerberos tickets, NTLM hashes, or secrets are present in
-    the telemetry data.  Legitimate administration is not automatically
-    classified as compromise.
-    """
+    """Read-only telemetry lookup that never emits indicator values."""
 
     ARM_ID = ARM_ID
     protocol = TRANSPORT_CLI
@@ -47,318 +47,263 @@ class RubeusArm:
     def installed(self, spec: ArmSpec) -> bool:
         return spec.id == ARM_ID
 
-    def invoke(
-        self, spec: ArmSpec, action: str, args: Mapping[str, Any]
-    ) -> Result:
+    def invoke(self, spec: ArmSpec, action: str, args: Mapping[str, Any]) -> Result:
         if spec.id != ARM_ID:
             raise NotInstalledError(spec.id)
         payload = dict(args)
         if action in LIST_ACTIONS:
             return self._list_tools(spec, action, payload)
         if action not in ALLOWED_ACTIONS:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=(
-                    f"action {action!r} is not on the allowlist "
-                    "(offline reads over a local deweaponized AD telemetry "
-                    "file only; there is no dispatch tier)"
-                ),
+            return _fail(
+                spec, action,
+                f"action {action!r} is not on the allowlist "
+                "(offline reads over a local deweaponized AD telemetry file only; there is no dispatch tier)",
             )
         refusal = args_refusal(action, payload)
         if refusal:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=refusal,
-            )
-        path, file_refused = telemetry_refusal(payload.get("telemetry_file"))
-        if file_refused:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=file_refused,
-            )
-        assert path is not None  # noqa: S101 — guarded by file_refused
+            return _fail(spec, action, refusal)
+        path, refusal = telemetry_refusal(payload.get("telemetry_file"))
+        if refusal:
+            return _fail(spec, action, refusal)
+        assert path is not None
         try:
-            events = _load_telemetry(path)
+            events, source = _load_telemetry(path)
         except _TelemetryError as exc:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=redact(str(exc)),
-            )
+            return _fail(spec, action, redact(str(exc)))
+
         if action == "telemetry":
-            return self._telemetry(spec, payload, events)
+            event_id = payload["event_id"].strip()
+            match = next((item for item in events if item["event_id"] == event_id), None)
+            if match is None:
+                return _fail(spec, action, f"event_id {event_id!r} not found in this telemetry file")
+            return _ok(spec, action, {"telemetry": _project_event(match), "source": source})
+
         if action == "list_telemetry":
-            return self._list_telemetry(spec, payload, events)
-        # action == "list_indicators"
-        return self._list_indicators(spec, payload, events)
-
-    # -- action handlers --------------------------------------------------
-
-    def _telemetry(
-        self, spec: ArmSpec, payload: dict, events: list[dict]
-    ) -> Result:
-        """Return the full record for a single event by event_id."""
-        event_id = str(payload["event_id"]).strip()
-        match = _find_event(events, event_id)
-        if match is None:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action="telemetry",
-                output=None,
-                error=f"event_id {event_id!r} not found in this telemetry file",
-            )
-        text = json.dumps(match, sort_keys=True, default=str)
-        if len(text) > MAX_OUTPUT_CHARS:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action="telemetry",
-                output=None,
-                error=(
-                    f"result exceeds the {MAX_OUTPUT_CHARS} character "
-                    "output cap; narrow the lookup"
-                ),
-            )
-        return Result(
-            ok=True,
-            arm_id=spec.id,
-            action="telemetry",
-            output=match,
-            error=None,
-        )
-
-    def _list_telemetry(
-        self, spec: ArmSpec, payload: dict, events: list[dict]
-    ) -> Result:
-        """Return a summary list of events, optionally filtered by category."""
-        raw_limit = limit_refusal(payload.get("limit"))
-        if isinstance(raw_limit, str):
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action="list_telemetry",
-                output=None,
-                error=raw_limit,
-            )
-        limit = raw_limit
-        category = payload.get("category")
-        if category is not None:
-            if not isinstance(category, str) or not category.strip():
-                return Result(
-                    ok=False,
-                    arm_id=spec.id,
-                    action="list_telemetry",
-                    output=None,
-                    error="args.category must be a non-empty string",
-                )
-            category = category.strip().lower()
-            filtered = [
-                e for e in events
-                if str(e.get("category", "")).strip().lower() == category
+            limit = limit_refusal(payload.get("limit"))
+            if isinstance(limit, str):
+                return _fail(spec, action, limit)
+            category = _optional_query(payload.get("category"))
+            matches = [
+                item for item in events
+                if category is None or item["category"].casefold() == category.casefold()
             ]
-        else:
-            filtered = events
-        summaries: list[dict[str, Any]] = []
-        for event in filtered[:limit]:
-            summaries.append(
+            rows = [_project_summary(item) for item in matches[:limit]]
+            return _ok(
+                spec, action,
                 {
-                    "event_id": event.get("event_id", ""),
-                    "category": event.get("category", ""),
-                    "description": event.get("description", ""),
-                    "severity": event.get("severity", ""),
-                }
+                    "events": rows,
+                    "count": len(rows),
+                    "total": len(matches),
+                    "unfiltered_total": len(events),
+                    "returned": len(rows),
+                    "capped": len(rows) < len(matches),
+                    "source": source,
+                },
             )
-        return Result(
-            ok=True,
-            arm_id=spec.id,
-            action="list_telemetry",
-            output={
-                "count": len(summaries),
-                "total": len(filtered),
-                "unfiltered_total": len(events),
-                "events": summaries,
-            },
-            error=None,
-        )
 
-    def _list_indicators(
-        self, spec: ArmSpec, payload: dict, events: list[dict]
-    ) -> Result:
-        """List unique indicator types without real values."""
-        indicator_type = payload.get("indicator_type")
-        if indicator_type is not None:
-            if not isinstance(indicator_type, str) or not indicator_type.strip():
-                return Result(
-                    ok=False,
-                    arm_id=spec.id,
-                    action="list_indicators",
-                    output=None,
-                    error="args.indicator_type must be a non-empty string",
-                )
-            indicator_type = indicator_type.strip().lower()
-
-        seen: dict[str, int] = {}
+        indicator_type = _optional_query(payload.get("indicator_type"))
+        counts: dict[str, int] = {}
+        all_types: set[str] = set()
         for event in events:
-            indicators = event.get("indicators")
-            if not isinstance(indicators, list):
-                continue
-            for ind in indicators:
-                if not isinstance(ind, dict):
-                    continue
-                itype = str(ind.get("type", "")).strip()
-                if not itype:
-                    continue
-                if indicator_type is not None and itype.lower() != indicator_type:
-                    continue
-                # Never emit real values — only the type and count
-                seen[itype] = seen.get(itype, 0) + 1
-
-        result_list = sorted(
-            [{"type": t, "count": c} for t, c in seen.items()],
-            key=lambda r: (-r["count"], r["type"]),
+            for indicator in event["indicators"]:
+                value = indicator["type"]
+                all_types.add(value)
+                if indicator_type is None or value.casefold() == indicator_type.casefold():
+                    counts[value] = counts.get(value, 0) + 1
+        all_rows = sorted(
+            ({"type": key, "count": value} for key, value in counts.items()),
+            key=lambda item: (-item["count"], item["type"].casefold()),
         )
-        return Result(
-            ok=True,
-            arm_id=spec.id,
-            action="list_indicators",
-            output={
-                "indicator_types": len(result_list),
-                "indicators": result_list,
-                "note": (
-                    "indicator values are intentionally omitted — "
-                    "no real tickets, hashes, or secrets are distributed"
-                ),
+        rows = all_rows[:MAX_RESULTS]
+        return _ok(
+            spec, action,
+            {
+                "indicators": rows,
+                "indicator_types": len(rows),
+                "total": len(all_rows),
+                "unfiltered_total": len(all_types),
+                "returned": len(rows),
+                "capped": len(rows) < len(all_rows),
+                "source": source,
+                "note": "indicator values are intentionally omitted",
             },
-            error=None,
         )
 
-    def _list_tools(
-        self, spec: ArmSpec, action: str, payload: dict
-    ) -> Result:
+    def _list_tools(self, spec: ArmSpec, action: str, payload: dict) -> Result:
         if payload:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error="list_tools takes no caller arguments",
-            )
-        return Result(
-            ok=True,
-            arm_id=spec.id,
-            action=action,
-            output={
+            return _fail(spec, action, "list_tools takes no caller arguments")
+        return _ok(
+            spec, action,
+            {
                 "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "dispatch_actions": [],
-                "arg_keys": {
-                    key: sorted(vals) for key, vals in ARG_KEYS.items()
-                },
+                "arg_keys": {key: sorted(values) for key, values in ARG_KEYS.items()},
                 "caveats": list(CAVEATS),
                 "arming": ARMING,
             },
-            error=None,
         )
 
 
-# -- telemetry loading ---------------------------------------------------
-
-
-class _TelemetryError(Exception):
-    """Raised when the telemetry file cannot be loaded."""
-
-
-def _load_telemetry(path: Path) -> list[dict]:
-    """Load deweaponized AD telemetry from a local JSON file.
-
-    Accepted shapes:
-    - A JSON file containing a top-level array of event dicts.
-    - A JSON file containing an object with an ``events`` key whose
-      value is a list.
-    - A JSONL (newline-delimited JSON) file where each line is one
-      event dict.
-
-    Returns the list of event dicts, or raises ``_TelemetryError``.
-    """
+def _load_telemetry(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    raw = _read_bounded(path)
     try:
-        raw_bytes = path.read_bytes()
-    except OSError as exc:
-        raise _TelemetryError(f"could not read telemetry file: {exc}") from exc
-
-    text = raw_bytes.decode("utf-8", errors="replace")
-
-    # --- Try JSON array / object first ---
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _TelemetryError("telemetry is not strict UTF-8") from exc
+    if not text.strip():
+        raise _TelemetryError("telemetry file is empty")
     try:
-        data = json.loads(text)
-    except (json.JSONDecodeError, ValueError):
-        # Fall through to JSONL
-        data = None
+        if path.suffix.lower() == ".json":
+            data = strict_json_loads(text)
+            if isinstance(data, list):
+                rows = data
+            elif isinstance(data, dict) and set(data) == {"events"} and isinstance(data["events"], list):
+                rows = data["events"]
+            else:
+                raise _TelemetryError("JSON telemetry must be an array or an object containing only an events array")
+        else:
+            rows = _parse_jsonl(text)
+    except _TelemetryError:
+        raise
+    except StrictDataError as exc:
+        raise _TelemetryError(str(exc)) from exc
+    except Exception as exc:
+        raise _TelemetryError(f"invalid {path.suffix.lower().lstrip('.')} telemetry") from exc
+    if len(rows) > _MAX_RECORDS:
+        raise _TelemetryError(f"telemetry exceeds the {_MAX_RECORDS} record cap")
+    return _validate_events(rows), _source(raw)
 
-    if data is not None:
-        if isinstance(data, list):
-            return _validate_list(data)
-        if isinstance(data, dict):
-            events = data.get("events")
-            if isinstance(events, list):
-                return _validate_list(events)
-        raise _TelemetryError(
-            "JSON telemetry must be an array of events or a mapping "
-            "with an 'events' key"
-        )
 
-    # --- JSONL fallback ---
-    events: list[dict] = []
-    for line_no, line in enumerate(text.splitlines(), 1):
-        stripped = line.strip()
-        if not stripped:
-            continue
+def _parse_jsonl(text: str) -> list[Any]:
+    rows: list[Any] = []
+    for line_number, line in enumerate(io.StringIO(text), 1):
+        if not line.strip():
+            raise _TelemetryError(f"telemetry line {line_number} is blank")
+        if len(rows) >= _MAX_RECORDS:
+            raise _TelemetryError(f"telemetry exceeds the {_MAX_RECORDS} event cap")
         try:
-            item = json.loads(stripped)
-        except (json.JSONDecodeError, ValueError) as exc:
-            raise _TelemetryError(
-                f"invalid JSON on line {line_no}: {exc}"
-            ) from exc
-        if not isinstance(item, dict):
-            raise _TelemetryError(
-                f"telemetry line {line_no} is not a mapping "
-                f"(got {type(item).__name__})"
-            )
-        events.append(item)
-    if not events:
-        raise _TelemetryError("telemetry file contains no events")
+            rows.append(strict_json_loads(line))
+        except StrictDataError as exc:
+            raise _TelemetryError(f"telemetry line {line_number}: {exc}") from exc
+        except Exception as exc:
+            raise _TelemetryError(f"telemetry line {line_number} is not valid JSON") from exc
+    if not rows:
+        raise _TelemetryError("telemetry contains no events")
+    return rows
+
+
+def _read_bounded(path: Path) -> bytes:
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(MAX_TELEMETRY_BYTES + 1)
+    except OSError as exc:
+        raise _TelemetryError("could not read telemetry") from exc
+    if len(raw) > MAX_TELEMETRY_BYTES:
+        raise _TelemetryError(f"telemetry exceeds the {MAX_TELEMETRY_BYTES} byte read cap")
+    return raw
+
+
+def _validate_events(rows: list[Any]) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, raw in enumerate(rows):
+        label = f"telemetry entry {index}"
+        if not isinstance(raw, dict):
+            raise _TelemetryError(f"{label} is not a mapping")
+        if any(not isinstance(key, str) for key in raw):
+            raise _TelemetryError(f"{label} field names must be strings")
+        extra = sorted(set(raw) - _EVENT_KEYS)
+        missing = sorted(_EVENT_KEYS - set(raw))
+        if extra:
+            raise _TelemetryError(f"{label} has unknown fields: {', '.join(extra)}")
+        if missing:
+            raise _TelemetryError(f"{label} is missing fields: {', '.join(missing)}")
+        event_id = _text(raw["event_id"], f"{label}.event_id")
+        if event_id in seen:
+            raise _TelemetryError(f"duplicate event_id: {event_id}")
+        seen.add(event_id)
+        severity = _text(raw["severity"], f"{label}.severity").casefold()
+        if severity not in _SEVERITIES:
+            raise _TelemetryError(f"{label}.severity is not recognized")
+        indicators_raw = raw["indicators"]
+        if not isinstance(indicators_raw, list) or len(indicators_raw) > _MAX_RECORDS:
+            raise _TelemetryError(f"{label}.indicators must be a bounded list")
+        events.append(
+            {
+                "event_id": event_id,
+                "category": _text(raw["category"], f"{label}.category"),
+                "description": _text(raw["description"], f"{label}.description"),
+                "severity": severity,
+                "indicators": [
+                    _validate_indicator(item, f"{label}.indicators[{item_index}]")
+                    for item_index, item in enumerate(indicators_raw)
+                ],
+            }
+        )
     return events
 
 
-def _validate_list(data: list) -> list[dict]:
-    """Ensure every element in the telemetry list is a dict."""
-    out: list[dict] = []
-    for idx, item in enumerate(data):
-        if not isinstance(item, dict):
-            raise _TelemetryError(
-                f"telemetry entry {idx} is not a mapping "
-                f"(got {type(item).__name__})"
-            )
-        out.append(item)
-    return out
+def _validate_indicator(raw: Any, label: str) -> dict[str, str]:
+    if not isinstance(raw, dict):
+        raise _TelemetryError(f"{label} is not a mapping")
+    if any(not isinstance(key, str) for key in raw):
+        raise _TelemetryError(f"{label} field names must be strings")
+    extra = sorted(set(raw) - _INDICATOR_KEYS)
+    missing = sorted(_INDICATOR_KEYS - set(raw))
+    if extra:
+        raise _TelemetryError(f"{label} has unknown fields: {', '.join(extra)}")
+    if missing:
+        raise _TelemetryError(f"{label} is missing fields: {', '.join(missing)}")
+    value = _text(raw["value"], f"{label}.value")
+    if value not in _REDACTED_VALUES:
+        raise _TelemetryError(f"{label}.value must contain an explicit redaction sentinel")
+    return {"type": _text(raw["type"], f"{label}.type")}
 
 
-# -- helpers --------------------------------------------------------------
+def _project_event(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "event_id": item["event_id"],
+        "category": item["category"],
+        "description": item["description"],
+        "severity": item["severity"],
+        "indicators": [{"type": value["type"]} for value in item["indicators"]],
+    }
 
 
-def _find_event(events: list[dict], event_id: str) -> dict | None:
-    """Exact-match search by event_id (first match wins)."""
-    for event in events:
-        if str(event.get("event_id", "")).strip() == event_id:
-            return event
-    return None
+def _project_summary(item: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        "event_id": item["event_id"],
+        "category": item["category"],
+        "description": item["description"],
+        "severity": item["severity"],
+    }
+
+
+def _source(raw: bytes) -> dict[str, Any]:
+    return {"kind": "operator-file", "sha256": "sha256:" + hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+
+
+def _text(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > _MAX_TEXT:
+        raise _TelemetryError(f"{label} must be a non-empty bounded string")
+    if any(ord(char) < 0x20 and char not in "\t\n\r" for char in value):
+        raise _TelemetryError(f"{label} contains control characters")
+    return value.strip()
+
+
+def _optional_query(value: Any) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _ok(spec: ArmSpec, action: str, output: Any) -> Result:
+    try:
+        size = len(json.dumps(output, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+    except (TypeError, ValueError, OverflowError) as exc:
+        return _fail(spec, action, f"result could not be encoded: {exc}")
+    if size > MAX_OUTPUT_CHARS:
+        return _fail(spec, action, f"result exceeds the {MAX_OUTPUT_CHARS} character output cap; narrow the lookup")
+    return Result(True, spec.id, action, output, None)
+
+
+def _fail(spec: ArmSpec, action: str, error: str) -> Result:
+    return Result(False, spec.id, action, None, redact(str(error))[:MAX_OUTPUT_CHARS])

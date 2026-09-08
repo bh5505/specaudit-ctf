@@ -7,7 +7,7 @@ This tree is the public attach surface:
 
 - `coverage.yaml` — classified survey map (not a ship list)
 - `contract.py` — fail-closed `list` / `describe` / `invoke`
-- `arms/` — 30 specialized handlers (families below)
+- `arms/` — 44 specialized handlers (families below)
 - `heads/` — Claude Code CLI, Codex CLI, and other-agent-CLI profiles
 - `range/` — synthetic fixtures only
 - `mcp_server.py` — stdio MCP for four tools (`list`, `describe`,
@@ -48,7 +48,7 @@ cache or browser/screenshot surface is shipped.
 Every row has a support `tier`: `research` | `experimental` |
 `maintained` | `held`. `curated: true` is a **deprecated**
 compatibility flag meaning a specialized handler exists in this cut;
-it is **not** `tier: maintained`. **30 arms are curated; zero rows
+it is **not** `tier: maintained`. **44 arms are curated; zero rows
 are held (the HTTP-MCP held set closed 2026-09-04); exactly one
 capability is maintained — the agent-wiz
 read tier `agent-wiz.list_tools` (X5-PROMOTE, doc 13 evidence gate).**
@@ -66,13 +66,14 @@ Schema: [schema/coverage.schema.json](schema/coverage.schema.json).
 **proposed** resources and integration directions. For an operator it is
 reading material, and nothing more:
 
-- it is **not** `coverage.yaml` — an entry there adds no row here;
-- it is **not** a specialized handler — nothing in it is implemented in
-  `arms/`;
-- it is **not** an admitted action — no candidate carries per-action
-  safety, scope, side-effect, budget, cleanup, or version metadata;
-- it is **not** maintained support — no candidate has an owner, a
-  regression case, or a supported version range.
+- it is **not** `coverage.yaml` — a register entry adds no row here by itself;
+- it is **not** a specialized handler — only candidates separately present in
+  this catalog and `arms/` have an implementation;
+- it is **not** an admitted action — only exact actions separately present in
+  `invoke_profiles.py` carry safety, scope, side-effect, budget, cleanup, and
+  version metadata; and
+- it is **not** maintained support — all newly selected candidate readers stay
+  at the research tier.
 
 Take current truth from the shipped surfaces instead: `python -m
 extension list`, `python -m extension describe <id>`, `python -m
@@ -90,6 +91,74 @@ tool from that register must clear the admission checklist in
 - `asset-recon` — local planning and fixture analysis; separately granted
   provider collection and explicit-target probes. See the
   [unified procedure](../docs/scope-recon.md).
+
+**In-process caller-file readers** (`tier: research`, R0 local-read actions;
+no dispatch tier):
+
+These actions parse an operator-selected local file or directory. Their
+`list_tools` calls read static repository policy and are synthetic-only; their
+data actions are deliberately `synthetic_only: false` because local and
+read-only does not mean the supplied evidence is synthetic. The v1 manifest
+still has a static policy URI in `touched_scope`, not the dynamic caller path;
+that field is not proof of file custody. Input containment, content digests,
+source attribution, data rights, and the future trusted-observation bridge are
+separate gates.
+
+- `attack-stix-data` — exact `technique`, `software`, `group`, and bounded
+  `relationships` reads over a local STIX bundle; no downloader or broad
+  enumeration.
+- `security-detections-mcp` — `list_rules`, `search_rules`, and `get_rule` over
+  an operator-supplied local detection index; no rule generation, mutation,
+  deployment, or hosted fallback. The exact-byte digest is not source custody;
+  revision and corpus licensing remain operator gates.
+- `agentseal` — `analyze` and `list_scenarios` over a static fixture; no active
+  mode, and every result must retain the specific configuration evidence.
+- `vulnify` — `lookup` and `list_vulns` over a frozen local vulnerability
+  snapshot. This is a first-party bounded reader mapped to the research
+  candidate; it does not run the upstream service, claim upstream schema
+  compatibility, or bundle upstream code/data. Snapshot identity, source
+  attribution, and reuse rights remain explicit operator inputs.
+- `leonidas` — `technique` and `list_techniques` over a declarative corpus;
+  executor bodies remain inert text. The arm obtains or uses no cloud
+  credentials and refuses secret-shaped fields, but operators must still keep
+  credentials out of supplied prose and corpus values.
+- `specterops-skills` — `skill` and `list_skills`; retained instructions must
+  keep bounded mapping/step fields distinct, and skill prose grants no
+  authority. Mapping accuracy and upstream correspondence remain operator
+  gates.
+- `detection-in-the-cloud` — `playbook`, `list_playbooks`, and `list_rules`;
+  operators must bind definition revisions, and a listed rule is never
+  evidence of operating effectiveness. `list_playbooks` identifies only its
+  deterministic name/format listing; file-reading actions identify parsed
+  bytes.
+- `pentestkit` — `result`, `list_results`, and `summary`; first-pass, tuned, and
+  held-out results stay separate, and failures stay in the denominator.
+- `collinear` — `scenario`, `list_scenarios`, and `verify`; expected findings
+  and trace keys are omitted from scenario views, while `verify` returns only
+  exact-match pass/fail. Empty instructor answer sets are rejected rather than
+  treated as an all-clear. Caller files and submissions remain untrusted;
+  attempt limits, custody, and instructor-plane separation are external gates.
+- `ad-pathfinder` — `path`, `list_paths`, and `list_datasources`; missing
+  datasource coverage means not assessed, an empty export is rejected rather
+  than reported assessed, a blocked path is not compromise, and operators must
+  exclude real credentials or sensitive identifiers from accepted text fields.
+- `gpohound` — `policy`, `list_policies`, and `list_links`; filtered-out policy
+  is not effective access, and uncovered security/WMI filters and item-level
+  targeting remain limitations.
+- `claude-ad` — `technique`, `list_techniques`, and `list_prerequisites`;
+  prerequisites, observations, and inference stay distinct, and framework
+  mappings are not compliance claims.
+- `numasec` — `finding`, `list_findings`, and `list_transitions`; verified state
+  requires a structurally continuous actor/reason history, but actor strings
+  and status remain unauthenticated caller assertions. The reader does not
+  mutate or refresh the ledger.
+- `rubeus` — `telemetry`, `list_telemetry`, and `list_indicators` over
+  deweaponized records; the reader performs no collection/ticket operation and
+  projects/redacts its output, but operators must still exclude real secrets.
+  Legitimate administration is not automatically compromise.
+- `m365pwned` — `case_study`, `list_case_studies`, and `list_permissions` over
+  educational consent cases; no live tenant/mailbox/file access, and permission
+  claims still require API-owner verification.
 
 **MCP** (`tier: research` on the hardened transport; specialized
 session per arm, not a generic transport):
@@ -127,9 +196,9 @@ session per arm, not a generic transport):
   "shared with the community"); no dispatch tier
 - `metasploit-mcp` — research; SSE over the operator-run local server
   (literal-loopback endpoints only); exploit/payload/session/listener
-  listings admitted as read capabilities; execution tools gated by
-  `METASPLOIT_DISPATCH_SCOPE` at the handler and carrying no registry
-  profile
+  listings admitted as read capabilities; execution tools are admitted as R1
+  network-egress profiles and remain gated by `METASPLOIT_DISPATCH_SCOPE` at
+  the handler
 
 **CLI read** (no dispatch tier):
 
@@ -208,9 +277,8 @@ before execution and may report only on stderr (no result envelope).
 Omit both flags for portable Mode B.
 
 The X2-PUB CLI manifest admits the in-process `list_tools` policy reads
-for `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `nmap`,
-`pyrit`, `routersploit`, `sniper`, `vvah`, `zgrab2`, and
-`semgrep-mcp`, plus — since
+registered in `invoke_profiles.py`, the caller-file actions enumerated above,
+plus — since
 the 2026-09-01/02/03/05 dispatch-class admissions — the scope-gated R1
 profiles (`nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan`,
 `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`, `pyrit.scan`,

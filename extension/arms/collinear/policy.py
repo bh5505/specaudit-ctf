@@ -13,6 +13,9 @@ MAX_OUTPUT_CHARS = 200_000
 MAX_SCENARIOS_BYTES = 64 * 1024 * 1024
 SCENARIOS_SUFFIXES = (".json", ".yaml", ".yml")
 MAX_RESULTS = 200
+MAX_RECORDS = 10_000
+MAX_DOCUMENT_NODES = 50_000
+MAX_DOCUMENT_DEPTH = 64
 
 ARG_KEYS: dict[str, frozenset[str]] = {
     "scenario": frozenset({"scenarios_file", "scenario_id", "name"}),
@@ -21,9 +24,12 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 }
 
 CAVEATS = (
-    "learner and model cannot read expected findings or trace keys",
-    "forged or truncated evidence fails closed",
-    "task/environment/verifier separation maintained at all times",
+    "scenario views omit expected findings and trace keys; verify exposes only an "
+    "exact-match verdict, not answer counts or partial scores",
+    "empty instructor answer sets are rejected rather than grading an absent key as pass",
+    "the caller-supplied scenario file and submission are not trusted grading evidence",
+    "instructor storage, attempt limits, identity, custody, and environment "
+    "separation remain external controls",
 )
 
 ARMING = (
@@ -43,13 +49,13 @@ def scenarios_refusal(raw: object, *, max_bytes: int = MAX_SCENARIOS_BYTES) -> t
         return None, "args.scenarios_file contains control characters"
     path = Path(text).expanduser()
     if not path.is_file():
-        return None, f"args.scenarios_file is not an existing file: {text}"
+        return None, "args.scenarios_file is not an existing file"
     if path.suffix.lower() not in SCENARIOS_SUFFIXES:
         return None, f"args.scenarios_file must be a JSON or YAML file, got suffix {path.suffix!r}"
     try:
         size = path.stat().st_size
-    except OSError as exc:
-        return None, f"args.scenarios_file could not be read: {exc}"
+    except OSError:
+        return None, "args.scenarios_file could not be read"
     if size > max_bytes:
         return None, (
             f"args.scenarios_file exceeds the {max_bytes} byte read cap "
@@ -73,15 +79,25 @@ def args_refusal(action: str, payload: dict) -> str | None:
     if not {"scenarios_file"} <= set(payload):
         return "this action requires a local scenarios file in args.scenarios_file"
     if action == "scenario":
-        sid = str(payload.get("scenario_id") or "").strip()
-        name = str(payload.get("name") or "").strip()
+        for key in ("scenario_id", "name"):
+            if key in payload and (
+                not isinstance(payload[key], str) or not payload[key].strip()
+            ):
+                return f"args.{key} must be a non-empty string when provided"
+        sid = payload.get("scenario_id", "").strip()
+        name = payload.get("name", "").strip()
         if not sid and not name:
             return "scenario requires args.scenario_id or args.name"
     if action == "verify":
-        if not str(payload.get("scenario_id") or "").strip():
-            return "verify requires args.scenario_id"
+        scenario_id = payload.get("scenario_id")
+        if not isinstance(scenario_id, str) or not scenario_id.strip():
+            return "verify requires args.scenario_id as a non-empty string"
         if "submission" not in payload:
             return "verify requires args.submission"
+    if action == "list_scenarios":
+        _, refusal = limit_refusal(payload.get("limit"))
+        if refusal:
+            return refusal
     return None
 
 
@@ -89,8 +105,6 @@ def limit_refusal(raw: object) -> tuple[int | None, str | None]:
     """Validate an optional result limit."""
     if raw is None:
         return None, None
-    if isinstance(raw, str) and raw.isdigit():
-        raw = int(raw)
     if not isinstance(raw, int) or isinstance(raw, bool):
         return None, "args.limit must be a positive integer"
     if raw < 1 or raw > MAX_RESULTS:

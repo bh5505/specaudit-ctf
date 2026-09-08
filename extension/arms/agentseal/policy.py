@@ -15,11 +15,15 @@ LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 MAX_OUTPUT_CHARS = 200_000
 MAX_FIXTURE_BYTES = 64 * 1024 * 1024
 FIXTURE_SUFFIXES = (".json", ".yaml", ".yml")
+MAX_RESULTS = 200
+MAX_RECORDS = 10_000
+MAX_DOCUMENT_NODES = 50_000
+MAX_DOCUMENT_DEPTH = 64
 
 # Per-action caller-argument contracts (everything else is refused).
 ARG_KEYS: dict[str, frozenset[str]] = {
-    "analyze": frozenset({"fixture", "scenario_id"}),
-    "list_scenarios": frozenset({"fixture"}),
+    "analyze": frozenset({"fixture", "scenario_id", "limit"}),
+    "list_scenarios": frozenset({"fixture", "limit"}),
 }
 
 CAVEATS = (
@@ -49,7 +53,7 @@ def fixture_refusal(
         return None, "args.fixture contains control characters"
     path = Path(text).expanduser()
     if not path.is_file():
-        return None, f"args.fixture is not an existing file: {text}"
+        return None, "args.fixture is not an existing file"
     if path.suffix.lower() not in FIXTURE_SUFFIXES:
         return (
             None,
@@ -57,8 +61,8 @@ def fixture_refusal(
         )
     try:
         size = path.stat().st_size
-    except OSError as exc:
-        return None, f"args.fixture could not be read: {exc}"
+    except OSError:
+        return None, "args.fixture could not be read"
     if size > max_bytes:
         return None, (
             f"args.fixture exceeds the {max_bytes} byte read cap "
@@ -81,4 +85,22 @@ def args_refusal(action: str, payload: dict) -> str | None:
         )
     if not {"fixture"} <= set(payload):
         return "this action requires a local fixture path in args.fixture"
+    if "scenario_id" in payload:
+        scenario_id = payload["scenario_id"]
+        if not isinstance(scenario_id, str) or not scenario_id.strip():
+            return "args.scenario_id must be a non-empty string"
+    _, refusal = limit_refusal(payload.get("limit"))
+    if refusal:
+        return refusal
     return None
+
+
+def limit_refusal(raw: object) -> tuple[int | None, str | None]:
+    """Validate an optional result limit."""
+    if raw is None:
+        return None, None
+    if not isinstance(raw, int) or isinstance(raw, bool):
+        return None, "args.limit must be a positive integer"
+    if raw < 1 or raw > MAX_RESULTS:
+        return None, f"args.limit must be between 1 and {MAX_RESULTS}"
+    return raw, None

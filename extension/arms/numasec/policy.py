@@ -17,6 +17,20 @@ MAX_LEDGER_BYTES = 64 * 1024 * 1024
 LEDGER_SUFFIXES = (".json", ".jsonl")
 MAX_RESULTS = 200
 
+ALLOWED_STATUSES = frozenset(
+    {
+        "new",
+        "open",
+        "verified",
+        "resolved",
+        "closed",
+        "reopened",
+        "rejected",
+        "accepted-risk",
+        "false-positive",
+    }
+)
+
 # Per-action caller-argument contracts (everything else is refused).
 ARG_KEYS: dict[str, frozenset[str]] = {
     "finding": frozenset({"ledger", "finding_id"}),
@@ -25,22 +39,22 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 }
 
 CAVEATS = (
-    "status changes are attributable and reversible — every transition "
-    "records an actor and a reason",
-    "no model-only status change creates a verified finding; only an "
-    "explicit operator-attributed transition with a reason can mark a "
-    "finding as verified",
+    "status changes are structurally attributed and reversible — every "
+    "transition records an unauthenticated actor string and a reason",
+    "actor and reason fields are structural attribution only; an arbitrary "
+    "operator file does not authenticate the actor or make verified state trusted",
     "every change has an actor and reason — transitions lacking either "
     "are rejected as malformed",
     "the ledger is an opaque local snapshot; the arm does not augment "
     "or refresh records",
     "offline read tier — no mutation, no network, no subprocess",
-    "source and snapshot digests should appear in evidence metadata",
+    "the returned exact-byte digest identifies the supplied snapshot but is "
+    "not a trusted signature or identity binding",
 )
 
 ARMING = (
     "pass args.ledger (path to a local finding lifecycle JSON/JSONL file); "
-    "every record traces to a pinned snapshot digest"
+    "results include the supplied snapshot's exact-byte digest"
 )
 
 
@@ -62,7 +76,7 @@ def ledger_refusal(
         return None, "args.ledger contains control characters"
     path = Path(text).expanduser()
     if not path.is_file():
-        return None, f"args.ledger is not an existing file: {text}"
+        return None, "args.ledger is not an existing file"
     if path.suffix.lower() not in LEDGER_SUFFIXES:
         return None, (
             f"args.ledger must be a finding lifecycle file (.json or .jsonl), "
@@ -70,8 +84,8 @@ def ledger_refusal(
         )
     try:
         size = path.stat().st_size
-    except OSError as exc:
-        return None, f"args.ledger could not be read: {exc}"
+    except OSError:
+        return None, "args.ledger could not be read"
     if size > max_bytes:
         return None, (
             f"args.ledger exceeds the {max_bytes} byte read cap "
@@ -82,6 +96,8 @@ def ledger_refusal(
 
 def args_refusal(action: str, payload: dict) -> str | None:
     """Refuse unknown or missing caller arguments per action."""
+    if any(not isinstance(key, str) for key in payload):
+        return "caller argument names must be strings"
     allowed = ARG_KEYS.get(action)
     if allowed is None:
         return f"action {action!r} is not on the read allowlist"
@@ -98,6 +114,14 @@ def args_refusal(action: str, payload: dict) -> str | None:
         fid = payload.get("finding_id")
         if not isinstance(fid, str) or not fid.strip():
             return f"{action} requires a non-empty string in args.finding_id"
+    if action == "list_findings":
+        _limit, refusal = limit_refusal(payload.get("limit"))
+        if refusal:
+            return refusal
+        if "status" in payload:
+            status = payload["status"]
+            if not isinstance(status, str) or status.strip() not in ALLOWED_STATUSES:
+                return "args.status must be a recognized finding status"
     return None
 
 

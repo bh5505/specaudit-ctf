@@ -20,7 +20,7 @@ LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 
 MAX_OUTPUT_CHARS = 200_000
 MAX_TELEMETRY_BYTES = 64 * 1024 * 1024  # 64 MiB
-TELEMETRY_SUFFIX = ".json"
+TELEMETRY_SUFFIXES = (".json", ".jsonl")
 MAX_RESULTS = 200
 
 # Per-action caller-argument contracts (everything else is refused).
@@ -31,15 +31,17 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 }
 
 CAVEATS = (
-    "reads deweaponized AD telemetry from a local JSON file only",
-    "no real Kerberos tickets, NTLM hashes, or secrets are distributed",
+    "reads deweaponized AD telemetry from a local JSON or JSONL file only",
+    "indicator values must be explicit redaction sentinels and are never returned; "
+    "other caller-supplied prose remains untrusted",
     "legitimate administration is not automatically classified as compromise",
-    "positive, benign, and missing-telemetry variants are graded separately",
+    "the reader performs no collection or ticket operation and its input digest "
+    "is not an authenticity or custody attestation",
 )
 
 ARMING = (
     "pass args.telemetry_file (path to a local deweaponized AD "
-    "telemetry JSON file)"
+    "telemetry JSON or JSONL file)"
 )
 
 
@@ -64,16 +66,16 @@ def telemetry_refusal(
         return None, "args.telemetry_file contains control characters"
     path = Path(text).expanduser()
     if not path.is_file():
-        return None, f"args.telemetry_file is not an existing file: {text}"
-    if path.suffix.lower() != TELEMETRY_SUFFIX:
+        return None, "args.telemetry_file is not an existing file"
+    if path.suffix.lower() not in TELEMETRY_SUFFIXES:
         return None, (
-            f"args.telemetry_file must be a JSON file, "
+            f"args.telemetry_file must be a JSON or JSONL file, "
             f"got suffix {path.suffix!r}"
         )
     try:
         size = path.stat().st_size
-    except OSError as exc:
-        return None, f"args.telemetry_file could not be read: {exc}"
+    except OSError:
+        return None, "args.telemetry_file could not be read"
     if size > max_bytes:
         return None, (
             f"args.telemetry_file exceeds the {max_bytes} byte read cap "
@@ -84,6 +86,8 @@ def telemetry_refusal(
 
 def args_refusal(action: str, payload: dict) -> str | None:
     """Refuse unknown or missing caller arguments per action."""
+    if any(not isinstance(key, str) for key in payload):
+        return "caller argument names must be strings"
     allowed = ARG_KEYS.get(action)
     if allowed is None:
         return f"action {action!r} is not on the read allowlist"
@@ -103,6 +107,19 @@ def args_refusal(action: str, payload: dict) -> str | None:
         eid = payload.get("event_id")
         if not isinstance(eid, str) or not eid.strip():
             return "telemetry requires an event_id in args.event_id"
+    if action == "list_telemetry":
+        result = limit_refusal(payload.get("limit"))
+        if isinstance(result, str):
+            return result
+        if "category" in payload and (
+            not isinstance(payload["category"], str) or not payload["category"].strip()
+        ):
+            return "args.category must be a non-empty string"
+    if action == "list_indicators" and "indicator_type" in payload and (
+        not isinstance(payload["indicator_type"], str)
+        or not payload["indicator_type"].strip()
+    ):
+        return "args.indicator_type must be a non-empty string"
     return None
 
 
@@ -110,7 +127,7 @@ def limit_refusal(raw: object) -> int | str:
     """Validate and return the list limit (1..MAX_RESULTS) or a refusal."""
     if raw is None:
         return MAX_RESULTS
-    if not isinstance(raw, int):
+    if not isinstance(raw, int) or isinstance(raw, bool):
         return f"args.limit must be an integer (1-{MAX_RESULTS})"
     if raw < 1 or raw > MAX_RESULTS:
         return f"args.limit must be between 1 and {MAX_RESULTS}"

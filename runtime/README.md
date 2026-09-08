@@ -7,11 +7,12 @@ scope of the capability the validator may invoke.
 
 The bundle contains a real CPython 3.11.16 ELF launcher, the exact eager
 standard-library import closure, PyYAML 6.0.3, the complete eagerly imported
-`extension` source closure, and their licenses. Since the stdio-MCP rebuild
-the measured closure is the **union of both sealed invocations** — the CLI
-one-shot (`-S -m extension invoke agent-wiz list_tools {}`) and the X4-VAL
-stdio-MCP server (`-S -m extension.mcp_server`) — with `lock.json` recording
-each invocation's own module names under `invocations`. The external Agent Wiz binary
+`extension` source closure, and their licenses. The measured closure is the
+**union of three sealed invocations**: the CLI one-shot
+(`-S -m extension invoke agent-wiz list_tools {}`), the X4-VAL stdio-MCP
+server (`-S -m extension.mcp_server`), and the isolated asset-recon worker's
+startup-refusal path (`-S -m extension.arms.assetrecon.worker`). `lock.json`
+records each invocation's own module names under `invocations`. The external Agent Wiz binary
 is deliberately absent: `list_tools` reads bundled policy/catalog data, while
 `extract`, `visualize`, and `analyze` remain unavailable without that binary.
 
@@ -98,7 +99,17 @@ closure still 103 producer files and 114 stdlib modules). Re-measured
 `54981773…21ae`, archive `94f0eeb3…db3f`; hashes only). Re-measured
 2026-09-05 for sweep 10 (fail-closed bundle rows, blank-id refusals,
 sorted extras; tree `01a76c4e…6c73`, archive `515bd78c…837c` (sweep 12: import-time real-stdio signal guard); hashes
-only). A 5 s cold startup
+only). Re-measured 2026-09-08 for the fourteen research-reader admissions
+and their shared strict-data boundary: 165 producer files, 118 stdlib files,
+and 18 YAML files across three sealed invocations; assemble 3.8491 s, lock
+verification 0.2609 s, pack 4.9538 s, unpack 0.2373 s, cold/warm full-tree
+verification 0.2572 s / 0.2531 s, cold/repeat Mode-A CLI launch
+0.6506 s / 0.6464 s, and cold/repeat stdio-MCP launch
+0.7018 s / 0.6441 s. The tree digest is
+`af3a8b29259080e7c06b7d49635afc3318de3960cf35c050cabf70c010c28d86`
+and the normalized archive digest is
+`16a3df65e36384756a0ca61fde9ac5509792faceb99bd86d602a8f29b18b5ca1`.
+A 5 s cold startup
 verification ceiling is the conservative initial handoff recommendation for
 the validator packet; it is operator-configured there, not silently enforced
 by this producer. Re-measure before changing the platform or dependency lock.
@@ -107,7 +118,7 @@ by this producer. Re-measure before changing the platform or dependency lock.
 
 `lock.json` fixes input URLs, names, versions, sizes and SHA-256s, the ELF
 launcher digest, the full traced module/file closure with per-file SHA-256s,
-all 103 producer source files, license/metadata bytes, and the public
+all 165 producer source files, license/metadata bytes, and the public
 `agent-wiz.list_tools` capability-manifest bytes. The lock and runtime
 metadata stay outside the measured tree to avoid self-reference.
 

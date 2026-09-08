@@ -4,7 +4,7 @@ Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
 
 ## Overview
 
-- **Arms**: 30 specialized adapters. No row is held (the HTTP-MCP
+- **Arms**: 44 specialized adapters. No row is held (the HTTP-MCP
   held set closed 2026-09-04; the tier remains enforced for any
   future held row); the burp-mcp, google-mcp-security, semgrep-mcp,
   prowler-mcp, and metasploit-mcp rows are research integrations on
@@ -24,12 +24,11 @@ Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
   other agent CLIs.
 - **Range**: synthetic fixtures (`live_aws: false`). No live cloud.
 
-`extension/coverage.yaml` classifies the landscape survey (49 ids;
-the original 48 retain their order, with `asset-recon` appended). It is a
+`extension/coverage.yaml` classifies the landscape survey (63 ids). It is a
 **survey map**, not a ship list: a row is not
 a promise that an adapter exists. Every row has a support tier
 (`research` | `experimental` | `maintained` | `held`). In this cut
-every arm row is curated (30 handlers) and every methodology-only
+every arm row is curated (44 handlers) and every methodology-only
 row stays uncurated (19). `curated` is not `maintained`.
 
 Per-arm caveats (composite egress, exploitation, LLM spend, source
@@ -124,18 +123,25 @@ python -m extension invoke agent-wiz list_tools
   (no result envelope). Omit both flags for Mode B (portable; no
   `attempt_id`, no artifact files).
 
-X2-PUB admits the explicit in-process `list_tools` profiles for
-`agent-wiz`, `ai-deep-sast`, `attack-stix-data`, `dark-moon`, `deepsec`,
-`pyrit`, `routersploit`, `sniper`, `vvah`, `zgrab2`, `nmap`, and
-`semgrep-mcp`. These profiles
-read static policy metadata and do not spawn the upstream binary. The
-`attack-stix-data` row additionally admits four R0 local-read lookups
-(`technique`, `software`, `group`, `relationships`) over an
-operator-supplied local STIX bundle — exact matches only, no
-enumeration, no network on any tier. Every
-other CLI invoke action is refused before `Extension.invoke` until it has
-authoritative per-action safety, scope, side-effect, budget, cleanup, and
-tool-version metadata.
+X2-PUB admits explicit in-process `list_tools` profiles for the static-policy
+arms registered in `extension/invoke_profiles.py`. Those profiles read
+repository-owned policy metadata, do not spawn an upstream binary, and remain
+`synthetic_only: true`. Separate R0 action profiles cover the four
+`attack-stix-data` lookups and the 38 actions supplied by the 14
+research-candidate readers. Those actions read operator-supplied local files or
+directories without a subprocess or network call; their manifests are
+`synthetic_only: false` because read-only local data can still be real data.
+Their exact actions and candidate-specific limitations are in
+[extension/README.md](extension/README.md). Every other CLI invoke action is
+refused before `Extension.invoke` until it has authoritative per-action safety,
+scope, side-effect, budget, cleanup, and tool-version metadata.
+
+The current v1 profiles carry a static policy URI in `touched_scope`; they do
+not dynamically bind the caller-selected path. That is a known manifest and
+governance limitation, so the scope field is not evidence of which file was
+read. The arm's bounded input checks and returned content digest remain
+necessary, and a future versioned observation contract must bind the actual
+artifact without weakening the static admission registry.
 
 Dispatch-class admission (2026-09-01, continued through 2026-09-05) adds
 exactly sixteen scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
@@ -186,7 +192,7 @@ non-curated arms, and uninstalled curated arms are hard errors. Do not invent
 a fallback. `list` / `describe` include `tier`.
 
 `invoke <id> list_tools` returns static JSON (no binary spawn) on
-surfaces that implement it (the eleven lifted CLIs). No row is currently
+policy surfaces that implement it. No row is currently
 held; a future held row would be refused at catalog `invoke` even if
 a binary or endpoint is configured. `burp-mcp` (loopback reads),
 `google-mcp-security` (lookups), `semgrep-mcp` (CLI scans + reads),

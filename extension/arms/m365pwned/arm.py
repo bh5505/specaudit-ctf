@@ -1,17 +1,26 @@
-"""Curated m365pwned arm: synthetic M365 consent and data-access case reads."""
+"""Curated m365pwned arm: strict reads over synthetic M365 cases."""
 
 from __future__ import annotations
 
+import hashlib
 import json
+from pathlib import Path
 from typing import Any, Mapping
 
-from ...contract import (
-    TRANSPORT_CLI,
-    ArmSpec,
-    NotInstalledError,
-    Result,
-)
+try:
+    import yaml as _yaml
+except ImportError:
+    _yaml = None  # type: ignore[assignment]
+
+from ...contract import TRANSPORT_CLI, ArmSpec, NotInstalledError, Result
 from ..mcp_client import redact
+from ..strict_data import (
+    BoundedYamlNodeMixin,
+    MAX_INTEGER_BITS,
+    StrictDataError,
+    StrictMappingMixin,
+    strict_json_loads,
+)
 from .policy import (
     ALLOWED_ACTIONS,
     ARG_KEYS,
@@ -19,6 +28,7 @@ from .policy import (
     ARM_ID,
     CAVEATS,
     LIST_ACTIONS,
+    MAX_CASE_BYTES,
     MAX_OUTPUT_CHARS,
     MAX_RESULTS,
     args_refusal,
@@ -26,20 +36,25 @@ from .policy import (
     limit_refusal,
 )
 
-try:
-    import yaml as _yaml
-except ImportError:
-    _yaml = None
+_CASE_KEYS = frozenset(
+    {
+        "case_id", "name", "description", "risk_level", "consent_flow",
+        "data_access", "permissions", "risk_assessment",
+    }
+)
+_CONSENT_KEYS = frozenset({"user_action", "app_permissions", "flow_type", "admin_consent_required"})
+_ACCESS_KEYS = frozenset({"mailbox_count", "files_accessed", "data_types"})
+_RISK_LEVELS = frozenset({"critical", "high", "medium", "low", "informational", "info"})
+_MAX_TEXT = 16_384
+_MAX_ITEMS = 50_000
+
+
+class _CasesError(ValueError):
+    """The synthetic case corpus violates its closed schema."""
 
 
 class M365PwnedArm:
-    """Specialized transport for catalog id m365pwned.
-
-    First-party in-process read arm: reads synthetic M365 consent and
-    data-access case studies from a local JSON (or YAML) file.  No real
-    tenant, mailbox, or file is ever accessed.  ``installed`` reports
-    handler presence only — the cases_file is per-invoke caller data.
-    """
+    """Read-only synthetic consent scenarios with explicit risk fields."""
 
     ARM_ID = ARM_ID
     protocol = TRANSPORT_CLI
@@ -47,215 +62,278 @@ class M365PwnedArm:
     def installed(self, spec: ArmSpec) -> bool:
         return spec.id == ARM_ID
 
-    def invoke(
-        self, spec: ArmSpec, action: str, args: Mapping[str, Any]
-    ) -> Result:
+    def invoke(self, spec: ArmSpec, action: str, args: Mapping[str, Any]) -> Result:
         if spec.id != ARM_ID:
             raise NotInstalledError(spec.id)
         payload = dict(args)
         if action in LIST_ACTIONS:
             return self._list_tools(spec, action, payload)
         if action not in ALLOWED_ACTIONS:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=f"action {action!r} is not on the allowlist "
-                "(synthetic case reads only; "
-                f"arming: {ARMING})",
+            return _fail(
+                spec, action,
+                f"action {action!r} is not on the allowlist (synthetic case reads only; arming: {ARMING})",
             )
         refusal = args_refusal(action, payload)
         if refusal:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=refusal,
-            )
-        cfile, file_refused = cases_file_refusal(payload.get("cases_file"))
-        if file_refused:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=file_refused,
-            )
-        cases = self._load_cases(cfile)
-        if isinstance(cases, str):
-            return _fail(spec, action, cases)
+            return _fail(spec, action, refusal)
+        path, refusal = cases_file_refusal(payload.get("cases_file"))
+        if refusal:
+            return _fail(spec, action, refusal)
+        assert path is not None
+        try:
+            cases, source = _load_cases(path)
+        except _CasesError as exc:
+            return _fail(spec, action, redact(str(exc)))
+
         if action == "case_study":
-            return self._case_study(spec, action, payload, cases)
+            case_id = _optional_query(payload.get("case_id"))
+            name = _optional_query(payload.get("name"))
+            matches = [
+                item for item in cases
+                if (case_id is not None and item["case_id"] == case_id)
+                or (name is not None and item["name"].casefold() == name.casefold())
+            ]
+            if name is not None and len(matches) > 1:
+                return _fail(spec, action, "multiple case studies match args.name; use args.case_id")
+            match = matches[0] if matches else None
+            if match is None:
+                return _fail(spec, action, f"case study not found: {case_id or name!r}")
+            return _ok(spec, action, {"case_study": _project_case(match), "source": source})
+
         if action == "list_case_studies":
-            return self._list_case_studies(spec, action, payload, cases)
-        return self._list_permissions(spec, action, payload, cases)
-
-    # ------------------------------------------------------------------
-    # Actions
-    # ------------------------------------------------------------------
-
-    def _case_study(
-        self, spec: ArmSpec, action: str, payload: dict, cases: list[dict]
-    ) -> Result:
-        case_id = str(payload.get("case_id") or "").strip() or None
-        name = str(payload.get("name") or "").strip() or None
-        matched = None
-        for entry in cases:
-            if not isinstance(entry, dict):
-                continue
-            if case_id and str(entry.get("case_id", "")).strip() == case_id:
-                matched = entry
-                break
-            if name and str(entry.get("name", "")).strip().lower() == name.lower():
-                matched = entry
-                break
-        if matched is None:
-            identifier = case_id or name or "<unknown>"
-            return _fail(spec, action, f"case study not found: {identifier!r}")
-        text = json.dumps(matched, sort_keys=True)
-        if len(text) > MAX_OUTPUT_CHARS:
-            return _fail(
+            limit, refusal = limit_refusal(payload.get("limit"))
+            if refusal:
+                return _fail(spec, action, refusal)
+            effective = MAX_RESULTS if limit is None else limit
+            rows = [_project_summary(item) for item in cases[:effective]]
+            return _ok(
                 spec, action,
-                f"case study exceeds the {MAX_OUTPUT_CHARS} char output cap",
+                {
+                    "case_studies": rows,
+                    "total": len(cases),
+                    "returned": len(rows),
+                    "capped": len(rows) < len(cases),
+                    "source": source,
+                },
             )
-        return Result(ok=True, arm_id=spec.id, action=action, output=matched, error=None)
 
-    def _list_case_studies(
-        self, spec: ArmSpec, action: str, payload: dict, cases: list[dict]
-    ) -> Result:
-        limit_raw = payload.get("limit")
-        limit, lrefusal = limit_refusal(limit_raw)
-        if lrefusal:
-            return _fail(spec, action, lrefusal)
-        effective = limit or MAX_RESULTS
-        summaries = []
-        for entry in cases:
-            if not isinstance(entry, dict):
-                continue
-            summaries.append({
-                "case_id": entry.get("case_id", ""),
-                "name": entry.get("name", ""),
-                "description": entry.get("description", ""),
-                "risk_level": (
-                    entry.get("risk_assessment", {}).get("level", "")
-                    if isinstance(entry.get("risk_assessment"), dict)
-                    else ""
-                ),
-            })
-            if len(summaries) >= effective:
-                break
-        return Result(
-            ok=True,
-            arm_id=spec.id,
-            action=action,
-            output={"case_studies": summaries, "total": len(summaries)},
-            error=None,
-        )
-
-    def _list_permissions(
-        self, spec: ArmSpec, action: str, payload: dict, cases: list[dict]
-    ) -> Result:
-        case_id = str(payload.get("case_id") or "").strip()
-        matched = None
-        for entry in cases:
-            if not isinstance(entry, dict):
-                continue
-            if str(entry.get("case_id", "")).strip() == case_id:
-                matched = entry
-                break
-        if matched is None:
+        case_id = payload["case_id"].strip()
+        match = next((item for item in cases if item["case_id"] == case_id), None)
+        if match is None:
             return _fail(spec, action, f"case study not found: {case_id!r}")
-        permissions = matched.get("permissions", [])
-        return Result(
-            ok=True,
-            arm_id=spec.id,
-            action=action,
-            output={
-                "case_id": case_id,
-                "name": matched.get("name", ""),
-                "permissions": permissions,
-                "total": len(permissions) if isinstance(permissions, list) else 0,
+        permissions = list(match["permissions"])
+        rows = permissions[:MAX_RESULTS]
+        return _ok(
+            spec, action,
+            {
+                "case_id": match["case_id"],
+                "name": match["name"],
+                "permissions": rows,
+                "total": len(permissions),
+                "returned": len(rows),
+                "capped": len(rows) < len(permissions),
+                "source": source,
             },
-            error=None,
         )
 
-    def _list_tools(
-        self, spec: ArmSpec, action: str, payload: dict
-    ) -> Result:
+    def _list_tools(self, spec: ArmSpec, action: str, payload: dict) -> Result:
         if payload:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error="list_tools takes no caller arguments",
-            )
-        return Result(
-            ok=True,
-            arm_id=spec.id,
-            action=action,
-            output={
+            return _fail(spec, action, "list_tools takes no caller arguments")
+        return _ok(
+            spec, action,
+            {
                 "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "dispatch_actions": [],
-                "arg_keys": {key: sorted(vals) for key, vals in ARG_KEYS.items()},
+                "arg_keys": {key: sorted(values) for key, values in ARG_KEYS.items()},
                 "caveats": list(CAVEATS),
                 "arming": ARMING,
             },
-            error=None,
         )
 
-    # ------------------------------------------------------------------
-    # Data loading
-    # ------------------------------------------------------------------
 
-    @staticmethod
-    def _load_cases(path: str) -> list[dict] | str:
-        """Load case studies from a JSON array or a YAML with a
-        ``case_studies`` key.  Returns the list on success or an error
-        string on failure (fail-closed)."""
-        try:
-            with open(path, encoding="utf-8", errors="replace") as fh:
-                raw = fh.read()
-        except OSError as exc:
-            return f"cases file unreadable: {exc}"
-        ext = path.rsplit(".", 1)[-1].lower() if "." in path else ""
-        if ext in ("yaml", "yml"):
-            if _yaml is None:
-                return "PyYAML is not installed"
-            try:
-                data = _yaml.safe_load(raw)
-            except Exception as exc:
-                return f"invalid YAML: {exc}"
-            if isinstance(data, dict):
-                cases = data.get("case_studies")
-                if isinstance(cases, list):
-                    return cases
-                return "YAML cases file must contain a 'case_studies' list"
-            if isinstance(data, list):
-                return data
-            return "YAML cases file must be a list or a mapping with 'case_studies'"
-        # Default: JSON
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as exc:
-            return f"invalid JSON: {exc}"
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            cases = data.get("case_studies")
-            if isinstance(cases, list):
-                return cases
-            return "JSON cases file must be an array or a mapping with 'case_studies'"
-        return "cases file must contain a JSON array or a mapping with 'case_studies'"
+def _load_cases(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    raw = _read_bounded(path)
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _CasesError("cases file is not strict UTF-8") from exc
+    try:
+        data = strict_json_loads(text) if path.suffix.lower() == ".json" else _load_yaml(text)
+    except _CasesError:
+        raise
+    except StrictDataError as exc:
+        raise _CasesError(str(exc)) from exc
+    except Exception as exc:
+        raise _CasesError(f"invalid {path.suffix.lower().lstrip('.')} cases file") from exc
+    if isinstance(data, list):
+        rows = data
+    elif isinstance(data, dict) and set(data) == {"case_studies"} and isinstance(data["case_studies"], list):
+        rows = data["case_studies"]
+    else:
+        raise _CasesError("cases file must be an array or an object containing only a case_studies array")
+    if len(rows) > _MAX_ITEMS:
+        raise _CasesError(f"cases file exceeds the {_MAX_ITEMS} case cap")
+    return _validate_cases(rows), _source(raw)
+
+
+def _load_yaml(text: str) -> Any:
+    if _yaml is None:
+        raise _CasesError("PyYAML is required to load YAML cases")
+
+    class BoundedSafeLoader(
+        BoundedYamlNodeMixin, StrictMappingMixin, _yaml.SafeLoader
+    ):
+        strict_alias_event_type = _yaml.AliasEvent
+
+    return _yaml.load(text, Loader=BoundedSafeLoader)
+
+
+def _read_bounded(path: Path) -> bytes:
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(MAX_CASE_BYTES + 1)
+    except OSError as exc:
+        raise _CasesError("could not read cases file") from exc
+    if len(raw) > MAX_CASE_BYTES:
+        raise _CasesError(f"cases file exceeds the {MAX_CASE_BYTES} byte read cap")
+    return raw
+
+
+def _validate_cases(rows: list[Any]) -> list[dict[str, Any]]:
+    cases: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for index, raw in enumerate(rows):
+        label = f"case entry {index}"
+        if not isinstance(raw, dict):
+            raise _CasesError(f"{label} is not a mapping")
+        if any(not isinstance(key, str) for key in raw):
+            raise _CasesError(f"{label} field names must be strings")
+        extra = sorted(set(raw) - _CASE_KEYS)
+        missing = sorted(_CASE_KEYS - set(raw))
+        if extra:
+            raise _CasesError(f"{label} has unknown fields: {', '.join(extra)}")
+        if missing:
+            raise _CasesError(f"{label} is missing fields: {', '.join(missing)}")
+        case_id = _text(raw["case_id"], f"{label}.case_id")
+        if case_id in seen:
+            raise _CasesError(f"duplicate case_id: {case_id}")
+        seen.add(case_id)
+        risk_level = _text(raw["risk_level"], f"{label}.risk_level").casefold()
+        if risk_level not in _RISK_LEVELS:
+            raise _CasesError(f"{label}.risk_level is not recognized")
+        consent_flow = _validate_consent(raw["consent_flow"], f"{label}.consent_flow")
+        permissions = _text_list(raw["permissions"], f"{label}.permissions")
+        missing_permissions = sorted(set(consent_flow.get("app_permissions", [])) - set(permissions))
+        if missing_permissions:
+            raise _CasesError(f"{label}.consent_flow references permissions absent from permissions")
+        cases.append(
+            {
+                "case_id": case_id,
+                "name": _text(raw["name"], f"{label}.name"),
+                "description": _text(raw["description"], f"{label}.description"),
+                "risk_level": risk_level,
+                "consent_flow": consent_flow,
+                "data_access": _validate_access(raw["data_access"], f"{label}.data_access"),
+                "permissions": permissions,
+                "risk_assessment": _text(raw["risk_assessment"], f"{label}.risk_assessment"),
+            }
+        )
+    return cases
+
+
+def _validate_consent(raw: Any, label: str) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise _CasesError(f"{label} must be a mapping")
+    if any(not isinstance(key, str) for key in raw):
+        raise _CasesError(f"{label} field names must be strings")
+    extra = sorted(set(raw) - _CONSENT_KEYS)
+    if extra:
+        raise _CasesError(f"{label} has unknown fields: {', '.join(extra)}")
+    output: dict[str, Any] = {}
+    for key in ("user_action", "flow_type"):
+        if key in raw:
+            output[key] = _text(raw[key], f"{label}.{key}")
+    if "app_permissions" in raw:
+        output["app_permissions"] = _text_list(raw["app_permissions"], f"{label}.app_permissions")
+    if "admin_consent_required" in raw:
+        if not isinstance(raw["admin_consent_required"], bool):
+            raise _CasesError(f"{label}.admin_consent_required must be a boolean")
+        output["admin_consent_required"] = raw["admin_consent_required"]
+    return output
+
+
+def _validate_access(raw: Any, label: str) -> dict[str, Any]:
+    if not isinstance(raw, dict):
+        raise _CasesError(f"{label} must be a mapping")
+    if any(not isinstance(key, str) for key in raw):
+        raise _CasesError(f"{label} field names must be strings")
+    extra = sorted(set(raw) - _ACCESS_KEYS)
+    if extra:
+        raise _CasesError(f"{label} has unknown fields: {', '.join(extra)}")
+    output: dict[str, Any] = {}
+    for key in ("mailbox_count", "files_accessed"):
+        if key in raw:
+            value = raw[key]
+            if (
+                not isinstance(value, int)
+                or isinstance(value, bool)
+                or value < 0
+                or value.bit_length() > MAX_INTEGER_BITS
+            ):
+                raise _CasesError(
+                    f"{label}.{key} must be a bounded non-negative integer"
+                )
+            output[key] = value
+    if "data_types" in raw:
+        output["data_types"] = _text_list(raw["data_types"], f"{label}.data_types")
+    return output
+
+
+def _text_list(value: Any, label: str) -> list[str]:
+    if not isinstance(value, list) or len(value) > _MAX_ITEMS:
+        raise _CasesError(f"{label} must be a bounded list of strings")
+    return [_text(item, f"{label}[{index}]") for index, item in enumerate(value)]
+
+
+def _project_case(item: Mapping[str, Any]) -> dict[str, Any]:
+    return {key: item[key] for key in _CASE_KEYS}
+
+
+def _project_summary(item: Mapping[str, Any]) -> dict[str, str]:
+    return {
+        "case_id": item["case_id"],
+        "name": item["name"],
+        "description": item["description"],
+        "risk_level": item["risk_level"],
+        "risk_assessment": item["risk_assessment"],
+    }
+
+
+def _source(raw: bytes) -> dict[str, Any]:
+    return {"kind": "operator-file", "sha256": "sha256:" + hashlib.sha256(raw).hexdigest(), "bytes": len(raw)}
+
+
+def _text(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip() or len(value) > _MAX_TEXT:
+        raise _CasesError(f"{label} must be a non-empty bounded string")
+    if any(ord(char) < 0x20 and char not in "\t\n\r" for char in value):
+        raise _CasesError(f"{label} contains control characters")
+    return value.strip()
+
+
+def _optional_query(value: Any) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
+def _ok(spec: ArmSpec, action: str, output: Any) -> Result:
+    try:
+        size = len(json.dumps(output, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+    except (TypeError, ValueError, OverflowError) as exc:
+        return _fail(spec, action, f"result could not be encoded: {exc}")
+    if size > MAX_OUTPUT_CHARS:
+        return _fail(spec, action, f"result exceeds the {MAX_OUTPUT_CHARS} character output cap; narrow the lookup")
+    return Result(True, spec.id, action, output, None)
 
 
 def _fail(spec: ArmSpec, action: str, error: str) -> Result:
-    return Result(
-        ok=False,
-        arm_id=spec.id,
-        action=action,
-        output=None,
-        error=redact(error[:MAX_OUTPUT_CHARS]),
-    )
+    return Result(False, spec.id, action, None, redact(str(error))[:MAX_OUTPUT_CHARS])

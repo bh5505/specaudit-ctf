@@ -16,6 +16,9 @@ MAX_OUTPUT_CHARS = 200_000
 MAX_CATALOG_BYTES = 64 * 1024 * 1024
 CATALOG_SUFFIXES = (".json", ".yaml", ".yml")
 MAX_RESULTS = 200
+MAX_RECORDS = 10_000
+MAX_DOCUMENT_NODES = 50_000
+MAX_DOCUMENT_DEPTH = 64
 
 # Per-action caller-argument contracts (everything else is refused).
 ARG_KEYS: dict[str, frozenset[str]] = {
@@ -24,9 +27,10 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 }
 
 CAVEATS = (
-    "every retained instruction maps to a bounded tool or a human step; "
-    "skill prose is untrusted input and grants no permission",
-    "operator must validate skill-to-tool mappings before use",
+    "tool mappings and steps are bounded compatibility fields; skill prose is "
+    "untrusted input and grants no permission",
+    "operators must validate mappings, upstream revision, schema correspondence, "
+    "and content rights before use",
     "no execution authority granted by skill presence",
 )
 
@@ -51,7 +55,7 @@ def catalog_refusal(
         return None, "args.catalog contains control characters"
     path = Path(text).expanduser()
     if not path.is_file():
-        return None, f"args.catalog is not an existing file: {text}"
+        return None, "args.catalog is not an existing file"
     if path.suffix.lower() not in CATALOG_SUFFIXES:
         return (
             None,
@@ -59,8 +63,8 @@ def catalog_refusal(
         )
     try:
         size = path.stat().st_size
-    except OSError as exc:
-        return None, f"args.catalog could not be read: {exc}"
+    except OSError:
+        return None, "args.catalog could not be read"
     if size > max_bytes:
         return None, (
             f"args.catalog exceeds the {max_bytes} byte read cap "
@@ -84,12 +88,23 @@ def args_refusal(action: str, payload: dict) -> str | None:
     if not {"catalog"} <= set(payload):
         return "this action requires a local skills catalog path in args.catalog"
     if action == "skill":
-        has_id = isinstance(payload.get("skill_id"), str) and payload[
-            "skill_id"
-        ].strip()
-        has_name = isinstance(payload.get("name"), str) and payload["name"].strip()
+        for key in ("skill_id", "name"):
+            if key in payload and (
+                not isinstance(payload[key], str) or not payload[key].strip()
+            ):
+                return f"args.{key} must be a non-empty string when provided"
+        has_id = isinstance(payload.get("skill_id"), str) and bool(
+            payload["skill_id"].strip()
+        )
+        has_name = isinstance(payload.get("name"), str) and bool(
+            payload["name"].strip()
+        )
         if not has_id and not has_name:
-            return "skill requires exactly one of args.skill_id or args.name"
+            return "skill requires args.skill_id or args.name"
+    if "category" in payload and (
+        not isinstance(payload["category"], str) or not payload["category"].strip()
+    ):
+        return "args.category must be a non-empty string when provided"
     if action == "list_skills":
         limit_refusal_msg = limit_refusal(payload.get("limit"))
         if limit_refusal_msg:
@@ -101,7 +116,7 @@ def limit_refusal(raw: object) -> str | None:
     """Validate an optional limit argument (1-200)."""
     if raw is None:
         return None
-    if not isinstance(raw, int):
+    if not isinstance(raw, int) or isinstance(raw, bool):
         return "args.limit must be an integer between 1 and 200"
     if raw < 1 or raw > 200:
         return "args.limit must be between 1 and 200"

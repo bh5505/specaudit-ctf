@@ -16,6 +16,9 @@ MAX_OUTPUT_CHARS = 200_000
 MAX_CORPUS_BYTES = 64 * 1024 * 1024  # 64 MiB
 CORPUS_SUFFIXES = (".json", ".yaml", ".yml")
 MAX_RESULTS = 200
+MAX_RECORDS = 10_000
+MAX_DOCUMENT_NODES = 50_000
+MAX_DOCUMENT_DEPTH = 64
 
 # Per-action caller-argument contracts (everything else is refused).
 ARG_KEYS: dict[str, frozenset[str]] = {
@@ -24,10 +27,10 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 }
 
 CAVEATS = (
-    "importing a declarative cloud attack corpus only",
+    "first-party reader over an operator-supplied declarative compatibility corpus",
     "executor bodies are treated as inert text and never executed",
-    "no cloud credentials are present on the read path",
-    "positive, benign, and missing-telemetry variants are graded separately",
+    "the arm obtains or uses no cloud credentials; operator corpora must exclude secrets",
+    "the input digest does not establish upstream revision, schema equivalence, or rights",
 )
 
 ARMING = (
@@ -54,7 +57,7 @@ def corpus_refusal(
         return None, "args.corpus contains control characters"
     path = Path(text).expanduser()
     if not path.is_file():
-        return None, f"args.corpus is not an existing file: {text}"
+        return None, "args.corpus is not an existing file"
     if path.suffix.lower() not in CORPUS_SUFFIXES:
         return None, (
             f"args.corpus must be a JSON or YAML file, "
@@ -62,8 +65,8 @@ def corpus_refusal(
         )
     try:
         size = path.stat().st_size
-    except OSError as exc:
-        return None, f"args.corpus could not be read: {exc}"
+    except OSError:
+        return None, "args.corpus could not be read"
     if size > max_bytes:
         return None, (
             f"args.corpus exceeds the {max_bytes} byte read cap "
@@ -101,7 +104,7 @@ def limit_refusal(raw: object) -> int | str:
     """Validate and return the list limit (1..MAX_RESULTS) or a refusal."""
     if raw is None:
         return MAX_RESULTS
-    if not isinstance(raw, int):
+    if not isinstance(raw, int) or isinstance(raw, bool):
         return f"args.limit must be an integer (1-{MAX_RESULTS})"
     if raw < 1 or raw > MAX_RESULTS:
         return f"args.limit must be between 1 and {MAX_RESULTS}"

@@ -14,7 +14,7 @@ import jsonschema
 import pytest
 
 from extension.__main__ import main as invoke_main
-from extension.contract import Result
+from extension.contract import Extension, Result
 from extension.encode import encode_range_document
 from extension.envelopes import RESULT_SCHEMA_ID, accept_pair, parse_execution_result
 from extension.invoke_profiles import INVOKE_PROFILES, PACKAGE_VERSION
@@ -27,6 +27,25 @@ RESULT_SCHEMA_PATH = ROOT / "extension" / "schema" / "execution-result.v1.schema
 MANIFESTS = ROOT / "tests" / "goldens" / "capability-manifest"
 PREV1_INVOKE_KEYS = frozenset({"ok", "arm_id", "action", "output", "error"})
 RANGE_LIFECYCLE_V3 = "range.lifecycle.v3"
+EXPECTED_RESEARCH_READER_ACTIONS = {
+    "security-detections-mcp": ("list_rules", "search_rules", "get_rule"),
+    "agentseal": ("analyze", "list_scenarios"),
+    "vulnify": ("lookup", "list_vulns"),
+    "leonidas": ("technique", "list_techniques"),
+    "specterops-skills": ("skill", "list_skills"),
+    "detection-in-the-cloud": ("playbook", "list_playbooks", "list_rules"),
+    "pentestkit": ("result", "list_results", "summary"),
+    "collinear": ("scenario", "list_scenarios", "verify"),
+    "ad-pathfinder": ("path", "list_paths", "list_datasources"),
+    "gpohound": ("policy", "list_policies", "list_links"),
+    "claude-ad": ("technique", "list_techniques", "list_prerequisites"),
+    "numasec": ("finding", "list_findings", "list_transitions"),
+    "rubeus": ("telemetry", "list_telemetry", "list_indicators"),
+    "m365pwned": ("case_study", "list_case_studies", "list_permissions"),
+}
+CALLER_FILE_READ_ARM_IDS = frozenset(
+    {"attack-stix-data", *EXPECTED_RESEARCH_READER_ACTIONS}
+)
 
 
 def _schema() -> dict[str, Any]:
@@ -393,6 +412,28 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
         "metasploit-mcp.start_listener",
         "metasploit-mcp.stop_job",
     }
+    caller_file_reads = {
+        capability_id
+        for capability_id, profile in INVOKE_PROFILES.items()
+        if profile.arm_id in CALLER_FILE_READ_ARM_IDS
+        and profile.action != "list_tools"
+    }
+    # Four ATT&CK bundle lookups plus all 38 actions from the 14 added readers.
+    assert len(INVOKE_PROFILES) == 212
+    assert len(caller_file_reads) == 42
+    expected_reader_capabilities = {
+        f"{arm_id}.{action}"
+        for arm_id, actions in EXPECTED_RESEARCH_READER_ACTIONS.items()
+        for action in ("list_tools", *actions)
+    }
+    actual_reader_capabilities = {
+        capability_id
+        for capability_id, profile in INVOKE_PROFILES.items()
+        if profile.arm_id in EXPECTED_RESEARCH_READER_ACTIONS
+    }
+    assert len(EXPECTED_RESEARCH_READER_ACTIONS) == 14
+    assert sum(map(len, EXPECTED_RESEARCH_READER_ACTIONS.values())) == 38
+    assert actual_reader_capabilities == expected_reader_capabilities
     for capability_id, profile in INVOKE_PROFILES.items():
         assert capability_id == f"{profile.arm_id}.{profile.action}"
         assert profile.cleanup_required is False
@@ -447,12 +488,9 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
             assert profile.default_off is True
             assert profile.synthetic_only is False
             assert profile.approval_ref and profile.roe_ref
-        elif profile.arm_id == "attack-stix-data" or (
-            profile.arm_id == "asset-recon" and profile.action in ("plan", "parse")
-        ):
-            # Local-read admission (2026-09-04): in-process first-party
-            # lookups over a caller-named local STIX bundle; no
-            # endpoint, no subprocess, no dispatch tier.
+        elif profile.arm_id == "asset-recon" and profile.action in ("plan", "parse"):
+            # Asset-recon's offline profiles retain their established
+            # synthetic exercise contract.
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.default_off is True
@@ -498,23 +536,33 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
                 assert profile.approval_ref == (
                     "operator://dispatch-scope/RPZDECODER_DISPATCH_SCOPE"
                 )
-        elif profile.arm_id in {
-            "security-detections-mcp", "agentseal", "vulnify", "leonidas",
-            "specterops-skills", "detection-in-the-cloud", "pentestkit", "collinear",
-            "ad-pathfinder", "gpohound", "claude-ad", "numasec", "rubeus", "m365pwned",
-            "attack-stix-data",
-        }:
-            # New R43/R35/R01/R33/R03/R34/R42/R15 read admission plus
-            # attack-stix-data: R0 local-read profiles over operator-
-            # supplied local files.  Synthetic-only by construction.
+        elif profile.action == "list_tools":
+            # Static policy discovery reads repository-owned metadata only.
+            assert profile.safety_class == "R0"
+            assert profile.side_effects == ("local-read",)
+            assert profile.synthetic_only is True
+        elif profile.arm_id in CALLER_FILE_READ_ARM_IDS:
+            # R0 in-process reads over operator-supplied local files. A
+            # read can be side-effect-free without its input being synthetic.
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.default_off is True
-            assert profile.synthetic_only is True
+            assert profile.synthetic_only is False
         else:
-            assert profile.action == "list_tools"
-            assert profile.safety_class == "R0"
-            assert profile.side_effects == ("local-read",)
+            pytest.fail(f"unclassified invoke profile: {capability_id}")
+
+
+def test_research_reader_discovery_matches_every_admitted_action() -> None:
+    extension = Extension()
+    for arm_id, actions in EXPECTED_RESEARCH_READER_ACTIONS.items():
+        result = extension.invoke(arm_id, "list_tools", {})
+        assert result.ok is True
+        assert set(result.output["read_actions"]) == {
+            "list_tools",
+            "tools/list",
+            *actions,
+        }
+        assert result.output["dispatch_actions"] == []
 
 
 def test_module_invoke_cli_emits_v1_subprocess() -> None:

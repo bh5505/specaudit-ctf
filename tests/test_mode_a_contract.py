@@ -42,15 +42,17 @@ from extension.envelopes import (
 from extension.invoke_profiles import INVOKE_PROFILES, InvokeProfile
 from extension.range import run_range
 from extension.range.__main__ import main as range_main
-from tests.test_cli_json_encode import _assert_execution_result, _stdout_json
+from tests.test_cli_json_encode import (
+    CALLER_FILE_READ_ARM_IDS,
+    _assert_execution_result,
+    _stdout_json,
+)
 from tests.test_range_lifecycle import apply_no_curated_tools
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_SCHEMA_PATH = ROOT / "extension" / "schema" / "capability.manifest.v1.schema.json"
 GOLDEN = ROOT / "tests" / "goldens" / "capability-manifest" / "agent-wiz.list_tools.json"
 ATTEMPT_ID = "attempt-" + ("ab" * 32)
-
-
 def _schema() -> dict[str, Any]:
     payload = json.loads(MANIFEST_SCHEMA_PATH.read_text(encoding="utf-8"))
     assert isinstance(payload, dict)
@@ -535,9 +537,17 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 149 since the caldera read admission (2026-09-06,
     # emulation-listing packet): the eight v2 GET views as
     # endpoint-armed reads (caldera had no profiles before).
-    # 160 after asset-recon; the 14 research-candidate readers add
-    # 14 list_tools profiles and 38 local-read action profiles.
+    # Current merged registry: 160 profiles through asset-recon, plus
+    # 14 research-candidate list_tools profiles and 38 action profiles.
     assert len(INVOKE_PROFILES) == 212
+    caller_file_reads = {
+        capability_id
+        for capability_id, profile in INVOKE_PROFILES.items()
+        if profile.arm_id in CALLER_FILE_READ_ARM_IDS
+        and profile.action != "list_tools"
+    }
+    # Four ATT&CK bundle lookups plus all 38 actions from the 14 added readers.
+    assert len(caller_file_reads) == 42
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -578,11 +588,9 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert profile.safety_class == "R1"
             assert profile.side_effects == ("network-egress",)
             assert profile.synthetic_only is False
-        elif profile.arm_id == "attack-stix-data" or (
-            profile.arm_id == "asset-recon" and profile.action in ("plan", "parse")
-        ):
-            # Local-read admission (2026-09-04): in-process lookups over
-            # a caller-named local bundle; no endpoint, no dispatch.
+        elif profile.arm_id == "asset-recon" and profile.action in ("plan", "parse"):
+            # Asset-recon's offline profiles retain their established
+            # synthetic exercise contract.
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.synthetic_only is True
@@ -604,19 +612,13 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.synthetic_only is True
-        elif profile.arm_id in {
-            "security-detections-mcp", "agentseal", "vulnify", "leonidas",
-            "specterops-skills", "detection-in-the-cloud", "pentestkit", "collinear",
-            "ad-pathfinder", "gpohound", "claude-ad", "numasec", "rubeus", "m365pwned",
-            "attack-stix-data",
-        }:
-            # New R43/R35/R01/R33/R03/R34/R42/R15 read admission plus
-            # attack-stix-data: R0 local-read profiles over operator-
-            # supplied local files.  Synthetic-only by construction.
+        elif profile.arm_id in CALLER_FILE_READ_ARM_IDS:
+            # R0 in-process reads over operator-supplied local files. A
+            # read can be side-effect-free without its input being synthetic.
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.default_off is True
-            assert profile.synthetic_only is True
+            assert profile.synthetic_only is False
         else:
             # Dispatch-class admission: R1, declared side effects,
             # default-off, and NOT synthetic-only (the operator arms a
@@ -661,11 +663,8 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["safety_class"] == "R1"
             assert payload["side_effects"] == ["network-egress"]
             assert payload["synthetic_only"] is False
-        elif profile.arm_id == "attack-stix-data" or (
-            profile.arm_id == "asset-recon" and profile.action in ("plan", "parse")
-        ):
-            # Local-read manifests: R0 local-read, synthetic-only (the
-            # in-process reader never leaves the process).
+        elif profile.arm_id == "asset-recon" and profile.action in ("plan", "parse"):
+            # Asset-recon's offline exercise profiles remain synthetic-only.
             assert payload["safety_class"] == "R0"
             assert payload["side_effects"] == ["local-read"]
             assert payload["synthetic_only"] is True
@@ -673,15 +672,10 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["safety_class"] == "R0"
             assert payload["side_effects"] == ["local-read"]
             assert payload["synthetic_only"] is True
-        elif profile.arm_id in {
-            "security-detections-mcp", "agentseal", "vulnify", "leonidas",
-            "specterops-skills", "detection-in-the-cloud", "pentestkit", "collinear",
-            "ad-pathfinder", "gpohound", "claude-ad", "numasec", "rubeus", "m365pwned",
-            "attack-stix-data",
-        }:
+        elif profile.arm_id in CALLER_FILE_READ_ARM_IDS:
             assert payload["safety_class"] == "R0"
             assert payload["side_effects"] == ["local-read"]
-            assert payload["synthetic_only"] is True
+            assert payload["synthetic_only"] is False
         elif capability_id == "checkov.scan":
             # Contained-subprocess manifest (2026-09-05): honest R1
             # subprocess truth, synthetic-only (the scan root is pinned

@@ -16,6 +16,9 @@ MAX_OUTPUT_CHARS = 200_000
 MAX_FEED_BYTES = 64 * 1024 * 1024
 FEED_SUFFIXES = (".json", ".jsonl", ".yaml", ".yml")
 MAX_RESULTS = 200
+MAX_RECORDS = 10_000
+MAX_DOCUMENT_NODES = 50_000
+MAX_DOCUMENT_DEPTH = 64
 
 # Per-action caller-argument contracts (everything else is refused).
 ARG_KEYS: dict[str, frozenset[str]] = {
@@ -28,7 +31,8 @@ CAVEATS = (
     "exact lookups only, no enumeration beyond list_vulns",
     "unknown or stale data in the feed stays explicitly opaque — "
     "the arm does not augment or refresh records",
-    "source and snapshot digests should appear in evidence metadata",
+    "results identify exact snapshot bytes and normalized records but do not "
+    "establish upstream revision, attribution, or data rights",
     "no network or database mutation occurs during a lookup",
 )
 
@@ -56,13 +60,13 @@ def feed_refusal(
         return None, "args.feed contains control characters"
     path = Path(text).expanduser()
     if not path.is_file():
-        return None, f"args.feed is not an existing file: {text}"
+        return None, "args.feed is not an existing file"
     if path.suffix.lower() not in FEED_SUFFIXES:
         return None, f"args.feed must be a vulnerability feed file, got suffix {path.suffix!r}"
     try:
         size = path.stat().st_size
-    except OSError as exc:
-        return None, f"args.feed could not be read: {exc}"
+    except OSError:
+        return None, "args.feed could not be read"
     if size > max_bytes:
         return None, (
             f"args.feed exceeds the {max_bytes} byte read cap "
@@ -86,8 +90,17 @@ def args_refusal(action: str, payload: dict) -> str | None:
     if "feed" not in payload:
         return "this action requires a local vulnerability feed path in args.feed"
     if action == "lookup":
-        has_cve = isinstance(payload.get("cve_id"), str) and payload["cve_id"].strip()
-        has_name = isinstance(payload.get("name"), str) and payload["name"].strip()
+        for key in ("cve_id", "name"):
+            if key in payload and (
+                not isinstance(payload[key], str) or not payload[key].strip()
+            ):
+                return f"args.{key} must be a non-empty string when provided"
+        has_cve = isinstance(payload.get("cve_id"), str) and bool(
+            payload["cve_id"].strip()
+        )
+        has_name = isinstance(payload.get("name"), str) and bool(
+            payload["name"].strip()
+        )
         if not has_cve and not has_name:
             return "lookup requires at least one of args.cve_id or args.name"
     return None
@@ -98,7 +111,7 @@ def limit_refusal(raw: object) -> tuple[int | None, str | None]:
     if raw is None:
         return MAX_RESULTS, None
     if not isinstance(raw, int) or isinstance(raw, bool):
-        return None, "args.limit must be an integer between 1 and 200"
+        return None, f"args.limit must be an integer between 1 and {MAX_RESULTS}"
     if raw < 1 or raw > MAX_RESULTS:
         return None, f"args.limit must be between 1 and {MAX_RESULTS}"
     return raw, None

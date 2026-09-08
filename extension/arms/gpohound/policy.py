@@ -55,7 +55,7 @@ def evidence_refusal(
         return None, "args.evidence contains control characters"
     path = Path(text).expanduser()
     if not path.is_file():
-        return None, f"args.evidence is not an existing file: {text}"
+        return None, "args.evidence is not an existing file"
     if path.suffix.lower() not in EVIDENCE_SUFFIXES:
         return None, (
             f"args.evidence must be a JSON or YAML file, "
@@ -63,8 +63,8 @@ def evidence_refusal(
         )
     try:
         size = path.stat().st_size
-    except OSError as exc:
-        return None, f"args.evidence could not be read: {exc}"
+    except OSError:
+        return None, "args.evidence could not be read"
     if size > max_bytes:
         return None, (
             f"args.evidence exceeds the {max_bytes} byte read cap "
@@ -75,6 +75,8 @@ def evidence_refusal(
 
 def args_refusal(action: str, payload: dict) -> str | None:
     """Refuse unknown or missing caller arguments per action."""
+    if any(not isinstance(key, str) for key in payload):
+        return "caller argument names must be strings"
     allowed = ARG_KEYS.get(action)
     if allowed is None:
         return f"action {action!r} is not on the read allowlist"
@@ -88,13 +90,23 @@ def args_refusal(action: str, payload: dict) -> str | None:
     if not {"evidence"} <= set(payload):
         return "this action requires a local GPO evidence path in args.evidence"
     if action == "policy":
-        pid = str(payload.get("policy_id") or "").strip()
-        name = str(payload.get("name") or "").strip()
-        if not pid and not name:
+        pid = payload.get("policy_id")
+        name = payload.get("name")
+        has_pid = isinstance(pid, str) and bool(pid.strip())
+        has_name = isinstance(name, str) and bool(name.strip())
+        if has_pid == has_name:
             return "policy requires exactly one of args.policy_id or args.name"
     if action == "list_links":
-        if not str(payload.get("gpo_id") or "").strip():
+        if not isinstance(payload.get("gpo_id"), str) or not payload["gpo_id"].strip():
             return "list_links requires args.gpo_id"
+    if action == "list_policies":
+        result = limit_refusal(payload.get("limit"))
+        if isinstance(result, str):
+            return result
+        if "status" in payload and (
+            not isinstance(payload["status"], str) or not payload["status"].strip()
+        ):
+            return "args.status must be a non-empty string"
     return None
 
 
@@ -102,8 +114,6 @@ def limit_refusal(raw: object) -> int | str:
     """Validate and return the list limit (1..MAX_RESULTS) or a refusal."""
     if raw is None:
         return MAX_RESULTS
-    if isinstance(raw, str) and raw.isdigit():
-        raw = int(raw)
     if not isinstance(raw, int) or isinstance(raw, bool):
         return f"args.limit must be an integer (1-{MAX_RESULTS})"
     if raw < 1 or raw > MAX_RESULTS:

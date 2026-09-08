@@ -78,8 +78,9 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
     # the attack-stix-data arm's +4 package files (__init__, arm, policy,
     # reader — the demo bundle is caller data, not part of the closure).
     # Asset recon established a 122-file producer closure; the 14 readers
-    # add three imported Python modules apiece.
-    assert len(lock["producer_source_files"]) == 164
+    # add three imported Python modules apiece, plus their shared strict-data
+    # decoder/structure guard.
+    assert len(lock["producer_source_files"]) == 165
     assert len(lock["included_stdlib_files"]) == 118
     assert len(lock["included_yaml_files"]) == 18
     assert lock["capability_manifest"] == {

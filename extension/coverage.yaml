@@ -357,95 +357,95 @@ entries:
     protocols: [cli]
     curated: true
     tier: research
-    notes: Local rule reads over pinned detection indexes. Curated CLI read arm; no rule generation, index mutation, deployment, or hosted fallback on the read path. Every result is source-attributable. Per-corpus licensing must be reviewed by the operator.
+    notes: Local rule reads over operator-supplied detection indexes. Curated CLI read arm; no rule generation, index mutation, deployment, or hosted fallback on the read path. Results carry the exact input-byte digest, which identifies the snapshot but is not a trusted-custody attestation. Per-corpus revision and licensing remain operator gates.
 
   - id: agentseal
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: Offline agent-framework static fixture analysis. Curated CLI read arm; the offline boundary must be verified empirically (no registry or network calls). Every result cites specific configuration evidence. No active modes exposed.
+    notes: Offline agent-framework static-fixture analysis. Curated first-party CLI reader over an operator-supplied fixture; it exposes no active mode, registry call, subprocess, or network path. Results retain bounded configuration evidence and the exact input-byte digest; upstream schema equivalence is not claimed.
 
   - id: vulnify
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: Bounded local vulnerability reads. Curated CLI read arm over operator-supplied frozen vulnerability snapshots. Unknown and stale data stay explicit; source and snapshot digests appear in evidence. No network or database mutation during a lookup.
+    notes: Bounded local vulnerability reads. Curated first-party CLI reader over operator-supplied frozen JSON/JSONL/YAML snapshots; it is not the upstream SQLite/MCP service and does not claim upstream schema compatibility. Unknown data stays explicit and results carry the exact snapshot digest. Source revision, staleness, attribution, and data rights remain operator evidence.
 
   - id: leonidas
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: Declarative cloud attack corpus reads. Curated CLI read arm importing the Leonidas technique corpus; executor bodies treated as inert text and no cloud credentials on the read path. Positive, benign, and missing-telemetry variants graded separately.
+    notes: Declarative cloud-attack corpus reads. Curated first-party CLI reader over an operator-supplied compatibility corpus; executor bodies are projected as inert text and the arm has no cloud credential or execution path. Results identify the exact input bytes; upstream revision, schema equivalence, and corpus rights are not implied.
 
   - id: specterops-skills
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: Curated methodology skill reads from the SpecterOps skills catalog. Every retained instruction maps to a bounded tool or a human step; skill prose is untrusted input and grants no permission. Operator must validate skill-to-tool mappings before use.
+    notes: Curated first-party methodology-skill reader over an operator-supplied compatibility catalog. Bounded tool mappings and human steps remain distinct; skill prose is untrusted input and grants no permission. Results identify the exact input bytes, while upstream revision, mapping accuracy, schema equivalence, and reuse rights remain operator gates.
 
   - id: detection-in-the-cloud
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: Cloud detection playbook reads. Pages pinned to the corresponding definition revisions; a rule listing is never read as operating effectiveness. Companion methodology, not a second detection engine.
+    notes: Cloud detection playbook reads over a bounded operator-supplied directory. File-reading actions identify the exact bytes read; list_playbooks identifies its deterministic name/format listing, not file contents. A rule listing is never operating-effectiveness evidence. This is companion methodology, not a second detection engine; the operator must bind page and definition revisions and rights.
 
   - id: pentestkit
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: Experiment accounting reads. Curated CLI read arm over operator-supplied experiment ledgers. First-pass, tuned, and held-out results stay separate; every failure stays in the denominator; no case silently dropped.
+    notes: Experiment-accounting reads over operator-supplied ledgers. The first-party CLI reader keeps phase/status buckets and all structurally valid records in reconstructable denominators, refuses malformed records, and returns the exact input digest. It does not authenticate the producer or turn a caller file into trusted evaluation evidence.
 
   - id: collinear
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: Cybersecurity simulated world scenario reads. Curated CLI read arm; learner and model cannot read expected findings or trace keys. Forged or truncated evidence fails closed. Task/environment/verifier separation maintained at all times.
+    notes: Cybersecurity simulated-world scenario reads. The first-party CLI reader withholds expected findings and trace keys from scenario views and applies exact-match comparison without exposing answer counts. Its operator-supplied scenario file and submission are not trusted grading evidence; instructor storage, identity, custody, and environment separation remain external gates.
 
   - id: ad-pathfinder
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: Imported AD path results. Curated CLI read arm; missing datasource reads as not assessed, never clean. No real hashes or credentials distributed. A blocked path is never graded as demonstrated compromise.
+    notes: Imported AD-path result reads over an operator-supplied compatibility export. Missing datasource reads as not assessed, never clean; the bounded schema projects path evidence and rejects unrecognized fields. The arm distributes no bundled credentials or corpus, does no live collection, and does not grade a blocked path as demonstrated compromise.
 
   - id: gpohound
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: GPO policy evidence reads. Curated CLI read arm; filtered-out policy is not effective access. Uncovered security/WMI filters and item-level targeting reported as limitations. No shared-graph writes.
+    notes: GPO policy evidence reads over an operator-supplied compatibility export. Filtered-out policy is not effective access; security/WMI filters and item-level targeting remain applicability limits. The bounded first-party reader identifies its input bytes, makes no shared-graph writes, and does not claim upstream schema equivalence.
 
   - id: claude-ad
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: AD methodology reads. Curated CLI read arm; prerequisites, observed facts, and inference are separated. No action authorized by a skill. Framework mappings never asserted as compliance.
+    notes: AD methodology reads over an operator-supplied compatibility file. The bounded first-party CLI reader separates prerequisites, observed facts, and inference and identifies its input bytes. Method prose authorizes no action; framework mappings are not compliance claims or upstream-schema evidence.
 
   - id: numasec
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: Finding lifecycle reads. Curated CLI read arm; status changes are attributable and reversible. No model-only status change creates a verified finding. Every change has an actor and reason.
+    notes: Finding-lifecycle reads over an operator-supplied ledger. The bounded first-party CLI reader requires a continuous closed transition chain, actor/reason fields, and increasing timestamps, then derives status from that history. Actor strings and verified state remain unauthenticated caller assertions until trusted identity and observation binding exist.
 
   - id: rubeus
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: Deweaponized AD telemetry reads. Curated CLI read arm; no real tickets, hashes, or secrets distributed. Legitimate administration is not automatically classified as compromise.
+    notes: Deweaponized AD-telemetry reads over an operator-supplied compatibility file. The bounded first-party CLI reader projects an allowlisted record shape, redacts secret-bearing fields and values, and identifies its input bytes; it performs no collection or ticket operation. Operators must still exclude real credentials, and legitimate administration is not automatically compromise.
 
   - id: m365pwned
     kind: arm
     protocols: [cli]
     curated: true
     tier: research
-    notes: Synthetic M365 consent case reads. Curated CLI read arm; no real tenant, mailbox, or file accessed. Permission claims verified against API owner documentation. Live Graph API gated by SAFE-01.
+    notes: Educational M365 consent-case reads over an operator-supplied compatibility file. The bounded first-party CLI reader has no Graph, tenant, mailbox, or file-access path and identifies its input bytes. It does not prove the input is synthetic or verify permission claims; API-owner validation, upstream equivalence, and any future live integration remain separate SAFE-01 and governance work.
