@@ -36,8 +36,9 @@ credential file, no Burp installation.
 
 Correction same day (operator directive: staging is agent work where
 no operator-held secret is required): prowler was staged and
-VALIDATED from this repo's perspective (block below); burp staging
-was ATTEMPTED and measured-blocked with evidence (block below); GTI
+VALIDATED from this repo's perspective (block below); burp was
+staged, its transport incompatibility found and fixed in the shared
+client, and ALL FOUR runbook reads validated (block below); GTI
 remains operator-gated because BOTH its staging inputs are
 operator-held (the `VT_APIKEY` credential and the https front).
 
@@ -45,9 +46,9 @@ operator-held (the `VT_APIKEY` credential and the https front).
 
 ## burp-mcp — loopback reads over the official BApp
 
-Status: **degraded-validated 2026-09-07** (agent-staged: listener live,
-transport + non-data reads validated; data reads blocked by the
-server's interactive approval gate — measured below)
+Status: **validated 2026-09-07** (agent-staged: all four runbook reads
+complete; the measured path is below — including the approval dialog
+that initially held the data reads)
 
 Runbook: `lab/README.md` → "Operator-gated rows". Facts pinned from
 source/docs 2026-09-06 (PortSwigger/mcp-server main; BApp store
@@ -117,28 +118,51 @@ pinning) is unchanged; the pinned expectation in
 `tests/test_mcp_transport_gate.py` now asserts the endpoint-derived
 origin.
 
-VALIDATION (runbook commands, `BURP_MCP_ENDPOINT=http://127.0.0.1:9876`):
+VALIDATION (runbook commands, `BURP_MCP_ENDPOINT=http://127.0.0.1:9876`) —
+**all four reads complete**:
 
 | Field | Value |
 |---|---|
 | Date | 2026-09-07 |
 | Env vars armed | `BURP_MCP_ENDPOINT=http://127.0.0.1:9876` (literal loopback only; hostname endpoints refused) |
 | Invoke commands as run | `python -m extension invoke burp-mcp list_tools` · `url_encode '{"content": "a b"}'` · `get_proxy_http_history '{}'` · `get_proxy_http_history_regex '{"regex": "login", "count": 10, "offset": 0}'` |
-| Envelope status | **complete**: `list_tools` (27-tool surface served; artifact `sha256:4aa44d13…`, credentials-stripped), `url_encode`. **failed (timed out, 30 s budget)**: `get_proxy_http_history`, `get_proxy_http_history_regex` — see approval gate |
-| Artifacts | digests per call, `kind: policy-report`, `redaction: credentials-stripped`; live SSE handshake captured (`event: endpoint`, `data: ?sessionId=…`) |
+| Envelope status | **complete** for all four (transport_ok true, coverage complete) |
+| Artifacts | digests per call, `kind: policy-report`, `redaction: credentials-stripped` — list_tools `sha256:4aa44d13…`; live SSE handshake captured (`event: endpoint`, `data: ?sessionId=…`) |
 | Operator note | server v1.3.0 on Burp CE 2026.3.2; the shipped server ALREADY validates Origin+Host (the 09-06 note scoped that to unreleased main — v1.3.0 refuses port-less origins with 403, measured) |
 
-**Why the data reads stop at the approval gate**: the extension's
-config (`McpConfig`) defaults `requireHttpRequestApproval` on with an
-empty `autoApproveTargets` list, so history reads block awaiting an
-interactive approval in the extension's MCP tab. That control is
-UI-only: the config lives in Burp's runtime storage (never written to
-disk in this setup), no CLI flag/env pre-arms it, and synthetic X11
-input (xdotool mouse + keyboard, absolute and window-relative) did
-not register on the Swing UI under WSLg/Xvfb. Unblock = one human
-interaction (MCP tab → approve the pending request or add an
-auto-approve target), after which the remaining runbook reads should
-flow unchanged; headless-only hosts stay at this measured boundary.
+**Measured findings along the path** (each one drove a fix or a
+recipe note):
+
+1. **Shipped-server Origin validation is live in v1.3.0** (the 09-06
+   note scoped it to unreleased main — measured otherwise): the
+   server requires the client Origin to be same-origin INCLUDING
+   port. `Origin: http://127.0.0.1` (the client's former constant)
+   → 403; `Origin: http://127.0.0.1:9876` → handshake completes.
+   Fix: the shared HTTP-MCP client now emits the endpoint's own
+   RFC 6454 origin on both transports (SSE + streamable). P5's
+   property (Origin emitted; session pinning) unchanged; the P5
+   tests pin the endpoint-derived origin.
+2. **Headless boot recipe** (each row measured): a FULL JRE is
+   required (the headless JRE lacks `libawt_xawt.so` — Burp dies in
+   its own UI init with `no ComponentUI class for: burp.Zc52`, both
+   under `-Djava.awt.headless=true` and under a real display); the
+   first-run license prompt reads stdin even headless (`printf 'y\n'
+   |`); `--use-defaults` does NOT skip the project wizard;
+   `--user-config-file` does NOT load extensions — the working
+   headless loader is the CLI's developer-extension mechanism:
+   `java -cp burpsuite.jar:burp-mcp-all.jar burp.StartBurp
+   --developer-extension-class-name=net.portswigger.mcp.ExtensionBase`
+   under a display (Xvfb or WSLg).
+3. **The data-access approval gate is a real GUI dialog** ("An MCP
+   client is requesting access to your Burp Suite HTTP history…
+   Allow Once / Always Allow / Deny") — it held the history reads
+   until answered, and synthetic X11 input (xdotool, absolute and
+   window-relative) never registered on the Swing UI under
+   WSLg/Xvfb. Answered via native desktop control on the real
+   Windows desktop (WSLg renders the window there): **Always Allow**
+   — armed persistently, after which all reads flow. Headless hosts
+   without a clickable desktop should expect exactly this dialog on
+   the first data read.
 
 ---
 
