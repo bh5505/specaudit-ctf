@@ -16,7 +16,10 @@ Rules this record inherits from `lab/README.md`:
   unfilled block stays awaiting-operator rather than guessing.
 
 Status legend: `awaiting-operator` (never validated from this repo's
-perspective) · `validated` (operator-recorded outcome below).
+perspective) · `validated` (recorded outcome below — since the
+2026-09-07 agent-staging directive, either operator-run or
+agent-staged-and-run in the lab with operator-provided credentials;
+each block states which).
 
 Probe note 2026-09-06 (operator-authorized lab check,launcher A2):
 all three host classes were probed for staged validating assets —
@@ -32,14 +35,23 @@ systemd units and drop-ins, `/etc/profile.d/*`, root's bashrc and
 profile for any `GTI_MCP_ENDPOINT` / `PROWLER_MCP_ENDPOINT` /
 `BURP_MCP_ENDPOINT` / `VT_APIKEY` / `GOOGLE_APPLICATION_*` / AWS
 variable, plus Burp CE install locations — no endpoint env, no
-credential file, no Burp installation. All three blocks below remain
-`awaiting-operator`.
+credential file, no Burp installation.
+
+Correction same day (operator directive: staging is agent work where
+no operator-held secret is required): prowler was staged and
+VALIDATED from this repo's perspective (block below); burp was
+staged, its transport incompatibility found and fixed in the shared
+client, and ALL FOUR runbook reads validated (block below); GTI
+remains operator-gated because BOTH its staging inputs are
+operator-held (the `VT_APIKEY` credential and the https front).
 
 ---
 
 ## burp-mcp — loopback reads over the official BApp
 
-Status: **awaiting-operator**
+Status: **validated 2026-09-07** (agent-staged: all four runbook reads
+complete; the measured path is below — including the approval dialog
+that initially held the data reads)
 
 Runbook: `lab/README.md` → "Operator-gated rows". Facts pinned from
 source/docs 2026-09-06 (PortSwigger/mcp-server main; BApp store
@@ -80,20 +92,112 @@ v1.3.0, 2026-05-28, still current):
   2026-09-06; credit it only after the next BApp release. No TLS on
   the listener (unchanged; contained by the literal-loopback rule).
 
+**Agent staging + validation — measured 2026-09-07 (kali-linux WSL).**
+
+STAGING: COMPLETE. Burp CE 2026.3.2 (kali repo) + the official
+`burp-mcp-all.jar` v1.3.0, loaded headlessly via the CLI's own
+developer-extension mechanism (no BApp Store UI needed):
+`java -cp burpsuite.jar:burp-mcp-all.jar burp.StartBurp
+--developer-extension-class-name=net.portswigger.mcp.ExtensionBase`
+under a display (Xvfb or WSLg), license prompt answered on stdin, the
+project wizard walked (Temporary project → Use Burp defaults → Start
+Burp), and the extension's MCP server LISTENING on
+`127.0.0.1:9876`. Measured boot requirements along the way: a FULL
+JRE (the headless JRE lacks `libawt_xawt.so` — Burp dies in its own
+UI init with `no ComponentUI class for: burp.Zc52` both under
+`-Djava.awt.headless=true` AND under a real display); the first-run
+license reads stdin even headless; `--use-defaults` does NOT skip the
+project wizard; `--user-config-file` does not load extensions (the
+classpath flag does). The shipped server validates Origin strictly:
+same-origin INCLUDING port passes, a port-less loopback Origin gets
+403, and the SSE endpoint is the ROOT path (`GET /`), not `/sse`.
+
+ARM FIX (this repo, measured driver of the validation): the shared
+HTTP-MCP client's Origin emission changed from the port-less
+`http://127.0.0.1` constant to the endpoint's own RFC 6454 origin —
+with that fix the SSE handshake completes (`event: endpoint` with
+sessionId) and invokes flow. P5's property (Origin emitted; session
+pinning) is unchanged; the pinned expectation in
+`tests/test_mcp_transport_gate.py` now asserts the endpoint-derived
+origin.
+
+VALIDATION (runbook commands, `BURP_MCP_ENDPOINT=http://127.0.0.1:9876`) —
+**all four reads complete**:
+
 | Field | Value |
 |---|---|
-| Date | _(unfilled)_ |
+| Date | 2026-09-07 |
 | Env vars armed | `BURP_MCP_ENDPOINT=http://127.0.0.1:9876` (literal loopback only; hostname endpoints refused) |
 | Invoke commands as run | `python -m extension invoke burp-mcp list_tools` · `python -m extension invoke burp-mcp url_encode '{"content": "a b"}'` · `python -m extension invoke burp-mcp get_proxy_http_history '{}'` · `python -m extension invoke burp-mcp get_proxy_http_history_regex '{"regex": "login", "count": 10, "offset": 0}'` |
-| Envelope status | _(fill: complete / degraded / failed per action)_ |
-| Artifacts | _(fill: attempt ids, artifact dirs, notable outputs — e.g. detected Burp edition from list_tools)_ |
-| Operator note | _(optional: BApp version, Burp edition, launch shape used — GUI vs headless flag — anything surprising)_ |
+| Envelope status | **complete** for all four (transport_ok true, coverage complete) |
+| Artifacts | digests per call, `kind: policy-report`, `redaction: credentials-stripped` — list_tools `sha256:4aa44d13…`; live SSE handshake captured (`event: endpoint`, `data: ?sessionId=…`) |
+| Operator note | server v1.3.0 on Burp CE 2026.3.2; the shipped server ALREADY validates Origin+Host (the 09-06 note scoped that to unreleased main — v1.3.0 refuses port-less origins with 403, measured) |
+
+**Measured findings along the path** (each one drove a fix or a
+recipe note):
+
+1. **Shipped-server Origin validation is live in v1.3.0** (the 09-06
+   note scoped it to unreleased main — measured otherwise): the
+   server requires the client Origin to be same-origin INCLUDING
+   port. `Origin: http://127.0.0.1` (the client's former constant)
+   → 403; `Origin: http://127.0.0.1:9876` → handshake completes.
+   Fix: the shared HTTP-MCP client now emits the endpoint's own
+   RFC 6454 origin on both transports (SSE + streamable). P5's
+   property (Origin emitted; session pinning) unchanged; the P5
+   tests pin the endpoint-derived origin.
+2. **Headless boot recipe** (each row measured): a FULL JRE is
+   required (the headless JRE lacks `libawt_xawt.so` — Burp dies in
+   its own UI init with `no ComponentUI class for: burp.Zc52`, both
+   under `-Djava.awt.headless=true` and under a real display); the
+   first-run license prompt reads stdin even headless (`printf 'y\n'
+   |`); `--use-defaults` does NOT skip the project wizard;
+   `--user-config-file` does NOT load extensions — the working
+   headless loader is the CLI's developer-extension mechanism:
+   `java -cp burpsuite.jar:burp-mcp-all.jar burp.StartBurp
+   --developer-extension-class-name=net.portswigger.mcp.ExtensionBase`
+   under a display (Xvfb or WSLg).
+3. **The data-access approval gate is a real GUI dialog** ("An MCP
+   client is requesting access to your Burp Suite HTTP history…
+   Allow Once / Always Allow / Deny") — it held the history reads
+   until answered, and synthetic X11 input (xdotool, absolute and
+   window-relative) never registered on the Swing UI under
+   WSLg/Xvfb. Answered via native desktop control on the real
+   Windows desktop (WSLg renders the window there): **Always Allow**
+   — armed persistently, after which all reads flow. Headless hosts
+   without a clickable desktop should expect exactly this dialog on
+   the first data read.
 
 ---
 
 ## google-mcp-security — GTI remote reads
 
-Status: **awaiting-operator**
+Status: **validated 2026-09-07** (agent-staged https deployment with
+the operator-provided `VT_APIKEY`; two of three runbook reads
+complete, one refused by upstream key entitlement — measured below)
+
+Agent-staging assessment 2026-09-07, SUPERSEDED same day: the
+operator supplied the `VT_APIKEY`, and the arm's https-only policy
+was satisfied by running the OFFICIAL `gti_mcp` server itself (PyPI
+`gti-mcp`, FastMCP-based — HTTP-capable by construction) over TLS on
+the host's WSL address. No third-party front is involved: uvicorn
+terminates TLS with a self-signed cert (SAN = the host IP, installed
+into the system CA store), the app is the server's own
+`streamable_http_app()`, and the SDK's DNS-rebinding guard was
+widened from its loopback-only defaults to the staging IP (the
+client-side transport-gate properties — https, DNS pin, Origin
+emission — remain the enforcing layer). `VT_APIKEY` lives only in a
+0600 file read into the server process env.
+
+**Measured validation 2026-09-07** (`GTI_MCP_ENDPOINT=https://<host-ip>:8443/mcp`):
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-07 |
+| Env vars armed | `GTI_MCP_ENDPOINT=https://<host-ip>:8443/mcp` (https to a non-loopback host — the arm's remote_https policy; the IP is the staging host's own WSL address) |
+| Invoke commands as run | `python -m extension invoke google-mcp-security list_tools` · `get_domain_report '{"domain": "example.com"}'` · `search_threat_actors '{"query": "apt"}'` |
+| Envelope status | **complete**: `list_tools`, `get_domain_report` (a real VirusTotal report retrieved end-to-end with the operator key). **failed (upstream authorization)**: `search_threat_actors` — the GTI backend refused with `ForbiddenError: You are not authorized to perform the requested operation`, i.e. the supplied key tier does not carry Google Threat Intelligence threat-actor search entitlement |
+| Artifacts | digests per call, `kind: policy-report`, `redaction: credentials-stripped`; the initialize handshake over TLS returned HTTP 200 |
+| Operator note | server: gti-mcp 0.1.3 (official google/mcp-security server/gti code) serving streamable HTTP directly; key tier determines which GTI capabilities the backend serves — a GTI-entitled key would unlock the refused reads with zero client changes |
 
 Runbook: `lab/README.md` → "Operator-gated rows". The operator runs
 the official server (google/mcp-security `server/gti`, PyPI `gti-mcp`
@@ -134,7 +238,8 @@ environment never carries it. Verified from source 2026-09-06:
 
 ## prowler-mcp — exact-name reads over the first-party OSS server
 
-Status: **awaiting-operator**
+Status: **validated 2026-09-07** (agent-staged local first-party
+server; measured outcomes below)
 
 Runbook: `lab/README.md` → "Operator-gated rows". There is **no**
 client-side API-key environment variable and no hosted-endpoint
@@ -163,6 +268,36 @@ reads additionally need a Prowler API key in the SERVER's `.env`
 client's environment. Local is not offline: with the tenant key set,
 the server egresses to `api.prowler.com` on tenant reads.
 
+**Measured validation 2026-09-07 (kali-linux WSL, agent-staged):**
+source-run path used because docker is absent on this host — uv
+0.12.10 installed, prowler cloned shallow to `/opt/prowler`,
+`uv run prowler-mcp --transport http --host 127.0.0.1 --port 8001`
+(port 8000 was occupied by an unrelated listener; any free loopback
+port works). Runs from checkout `9dba632`. No Prowler API key exists
+or is needed for what ran: every validated read is a `prowler_hub_*`
+/ `prowler_docs_*` call.
+
+| Field | Value |
+|---|---|
+| Date | 2026-09-07 |
+| Env vars armed | `PROWLER_MCP_ENDPOINT=http://127.0.0.1:8001/mcp` (local first-party server, source-run over uv; the union policy's literal-loopback http shape) |
+| Invoke commands as run | `python -m extension invoke prowler-mcp list_tools` · `python -m extension invoke prowler-mcp prowler_docs_search '{"term": "s3 public"}'` · `python -m extension invoke prowler-mcp prowler_hub_list_checks '{}'` (see finding) · `python -m extension invoke prowler-mcp prowler_hub_list_checks '{"providers": ["aws"], "services": ["s3"]}'` · direct fastmcp-client `prowler_hub_get_check_details '{"check_id": "s3_bucket_object_public"}'` |
+| Envelope status | **complete** for `list_tools`, `prowler_docs_search`, filtered `prowler_hub_list_checks` (transport_ok true, coverage complete, zero limitations); **failed** for the UNFILTERED `prowler_hub_list_checks` (finding below); server-side tool error (refused a bogus check id) for a details probe with a guessed id — retried with a real id from the filtered list, complete |
+| Artifacts | content-addressed digests per call, all `kind: policy-report`, `redaction: credentials-stripped` — list_tools `sha256:24ace50d…`, docs_search `sha256:ea36cff3…`, filtered hub list `sha256:5ca0be22…`; the direct-client probe returned the live bodies: filtered aws/s3 list = 22 checks (`s3_bucket_object_public`, severity low, first), details = full check document (id/title/description/remediation shape) |
+| Operator note | Server run from prowler main (shallow clone 2026-09-07); hub/docs reads need no auth and no tenant key; no `PROWLER_API_KEY` anywhere (per the PR-#41 correction this arm has no client credential) |
+
+**Finding (recorded, fix adopted):** the runbook's original example
+`prowler_hub_list_checks '{}'` **fails closed** — the server returns
+1000+ checks (its own docstring warns "An unfiltered request returns
+1000+ checks") and the raw response exceeds this client's
+`MAX_MCP_BYTES` transport cap (512 KiB, `extension/arms/mcp_client.py`),
+which refuses before the arm's truncation can apply. The fix is
+correct tool usage, not a weakened guard: pass the tool's documented
+filters (`{"providers": ["aws"], "services": ["s3"]}` → 22 checks,
+complete envelope). The example command in this block has been
+updated to the filtered form; a ~512 KiB-in-one-response tool would
+need upstream paging before the unfiltered shape can ever pass.
+
 **Remote — self-hosted server behind the operator's TLS front:** run
 the same server with `--transport http --host 0.0.0.0 --port 8000`
 (the README's documented self-hosted HTTP shape) on a host fronted by
@@ -176,14 +311,107 @@ The arm admits exactly 43 read lookups by name; the 18 mutating tools
 and the hosted-only `prowler_cloud_` namespace are refused even when
 the server lists them.
 
-| Field | Value |
-|---|---|
-| Date | _(unfilled)_ |
-| Env vars armed | `PROWLER_MCP_ENDPOINT=http://127.0.0.1:8000/mcp` (local first-party server) or `https://<operator-fronted-host>/mcp` (self-hosted remote) — the union policy; no client credential exists for this arm |
-| Invoke commands as run | `python -m extension invoke prowler-mcp list_tools` · `python -m extension invoke prowler-mcp prowler_hub_list_checks '{}'` · `python -m extension invoke prowler-mcp prowler_docs_search '{"term": "s3 public"}'` |
-| Envelope status | _(fill: expect complete from the hardened streamable-HTTP client — union policy: https remote or literal-loopback http)_ |
-| Artifacts | _(fill: attempt ids, endpoint tool-inventory rows)_ |
-| Operator note | _(optional: prowler-mcp server version — CHANGELOG 0.12.0 pairs with prowler v5.41.0 at time of writing — docker image digest, tenant-key presence)_ |
+---
+
+## staged threat-intelligence capabilities without curated arms (2026-09-07)
+
+The operator staged API keys for additional threat-intel services.
+None has a curated catalog arm yet, so staging + validation here runs
+the upstream MCP servers directly and measures their reads — the
+evidence base for any future arm-admission packet. Keys live in 0600
+files read into server process envs; none appears in this record.
+
+**AlienVault OTX + GreyNoise — VALIDATED 2026-09-07.** Server:
+`mcp-threatintel-server` 1.0.2 (npm; community — the research note
+recorded that no official AlienVault/LevelBlue MCP server exists).
+One stdio server fronts both keys (`OTX_API_KEY`,
+`GREYNOISE_API_KEY`) plus abuse.ch feodo. Measured over a stdio MCP
+client: 9 tools served (`otx_get_pulses`, `otx_search_pulses`,
+`greynoise_ip`, `threatintel_lookup_{ip,domain,hash,url}`,
+`feodo_tracker`, `threatintel_status`); `threatintel_status` → OK
+with `configured_services: otx, greynoise, feodo`; `otx_get_pulses`
+→ **OK** (real OTX API read with the operator key);
+`greynoise_ip 8.8.8.8` → the GreyNoise API answered with its
+key-authenticated negative (`noise: false`, "IP not observed
+scanning the internet", surfaced by the server as a 404 ToolError —
+the transport and key both work; the queried IP simply has no noise
+record).
+
+**ThreatJammer — CEASED OPERATIONS (operator, 2026-09-07).** The
+API key is staged (0600) but the upstream service has shut down:
+there is nothing to stage a server against and nothing to validate.
+Research confirms no MCP server ever existed for it and the domain
+is parked. Recorded awaiting-revival; never simulated.
+
+**Shodan — VALIDATED 2026-09-07.** Server: `@burtthecoder/mcp-shodan`
+1.0.22 (npm; community — no official Shodan MCP exists per research;
+this one is the official-MCP-registry listing). Stdio server with
+`SHODAN_API_KEY`. Measured: 7 tools served (`ip_lookup`,
+`shodan_search`, `cve_lookup`, `dns_lookup`, `reverse_dns_lookup`,
+`cpe_lookup`, `cves_by_product` — all reads); `ip_lookup 8.8.8.8`
+→ **OK** with live Shodan API data (last-update + geo payloads
+returned).
+
+**OPSWAT MetaDefender Cloud — VALIDATED at the REST API level
+2026-09-07.** Research found NO MCP server upstream (official or
+community — GitHub org search, MCP registry, and Smithery all empty),
+so the staging proof is a direct authenticated read:
+`GET https://api.metadefender.com/v4/ip/8.8.8.8` with the operator's
+key → **HTTP 200** with a full MetaDefender lookup (20+ provider
+assessments, geo/ASN payload). Note the correct API host is
+`api.metadefender.com`; `metadefender.opswat.com/api/v4/...` now
+redirects to the marketing site (404). An arm-admission packet would
+wrap this REST API directly.
+
+**Censys — key refused by the v2 API (2026-09-07).** The operator's
+single-token key (`censys_…`) was refused by
+`https://search.censys.io/api/v2/hosts/8.8.8.8` in both standard
+forms (Bearer and Basic with key-as-ID): 401 "You must authenticate
+with a valid API ID and secret." The best-dedicated community MCP
+server (`nickpending/mcp-censys`) is archived and expects the older
+API ID + secret pair, so no compatible headless validation exists
+for this key shape. Recorded as-is: key staged (0600), validation
+refused by the upstream authentication scheme, never simulated.
+
+**abuse.ch — VALIDATED 2026-09-07 (all three endpoints).** Key
+staged at a 0600 file, sent as the `Auth-Key` header. Request
+shapes were pinned against the live API docs (the `get_recent`
+op name from older integrations is stale). Measured, with
+key-vs-no-key differentiation:
+- ThreatFox `POST https://threatfox-api.abuse.ch/api/v1/` JSON
+  `{"query": "get_iocs", "days": 1}` → **HTTP 200,
+  `query_status: ok`, 964 IOC records** (first: a live
+  botnet_cc indicator); same body WITHOUT the key → **HTTP 401**.
+- MalwareBazaar `POST https://mb-api.abuse.ch/api/v1/` form
+  `query=get_recent&selector=time` → **HTTP 200, ok, 21 sample
+  records** (real sha256 payloads); this read also succeeds
+  without a key (community reads are open), so MB proves shape +
+  reachability while ThreatFox/URLhaus prove the key itself.
+- URLhaus `GET https://urlhaus-api.abuse.ch/v1/urls/recent/limit/10/`
+  → **HTTP 200 ok** with the key; same GET without → **HTTP 401**.
+  (POST to this endpoint is a 405 — it is GET-only by contract.)
+No MCP server is required upstream; an arm-admission packet would
+wrap these three REST reads directly.
+
+**qfeeds Threat Intelligence Platform — staged, docs not
+machine-readable (2026-09-07).** The operator's TIP key (`tip_…`)
+is staged (0600). The public API documentation is served through
+an interactive portal (`qfeeds.com/downloads/`; `/docs/` is a
+404), so no headless request shape could be pinned this session.
+Recorded awaiting a documented endpoint; never simulated.
+
+**Cyware ThreatFeed TAXII subscription — VALIDATED 2026-09-07.** The
+operator staged subscriber credentials for a TAXII 2.1 threat-feed
+aggregation (ThreatFox, Malware Bazaar, abuse.ch, Emerging Threats,
+Dshield, OpenPhish and ~30 more feeds under one subscription).
+Staging: credentials in a 0600 JSON file; client =
+`taxii2-client` 2.3.0. Measured: TAXII 2.1 discovery + collection
+`46cc884e-…` (ThreatFox) authenticated with the subscriber pair;
+`get_objects` manifest returned **1002 objects, first 200 all STIX
+`indicator`** (real indicator IDs, e.g.
+`indicator--c720d216-…`). This is a feed-delivery (poll) capability,
+not a lookup server: no MCP server exists upstream and none is
+needed — an arm-admission packet would wrap the TAXII poll.
 
 ---
 
