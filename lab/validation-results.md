@@ -414,6 +414,28 @@ key-vs-no-key differentiation:
 No MCP server is required upstream; an arm-admission packet would
 wrap these three REST reads directly.
 
+**urlscan.io — VALIDATED 2026-09-07 (free-tier scope, measured
+around the plan entitlement).** Key staged (0600), sent as the
+documented `API-Key` header against `https://urlscan.io/api/v1/`:
+- `GET /user/` with the key → **HTTP 403** "Your account is not
+  set up for urlscan Pro access!" — the endpoint is Pro-gated, but
+  the message IDENTIFIES the authenticated account as free-tier;
+  the same request without the key → **HTTP 403** "You're not
+  logged in!" (distinct error: the key itself authenticates).
+- `GET /quotas/` with the key → **HTTP 200, `scope: user`**
+  (account-scoped limits, 1000 searches/day); bare → **HTTP 200,
+  `scope: ip-address`** (anonymous 500/day IP limits) — the key
+  switches the served scope to the account, and its `used: 1`
+  counter reflected this session's own search.
+- `GET /search/?q=page.domain:example.com` → **HTTP 200** with
+  real scan records; note search is an OPEN read (also 200 bare),
+  so it proves the request shape, not the key — the /user/ and
+  /quotas/ scope flip carry the key evidence.
+Submission (`POST /scan/`) was NOT exercised: it consumes scan
+credits and initiates active scanning of a target — out of scope
+for read-only staging validation. An arm-admission packet would
+wrap the v3/v1 search + result reads.
+
 **host.io — VALIDATED 2026-09-07.** Domain-intelligence API
 (domain/DNS/web data). Key staged (0600), sent as
 `Authorization: Bearer` (docs offer Basic-username, Bearer, or
