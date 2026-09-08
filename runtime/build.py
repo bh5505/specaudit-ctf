@@ -2,17 +2,18 @@
 
 Produces one self-contained, relocatable Linux x86-64 GNU/glibc Python
 runtime tree containing: the real ``python3.11`` launcher, exactly the
-standard-library modules the two sealed invocations
+standard-library modules the three sealed invocations
 
     python -S -m extension invoke agent-wiz list_tools {}
     python -S -m extension.mcp_server            (X4-VAL stdio MCP)
+    python -S -m extension.arms.assetrecon.worker (startup refusal only)
 
 actually import, the PyYAML ``yaml``/``_yaml`` package they import, this
-producer's own source for those invocations, and licenses. Every included
-file is discovered by *tracing the real invocations* under the locked
-CPython build (see ``_tracer.py``), never by guesswork — the build fails
+producer's own source for those invocations, explicit source/data roots,
+and licenses. The module closure is discovered by tracing the real
+invocations under the locked CPython build (see ``_tracer.py``); the build fails
 closed if a trace imports anything unexpected. The locked file closure is
-the union of both invocations; ``lock.json`` also records each
+the union of these invocations; ``lock.json`` also records each
 invocation's own module names so per-invocation drift stays visible.
 
 No third-party dependency: only the standard library, and never invokes
@@ -85,7 +86,7 @@ SUPPORTED_PLATFORM = ("Linux", "x86_64")
 LAUNCHER_RELPATH = "bin/python3.11"
 # Each sealed invocation is traced in its own fresh subprocess (see
 # _tracer.py) and the locked closure is the union of their imports.
-TRACE_INVOCATIONS = ("cli-json-invoke", "stdio-mcp-server")
+TRACE_INVOCATIONS = ("cli-json-invoke", "stdio-mcp-server", "asset-recon-worker")
 INVOKE_ARGV = ("agent-wiz", "list_tools", "{}")
 REQUIRED_BUNDLE_FILES = ("extension/__init__.py", "yaml/__init__.py")
 # runpy removes the temporary `__main__`-bound entrypoints after `-m`
@@ -98,6 +99,11 @@ EXTRA_PRODUCER_FILES = (
     "extension/mcp_server.py",
     "extension/coverage.yaml",
     "extension/schema/execution-result.v1.schema.json",
+    "extension/arms/assetrecon/worker.py",
+    "extension/arms/assetrecon/fixtures/ct.json",
+    "extension/arms/assetrecon/fixtures/dns.json",
+    "extension/arms/assetrecon/fixtures/registry.json",
+    "extension/arms/assetrecon/fixtures/shodan.json",
 )
 _ATTEMPT_ID = "attempt-" + ("0" * 64)
 
@@ -328,7 +334,7 @@ def run_tracers(staged_cpython: Path, staged_yaml: Path) -> dict[str, dict]:
 def merge_traces(traces: dict[str, dict]) -> dict[str, list[dict[str, str]]]:
     """Union every invocation's per-module records into one closure.
 
-    The bundle must serve *both* sealed invocations, so its file set is the
+    The bundle must serve all sealed invocations, so its file set is the
     union; a module imported by only one profile is still required. Records
     are de-duplicated by (name, file) and re-sorted for deterministic
     locking. One module name resolving to two different files across
@@ -1274,7 +1280,7 @@ def main(argv: list[str] | None = None) -> int:
     fetch_p.add_argument("--offline", action="store_true")
 
     lc_p = sub.add_parser("lock-check", help="verify lock.json has not drifted")
-    lc_p.add_argument("--full", action="store_true", help="also re-trace (needs cache/network)")
+    lc_p.add_argument("--full", action="store_true", help="also re-trace (needs verified cached inputs)")
 
     sub.add_parser("lock-write", help="regenerate lock.json from the current repo")
 

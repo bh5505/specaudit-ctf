@@ -1,0 +1,3 @@
+[
+  {"ip_str": "192.0.2.10", "timestamp": "2020-02-03T04:05:06Z", "hostnames": ["api.example.test"], "asn": "AS64496", "org": "Example Research", "ssl": {"cert": {"fingerprint": {"sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}}}
+]

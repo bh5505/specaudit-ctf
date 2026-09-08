@@ -97,12 +97,13 @@ _INVOKE_TOOL_DEF: dict[str, Any] = {
     "name": "invoke",
     "description": (
         "Invoke a curated installed arm that is not held. Only the bounded "
-        "read-only X2-PUB action registry is admitted; the result is an "
+        "X2-PUB action registry is admitted, including explicitly armed "
+        "network and subprocess dispatch actions; the result is an "
         "execution-result.v1 envelope identical to `python -m extension "
         "invoke` output (timestamps differ per run). isError mirrors the "
         "CLI nonzero exit; the envelope status is the verdict."
     ),
-    "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    "annotations": {"readOnlyHint": False, "openWorldHint": True},
     "inputSchema": {
         "type": "object",
         "properties": {
