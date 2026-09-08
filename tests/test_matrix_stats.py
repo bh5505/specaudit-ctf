@@ -127,4 +127,4 @@ def test_markdown_escapes_pipes_in_failure_reasons(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     text = markdown(collect(tmp_path))
-    assert "a \| b" in text
+    assert r"a \| b" in text
