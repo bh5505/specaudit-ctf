@@ -14,18 +14,21 @@ This tree is the public attach surface:
   `invoke`, `run_range`)
 - `arms/dispatch.py` — two-tier scope gate
 - `observations.py` / `observation_profiles.py` — opt-in, pure trusted-side
-  binding for one `vulnify.lookup` result; not an invocation surface
+  binding for three exact singleton reader results; not an invocation surface
 
 A validation client may attach the same CLI or MCP surface later.
 
 ## Opt-in trusted observations
 
 The default runtime does not import or call the observation sidecar.
-`extension.observations` exposes four explicit functions:
+`extension.observations` exposes five explicit functions:
 
 - `issue_source_admission(...)` creates a deterministic, per-attempt source
-  admission from validator-held raw bytes and caller-supplied source,
-  authority, custody, revision, time, subject, producer and validity fields;
+  admission for the byte-compatible v1 `vulnify.lookup` contract;
+- `issue_profile_source_admission(...)` requires an exact capability and
+  subject plus validator-held raw bytes and caller-supplied source, authority,
+  custody, revision, time, producer and validity fields; it routes vulnify to
+  v1 and the two newer singleton profiles to v2;
 - `verify_source_admission(...)` re-parses those raw bytes and checks the
   complete admission plus its content-derived id;
 - `derive_trusted_observation(...)` accepts a semantic-complete execution
@@ -36,22 +39,25 @@ The default runtime does not import or call the observation sidecar.
 
 The replay set is a required argument; an explicitly empty set is appropriate
 only before the first accepted observation in a new durable ledger.
-The observation id is a stable v1 replay identity derived from the schema,
-capability and validator-created attempt id; it is not a content digest. This
-one-profile contract permits one accepted observation per attempt, so neither
+The observation id is a stable replay identity derived from the schema,
+version, capability and validator-created attempt id; it is not a content
+digest. Each profile permits one accepted observation per attempt, so neither
 re-verification time nor a numerically equivalent envelope encoding can mint a
 fresh identity. The admission and binding digests plus full re-derivation—not
 the observation id—detect document or evidence mismatch.
 
-The frozen sidecar registry contains only `vulnify.lookup`. It accepts a
-standard CVE-id selector, exactly one `policy-report` artifact, and the
-first-party JSON/JSONL/YAML feed projection. The raw parser is shared with the
-arm, so the selected record, exact-byte digest/length and normalized full-record
-digest are independently recomputed rather than accepted from result prose.
-Both contracts have closed structural Draft-07 schemas under `schema/`; callers
-must still use the runtime verifiers for cross-field time ordering/duration,
-content identities, replay and byte bindings. The runtime has no `jsonschema`
-dependency.
+The frozen sidecar registry contains exactly `vulnify.lookup`,
+`security-detections-mcp.get_rule`, and `rubeus.telemetry`. Each accepts only
+its exact singleton action and selector, exactly one `policy-report` artifact,
+and its declared source formats: JSON/JSONL/YAML for vulnify, JSON/YAML for a
+detection-rule index, and JSON/JSONL for deweaponized Rubeus telemetry. The raw
+parsers are shared with the arms, so the selected record, exact-byte
+digest/length and normalized full-record digest are independently recomputed
+rather than accepted from result prose. The v1 vulnify schemas remain closed
+and unchanged; the two new profiles use separate closed v2 Draft-07 schemas.
+Callers must still use the runtime verifiers for cross-field time
+ordering/duration, content identities, replay and byte bindings. The runtime
+has no `jsonschema` dependency.
 
 An admission validity interval is limited to 24 hours. This is a maximum, not
 a freshness claim; operators should use the shortest interval their run needs.
@@ -61,8 +67,12 @@ mutation. The caller supplies already-acquired immutable bytes and all times.
 It does not add a CLI/MCP tool, invocation profile, catalog row or manifest;
 does not modify execution-result v1, traces or fixture grading; and grants no
 finding, workpaper, lifecycle, support-tier, rights or source-promotion
-authority. The observation is a source-declared CVE record with applicability
-explicitly not assessed.
+authority. Every observation remains source-declared with applicability
+explicitly not assessed. A rule observation exposes only its id, name and a
+digest of the full replayed definition; it establishes neither deployment nor
+operating effectiveness. A telemetry observation retains the arm's sanitized
+event projection and indicator types but never values; it establishes neither
+event authenticity nor event time, and it does not infer compromise.
 
 The custody fields are assertions by the trusted validator. Execution-result
 v1 does not say whether a result carrying an attempt id also used
@@ -71,8 +81,9 @@ acquisition. `validator-attested-mode-a` must be backed by the operator's
 actual Mode-A receipt/read and retained replay state. The admission JSON is
 content-bound but unsigned; the trusted caller still owns issuer
 authentication, pre-attempt creation, channel custody and durable append-only
-storage. R01 remains an unselected research source with unreviewed rights in
-the partial governance register, so no default R01 admission exists.
+storage. R01, R36 and R43 remain unselected research sources with unreviewed
+rights in the partial governance register, so no default admission exists for
+any of the three profiles.
 
 ## Asset reconnaissance
 

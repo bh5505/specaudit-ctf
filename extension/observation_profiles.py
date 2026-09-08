@@ -27,9 +27,24 @@ class ObservationProfile:
     artifact_kind: str
     artifact_redaction: str
     evidence_class: str
+    contract_version: int = 1
+    source_formats: tuple[str, ...] = ()
+    subject_id_field: str = ""
+    scope_prefix: str = ""
+    report_record_key: str = ""
+    replay_adapter_id: str = ""
+    derived_limitations: tuple[str, ...] = ()
+
+
+_GENERAL_DERIVED_LIMITATIONS = (
+    "applicability-not-assessed",
+    "source-admission-is-not-governance-promotion",
+    "upstream-equivalence-not-established",
+)
 
 
 _VULNIFY_LOOKUP = ObservationProfile(
+    contract_version=1,
     capability_id="vulnify.lookup",
     arm_id="vulnify",
     action="lookup",
@@ -37,15 +52,81 @@ _VULNIFY_LOOKUP = ObservationProfile(
     tool_version="0.1.0",
     source_schema_id="specaudit.ctf.vulnify-feed-projection.v1",
     source_schema_version=1,
+    source_formats=("json", "jsonl", "yaml"),
     subject_kind="cve-record",
+    subject_id_field="cve_id",
     scope_kind="vulnerability-record",
+    scope_prefix="cve",
+    report_record_key="vulnerability",
+    replay_adapter_id="vulnify-feed-v1",
     artifact_kind="policy-report",
     artifact_redaction="credentials-stripped",
     evidence_class="declared",
+    derived_limitations=_GENERAL_DERIVED_LIMITATIONS,
+)
+
+_SECURITY_DETECTIONS_GET_RULE = ObservationProfile(
+    contract_version=2,
+    capability_id="security-detections-mcp.get_rule",
+    arm_id="security-detections-mcp",
+    action="get_rule",
+    tool_name="specaudit-ctf",
+    tool_version="0.1.0",
+    source_schema_id="specaudit.ctf.security-detections-index-projection.v1",
+    source_schema_version=1,
+    source_formats=("json", "yaml"),
+    subject_kind="detection-rule",
+    subject_id_field="rule_id",
+    scope_kind="detection-rule-record",
+    scope_prefix="rule",
+    report_record_key="rule",
+    replay_adapter_id="security-detections-index-v1",
+    artifact_kind="policy-report",
+    artifact_redaction="credentials-stripped",
+    evidence_class="declared",
+    derived_limitations=(
+        *_GENERAL_DERIVED_LIMITATIONS,
+        "rule-deployment-not-established",
+        "operating-effectiveness-not-assessed",
+    ),
+)
+
+_RUBEUS_TELEMETRY = ObservationProfile(
+    contract_version=2,
+    capability_id="rubeus.telemetry",
+    arm_id="rubeus",
+    action="telemetry",
+    tool_name="specaudit-ctf",
+    tool_version="0.1.0",
+    source_schema_id="specaudit.ctf.rubeus-telemetry-projection.v1",
+    source_schema_version=1,
+    source_formats=("json", "jsonl"),
+    subject_kind="telemetry-event",
+    subject_id_field="event_id",
+    scope_kind="telemetry-event-record",
+    scope_prefix="event",
+    report_record_key="telemetry",
+    replay_adapter_id="rubeus-telemetry-v1",
+    artifact_kind="policy-report",
+    artifact_redaction="credentials-stripped",
+    evidence_class="declared",
+    derived_limitations=(
+        *_GENERAL_DERIVED_LIMITATIONS,
+        "event-authenticity-not-established",
+        "event-time-not-established",
+        "compromise-not-inferred",
+    ),
 )
 
 OBSERVATION_PROFILES: Mapping[str, ObservationProfile] = MappingProxyType(
-    {_VULNIFY_LOOKUP.capability_id: _VULNIFY_LOOKUP}
+    {
+        profile.capability_id: profile
+        for profile in (
+            _VULNIFY_LOOKUP,
+            _SECURITY_DETECTIONS_GET_RULE,
+            _RUBEUS_TELEMETRY,
+        )
+    }
 )
 
 

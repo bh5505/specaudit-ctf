@@ -1,0 +1,313 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "specaudit.ctf.source-admission.v2",
+  "description": "Closed structural contract for validator-authored, per-attempt admission of exact local source bytes for the opt-in security-detections-mcp.get_rule and rubeus.telemetry trusted-observation profiles. Runtime verification owns cross-field profile coherence, time ordering/duration, content identity, subject-to-scope equality, and byte-binding semantics. This document is not source governance, rights clearance, execution authority, authenticity proof, or physical-custody proof.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "admission_id",
+    "attempt_id",
+    "capability_id",
+    "arm_id",
+    "action",
+    "issuer",
+    "producer",
+    "issued_at",
+    "validity",
+    "source",
+    "subject",
+    "scope",
+    "custody",
+    "evidence_class",
+    "limitations"
+  ],
+  "properties": {
+    "schema": { "const": "specaudit.ctf.source-admission.v2" },
+    "schema_version": { "type": "integer", "const": 2 },
+    "admission_id": {
+      "type": "string",
+      "pattern": "^source-admission-[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "attempt_id": { "$ref": "#/definitions/attempt_id" },
+    "capability_id": {
+      "enum": ["security-detections-mcp.get_rule", "rubeus.telemetry"]
+    },
+    "arm_id": { "enum": ["security-detections-mcp", "rubeus"] },
+    "action": { "enum": ["get_rule", "telemetry"] },
+    "issuer": { "$ref": "#/definitions/issuer" },
+    "producer": { "$ref": "#/definitions/producer" },
+    "issued_at": { "$ref": "#/definitions/timestamp" },
+    "validity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["not_before", "not_after"],
+      "properties": {
+        "not_before": { "$ref": "#/definitions/timestamp" },
+        "not_after": { "$ref": "#/definitions/timestamp" }
+      }
+    },
+    "source": {
+      "oneOf": [
+        { "$ref": "#/definitions/security_detections_source" },
+        { "$ref": "#/definitions/rubeus_source" }
+      ]
+    },
+    "subject": {
+      "oneOf": [
+        { "$ref": "#/definitions/detection_rule_subject" },
+        { "$ref": "#/definitions/telemetry_event_subject" }
+      ]
+    },
+    "scope": {
+      "oneOf": [
+        { "$ref": "#/definitions/detection_rule_scope" },
+        { "$ref": "#/definitions/telemetry_event_scope" }
+      ]
+    },
+    "custody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "controller",
+        "source_assertion",
+        "raw_artifact_locator"
+      ],
+      "properties": {
+        "controller": { "$ref": "#/definitions/identifier" },
+        "source_assertion": { "const": "validator-held-before-attempt" },
+        "raw_artifact_locator": { "$ref": "#/definitions/ref" }
+      }
+    },
+    "evidence_class": { "const": "declared" },
+    "limitations": { "$ref": "#/definitions/limitations" }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "capability_id": { "const": "security-detections-mcp.get_rule" },
+        "arm_id": { "const": "security-detections-mcp" },
+        "action": { "const": "get_rule" },
+        "source": { "$ref": "#/definitions/security_detections_source" },
+        "subject": { "$ref": "#/definitions/detection_rule_subject" },
+        "scope": { "$ref": "#/definitions/detection_rule_scope" }
+      }
+    },
+    {
+      "properties": {
+        "capability_id": { "const": "rubeus.telemetry" },
+        "arm_id": { "const": "rubeus" },
+        "action": { "const": "telemetry" },
+        "source": { "$ref": "#/definitions/rubeus_source" },
+        "subject": { "$ref": "#/definitions/telemetry_event_subject" },
+        "scope": { "$ref": "#/definitions/telemetry_event_scope" }
+      }
+    }
+  ],
+  "definitions": {
+    "attempt_id": {
+      "type": "string",
+      "pattern": "^attempt-[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?!0000-)(?:(?:[0-9]{4}-(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01]))|(?:[0-9]{4}-(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30))|(?:[0-9]{4}-02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29))T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$(?![\\s\\S])"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+\\-]{0,255}$(?![\\s\\S])"
+    },
+    "ref": {
+      "type": "string",
+      "minLength": 4,
+      "maxLength": 1024,
+      "pattern": "^[a-z][a-z0-9+.-]*://[^\\s]+$(?![\\s\\S])"
+    },
+    "issuer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "$ref": "#/definitions/identifier" },
+        "version": { "$ref": "#/definitions/identifier" }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "revision"],
+      "properties": {
+        "id": { "const": "specaudit-ctf" },
+        "version": { "const": "0.1.0" },
+        "revision": { "$ref": "#/definitions/identifier" }
+      }
+    },
+    "source_common": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "revision",
+        "schema",
+        "timestamp",
+        "freshness",
+        "logical_locator",
+        "authority_ref",
+        "raw_artifact"
+      ],
+      "properties": {
+        "id": { "$ref": "#/definitions/identifier" },
+        "revision": { "$ref": "#/definitions/identifier" },
+        "schema": {
+          "oneOf": [
+            { "$ref": "#/definitions/security_detections_source_schema" },
+            { "$ref": "#/definitions/rubeus_source_schema" }
+          ]
+        },
+        "timestamp": { "$ref": "#/definitions/source_timestamp" },
+        "freshness": { "const": "not-assessed" },
+        "logical_locator": { "$ref": "#/definitions/ref" },
+        "authority_ref": { "$ref": "#/definitions/ref" },
+        "raw_artifact": { "$ref": "#/definitions/raw_artifact" }
+      }
+    },
+    "security_detections_source": {
+      "allOf": [
+        { "$ref": "#/definitions/source_common" },
+        {
+          "properties": {
+            "schema": { "$ref": "#/definitions/security_detections_source_schema" }
+          }
+        }
+      ]
+    },
+    "rubeus_source": {
+      "allOf": [
+        { "$ref": "#/definitions/source_common" },
+        {
+          "properties": {
+            "schema": { "$ref": "#/definitions/rubeus_source_schema" }
+          }
+        }
+      ]
+    },
+    "security_detections_source_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "format"],
+      "properties": {
+        "id": { "const": "specaudit.ctf.security-detections-index-projection.v1" },
+        "version": { "type": "integer", "const": 1 },
+        "format": { "enum": ["json", "yaml"] }
+      }
+    },
+    "rubeus_source_schema": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "format"],
+      "properties": {
+        "id": { "const": "specaudit.ctf.rubeus-telemetry-projection.v1" },
+        "version": { "type": "integer", "const": 1 },
+        "format": { "enum": ["json", "jsonl"] }
+      }
+    },
+    "source_timestamp": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["status", "value"],
+      "properties": {
+        "status": { "enum": ["known", "unknown"] },
+        "value": {
+          "anyOf": [
+            { "$ref": "#/definitions/timestamp" },
+            { "type": "null" }
+          ]
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "status": { "const": "known" } } },
+          "then": { "properties": { "value": { "$ref": "#/definitions/timestamp" } } },
+          "else": { "properties": { "value": { "type": "null" } } }
+        }
+      ]
+    },
+    "raw_artifact": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "bytes", "normalized_records_digest"],
+      "properties": {
+        "digest": { "$ref": "#/definitions/digest" },
+        "bytes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 67108864
+        },
+        "normalized_records_digest": { "$ref": "#/definitions/digest" }
+      }
+    },
+    "detection_rule_subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "rule_id"],
+      "properties": {
+        "kind": { "const": "detection-rule" },
+        "rule_id": { "$ref": "#/definitions/identifier" }
+      }
+    },
+    "detection_rule_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "identifier"],
+      "properties": {
+        "kind": { "const": "detection-rule-record" },
+        "identifier": {
+          "type": "string",
+          "maxLength": 261,
+          "pattern": "^rule:[A-Za-z0-9][A-Za-z0-9._:/+\\-]{0,255}$(?![\\s\\S])"
+        }
+      }
+    },
+    "telemetry_event_subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "event_id"],
+      "properties": {
+        "kind": { "const": "telemetry-event" },
+        "event_id": { "$ref": "#/definitions/identifier" }
+      }
+    },
+    "telemetry_event_scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "identifier"],
+      "properties": {
+        "kind": { "const": "telemetry-event-record" },
+        "identifier": {
+          "type": "string",
+          "maxLength": 262,
+          "pattern": "^event:[A-Za-z0-9][A-Za-z0-9._:/+\\-]{0,255}$(?![\\s\\S])"
+        }
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$(?![\\s\\S])"
+      }
+    }
+  }
+}

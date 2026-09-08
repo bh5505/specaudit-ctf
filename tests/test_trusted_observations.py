@@ -30,6 +30,7 @@ from extension.invoke_profiles import INVOKE_PROFILES
 from extension.mcp_server import TOOLS
 from extension.observation_profiles import (
     OBSERVATION_PROFILES,
+    ObservationProfile,
     observation_profile,
 )
 from extension.observations import (
@@ -300,21 +301,42 @@ def test_contract_schemas_reject_terminal_newlines_and_invalid_calendar_dates(
 
 def test_observation_registry_is_frozen_and_does_not_admit_actions() -> None:
     assert isinstance(OBSERVATION_PROFILES, MappingProxyType)
-    assert tuple(OBSERVATION_PROFILES) == ("vulnify.lookup",)
-    profile = observation_profile("vulnify.lookup")
-    assert profile is not None
-    invoke = INVOKE_PROFILES["vulnify.lookup"]
-    assert (profile.capability_id, profile.arm_id, profile.action) == (
-        invoke.capability_id,
-        invoke.arm_id,
-        invoke.action,
+    assert tuple(OBSERVATION_PROFILES) == (
+        "vulnify.lookup",
+        "security-detections-mcp.get_rule",
+        "rubeus.telemetry",
     )
-    assert (profile.tool_name, profile.tool_version) == (
-        invoke.tool_name,
-        invoke.tool_version,
-    )
+    for capability_id, profile in OBSERVATION_PROFILES.items():
+        assert observation_profile(capability_id) is profile
+        invoke = INVOKE_PROFILES[capability_id]
+        assert (profile.capability_id, profile.arm_id, profile.action) == (
+            invoke.capability_id,
+            invoke.arm_id,
+            invoke.action,
+        )
+        assert (profile.tool_name, profile.tool_version) == (
+            invoke.tool_name,
+            invoke.tool_version,
+        )
+    profile = OBSERVATION_PROFILES["vulnify.lookup"]
     with pytest.raises(TypeError):
         OBSERVATION_PROFILES["other.lookup"] = profile  # type: ignore[index]
+    legacy_constructed = ObservationProfile(
+        "example.lookup",
+        "example",
+        "lookup",
+        "specaudit-ctf",
+        "0.1.0",
+        "example.schema.v1",
+        1,
+        "example-record",
+        "example-record",
+        "policy-report",
+        "credentials-stripped",
+        "declared",
+    )
+    assert legacy_constructed.contract_version == 1
+    assert legacy_constructed.source_formats == ()
 
 
 def test_sidecar_preserves_public_dispatch_and_pr97_rosters() -> None:
@@ -416,6 +438,9 @@ def test_source_admission_is_deterministic_schema_valid_and_byte_bound() -> None
     first = _admission(raw)
     second = _admission(raw)
     assert first == second
+    assert hashlib.sha256(_canonical(first)).hexdigest() == (
+        "353eba462b577133988247836413fef1242588cb1a59df25f438fea0fbe6e2d9"
+    )
     jsonschema.validate(first, _schema(ADMISSION_SCHEMA))
     assert first["source"]["raw_artifact"]["digest"] == _digest(raw)
     assert first["source"]["raw_artifact"]["bytes"] == len(raw)
@@ -686,6 +711,9 @@ def test_observation_derivation_is_deterministic(
         verified_at=VERIFIED_AT,
     )
     assert first == second
+    assert hashlib.sha256(_canonical(first)).hexdigest() == (
+        "5fc442203b3cbd09052862d5657c595b6a964e0d5ad97ed2d8ffe5f4cd0a5a82"
+    )
 
 
 def test_policy_report_canonicalization_matches_encoder_for_unicode(
