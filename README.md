@@ -52,6 +52,7 @@ the corresponding labs or integrations ship.
 | Operator: authorization, environment tiers, containment, custody and cleanup | [Operations](OPERATIONS.md) |
 | Challenge user or author: shipped inventory, exact grading and authoring contract | [Challenges](challenges/README.md) |
 | Reconnaissance operator or learner: association evidence, exclusions and bounded observations | [Asset reconnaissance](docs/scope-recon.md) |
+| Repository maintainer: partial PR 97 governance register and fail-closed integrity checker | [Governance register](governance/README.md) |
 
 The [program research register](PROGRAM.md#candidate-register-42-unique-candidates)
 contains 42 unique candidates and 12 supplemental methodology/corpus families.

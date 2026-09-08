@@ -496,11 +496,15 @@ the right to redistribute or execute it.
 
 ## Proposed roadmap
 
-All eleven items are **proposed**. None has been implemented, and no
-branch, change request, runtime configuration, or catalog edit exists
-for any of them. Sequence by the dependency order below rather than by
-dates; start with one vertical slice rather than many candidates at
-once.
+The eleven exit intents remain open. Ten items are entirely **proposed**.
+`GOV-01` now has an additive, checkout-only [partial
+foundation](governance/README.md) for the PR 97 reader slice: it binds the
+accepted capability inventory and records deliberately incomplete module,
+source, runtime, relationship, currentness, and promotion state. It does not
+satisfy the full `GOV-01` exit intent, establish currentness or promotion
+evidence, change runtime admission, or edit the catalog. Sequence further work
+by the dependency order below rather than by dates; continue one vertical
+slice at a time.
 
 Four program workstreams travel through this dependency graph rather than
 creating a second roadmap: `GOV-01` owns the module/source/currentness
