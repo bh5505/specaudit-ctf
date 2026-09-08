@@ -26,6 +26,7 @@ from typing import Any, Mapping, Sequence
 
 import jsonschema
 import yaml
+from markdown_it import MarkdownIt
 from yaml.events import AliasEvent
 
 DEFAULT_REGISTER_PATH = Path(__file__).resolve().with_name("register.v1.yaml")
@@ -34,8 +35,10 @@ REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 
 REGISTER_SCHEMA_ID = "specaudit.ctf.governance.register.v1"
 REGISTER_SCHEMA_VERSION = 1
+INVENTORY_AUTHORITY_ID = "extension.invoke_profiles.INVOKE_PROFILES"
+EXECUTION_RESULT_SCHEMA_ID = "specaudit.ctf.execution-result.v1"
 CANONICAL_SCHEMA_SHA256 = (
-    "sha256:480328eabdbd5b8692d8059b3c567811417a29e719c29cb2b349c4facd1776b5"
+    "sha256:8e8edbd7aadcb071dd997437256e9e6b56fbbd344763423172e1183993e60e53"
 )
 REGISTER_TOP_LEVEL_KEYS = frozenset(
     {
@@ -58,7 +61,8 @@ REQUIREMENTS = ("integrity", "current", "complete")
 PR97_IMPLEMENTATION_REVISION = "9c6819c4709397d1d91f68cbb4ae13901d6d85f1"
 MAX_REGISTER_BYTES = 256 * 1024
 MAX_SCHEMA_BYTES = 128 * 1024
-MAX_EVIDENCE_BYTES = 2 * 1024 * 1024
+MAX_EVIDENCE_BYTES = 128 * 1024
+MAX_EVIDENCE_LINES = 20_000
 MAX_DOCUMENT_NODES = 20_000
 MAX_DOCUMENT_DEPTH = 48
 MAX_STRING_BYTES = 16 * 1024
@@ -941,7 +945,7 @@ def _expected_relationship_signatures() -> dict[str, tuple[Any, ...]]:
         "proposed-source",
         "module:CYB-05",
         ("source:R01",),
-        ("CURRICULUM.md#t03-risk-based-vulnerability-prioritization",),
+        ("CURRICULUM.md#t03--risk-based-vulnerability-prioritization",),
         ("source-is-unselected-and-unadmitted",),
     )
     signatures["cyb-05-proposed-use-vulnify-lookup"] = (
@@ -960,66 +964,70 @@ def _expected_relationship_signatures() -> dict[str, tuple[Any, ...]]:
 
 def _github_heading_anchors(markdown: str) -> set[str]:
     anchors: set[str] = set()
-    counts: dict[str, int] = {}
-    heading = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
-    fence_open = re.compile(r"^\s{0,3}(`{3,}|~{3,})(.*)$")
-    raw_html_open = re.compile(
-        r"^\s{0,3}<(pre|script|style|textarea)(?:\s|>|$)",
-        re.IGNORECASE,
+    logical_lines = (
+        markdown.count("\n")
+        + markdown.count("\r")
+        - markdown.count("\r\n")
+        + (1 if markdown and not markdown.endswith(("\n", "\r")) else 0)
     )
-    other_html_open = re.compile(r"^\s{0,3}<(?:[!?]|/?[A-Za-z])")
-    # Headings inside HTML comments are not rendered.
-    visible_markdown = re.sub(r"<!--.*?(?:-->|$)", "", markdown, flags=re.DOTALL)
-    fence: tuple[str, int] | None = None
-    raw_html_tag: str | None = None
-    other_html_block = False
-    for line in visible_markdown.splitlines():
-        if raw_html_tag is not None:
-            if re.search(rf"</{re.escape(raw_html_tag)}\s*>", line, re.IGNORECASE):
-                raw_html_tag = None
+    if logical_lines > MAX_EVIDENCE_LINES:
+        raise RegisterLoadError(
+            "evidence Markdown exceeds maximum logical line count "
+            f"of {MAX_EVIDENCE_LINES}"
+        )
+    occurrences: dict[str, int] = {}
+    try:
+        tokens = MarkdownIt("commonmark").parse(markdown)
+    except Exception as exc:
+        raise RegisterLoadError(
+            f"cannot parse evidence Markdown: {type(exc).__name__}: {exc}"
+        ) from exc
+    for position, token in enumerate(tokens):
+        if token.type != "heading_open":
             continue
-        if other_html_block:
-            if not line.strip():
-                other_html_block = False
+        if position + 1 >= len(tokens) or tokens[position + 1].type != "inline":
             continue
-        if fence is not None:
-            fence_character, fence_length = fence
-            if re.fullmatch(
-                rf"\s{{0,3}}{re.escape(fence_character)}{{{fence_length},}}\s*",
-                line,
-            ):
-                fence = None
-            continue
-        fence_match = fence_open.match(line)
-        if fence_match is not None:
-            marker = fence_match.group(1)
-            fence = (marker[0], len(marker))
-            continue
-        raw_html_match = raw_html_open.match(line)
-        if raw_html_match is not None:
-            tag = raw_html_match.group(1).lower()
-            if re.search(rf"</{re.escape(tag)}\s*>", line, re.IGNORECASE) is None:
-                raw_html_tag = tag
-            continue
-        if other_html_open.match(line) is not None:
-            other_html_block = True
-            continue
-        match = heading.match(line)
-        if match is None:
-            continue
-        title = re.sub(r"<[^>]*>", "", match.group(1))
-        title = re.sub(r"[`*_~]", "", title)
+        inline = tokens[position + 1]
+        pieces: list[str] = []
+        pending = list(reversed(inline.children or ()))
+        while pending:
+            child = pending.pop()
+            if child.type in {"text", "text_special", "code_inline"}:
+                pieces.append(child.content)
+            elif child.type == "image":
+                pending.extend(reversed(child.children or ()))
+        title = "".join(pieces)
+        unsupported = sorted(
+            {
+                character
+                for character in title
+                if ord(character) > 0x7F
+                and unicodedata.category(character) != "Pd"
+            }
+        )
+        if unsupported:
+            codepoints = ", ".join(f"U+{ord(char):04X}" for char in unsupported)
+            raise RegisterLoadError(
+                "evidence Markdown heading contains unsupported non-ASCII "
+                f"slug characters: {codepoints}"
+            )
         title = "".join(
             character
             for character in title.lower()
-            if character.isalnum() or character in {" ", "\t", "-", "_"}
+            if "a" <= character <= "z"
+            or "0" <= character <= "9"
+            or character in {" ", "-", "_"}
         )
-        base = re.sub(r"\s+", "-", title.strip()).strip("-")
+        base = title.replace(" ", "-")
         if not base:
             continue
-        occurrence = counts.get(base, 0)
-        counts[base] = occurrence + 1
-        anchors.add(base if occurrence == 0 else f"{base}-{occurrence}")
+        unique = base
+        while unique in occurrences:
+            occurrences[base] += 1
+            unique = f"{base}-{occurrences[base]}"
+        occurrences[unique] = 0
+        if token.markup.startswith("#"):
+            anchors.add(unique)
     return anchors
 
 
@@ -1429,6 +1437,14 @@ def validate_register(
             )
 
     inventory_doc = document["runtime_inventory"]
+    if inventory_doc.get("authority") != INVENTORY_AUTHORITY_ID:
+        _add(
+            issues,
+            "integrity",
+            "inventory-authority-mismatch",
+            "runtime_inventory.authority",
+            f"expected {INVENTORY_AUTHORITY_ID!r}",
+        )
     try:
         inventory_snapshot = [
             inventory.records[capability_id]
@@ -1603,6 +1619,30 @@ def validate_register(
 
     for capability_id, row in runtime.items():
         row_path = f"runtime:{capability_id}"
+        if row.get("record_version") != 1:
+            _add(
+                issues,
+                "integrity",
+                "unsupported-record-version",
+                f"{row_path}.record_version",
+                "v1 supports only runtime record_version 1",
+            )
+        if row.get("presence") != "admitted":
+            _add(
+                issues,
+                "integrity",
+                "runtime-presence-mismatch",
+                f"{row_path}.presence",
+                "v1 runtime records must have presence 'admitted'",
+            )
+        if row.get("result_schema") != EXECUTION_RESULT_SCHEMA_ID:
+            _add(
+                issues,
+                "integrity",
+                "runtime-result-schema-mismatch",
+                f"{row_path}.result_schema",
+                f"expected {EXECUTION_RESULT_SCHEMA_ID!r}",
+            )
         if capability_id != f"{row['arm_id']}.{row['action']}":
             _add(
                 issues,
@@ -1854,6 +1894,14 @@ def validate_register(
 
     for source_id, row in sources.items():
         row_path = f"source:{source_id}"
+        if row.get("record_version") != 1:
+            _add(
+                issues,
+                "integrity",
+                "unsupported-record-version",
+                f"{row_path}.record_version",
+                "v1 supports only source record_version 1",
+            )
         expected_identity = PR97_SOURCE_IDENTITIES.get(source_id)
         if expected_identity is None:
             _add(
@@ -1938,6 +1986,14 @@ def validate_register(
 
     for module_id, row in modules.items():
         row_path = f"module:{module_id}"
+        if row.get("record_version") != 1:
+            _add(
+                issues,
+                "integrity",
+                "unsupported-record-version",
+                f"{row_path}.record_version",
+                "v1 supports only module record_version 1",
+            )
         if module_id == "CYB-05" and row["status"] != "design-ready":
             _add(
                 issues,

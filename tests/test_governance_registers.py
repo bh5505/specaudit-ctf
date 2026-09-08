@@ -30,6 +30,8 @@ import governance.check as governance_check
 from governance.check import (
     DEFAULT_REGISTER_PATH,
     DEFAULT_SCHEMA_PATH,
+    MAX_EVIDENCE_BYTES,
+    MAX_EVIDENCE_LINES,
     MAX_STRING_BYTES,
     PR97_ACTION_ARGUMENTS,
     PR97_CAPABILITY_IDS,
@@ -508,6 +510,93 @@ def test_raw_mapping_cannot_self_certify_v1_metadata(registry, inventory) -> Non
     } <= _codes(report)
 
 
+def test_raw_mapping_cannot_redefine_inventory_authority(
+    registry, inventory
+) -> None:
+    document = _copy_document(registry)
+    document["runtime_inventory"]["authority"] = "attacker.self-certified"
+
+    report = _validate(document, inventory)
+
+    assert not report.integrity_ok
+    assert _codes(report, path="runtime_inventory.authority") == {
+        "inventory-authority-mismatch"
+    }
+
+
+def test_raw_mapping_cannot_redefine_runtime_presence(registry, inventory) -> None:
+    document = _copy_document(registry)
+    row = _runtime(document, "vulnify.lookup")
+    row["presence"] = "self-certified"
+
+    report = _validate(document, inventory)
+
+    assert not report.integrity_ok
+    assert _codes(report, path="runtime:vulnify.lookup.presence") == {
+        "runtime-presence-mismatch"
+    }
+
+
+def test_raw_mapping_cannot_redefine_runtime_result_schema(
+    registry, inventory
+) -> None:
+    document = _copy_document(registry)
+    row = _runtime(document, "vulnify.lookup")
+    row["result_schema"] = "attacker.result.v1"
+
+    report = _validate(document, inventory)
+
+    assert not report.integrity_ok
+    assert _codes(report, path="runtime:vulnify.lookup.result_schema") == {
+        "runtime-result-schema-mismatch"
+    }
+
+
+@pytest.mark.parametrize(
+    ("kind", "path"),
+    [
+        ("runtime", "runtime:vulnify.lookup.record_version"),
+        ("source", "source:R01.record_version"),
+        ("module", "module:CYB-05.record_version"),
+    ],
+)
+def test_raw_mapping_cannot_self_declare_new_entity_record_version(
+    registry, inventory, kind: str, path: str
+) -> None:
+    document = _copy_document(registry)
+    if kind == "runtime":
+        row = _runtime(document, "vulnify.lookup")
+    elif kind == "source":
+        row = _source(document, "R01")
+    else:
+        row = document["modules"][0]
+    row["record_version"] = 2
+
+    report = _validate(document, inventory)
+
+    assert not report.integrity_ok
+    assert _codes(report, path=path) == {"unsupported-record-version"}
+
+
+@pytest.mark.parametrize("kind", ["runtime", "source", "module", "relationship"])
+def test_schema_rejects_new_entity_record_version(
+    registry, tmp_path: Path, kind: str
+) -> None:
+    document = _copy_document(registry)
+    if kind == "runtime":
+        row = _runtime(document, "vulnify.lookup")
+    elif kind == "source":
+        row = _source(document, "R01")
+    elif kind == "module":
+        row = document["modules"][0]
+    else:
+        row = document["relationships"][0]
+    row["record_version"] = 2
+
+    with pytest.raises(RegisterLoadError, match="1 was expected"):
+        load_register(_write_register(tmp_path, document))
+
+
 def test_loader_rejects_register_symlink(tmp_path: Path) -> None:
     path = tmp_path / "register-link.yaml"
     path.symlink_to(DEFAULT_REGISTER_PATH)
@@ -564,6 +653,20 @@ def test_loader_refuses_device_mode_before_open(tmp_path: Path, monkeypatch) -> 
             max_bytes=1024,
         )
     assert open_calls == []
+
+
+def test_evidence_snapshot_refuses_input_above_parser_byte_cap(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "oversized-evidence.md"
+    path.write_bytes(b"# heading\n" + b"x" * MAX_EVIDENCE_BYTES)
+
+    with pytest.raises(RegisterLoadError, match="byte input cap"):
+        governance_check._read_file_snapshot(
+            path,
+            label="evidence document",
+            max_bytes=MAX_EVIDENCE_BYTES,
+        )
 
 
 @pytest.mark.parametrize(
@@ -1380,6 +1483,8 @@ def test_relationship_evidence_must_resolve_inside_repo_to_real_heading(
         "~~~\n<a id='candidate-register-42-unique-candidates'></a>\n~~~\n",
         "<!--\n## Candidate register: 42 unique candidates\n-->\n",
         "<!-- <a id='candidate-register-42-unique-candidates'></a> -->\n",
+        "<!-- inert -->## Candidate register: 42 unique candidates\n",
+        "<!--\n-->## Candidate register: 42 unique candidates\n",
     ],
 )
 def test_evidence_anchor_parser_ignores_inert_markdown(markdown: str) -> None:
@@ -1395,6 +1500,8 @@ def test_evidence_anchor_parser_ignores_inert_markdown(markdown: str) -> None:
         "Candidate register {#candidate-register-42-unique-candidates}\n",
         "`{#candidate-register-42-unique-candidates}`\n",
         "<a id='candidate-register-42-unique-candidates'></a>\n",
+        "\t## Candidate register: 42 unique candidates\n",
+        "    ## Candidate register: 42 unique candidates\n",
     ],
 )
 def test_evidence_anchor_parser_rejects_nonheading_anchor_syntax(
@@ -1404,6 +1511,29 @@ def test_evidence_anchor_parser_rejects_nonheading_anchor_syntax(
         "candidate-register-42-unique-candidates"
         not in _github_heading_anchors(markdown)
     )
+
+
+def test_evidence_anchor_slug_does_not_include_link_destination() -> None:
+    markdown = "## [Candidate](register-42-unique-candidates)\n"
+
+    assert (
+        "candidate-register-42-unique-candidates"
+        not in _github_heading_anchors(markdown)
+    )
+    assert "candidate" in _github_heading_anchors(markdown)
+
+
+def test_evidence_anchor_slug_refuses_ambiguous_image_alt_text() -> None:
+    markdown = "## ![Candidate &reg;ister: 42 unique candidates](image.png)\n"
+
+    with pytest.raises(RegisterLoadError, match=r"U\+00AE"):
+        _github_heading_anchors(markdown)
+
+
+def test_evidence_anchor_slug_uses_plain_image_alt_text() -> None:
+    markdown = "## ![Candidate](ignored-destination.png) register\n"
+
+    assert _github_heading_anchors(markdown) == {"candidate-register"}
 
 
 @pytest.mark.parametrize(
@@ -1421,17 +1551,151 @@ def test_evidence_anchor_parser_ignores_raw_html_blocks(markdown: str) -> None:
     )
 
 
+@pytest.mark.parametrize(
+    "markdown",
+    [
+        "<?processing instruction\n\n## Candidate register: 42 unique candidates\n?>\n",
+        "<!DOCTYPE declaration\n\n## Candidate register: 42 unique candidates\n>\n",
+        "<![CDATA[\n\n## Candidate register: 42 unique candidates\n]]>\n",
+    ],
+)
+def test_evidence_anchor_parser_keeps_terminated_html_blocks_across_blanks(
+    markdown: str,
+) -> None:
+    assert (
+        "candidate-register-42-unique-candidates"
+        not in _github_heading_anchors(markdown)
+    )
+
+
 def test_evidence_anchor_parser_resumes_after_fence_and_comment() -> None:
     markdown = (
         "```\n## Not rendered\n```\n"
         "<!-- ## Also not rendered -->\n"
         "<pre>\n## Still not rendered\n</pre>\n"
+        "<?processing\n\n## Still not rendered either\n?>\n"
         "## Candidate register: 42 unique candidates\n"
     )
 
     assert "candidate-register-42-unique-candidates" in _github_heading_anchors(
         markdown
     )
+
+
+def test_evidence_anchor_parser_resumes_after_same_line_comment_close() -> None:
+    markdown = (
+        "<!-- inert -->\n"
+        "## Candidate register: 42 unique candidates\n"
+    )
+
+    assert "candidate-register-42-unique-candidates" in _github_heading_anchors(
+        markdown
+    )
+
+
+def test_evidence_anchor_parser_accepts_three_leading_spaces() -> None:
+    markdown = "   ## Candidate register: 42 unique candidates\n"
+
+    assert "candidate-register-42-unique-candidates" in _github_heading_anchors(
+        markdown
+    )
+
+
+def test_evidence_anchor_parser_removes_tab_without_making_a_hyphen() -> None:
+    markdown = "## Candidate\tregister: 42 unique candidates\n"
+
+    anchors = _github_heading_anchors(markdown)
+
+    assert "candidate-register-42-unique-candidates" not in anchors
+    assert "candidateregister-42-unique-candidates" in anchors
+
+
+def test_evidence_anchor_parser_preserves_each_literal_space() -> None:
+    markdown = "## Candidate  register: 42 unique candidates\n"
+
+    anchors = _github_heading_anchors(markdown)
+
+    assert "candidate-register-42-unique-candidates" not in anchors
+    assert "candidate--register-42-unique-candidates" in anchors
+
+
+def test_evidence_anchor_duplicate_count_includes_setext_headings() -> None:
+    markdown = (
+        "Candidate register: 42 unique candidates\n"
+        "========================================\n"
+        "## Candidate register: 42 unique candidates\n"
+    )
+
+    anchors = _github_heading_anchors(markdown)
+
+    assert "candidate-register-42-unique-candidates" not in anchors
+    assert "candidate-register-42-unique-candidates-1" in anchors
+
+
+def test_evidence_anchor_collision_removes_markdown_line_breaks() -> None:
+    markdown = (
+        "Candidate-\n"
+        "register: 42 unique candidates\n"
+        "================================\n"
+        "## Candidate register: 42 unique candidates\n"
+    )
+
+    anchors = _github_heading_anchors(markdown)
+
+    assert "candidate-register-42-unique-candidates" not in anchors
+    assert "candidate-register-42-unique-candidates-1" in anchors
+
+
+def test_evidence_anchor_duplicate_allocator_avoids_suffix_collisions() -> None:
+    markdown = "## A\n## A\n## A-1\n## A\n"
+
+    assert _github_heading_anchors(markdown) == {
+        "a",
+        "a-1",
+        "a-1-1",
+        "a-2",
+    }
+
+
+@pytest.mark.parametrize("line_ending", ["\n", "\r\n", "\r"])
+def test_evidence_anchor_parser_refuses_excessive_logical_lines(
+    line_ending: str,
+) -> None:
+    markdown = ("## bounded" + line_ending) * (MAX_EVIDENCE_LINES + 1)
+
+    with pytest.raises(RegisterLoadError, match="maximum logical line count"):
+        _github_heading_anchors(markdown)
+
+
+@pytest.mark.parametrize(
+    "character",
+    [
+        "\N{COMBINING ACUTE ACCENT}",
+        "\N{UNDERTIE}",
+        "\N{GREEK CAPITAL LETTER THETA}",
+        "\N{GRINNING FACE}",
+        "\N{CIRCLED LATIN CAPITAL LETTER A}",
+    ],
+)
+def test_evidence_anchor_slug_refuses_ambiguous_nonascii(
+    character: str,
+) -> None:
+    markdown = f"## Candidate{character} register\n"
+
+    with pytest.raises(RegisterLoadError, match="unsupported non-ASCII"):
+        _github_heading_anchors(markdown)
+
+
+def test_evidence_anchor_slug_removes_nonascii_dash_punctuation() -> None:
+    markdown = (
+        "## T03 \N{EM DASH} Risk-based vulnerability prioritization\n"
+        "## T01\N{EN DASH}T08 release wave\n"
+    )
+
+    assert _github_heading_anchors(markdown) == {
+        "t03--risk-based-vulnerability-prioritization",
+        "t01t08-release-wave",
+    }
 
 
 def test_currentness_is_derived_from_fixed_as_of(registry, inventory) -> None:

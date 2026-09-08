@@ -1,4 +1,5 @@
 # Mirrors [project] + [project.optional-dependencies] dev in pyproject.toml.
 PyYAML>=6.0
 jsonschema>=4.18
+markdown-it-py>=3.0
 pytest>=8.0

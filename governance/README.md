@@ -53,14 +53,17 @@ symlinks refused and pre/post identity checked. These hashes identify the bytes
 read; they neither sign those bytes nor make the checkout immutable. The loader
 rejects external schema references, aliases, duplicate keys, non-finite numbers,
 unsafe Unicode, and over-budget input trees. Relationship evidence is restricted
-to existing repo-relative ATX Markdown headings. The v1 stored scope is fixed to
-`pr97-readers`; `full` is a permitted requested target, while the default
-full/complete check remains nonzero until a later schema owns the complete
-module/source/runtime anchors. An alternate `--schema` path may relocate the
-canonical v1 schema but cannot redefine it: its bytes must match the independently
-pinned digest. Argument errors fail loudly on stderr with exit `2` and may use
-argparse's plain text; loader/input errors use a validation-error JSON object on
-stderr. Silence is never success.
+to existing repo-relative ATX CommonMark headings. Evidence documents are capped
+at 128 KiB and 20,000 logical lines. Because v1 evidence fragments are ASCII,
+heading-slug validation accepts ASCII text and removable non-ASCII dash
+punctuation; any other non-ASCII heading text is rejected rather than guessed.
+The v1 stored scope is fixed to `pr97-readers`; `full` is a permitted requested
+target, while the default full/complete check remains nonzero until a later
+schema owns the complete module/source/runtime anchors. An alternate `--schema`
+path may relocate the canonical v1 schema but cannot redefine it: its bytes must
+match the independently pinned digest. Argument errors fail loudly on stderr
+with exit `2` and may use argparse's plain text; loader/input errors use a
+validation-error JSON object on stderr. Silence is never success.
 
 The promotion-event shape reserves the subject and contract digests,
 implementation revision, reviewer, exercised path, regression result, supported
