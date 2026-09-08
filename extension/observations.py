@@ -17,11 +17,11 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 from types import MappingProxyType
-from typing import Any, Callable
+from typing import Any
 
 from .arms.rubeus.arm import (
     parse_telemetry_bytes,
@@ -94,6 +94,13 @@ _MAX_DOCUMENT_BYTES = 2_097_152
 _MAX_DOCUMENT_NODES = 50_000
 _MAX_DOCUMENT_DEPTH = 64
 _MAX_TEXT = 16_384
+# The security source tree and each selected Rubeus record are bounded at
+# 50,000 nodes and depth 64.  Their v2 singleton reports and observation
+# documents add bounded contract wrappers, so reserve explicit headroom rather
+# than rejecting an arm-complete artifact at the sidecar boundary.
+_V2_MAX_DOCUMENT_NODES = 50_256
+_V2_MAX_DOCUMENT_DEPTH = 68
+_V2_MAX_TEXT = SECURITY_RULE_MAX_OUTPUT_CHARS
 _MAX_NUMBER_BITS = 65_536
 _MAX_CVE_ID = 32
 _MAX_POLICY_REPORT_BYTES = 1_048_576
@@ -634,24 +641,33 @@ def verify_trusted_observation(
     """Verify an exact observation bundle and reject caller-tracked replay.
 
     Replay state is intentionally external: this pure helper accepts the
-    validator's already-seen id set and never mutates it.
+    validator's already-seen id collection and never mutates it.  The trusted
+    caller must preserve that collection across calls; this call rejects
+    collections whose length or iteration is internally inconsistent.
     """
     try:
-        document = _document_copy(observation)
+        document = _observation_document_copy(observation)
     except (TypeError, ValueError):
         return _verification((REASON_OBSERVATION_MISMATCH,))
     reasons = list(_observation_structure_reasons(document))
     observation_id = document.get("observation_id")
     try:
-        if isinstance(seen_observation_ids, (str, bytes)):
-            raise TypeError("seen ids must be a collection of ids")
+        if isinstance(seen_observation_ids, (str, bytes)) or not isinstance(
+            seen_observation_ids, Collection
+        ):
+            raise TypeError("seen ids must be a repeatable collection")
+        size_before = len(seen_observation_ids)
         replayed = False
+        seen_count = 0
         for item in seen_observation_ids:
+            seen_count += 1
             if type(item) is not str or not _OBSERVATION_ID_RE.fullmatch(item):
                 raise ValueError("seen ids must contain exact observation ids")
             if type(observation_id) is str and item == observation_id:
                 replayed = True
-    except (TypeError, ValueError, RuntimeError):
+        if len(seen_observation_ids) != size_before or seen_count != size_before:
+            raise ValueError("seen ids must have stable complete iteration")
+    except (OverflowError, TypeError, ValueError, RuntimeError):
         reasons.append(REASON_REPLAY)
     else:
         if replayed:
@@ -807,12 +823,24 @@ def _validated_inputs(
     if result.budget.spent.output_bytes != len(policy_report):
         reasons.append(REASON_ARTIFACT_MISMATCH)
 
+    if profile.contract_version == SCHEMA_VERSION_V2:
+        report_max_nodes = _V2_MAX_DOCUMENT_NODES
+        report_max_depth = _V2_MAX_DOCUMENT_DEPTH
+        report_copy = _v2_document_copy
+    else:
+        report_max_nodes = _MAX_DOCUMENT_NODES
+        report_max_depth = _MAX_DOCUMENT_DEPTH
+        report_copy = _document_copy
     try:
         text = policy_report.decode("utf-8")
-        report_value = strict_json_loads(text)
+        report_value = strict_json_loads(
+            text,
+            max_nodes=report_max_nodes,
+            max_depth=report_max_depth,
+        )
         if not isinstance(report_value, dict):
             raise ValueError("policy report is not an object")
-        report_doc = _document_copy(report_value)
+        report_doc = report_copy(report_value)
         if _canonical_bytes(report_doc) != policy_report:
             raise ValueError("policy report is not the canonical producer artifact")
     except (
@@ -890,9 +918,11 @@ def _build_observation(
     if profile.contract_version == SCHEMA_VERSION:
         schema_id = TRUSTED_OBSERVATION_SCHEMA_ID
         schema_version = SCHEMA_VERSION
+        document_copy = _document_copy
     elif profile.contract_version == SCHEMA_VERSION_V2:
         schema_id = TRUSTED_OBSERVATION_V2_SCHEMA_ID
         schema_version = SCHEMA_VERSION_V2
+        document_copy = _v2_document_copy
     else:
         raise ValueError("profile selects an unknown contract version")
     body: dict[str, Any] = {
@@ -903,13 +933,13 @@ def _build_observation(
         "capability_id": admission["capability_id"],
         "arm_id": admission["arm_id"],
         "action": admission["action"],
-        "producer": _document_copy(admission["producer"]),
-        "verifier": _document_copy(admission["issuer"]),
-        "subject": _document_copy(admission["subject"]),
-        "scope": _document_copy(admission["scope"]),
+        "producer": document_copy(admission["producer"]),
+        "verifier": document_copy(admission["issuer"]),
+        "subject": document_copy(admission["subject"]),
+        "scope": document_copy(admission["scope"]),
         "collected_at": execution_result["finished_at"],
         "verified_at": verified_at,
-        "source": _document_copy(admission["source"]),
+        "source": document_copy(admission["source"]),
         "custody": {
             "controller": admission["custody"]["controller"],
             "source_assertion": admission["custody"]["source_assertion"],
@@ -932,13 +962,13 @@ def _build_observation(
         "evidence": {
             "class": admission["evidence_class"],
             "record": adapter.project_evidence(
-                _document_copy(report[profile.report_record_key])
+                document_copy(report[profile.report_record_key])
             ),
             "applicability": {"assessed": False, "status": "not-assessed"},
         },
         "limitations": limitations,
     }
-    observation = _document_copy(body)
+    observation = document_copy(body)
     observation["observation_id"] = _observation_identity(observation)
     return observation
 
@@ -1062,7 +1092,7 @@ def _admission_structure_reasons(document: dict[str, Any]) -> tuple[str, ...]:
         document["attempt_id"]
     ):
         reasons.append(REASON_INVALID_ADMISSION)
-    profile = _profile_for_document(document, observation=False)
+    profile = _profile_for_structure(document, observation=False)
     if profile is None:
         reasons.append(REASON_PROFILE_MISMATCH)
         return _unique(reasons)
@@ -1146,9 +1176,15 @@ def _observation_structure_reasons(document: dict[str, Any]) -> tuple[str, ...]:
     reasons: list[str] = []
     if set(document) != _OBSERVATION_KEYS:
         return (REASON_OBSERVATION_MISMATCH,)
-    if _contract_version_for_document(document, observation=True) is None:
+    contract_version = _contract_version_for_document(
+        document, observation=True
+    )
+    if contract_version is None:
         reasons.append(REASON_UNKNOWN_SCHEMA)
-    if _profile_for_document(document, observation=True) is None:
+    elif (
+        contract_version == SCHEMA_VERSION_V2
+        and _profile_for_structure(document, observation=True) is None
+    ):
         reasons.append(REASON_PROFILE_MISMATCH)
     if not isinstance(document.get("observation_id"), str) or not _OBSERVATION_ID_RE.fullmatch(
         document["observation_id"]
@@ -1260,6 +1296,28 @@ def _profile_for_document(
     return profile
 
 
+def _profile_for_structure(
+    document: Mapping[str, Any], *, observation: bool
+) -> ObservationProfile | None:
+    """Select a capability profile without conflating an unknown schema.
+
+    Structure validation reports an unknown schema independently.  A profile
+    mismatch is warranted only when the capability itself is unknown or a
+    recognized contract version conflicts with that capability's frozen
+    profile.
+    """
+    capability_id = document.get("capability_id")
+    if type(capability_id) is not str:
+        return None
+    profile = observation_profile(capability_id)
+    if profile is None:
+        return None
+    version = _contract_version_for_document(document, observation=observation)
+    if version is not None and profile.contract_version != version:
+        return None
+    return profile
+
+
 def _required_profile(
     capability_id: str = "vulnify.lookup",
 ) -> ObservationProfile:
@@ -1327,22 +1385,79 @@ def _normalized_limitations(value: Any) -> list[str]:
 
 
 def _document_copy(value: Any) -> dict[str, Any]:
+    return _bounded_document_copy(
+        value,
+        max_nodes=_MAX_DOCUMENT_NODES,
+        max_depth=_MAX_DOCUMENT_DEPTH,
+        max_text=_MAX_TEXT,
+    )
+
+
+def _v2_document_copy(value: Any) -> dict[str, Any]:
+    return _bounded_document_copy(
+        value,
+        max_nodes=_V2_MAX_DOCUMENT_NODES,
+        max_depth=_V2_MAX_DOCUMENT_DEPTH,
+        max_text=_V2_MAX_TEXT,
+    )
+
+
+def _observation_document_copy(value: Any) -> dict[str, Any]:
+    candidate = _v2_document_copy(value)
+    capability_id = candidate.get("capability_id")
+    profile = (
+        observation_profile(capability_id)
+        if type(capability_id) is str
+        else None
+    )
+    if (
+        candidate.get("schema") == TRUSTED_OBSERVATION_V2_SCHEMA_ID
+        and candidate.get("schema_version") == SCHEMA_VERSION_V2
+        and type(candidate.get("schema_version")) is int
+        and profile is not None
+        and profile.contract_version == SCHEMA_VERSION_V2
+    ):
+        return candidate
+    return _document_copy(candidate)
+
+
+def _bounded_document_copy(
+    value: Any, *, max_nodes: int, max_depth: int, max_text: int
+) -> dict[str, Any]:
     counters = [0, 0]
-    copied = _json_value(value, depth=0, counters=counters)
+    try:
+        copied = _json_value(
+            value,
+            depth=0,
+            counters=counters,
+            max_nodes=max_nodes,
+            max_depth=max_depth,
+            max_text=max_text,
+        )
+    except RuntimeError as exc:
+        raise TypeError("document mapping could not be copied") from exc
     if not isinstance(copied, dict):
         raise TypeError("document must be a mapping")
     return copied
 
 
-def _json_value(value: Any, *, depth: int, counters: list[int]) -> Any:
-    if depth > _MAX_DOCUMENT_DEPTH:
+def _json_value(
+    value: Any,
+    *,
+    depth: int,
+    counters: list[int],
+    max_nodes: int,
+    max_depth: int,
+    max_text: int,
+) -> Any:
+    if depth > max_depth:
         raise ValueError("document exceeds depth cap")
     counters[0] += 1
-    if counters[0] > _MAX_DOCUMENT_NODES:
+    if counters[0] > max_nodes:
         raise ValueError("document exceeds node cap")
     if value is None or type(value) in {bool, int, str}:
         if type(value) is str:
-            if len(value) > _MAX_TEXT:
+            if len(value) > max_text:
                 raise ValueError("document text exceeds cap")
             _require_utf8_text(value)
         if type(value) is int and value.bit_length() > _MAX_NUMBER_BITS:
@@ -1358,7 +1473,7 @@ def _json_value(value: Any, *, depth: int, counters: list[int]) -> Any:
         _add_document_bytes(counters, 2)
         copied: dict[str, Any] = {}
         for key, item in value.items():
-            if type(key) is not str or len(key) > _MAX_TEXT:
+            if type(key) is not str or len(key) > max_text:
                 raise TypeError("document keys must be bounded exact strings")
             _require_utf8_text(key)
             if key in copied:
@@ -1366,7 +1481,14 @@ def _json_value(value: Any, *, depth: int, counters: list[int]) -> Any:
             if copied:
                 _add_document_bytes(counters, 1)
             _add_document_bytes(counters, len(_scalar_json_bytes(key)) + 1)
-            copied[key] = _json_value(item, depth=depth + 1, counters=counters)
+            copied[key] = _json_value(
+                item,
+                depth=depth + 1,
+                counters=counters,
+                max_nodes=max_nodes,
+                max_depth=max_depth,
+                max_text=max_text,
+            )
         return copied
     if isinstance(value, list):
         _add_document_bytes(counters, 2)
@@ -1375,7 +1497,14 @@ def _json_value(value: Any, *, depth: int, counters: list[int]) -> Any:
             if copied_list:
                 _add_document_bytes(counters, 1)
             copied_list.append(
-                _json_value(item, depth=depth + 1, counters=counters)
+                _json_value(
+                    item,
+                    depth=depth + 1,
+                    counters=counters,
+                    max_nodes=max_nodes,
+                    max_depth=max_depth,
+                    max_text=max_text,
+                )
             )
         return copied_list
     raise TypeError("document is not strict JSON data")
@@ -1422,7 +1551,7 @@ def _content_id(body: Mapping[str, Any], *, prefix: str) -> str:
 
 
 def _observation_identity(document: Mapping[str, Any]) -> str:
-    """Return the v1 one-observation-per-attempt replay identity."""
+    """Return the per-schema one-observation-per-attempt replay identity."""
     return _content_id(
         {
             "schema": document.get("schema"),

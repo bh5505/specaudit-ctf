@@ -51,6 +51,7 @@ from extension.observations import (
     REASON_REPLAY,
     REASON_SOURCE_MISMATCH,
     REASON_SUBJECT_MISMATCH,
+    REASON_UNKNOWN_SCHEMA,
     SOURCE_ADMISSION_SCHEMA_ID,
     TRUSTED_OBSERVATION_SCHEMA_ID,
     ObservationError,
@@ -662,6 +663,129 @@ def test_malformed_admission_never_reaches_bundle_field_access(
             verified_at=VERIFIED_AT,
         )
     assert excinfo.value.reasons
+
+
+def test_unknown_schema_keeps_v1_reason_semantics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw, admission, result, report, observation = _complete_slice(
+        tmp_path, monkeypatch
+    )
+    malformed_admission = copy.deepcopy(admission)
+    malformed_admission["schema"] = "specaudit.ctf.source-admission.unknown"
+    checked_admission = verify_source_admission(
+        malformed_admission, raw_artifact=raw, at_time=VERIFIED_AT
+    )
+    assert checked_admission.accepted is False
+    assert checked_admission.reasons == (REASON_UNKNOWN_SCHEMA,)
+
+    malformed_observation = copy.deepcopy(observation)
+    malformed_observation["schema"] = (
+        "specaudit.ctf.trusted-observation.unknown"
+    )
+    checked_observation = verify_trusted_observation(
+        malformed_observation,
+        admission=admission,
+        execution_result=result,
+        policy_report=report,
+        raw_artifact=raw,
+        verified_at=VERIFIED_AT,
+        seen_observation_ids=(),
+    )
+    assert checked_observation.accepted is False
+    assert checked_observation.reasons == (
+        REASON_UNKNOWN_SCHEMA,
+        REASON_OBSERVATION_ID_MISMATCH,
+        REASON_OBSERVATION_MISMATCH,
+    )
+
+
+@pytest.mark.parametrize(
+    "capability_id", (None, "", "unknown.lookup", False, 7)
+)
+def test_malformed_v1_observation_capability_keeps_reason_semantics(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capability_id: Any,
+) -> None:
+    raw, admission, result, report, observation = _complete_slice(
+        tmp_path, monkeypatch
+    )
+    malformed = copy.deepcopy(observation)
+    malformed["capability_id"] = capability_id
+    checked = verify_trusted_observation(
+        malformed,
+        admission=admission,
+        execution_result=result,
+        policy_report=report,
+        raw_artifact=raw,
+        verified_at=VERIFIED_AT,
+        seen_observation_ids=(),
+    )
+    assert checked.accepted is False
+    assert checked.reasons == (
+        REASON_OBSERVATION_ID_MISMATCH,
+        REASON_OBSERVATION_MISMATCH,
+    )
+
+
+def test_v2_headroom_does_not_change_oversized_v1_reason_semantics(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw, admission, result, report, observation = _complete_slice(
+        tmp_path, monkeypatch
+    )
+    deeply_nested: Any = "leaf"
+    for _ in range(66):
+        deeply_nested = [deeply_nested]
+    for hostile_evidence in (
+        [None] * 50_020,
+        deeply_nested,
+        "x" * 20_000,
+    ):
+        malformed = copy.deepcopy(observation)
+        malformed["evidence"] = hostile_evidence
+        checked = verify_trusted_observation(
+            malformed,
+            admission=admission,
+            execution_result=result,
+            policy_report=report,
+            raw_artifact=raw,
+            verified_at=VERIFIED_AT,
+            seen_observation_ids=(),
+        )
+        assert checked.accepted is False
+        assert checked.reasons == (REASON_OBSERVATION_MISMATCH,)
+
+
+def test_mapping_iteration_failure_is_a_fail_closed_verification_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw, admission, result, report, observation = _complete_slice(
+        tmp_path, monkeypatch
+    )
+
+    class ExplodingItems(dict[str, Any]):
+        def items(self) -> Any:
+            raise RuntimeError("synthetic mapping failure")
+
+    admission_check = verify_source_admission(
+        ExplodingItems(admission), raw_artifact=raw, at_time=VERIFIED_AT
+    )
+    assert admission_check.accepted is False
+    assert admission_check.reasons == (REASON_INVALID_ADMISSION,)
+
+    observation_check = verify_trusted_observation(
+        ExplodingItems(observation),
+        admission=admission,
+        execution_result=result,
+        policy_report=report,
+        raw_artifact=raw,
+        verified_at=VERIFIED_AT,
+        seen_observation_ids=(),
+    )
+    assert observation_check.accepted is False
+    assert observation_check.reasons == (REASON_OBSERVATION_MISMATCH,)
 
 
 def test_real_mode_a_slice_derives_schema_valid_attributable_observation(

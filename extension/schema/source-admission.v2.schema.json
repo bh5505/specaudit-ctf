@@ -206,7 +206,7 @@
       "properties": {
         "id": { "const": "specaudit.ctf.security-detections-index-projection.v1" },
         "version": { "type": "integer", "const": 1 },
-        "format": { "enum": ["json", "yaml"] }
+        "format": { "enum": ["json", "yaml", "yml"] }
       }
     },
     "rubeus_source_schema": {

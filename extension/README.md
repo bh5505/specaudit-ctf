@@ -49,7 +49,7 @@ the observation id—detect document or evidence mismatch.
 The frozen sidecar registry contains exactly `vulnify.lookup`,
 `security-detections-mcp.get_rule`, and `rubeus.telemetry`. Each accepts only
 its exact singleton action and selector, exactly one `policy-report` artifact,
-and its declared source formats: JSON/JSONL/YAML for vulnify, JSON/YAML for a
+and its declared source formats: JSON/JSONL/YAML for vulnify, JSON/YAML/YML for a
 detection-rule index, and JSON/JSONL for deweaponized Rubeus telemetry. The raw
 parsers are shared with the arms, so the selected record, exact-byte
 digest/length and normalized full-record digest are independently recomputed
@@ -69,10 +69,12 @@ does not modify execution-result v1, traces or fixture grading; and grants no
 finding, workpaper, lifecycle, support-tier, rights or source-promotion
 authority. Every observation remains source-declared with applicability
 explicitly not assessed. A rule observation exposes only its id, name and a
-digest of the full replayed definition; it establishes neither deployment nor
-operating effectiveness. A telemetry observation retains the arm's sanitized
-event projection and indicator types but never values; it establishes neither
-event authenticity nor event time, and it does not infer compromise.
+`definition_digest` over the full replayed rule record (including those id and
+name fields); it establishes neither deployment nor operating effectiveness. A
+telemetry observation retains the bounded event projection and indicator
+`type` fields while omitting indicator `value` fields; other caller-supplied
+prose remains untrusted. It establishes neither event authenticity nor event
+time, and it does not infer compromise.
 
 The custody fields are assertions by the trusted validator. Execution-result
 v1 does not say whether a result carrying an attempt id also used
@@ -170,10 +172,11 @@ data actions are deliberately `synthetic_only: false` because local and
 read-only does not mean the supplied evidence is synthetic. The v1 manifest
 still has a static policy URI in `touched_scope`, not the dynamic caller path;
 that field is not proof of file custody. Input containment, content digests,
-source attribution and data rights remain separate gates. The opt-in
-`vulnify.lookup` sidecar above binds one caller artifact only when a trusted
-validator supplies a separate pre-attempt admission and the exact raw and
-Mode-A result bytes; it does not make other reader results trusted.
+source attribution and data rights remain separate gates. The opt-in sidecar
+above binds one caller artifact only for its three frozen singleton profiles,
+and only when a trusted validator supplies a separate pre-attempt admission and
+the exact raw and Mode-A result bytes; it does not make other reader results
+trusted.
 
 - `attack-stix-data` — exact `technique`, `software`, `group`, and bounded
   `relationships` reads over a local STIX bundle; no downloader or broad

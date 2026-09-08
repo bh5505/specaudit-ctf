@@ -313,6 +313,6 @@ For this checkout:
 
 The [program roadmap](PROGRAM.md#proposed-roadmap) includes remaining
 hard-containment and trusted-observation/grading work that does not ship today.
-The opt-in vulnify sidecar above is only a partial binding mechanism; do not
-operate a proposed environment or evidence lane as though its documentation
-were implementation.
+The opt-in source-declared observation sidecar above is only a partial binding
+mechanism; do not operate a proposed environment or evidence lane as though
+its documentation were implementation.

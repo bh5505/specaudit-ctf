@@ -7,6 +7,8 @@ import hashlib
 import json
 import subprocess
 import sys
+from collections import deque
+from collections.abc import Collection, Iterator
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any
@@ -31,6 +33,7 @@ from extension.observations import (
     REASON_OBSERVATION_MISMATCH,
     REASON_PROFILE_MISMATCH,
     REASON_REPLAY,
+    REASON_SOURCE_PARSE,
     REASON_SOURCE_MISMATCH,
     REASON_SUBJECT_MISMATCH,
     SCHEMA_VERSION_V2,
@@ -72,7 +75,7 @@ SECURITY = {
     "scope_kind": "detection-rule-record",
     "scope_identifier": "rule:RULE-001",
     "source_schema": "specaudit.ctf.security-detections-index-projection.v1",
-    "formats": ("json", "yaml"),
+    "formats": ("json", "yaml", "yml"),
 }
 RUBEUS = {
     "capability_id": "rubeus.telemetry",
@@ -170,7 +173,7 @@ def _source_bytes(case: dict[str, Any], source_format: str) -> bytes:
         rows = _security_rules()
         if source_format == "json":
             return _canonical(rows)
-        assert source_format == "yaml"
+        assert source_format in {"yaml", "yml"}
         return yaml.safe_dump(
             rows, sort_keys=False, allow_unicode=True
         ).encode("utf-8")
@@ -437,11 +440,46 @@ def test_generic_vulnify_issuer_is_byte_compatible_with_v1_wrapper() -> None:
     assert generic["schema_version"] == 1
 
 
+def test_v2_issuer_rejects_unknown_profile_wrong_format_and_malformed_bytes() -> None:
+    raw = _source_bytes(SECURITY, "json")
+    with pytest.raises(ObservationError) as wrong_format:
+        _issue(SECURITY, raw, "jsonl")
+    assert REASON_INVALID_ADMISSION in wrong_format.value.reasons
+    assert REASON_SOURCE_PARSE in wrong_format.value.reasons
+
+    with pytest.raises(ObservationError) as malformed:
+        _issue(SECURITY, b"{", "json")
+    assert malformed.value.reasons == (REASON_SOURCE_PARSE,)
+
+    with pytest.raises(ObservationError) as unknown:
+        issue_profile_source_admission(
+            capability_id="unknown.lookup",
+            subject_id=SECURITY["subject_id"],
+            attempt_id=ATTEMPT_ID,
+            raw_artifact=raw,
+            source_format="json",
+            source_id="synthetic-unknown-source",
+            source_revision="snapshot-2026-09-08",
+            source_timestamp=SOURCE_TIME,
+            logical_locator="source://synthetic/unknown/snapshot-2026-09-08",
+            raw_artifact_locator="custody://ctf-evidence/unknown/raw",
+            authority_ref="operator://source-admission/evid-01-fixture",
+            issuer_id="ctf-evidence-custodian",
+            issuer_version="0.1.0",
+            producer_revision="git:6a6a652",
+            issued_at=ISSUED_AT,
+            valid_from=ISSUED_AT,
+            valid_until=VALID_UNTIL,
+        )
+    assert unknown.value.reasons == (REASON_PROFILE_MISMATCH,)
+
+
 @pytest.mark.parametrize(
     ("case", "source_format"),
     [
         pytest.param(SECURITY, "json", id="security-json"),
         pytest.param(SECURITY, "yaml", id="security-yaml"),
+        pytest.param(SECURITY, "yml", id="security-yml"),
         pytest.param(RUBEUS, "json", id="rubeus-json"),
         pytest.param(RUBEUS, "jsonl", id="rubeus-jsonl"),
     ],
@@ -536,6 +574,35 @@ def test_v1_and_v2_schemas_remain_disjoint(
     ):
         with pytest.raises(jsonschema.ValidationError):
             _validator(wrong_schema).validate(document)
+
+
+def test_runtime_rejects_v2_schema_with_v1_capability(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw, admission, result, report, observation = _complete(
+        tmp_path, monkeypatch, SECURITY
+    )
+    split_admission = copy.deepcopy(admission)
+    split_admission["capability_id"] = "vulnify.lookup"
+    checked_admission = verify_source_admission(
+        split_admission, raw_artifact=raw, at_time=VERIFIED_AT
+    )
+    assert checked_admission.accepted is False
+    assert REASON_PROFILE_MISMATCH in checked_admission.reasons
+
+    split_observation = copy.deepcopy(observation)
+    split_observation["capability_id"] = "vulnify.lookup"
+    checked_observation = verify_trusted_observation(
+        split_observation,
+        admission=admission,
+        execution_result=result,
+        policy_report=report,
+        raw_artifact=raw,
+        verified_at=VERIFIED_AT,
+        seen_observation_ids=(),
+    )
+    assert checked_observation.accepted is False
+    assert REASON_PROFILE_MISMATCH in checked_observation.reasons
 
 
 def _set_path(document: dict[str, Any], path: tuple[str, ...], value: Any) -> None:
@@ -807,6 +874,131 @@ def test_v2_policy_report_tamper_replay_and_pure_verification(
     assert pure.accepted is True and pure.reasons == ()
 
 
+def test_replay_state_rejects_one_shot_iterators_before_and_after_exhaustion(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw, admission, result, report, observation = _complete(
+        tmp_path, monkeypatch, SECURITY
+    )
+    one_shot = (item for item in ())
+    for _ in range(2):
+        checked = verify_trusted_observation(
+            observation,
+            admission=admission,
+            execution_result=result,
+            policy_report=report,
+            raw_artifact=raw,
+            verified_at=VERIFIED_AT,
+            seen_observation_ids=one_shot,  # type: ignore[arg-type]
+        )
+        assert checked.accepted is False
+        assert REASON_REPLAY in checked.reasons
+
+    class OneShotCollection(Collection[str]):
+        def __init__(self, values: tuple[str, ...]) -> None:
+            self._values = values
+            self._iterator: Iterator[str] = iter(values)
+
+        def __contains__(self, value: object) -> bool:
+            return value in self._values
+
+        def __iter__(self) -> Iterator[str]:
+            return self._iterator
+
+        def __len__(self) -> int:
+            return len(self._values)
+
+    disguised = OneShotCollection((observation["observation_id"],))
+    for _ in range(2):
+        checked = verify_trusted_observation(
+            observation,
+            admission=admission,
+            execution_result=result,
+            policy_report=report,
+            raw_artifact=raw,
+            verified_at=VERIFIED_AT,
+            seen_observation_ids=disguised,
+        )
+        assert checked.accepted is False
+        assert REASON_REPLAY in checked.reasons
+
+    stable_non_builtin = verify_trusted_observation(
+        observation,
+        admission=admission,
+        execution_result=result,
+        policy_report=report,
+        raw_artifact=raw,
+        verified_at=VERIFIED_AT,
+        seen_observation_ids=deque(),
+    )
+    assert stable_non_builtin.accepted is True
+    assert stable_non_builtin.reasons == ()
+
+
+@pytest.mark.parametrize(
+    "rule",
+    (
+        pytest.param(
+            {
+                "rule_id": SECURITY["subject_id"],
+                "name": "x" * 16_385,
+                "definition": {"query": "synthetic"},
+            },
+            id="name-over-legacy-sidecar-text-cap",
+        ),
+        pytest.param(
+            {
+                "rule_id": SECURITY["subject_id"],
+                "name": "Synthetic high-node rule",
+                "definition": [0] * 49_995,
+            },
+            id="report-wrapper-over-producer-node-cap",
+        ),
+    ),
+)
+def test_producer_complete_security_boundaries_remain_observable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    rule: dict[str, Any],
+) -> None:
+    raw = _canonical([rule])
+    admission = _issue(SECURITY, raw, "json")
+    result, report = _mode_a_bundle(
+        tmp_path, monkeypatch, SECURITY, raw, "json"
+    )
+    assert result["status"] == "complete"
+    assert len(report) < 200_000
+    observation = derive_trusted_observation(
+        admission=admission,
+        execution_result=result,
+        policy_report=report,
+        raw_artifact=raw,
+        verified_at=VERIFIED_AT,
+    )
+    _validator(OBSERVATION_V2_SCHEMA).validate(observation)
+    assert observation["evidence"]["record"]["name"] == rule["name"]
+    checked = verify_trusted_observation(
+        observation,
+        admission=admission,
+        execution_result=result,
+        policy_report=report,
+        raw_artifact=raw,
+        verified_at=VERIFIED_AT,
+        seen_observation_ids=(),
+    )
+    assert checked.accepted is True and checked.reasons == ()
+    wrapped = verify_trusted_observation(
+        MappingProxyType(observation),
+        admission=admission,
+        execution_result=result,
+        policy_report=report,
+        raw_artifact=raw,
+        verified_at=VERIFIED_AT,
+        seen_observation_ids=(),
+    )
+    assert wrapped.accepted is True and wrapped.reasons == ()
+
+
 def test_forged_security_report_cannot_exceed_the_arm_output_cap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -830,6 +1022,31 @@ def test_forged_security_report_cannot_exceed_the_arm_output_cap(
         tmp_path, monkeypatch, SECURITY, small_raw, "json"
     )
     forged_result, forged_report = _replace_report(result, payload)
+    with pytest.raises(ObservationError) as excinfo:
+        derive_trusted_observation(
+            admission=admission,
+            execution_result=forged_result,
+            policy_report=forged_report,
+            raw_artifact=raw,
+            verified_at=VERIFIED_AT,
+        )
+    assert REASON_INVALID_POLICY_REPORT in excinfo.value.reasons
+
+
+def test_forged_rubeus_report_cannot_exceed_the_arm_output_cap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw = _source_bytes(RUBEUS, "json")
+    admission = _issue(RUBEUS, raw, "json")
+    result, report = _mode_a_bundle(
+        tmp_path, monkeypatch, RUBEUS, raw, "json"
+    )
+    payload = json.loads(report)
+    payload["telemetry"]["indicators"] = [
+        {"type": "x" * 16_000} for _ in range(14)
+    ]
+    forged_result, forged_report = _replace_report(result, payload)
+    assert 200_000 < len(forged_report) < 1_048_576
     with pytest.raises(ObservationError) as excinfo:
         derive_trusted_observation(
             admission=admission,

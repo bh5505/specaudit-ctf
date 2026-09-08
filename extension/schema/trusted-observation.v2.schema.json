@@ -167,6 +167,11 @@
       "minLength": 1,
       "maxLength": 16384
     },
+    "rule_name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200000
+    },
     "ref": {
       "type": "string",
       "minLength": 4,
@@ -248,7 +253,7 @@
       "properties": {
         "id": { "const": "specaudit.ctf.security-detections-index-projection.v1" },
         "version": { "type": "integer", "const": 1 },
-        "format": { "enum": ["json", "yaml"] }
+        "format": { "enum": ["json", "yaml", "yml"] }
       }
     },
     "rubeus_source_schema": {
@@ -365,8 +370,11 @@
       "required": ["rule_id", "name", "definition_digest"],
       "properties": {
         "rule_id": { "$ref": "#/definitions/identifier" },
-        "name": { "$ref": "#/definitions/bounded_text" },
-        "definition_digest": { "$ref": "#/definitions/digest" }
+        "name": { "$ref": "#/definitions/rule_name" },
+        "definition_digest": {
+          "allOf": [{ "$ref": "#/definitions/digest" }],
+          "description": "SHA-256 digest of the full replayed detection-rule record, including rule_id and name."
+        }
       }
     },
     "telemetry_event_evidence": {
