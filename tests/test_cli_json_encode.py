@@ -490,6 +490,19 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
                 assert profile.approval_ref == (
                     "operator://dispatch-scope/RPZDECODER_DISPATCH_SCOPE"
                 )
+        elif profile.arm_id in {
+            "security-detections-mcp", "agentseal", "vulnify", "leonidas",
+            "specterops-skills", "detection-in-the-cloud", "pentestkit", "collinear",
+            "ad-pathfinder", "gpohound", "claude-ad", "numasec", "rubeus", "m365pwned",
+            "attack-stix-data",
+        }:
+            # New R43/R35/R01/R33/R03/R34/R42/R15 read admission plus
+            # attack-stix-data: R0 local-read profiles over operator-
+            # supplied local files.  Synthetic-only by construction.
+            assert profile.safety_class == "R0"
+            assert profile.side_effects == ("local-read",)
+            assert profile.default_off is True
+            assert profile.synthetic_only is True
         else:
             assert profile.action == "list_tools"
             assert profile.safety_class == "R0"
@@ -588,8 +601,8 @@ def test_range_encoder_spends_one_step_under_freeze_budget(
     no_curated_tools: None,
 ) -> None:
     inner = run_range()
-    # 29 since the rpz-decoder arm admission (2026-09-08).
-    assert len(inner["coverage"]["attempted"]) == 29
+    # 37 since the 8 new research arms (R43, R35, R01, R33, R03, R34, R42, R15).
+    assert len(inner["coverage"]["attempted"]) == 43
     payload = encode_range_document(
         inner,
         started_at="2026-08-25T12:00:00Z",

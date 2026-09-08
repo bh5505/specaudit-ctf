@@ -66,6 +66,20 @@ _STATIC_POLICY_ARMS = (
     "sniper",
     "vvah",
     "zgrab2",
+    "security-detections-mcp",
+    "agentseal",
+    "vulnify",
+    "leonidas",
+    "specterops-skills",
+    "detection-in-the-cloud",
+    "pentestkit",
+    "collinear",
+    "ad-pathfinder",
+    "gpohound",
+    "claude-ad",
+    "numasec",
+    "rubeus",
+    "m365pwned",
 )
 
 
@@ -597,6 +611,86 @@ INVOKE_PROFILES = {
         # a local-write side effect; no subprocess, no endpoint, no
         # schedule (ad-hoc by design).
         _rpz_decode_profile(),
+        # security-detections-mcp read admission: local rule reads over
+        # operator-supplied pinned detection indexes. R0 local-read with
+        # no dispatch tier; the index path is caller data validated by
+        # the arm's egress gate.
+        *(
+            _local_read_profile("security-detections-mcp", action)
+            for action in ("list_rules", "search_rules", "get_rule")
+        ),
+        # agentseal read admission: offline static fixture analysis.
+        # R0 local-read; fixture path is caller data.
+        *(
+            _local_read_profile("agentseal", action)
+            for action in ("analyze", "list_scenarios")
+        ),
+        # vulnify read admission: bounded local vulnerability reads.
+        # R0 local-read; feed path is caller data.
+        *(
+            _local_read_profile("vulnify", action)
+            for action in ("lookup", "list_vulns")
+        ),
+        # leonidas read admission: declarative cloud attack corpus reads.
+        # R0 local-read; corpus path is caller data.
+        *(
+            _local_read_profile("leonidas", action)
+            for action in ("technique", "list_techniques")
+        ),
+        # specterops-skills read admission: curated methodology skill reads.
+        # R0 local-read; catalog path is caller data.
+        *(
+            _local_read_profile("specterops-skills", action)
+            for action in ("skill", "list_skills")
+        ),
+        # detection-in-the-cloud read admission: cloud detection playbook reads.
+        # R0 local-read; playbook_dir is caller data.
+        *(
+            _local_read_profile("detection-in-the-cloud", action)
+            for action in ("playbook", "list_playbooks", "list_rules")
+        ),
+        # pentestkit read admission: experiment accounting reads.
+        # R0 local-read; ledger path is caller data.
+        *(
+            _local_read_profile("pentestkit", action)
+            for action in ("result", "list_results", "summary")
+        ),
+        # collinear read admission: simulated world scenario reads.
+        # R0 local-read; scenarios_file is caller data.
+        *(
+            _local_read_profile("collinear", action)
+            for action in ("scenario", "list_scenarios", "verify")
+        ),
+        # ad-pathfinder read admission: imported AD path results.
+        *(
+            _local_read_profile("ad-pathfinder", action)
+            for action in ("path", "list_paths", "list_datasources")
+        ),
+        # gpohound read admission: GPO policy evidence reads.
+        *(
+            _local_read_profile("gpohound", action)
+            for action in ("policy", "list_policies", "list_links")
+        ),
+        # claude-ad read admission: AD methodology reads.
+        *(
+            _local_read_profile("claude-ad", action)
+            for action in ("technique", "list_techniques", "list_prerequisites")
+        ),
+        # numasec read admission: finding lifecycle reads.
+        *(
+            _local_read_profile("numasec", action)
+            for action in ("finding", "list_findings", "list_transitions")
+        ),
+        # rubeus read admission: deweaponized AD telemetry reads.
+        *(
+            _local_read_profile("rubeus", action)
+            for action in ("telemetry", "list_telemetry", "list_indicators")
+        ),
+        # m365pwned read admission: synthetic M365 consent case reads.
+        *(
+            _local_read_profile("m365pwned", action)
+            for action in ("case_study", "list_case_studies", "list_permissions")
+        ),
         # Metasploit read admission (2026-09-04): the exploit/payload/
         # session/listener listings over the operator-run loopback SSE server
         # (GH05TCREW MetasploitMCP).

@@ -507,6 +507,34 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.attackstix import AttackStixArm
     from .arms.rpzdecoder import ARM_ID as RPZ_DECODER_ARM_ID
     from .arms.rpzdecoder import RpzDecoderArm
+    from .arms.security_detections_mcp import ARM_ID as SECURITY_DETECTIONS_MCP_ARM_ID
+    from .arms.security_detections_mcp import SecurityDetectionsMcpArm
+    from .arms.agentseal import ARM_ID as AGENTSEAL_ARM_ID
+    from .arms.agentseal import AgentSealArm
+    from .arms.vulnify import ARM_ID as VULNIFY_ARM_ID
+    from .arms.vulnify import VulnifyArm
+    from .arms.leonidas import ARM_ID as LEONIDAS_ARM_ID
+    from .arms.leonidas import LeonidasArm
+    from .arms.specterops_skills import ARM_ID as SPECTEROPS_SKILLS_ARM_ID
+    from .arms.specterops_skills import SpecteropsSkillsArm
+    from .arms.detection_in_the_cloud import ARM_ID as DETECTION_IN_THE_CLOUD_ARM_ID
+    from .arms.detection_in_the_cloud import DetectionInTheCloudArm
+    from .arms.pentestkit import ARM_ID as PENTESTKIT_ARM_ID
+    from .arms.pentestkit import PentestkitArm
+    from .arms.collinear import ARM_ID as COLLINEAR_ARM_ID
+    from .arms.collinear import CollinearArm
+    from .arms.ad_pathfinder import ARM_ID as AD_PATHFINDER_ARM_ID
+    from .arms.ad_pathfinder import AdPathfinderArm
+    from .arms.gpohound import ARM_ID as GPOHOUND_ARM_ID
+    from .arms.gpohound import GpohoundArm
+    from .arms.claude_ad import ARM_ID as CLAUDE_AD_ARM_ID
+    from .arms.claude_ad import ClaudeAdArm
+    from .arms.numasec import ARM_ID as NUMASEC_ARM_ID
+    from .arms.numasec import NumasecArm
+    from .arms.rubeus import ARM_ID as RUBEUS_ARM_ID
+    from .arms.rubeus import RubeusArm
+    from .arms.m365pwned import ARM_ID as M365PWNED_ARM_ID
+    from .arms.m365pwned import M365PwnedArm
 
     return {
         BURP_ARM_ID: BurpArm(),
@@ -538,6 +566,20 @@ def _default_arms() -> dict[str, Transport]:
         AGENT_WIZ_ARM_ID: AgentWizArm(),
         ATTACK_STIX_ARM_ID: AttackStixArm(),
         RPZ_DECODER_ARM_ID: RpzDecoderArm(),
+        SECURITY_DETECTIONS_MCP_ARM_ID: SecurityDetectionsMcpArm(),
+        AGENTSEAL_ARM_ID: AgentSealArm(),
+        VULNIFY_ARM_ID: VulnifyArm(),
+        LEONIDAS_ARM_ID: LeonidasArm(),
+        SPECTEROPS_SKILLS_ARM_ID: SpecteropsSkillsArm(),
+        DETECTION_IN_THE_CLOUD_ARM_ID: DetectionInTheCloudArm(),
+        PENTESTKIT_ARM_ID: PentestkitArm(),
+        COLLINEAR_ARM_ID: CollinearArm(),
+        AD_PATHFINDER_ARM_ID: AdPathfinderArm(),
+        GPOHOUND_ARM_ID: GpohoundArm(),
+        CLAUDE_AD_ARM_ID: ClaudeAdArm(),
+        NUMASEC_ARM_ID: NumasecArm(),
+        RUBEUS_ARM_ID: RubeusArm(),
+        M365PWNED_ARM_ID: M365PwnedArm(),
     }
 
 

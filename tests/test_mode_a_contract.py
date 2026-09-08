@@ -535,10 +535,9 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 149 since the caldera read admission (2026-09-06,
     # emulation-listing packet): the eight v2 GET views as
     # endpoint-armed reads (caldera had no profiles before).
-    # 153 since the rpz-decoder admission (2026-09-08, arm packet):
-    # list_tools + decode (local read with caller-named outdir write)
-    # + fetch/status scope-gated dig dispatches.
-    assert len(INVOKE_PROFILES) == 153
+    # 181 since the 8 new research arms (R43, R35, R01, R33, R03, R34, R42, R15):
+    # 8 list_tools policy profiles + 20 read-action local-read profiles.
+    assert len(INVOKE_PROFILES) == 205
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -603,6 +602,19 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.synthetic_only is True
+        elif profile.arm_id in {
+            "security-detections-mcp", "agentseal", "vulnify", "leonidas",
+            "specterops-skills", "detection-in-the-cloud", "pentestkit", "collinear",
+            "ad-pathfinder", "gpohound", "claude-ad", "numasec", "rubeus", "m365pwned",
+            "attack-stix-data",
+        }:
+            # New R43/R35/R01/R33/R03/R34/R42/R15 read admission plus
+            # attack-stix-data: R0 local-read profiles over operator-
+            # supplied local files.  Synthetic-only by construction.
+            assert profile.safety_class == "R0"
+            assert profile.side_effects == ("local-read",)
+            assert profile.default_off is True
+            assert profile.synthetic_only is True
         else:
             # Dispatch-class admission: R1, declared side effects,
             # default-off, and NOT synthetic-only (the operator arms a
@@ -654,6 +666,15 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["side_effects"] == ["local-read"]
             assert payload["synthetic_only"] is True
         elif profile.action == "list_tools":
+            assert payload["safety_class"] == "R0"
+            assert payload["side_effects"] == ["local-read"]
+            assert payload["synthetic_only"] is True
+        elif profile.arm_id in {
+            "security-detections-mcp", "agentseal", "vulnify", "leonidas",
+            "specterops-skills", "detection-in-the-cloud", "pentestkit", "collinear",
+            "ad-pathfinder", "gpohound", "claude-ad", "numasec", "rubeus", "m365pwned",
+            "attack-stix-data",
+        }:
             assert payload["safety_class"] == "R0"
             assert payload["side_effects"] == ["local-read"]
             assert payload["synthetic_only"] is True

@@ -344,3 +344,101 @@ entries:
     curated: true
     tier: research
     notes: Ad-hoc threat-intel extraction from an operator-supplied DNS Response Policy Zone. decode turns an AXFR dump into raw IP/CIDR and domain indicator lists (action-tagged, written to files, sampled in the result); fetch is a dispatch-gated dig AXFR using a 0600 TSIG key file, status a keyless SOA probe. No schedule, no appliance; no zone data or account identifiers ship in the repo.
+
+  - id: security-detections-mcp
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Local rule reads over pinned detection indexes. Curated CLI read arm; no rule generation, index mutation, deployment, or hosted fallback on the read path. Every result is source-attributable. Per-corpus licensing must be reviewed by the operator.
+
+  - id: agentseal
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Offline agent-framework static fixture analysis. Curated CLI read arm; the offline boundary must be verified empirically (no registry or network calls). Every result cites specific configuration evidence. No active modes exposed.
+
+  - id: vulnify
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Bounded local vulnerability reads. Curated CLI read arm over operator-supplied frozen vulnerability snapshots. Unknown and stale data stay explicit; source and snapshot digests appear in evidence. No network or database mutation during a lookup.
+
+  - id: leonidas
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Declarative cloud attack corpus reads. Curated CLI read arm importing the Leonidas technique corpus; executor bodies treated as inert text and no cloud credentials on the read path. Positive, benign, and missing-telemetry variants graded separately.
+
+  - id: specterops-skills
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Curated methodology skill reads from the SpecterOps skills catalog. Every retained instruction maps to a bounded tool or a human step; skill prose is untrusted input and grants no permission. Operator must validate skill-to-tool mappings before use.
+
+  - id: detection-in-the-cloud
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Cloud detection playbook reads. Pages pinned to the corresponding definition revisions; a rule listing is never read as operating effectiveness. Companion methodology, not a second detection engine.
+
+  - id: pentestkit
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Experiment accounting reads. Curated CLI read arm over operator-supplied experiment ledgers. First-pass, tuned, and held-out results stay separate; every failure stays in the denominator; no case silently dropped.
+
+  - id: collinear
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Cybersecurity simulated world scenario reads. Curated CLI read arm; learner and model cannot read expected findings or trace keys. Forged or truncated evidence fails closed. Task/environment/verifier separation maintained at all times.
+
+  - id: ad-pathfinder
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Imported AD path results. Curated CLI read arm; missing datasource reads as not assessed, never clean. No real hashes or credentials distributed. A blocked path is never graded as demonstrated compromise.
+
+  - id: gpohound
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: GPO policy evidence reads. Curated CLI read arm; filtered-out policy is not effective access. Uncovered security/WMI filters and item-level targeting reported as limitations. No shared-graph writes.
+
+  - id: claude-ad
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: AD methodology reads. Curated CLI read arm; prerequisites, observed facts, and inference are separated. No action authorized by a skill. Framework mappings never asserted as compliance.
+
+  - id: numasec
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Finding lifecycle reads. Curated CLI read arm; status changes are attributable and reversible. No model-only status change creates a verified finding. Every change has an actor and reason.
+
+  - id: rubeus
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Deweaponized AD telemetry reads. Curated CLI read arm; no real tickets, hashes, or secrets distributed. Legitimate administration is not automatically classified as compromise.
+
+  - id: m365pwned
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Synthetic M365 consent case reads. Curated CLI read arm; no real tenant, mailbox, or file accessed. Permission claims verified against API owner documentation. Live Graph API gated by SAFE-01.
