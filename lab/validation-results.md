@@ -495,6 +495,56 @@ structured indicators and diff on pull — the repo's flat format
 makes that trivial. Validated by live clone + content measurement;
 no simulation involved.
 
+**US government cyber threat-intel feeds — VALIDATED zero-
+credential, 2026-09-08 (research inventory + staging; one 0600
+key for rate-limit headroom).** Web research across DHS/CISA,
+NIST, NSA, FBI, Treasury (primary sources; a research lane
+compiled the inventory, the staging host verified every
+fetchable URL). Staging: `/opt/gov-cyber-feeds-fetch.sh` (0700)
+pulls dated snapshots into `/var/lib/gov-cyber-feeds/`; NVD API
+key staged 0600 (`/root/.nvd-api-key`) purely for rate-limit
+headroom. Measured from the staging host, all HTTP 200:
+- **CISA KEV JSON** (`…/feeds/known_exploited_vulnerabilities.json`)
+  — 1.7 MB; `catalogVersion 2026.09.04` released same-day;
+  **1695 entries, 354 flagged `knownRansomwareCampaignUse: Known`,
+  39 added since 2026-08-01**. The flagship zero-credential feed
+  (exploited-in-the-wild CVEs + federal remediation due dates).
+- **CISA KEV CSV + JSON schema** — CSV lives under
+  `…/default/files/csv/` (the `/feeds/` CSV and XML variants
+  404 — recorded so nobody re-guesses them); schema JSON verified
+  (draft-07). Same content for CSV-native joins.
+- **CISA advisories RSS family** — `cybersecurity-advisories/
+  all.xml` (390 KB), `ics-advisories.xml` (478 KB),
+  `ics-medical-advisories.xml` (353 KB, joint CISA/FDA): RSS 2.0,
+  zero credential. Legacy US-CERT RSS is superseded by these
+  cisa.gov paths.
+- **NIST NVD CVE API 2.0** (`services.nvd.nist.gov/rest/json/cves/
+  2.0`) — works KEYLESS (measured: small query and an 11.3 MB
+  one-day modified-window query returning 522 CVEs; keyless rate
+  class 5 req/30 s); with the operator key (sent as `apiKey`
+  header) → 200, 50 req/30 s class. Keyless vs keyed BOTH
+  measured — the key buys headroom, not access.
+- **FBI IC3 RSS** — `ic3.gov/PSA/RSS` and `ic3.gov/CSA/RSS` → 200
+  (public-service announcements + industry alerts; fraud/scam
+  context rather than technical IOCs; PDF listings open).
+
+Determination on the indicator-exchange tier (the operator's
+"real-time threat intel" question, answered by the research
+inventory): **CISA AIS is free but NOT zero-credential** —
+enrollment (cisa.gov/ais) requires Terms-of-Use/MISA acceptance, a
+Federal Bridge CA PKI certificate, and a signed Interconnection
+Agreement with IP allowlisting; no open MISP-format feed is
+documented on current CISA pages. Also gated or relationship-only:
+FBI InfraGard (membership; both FBI targets 403 automated fetch),
+JCDC (contact program, no feed), MS-ISAC (membership,
+unverified). NSA advisory pages return 403 to automated fetch.
+Treasury OFAC cyber-sanctions data (incl. digital-currency-address
+IOCs) is portal-access with presigned downloads — no stable static
+URL to hardcode. StopRansomware.gov 302s into cisa.gov (no
+dedicated feed). Net: the US government's zero-credential
+machine-readable tier is exactly the validated block above, and
+the lab now stages all of it.
+
 **Cyware ThreatFeed TAXII subscription — VALIDATED 2026-09-07.** The
 operator staged subscriber credentials for a TAXII 2.1 threat-feed
 aggregation (ThreatFox, Malware Bazaar, abuse.ch, Emerging Threats,
