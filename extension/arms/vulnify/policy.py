@@ -7,7 +7,7 @@ from pathlib import Path
 ARM_ID = "vulnify"
 
 # Read tier: exact lookups over a local vulnerability feed. There is no
-# dispatch tier: the arm is an in-process stdlib reader with no
+# dispatch tier: the arm is an in-process bounded local-file reader with no
 # subprocess, no endpoint, and no network on any tier.
 ALLOWED_ACTIONS = frozenset({"lookup", "list_vulns"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
@@ -38,7 +38,7 @@ CAVEATS = (
 
 ARMING = (
     "pass args.feed (path to a local vulnerability feed file); "
-    "every record traces to a pinned snapshot digest"
+    "every record traces to the supplied snapshot's exact-byte digest"
 )
 
 

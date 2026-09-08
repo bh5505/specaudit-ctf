@@ -7,7 +7,7 @@ from pathlib import Path
 ARM_ID = "claude-ad"
 
 # Read tier: AD methodology lookups over a local techniques file.
-# There is no dispatch tier: the arm is an in-process stdlib reader
+# There is no dispatch tier: the arm is an in-process bounded local-file reader
 # with no subprocess, no endpoint, and no network on any tier.
 ALLOWED_ACTIONS = frozenset(
     {"technique", "list_techniques", "list_prerequisites"}

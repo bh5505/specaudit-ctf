@@ -46,7 +46,7 @@ from .policy import (
 class LeonidasArm:
     """Specialized transport for catalog id leonidas.
 
-    First-party in-process read arm: a stdlib reader over a local
+    First-party in-process read arm: a bounded reader over a local
     Leonidas cloud attack corpus with no subprocess and no endpoint.
     ``installed`` reports handler presence only — the corpus is
     per-invoke caller data (args.corpus), the same contract as every

@@ -6,8 +6,8 @@ from pathlib import Path
 
 ARM_ID = "ad-pathfinder"
 
-# Read tier: lookups over an exported AD path JSON file. There is no
-# dispatch tier: the arm is an in-process stdlib reader with no
+# Read tier: lookups over an exported AD path JSON or YAML file. There is no
+# dispatch tier: the arm is an in-process bounded local-file reader with no
 # subprocess, no endpoint, and no network on any tier.
 ALLOWED_ACTIONS = frozenset({"path", "list_paths", "list_datasources"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})

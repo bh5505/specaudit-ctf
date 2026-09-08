@@ -44,7 +44,7 @@ from .policy import (
 class SpecteropsSkillsArm:
     """Specialized transport for catalog id specterops-skills.
 
-    First-party in-process read arm: a stdlib YAML/JSON catalog reader
+    First-party in-process read arm: a bounded YAML/JSON catalog reader
     with no subprocess and no endpoint.  ``installed`` reports handler
     presence only — the corpus is per-invoke caller data (args.catalog),
     the same contract as every other file-consuming arm.

@@ -176,6 +176,14 @@ def test_r1_exception_preserves_declared_possible_effects(
         parsed = parse_execution_result(forged)
         assert REASON_PROFILE_MISMATCH in parsed.reasons
 
+    coordinated_downgrade = deepcopy(outcome.envelope)
+    coordinated_downgrade["budget"]["spent"]["tool_steps"] = 0
+    coordinated_downgrade["scope"]["touched"] = []
+    coordinated_downgrade["side_effects"] = ["none"]
+    coordinated_downgrade["limitations"] = ["invoke failed"]
+    parsed = parse_execution_result(coordinated_downgrade)
+    assert REASON_PROFILE_MISMATCH in parsed.reasons
+
     code = cli_main(
         ["invoke", "nmap", "scan", '{"target":"10.10.0.5"}']
     )

@@ -1,4 +1,4 @@
-"""Exact-allowlist rules for the m365pwned synthetic consent arm."""
+"""Exact-allowlist rules for the m365pwned consent-case reader."""
 
 from __future__ import annotations
 
@@ -22,7 +22,8 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 
 CAVEATS = (
     "the input contract is for synthetic cases, but an arbitrary operator file "
-    "is not independently proven synthetic; no tenant, mailbox, or file is accessed",
+    "is not independently proven synthetic; no Microsoft 365 tenant, mailbox, "
+    "or tenant-hosted file API is accessed",
     "permission claims come from the caller file and need verification against "
     "the relevant API-owner documentation before operational use",
     "This arm is an educational read-only reference, not an active consent "
@@ -31,7 +32,7 @@ CAVEATS = (
 
 ARMING = (
     "pass args.cases_file (path to a local JSON or YAML file containing "
-    "synthetic case studies)"
+    "case studies intended to be synthetic; the arm does not prove provenance)"
 )
 
 

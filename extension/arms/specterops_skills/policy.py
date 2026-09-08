@@ -7,7 +7,7 @@ from pathlib import Path
 ARM_ID = "specterops-skills"
 
 # Read tier: exact lookups over a local SpecterOps skills catalog.
-# There is no dispatch tier: the arm is an in-process stdlib reader
+# There is no dispatch tier: the arm is an in-process bounded local-file reader
 # with no subprocess, no endpoint, and no network on any tier.
 ALLOWED_ACTIONS = frozenset({"skill", "list_skills"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})

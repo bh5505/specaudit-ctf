@@ -1,4 +1,4 @@
-"""Curated m365pwned arm: strict reads over synthetic M365 cases."""
+"""Curated m365pwned arm: strict reads over local M365 consent cases."""
 
 from __future__ import annotations
 
@@ -50,11 +50,11 @@ _MAX_ITEMS = 50_000
 
 
 class _CasesError(ValueError):
-    """The synthetic case corpus violates its closed schema."""
+    """The caller-supplied case corpus violates its closed schema."""
 
 
 class M365PwnedArm:
-    """Read-only synthetic consent scenarios with explicit risk fields."""
+    """Read-only consent case scenarios with explicit risk fields."""
 
     ARM_ID = ARM_ID
     protocol = TRANSPORT_CLI
@@ -71,7 +71,7 @@ class M365PwnedArm:
         if action not in ALLOWED_ACTIONS:
             return _fail(
                 spec, action,
-                f"action {action!r} is not on the allowlist (synthetic case reads only; arming: {ARMING})",
+                f"action {action!r} is not on the allowlist (local consent-case reads only; arming: {ARMING})",
             )
         refusal = args_refusal(action, payload)
         if refusal:

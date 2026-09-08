@@ -7,7 +7,7 @@ from pathlib import Path
 ARM_ID = "gpohound"
 
 # Read tier: exact lookups over a local GPO policy evidence file.
-# There is no dispatch tier: the arm is an in-process stdlib reader
+# There is no dispatch tier: the arm is an in-process bounded local-file reader
 # with no subprocess, no endpoint, and no network on any tier.
 ALLOWED_ACTIONS = frozenset({"policy", "list_policies", "list_links"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})

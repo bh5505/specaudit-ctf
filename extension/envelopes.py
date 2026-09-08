@@ -880,17 +880,23 @@ def _invoke_profile_mismatch(payload: Mapping[str, Any]) -> bool:
     transport_ok = payload.get("transport_ok")
     if transport_ok is True and not arm_entered:
         return True
-    if transport_ok is False and arm_entered:
-        expected_coverage = {
-            "attempted": [profile.capability_id],
-            "complete": [],
-            "skipped": [],
-            "unsupported": [],
-            "failed": [profile.capability_id],
-            "required": [profile.capability_id],
-        }
-        if payload.get("coverage") != expected_coverage:
+    expected_failed_coverage = {
+        "attempted": [profile.capability_id],
+        "complete": [],
+        "skipped": [],
+        "unsupported": [],
+        "failed": [profile.capability_id],
+        "required": [profile.capability_id],
+    }
+    failed_coverage = coverage == expected_failed_coverage
+    if transport_ok is False:
+        # Failed required coverage means the admitted arm was entered.  Make
+        # that implication bidirectional so a forged envelope cannot retain
+        # the failed-coverage claim while coherently rewriting the other
+        # post-entry fields to a zero-step, no-effects shape.
+        if arm_entered != failed_coverage:
             return True
+    if transport_ok is False and arm_entered:
         limitations = payload.get("limitations")
         if (
             not isinstance(limitations, list)

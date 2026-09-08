@@ -1,9 +1,9 @@
 """Tier rules for the rubeus CLI arm: deweaponized AD telemetry reads.
 
-This arm reads from a local JSON file containing deweaponized Active
-Directory telemetry data.  No real tickets, hashes, or secrets are
-distributed.  Legitimate administration is not automatically classified
-as compromise.
+This arm reads from a local JSON or JSONL file containing deweaponized
+Active Directory telemetry data.  Indicator values must be explicit
+redaction sentinels and are never returned.  Legitimate administration is
+not automatically classified as compromise.
 """
 
 from __future__ import annotations
@@ -50,8 +50,8 @@ def telemetry_refusal(
 ) -> tuple[Path | None, str | None]:
     """Validate a caller-supplied local telemetry file path.
 
-    Egress gate: the file must be an existing local file with a
-    .json suffix; URLs are refused.  Returns (path, None) or
+    Egress gate: the file must be an existing local JSON or JSONL file;
+    URLs are refused.  Returns (path, None) or
     (None, refusal).
     """
     if not isinstance(raw, str) or not raw.strip():

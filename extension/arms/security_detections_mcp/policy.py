@@ -2,8 +2,8 @@
 
 Curated local rule reads over operator-supplied frozen detection indexes.  No rule
 generation, index mutation, deployment, or hosted fallback on the read
-path.  Every result is source-attributable.  Per-corpus licensing must
-be reviewed by the operator before use.
+path.  Every result identifies the operator file's exact input bytes;
+source revision, custody, and licensing remain operator gates.
 """
 
 from __future__ import annotations

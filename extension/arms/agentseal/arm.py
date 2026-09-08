@@ -45,7 +45,7 @@ from .policy import (
 class AgentSealArm:
     """Specialized transport for catalog id agentseal.
 
-    First-party in-process read arm: a stdlib static analysis fixture
+    First-party in-process read arm: a bounded static analysis fixture
     reader with no subprocess and no endpoint.  ``installed`` reports
     handler presence only — the corpus is per-invoke caller data
     (args.fixture), the same contract as every other file-consuming arm.

@@ -45,7 +45,7 @@ from .policy import (
 class SecurityDetectionsMcpArm:
     """Specialized transport for catalog id security-detections-mcp.
 
-    First-party in-process read arm: a stdlib detection-rule reader with
+    First-party in-process read arm: a bounded detection-rule reader with
     no subprocess and no endpoint.  ``installed`` reports handler
     presence only — the index is per-invoke caller data (args.index).
     """
