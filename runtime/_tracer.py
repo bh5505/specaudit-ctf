@@ -9,7 +9,7 @@ under a different interpreter (a newer/older CPython, a differently built
 either loads or falls back to pure Python) and would make the trace lie
 about what the real bundle needs.
 
-Two sealed invocations are traced, each in its own fresh subprocess so
+Three sealed invocations are traced, each in its own fresh subprocess so
 its ``sys.modules`` classification stays per-invocation truth:
 
 - ``cli-json-invoke`` is the trusted one-shot CLI encode:
@@ -24,6 +24,11 @@ its ``sys.modules`` classification stays per-invocation truth:
   requests with valid JSON-RPC results — initialize echoing a supported
   protocol revision and tools/list naming exactly the four advertised
   tools — and exit 0 on EOF. Anything else is a tracer failure.
+
+- ``asset-recon-worker`` exercises the isolated worker entrypoint with
+  an unknown operation. Startup imports the live worker dependencies, but
+  the request must produce a typed refusal before resource limits or any
+  provider/target operation. No network is used by this trace.
 
 Every module left in ``sys.modules`` after an invocation is classified
 into ``stdlib`` (top-level name is in ``sys.stdlib_module_names``),
@@ -42,6 +47,7 @@ import runpy
 import sys
 
 CLI_TRACE_ARGV = ["invoke", "agent-wiz", "list_tools", "{}"]
+WORKER_TRACE_STDIN = b'{"operation":"runtime-refusal-check"}'
 _IGNORED_NAMES = frozenset({"__main__"})
 
 # The handshake script and its response contract are single-sourced from
@@ -267,9 +273,30 @@ def trace_stdio_mcp_server() -> dict[str, list[dict[str, str]]]:
     return buckets
 
 
+def trace_asset_recon_worker() -> dict[str, list[dict[str, str]]]:
+    """Trace the real worker entrypoint with a non-executable request."""
+    saved_stdin, saved_argv = sys.stdin, sys.argv
+    sys.stdin = io.TextIOWrapper(io.BytesIO(WORKER_TRACE_STDIN), encoding="utf-8")
+    sys.argv = ["-m"]
+    stdout, stderr = io.StringIO(), io.StringIO()
+    try:
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            runpy.run_module("extension.arms.assetrecon.worker", run_name="__main__", alter_sys=True)
+    finally:
+        sys.stdin, sys.argv = saved_stdin, saved_argv
+    try:
+        result = json.loads(stdout.getvalue())
+    except ValueError as exc:
+        raise RuntimeError("worker startup did not return JSON refusal") from exc
+    if not isinstance(result, dict) or result.get("ok") is not False or not result.get("error"):
+        raise RuntimeError("worker startup did not refuse the unknown operation")
+    return _classify_final_modules()
+
+
 TRACE_FUNCTIONS = {
     "cli-json-invoke": trace_cli_invoke,
     "stdio-mcp-server": trace_stdio_mcp_server,
+    "asset-recon-worker": trace_asset_recon_worker,
 }
 
 

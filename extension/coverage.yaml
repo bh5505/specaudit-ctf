@@ -316,7 +316,7 @@ entries:
     protocols: [cli]
     curated: true
     tier: research
-    notes: Network service discovery. Curated CLI arm over the user's own nmap (NPSL; never bundled); single-host targets, closed flag sets (connect/version, fixed -T4, top-ports default), XML on stdout capped and redacted; scan dispatch gated by NMAP_DISPATCH_SCOPE.
+    notes: Network service discovery. Curated CLI arm over the user's own nmap (NPSL; never bundled); single-host targets, closed flag sets (connect/version/version-light, fixed -T4, top-ports default), XML on stdout capped and redacted; scan dispatch gated by NMAP_DISPATCH_SCOPE. version-light disables discovery and reverse DNS and uses unprivileged TCP version probes.
 
   - id: page-fetch
     kind: arm
@@ -372,3 +372,10 @@ entries:
     curated: true
     tier: research
     notes: Ad-hoc threat-intel extraction from an operator-supplied DNS Response Policy Zone. decode turns an AXFR dump into raw IP/CIDR and domain indicator lists (action-tagged, written to files, sampled in the result); fetch is a dispatch-gated dig AXFR using a 0600 TSIG key file, status a keyless SOA probe. No schedule, no appliance; no zone data or account identifiers ship in the repo.
+
+  - id: asset-recon
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: First-party bounded asset reconnaissance. Offline plan/parse and explicit CT, PTR, registry and passive-provider discovery share one evidence graph. Live provider reads require live=true and exact ASSET_RECON_PROVIDERS grants; probe requires live=true and ASSET_RECON_PROBE_SCOPE, plus the existing tool scope for delegated scanners. Discovered names and graph edges never grant probe authority. Partial results retain evidence but are not complete. No background enumeration or automatic probing.

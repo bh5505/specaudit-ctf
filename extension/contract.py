@@ -515,6 +515,8 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.ike_readtier import IkeReadtierArm
     from .arms.rpzdecoder import ARM_ID as RPZ_DECODER_ARM_ID
     from .arms.rpzdecoder import RpzDecoderArm
+    from .arms.assetrecon import ARM_ID as ASSET_RECON_ARM_ID
+    from .arms.assetrecon import AssetReconArm
 
     return {
         BURP_ARM_ID: BurpArm(),
@@ -550,6 +552,7 @@ def _default_arms() -> dict[str, Transport]:
         SNMP_READTIER_ARM_ID: SnmpReadtierArm(),
         IKE_READTIER_ARM_ID: IkeReadtierArm(),
         RPZ_DECODER_ARM_ID: RpzDecoderArm(),
+        ASSET_RECON_ARM_ID: AssetReconArm(),
     }
 
 

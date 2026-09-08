@@ -188,6 +188,36 @@ def test_scan_default_top_ports_argv(armed: Path) -> None:
     assert argv == ["-sT", "-T4", "-oX", "-", "--top-ports", "100", "lab.internal"]
 
 
+def test_version_light_is_closed_and_uses_no_discovery_or_dns(armed: Path) -> None:
+    result = NmapArm().invoke(
+        _spec(), "scan", {"target": "10.10.0.5", "mode": "version-light", "ports": [443]},
+    )
+    assert result.ok
+    assert json.loads(result.output["output"])["argv"] == [
+        "-sT", "-sV", "--version-light", "-Pn", "-n", "--unprivileged",
+        "-T4", "-oX", "-", "-p", "443", "10.10.0.5",
+    ]
+
+
+@pytest.mark.parametrize("target", ("2001:db8::10", "[2001:db8::10]"))
+def test_ipv6_scope_and_binary_argv_are_both_canonical(
+    armed: Path, target: str, monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("NMAP_DISPATCH_SCOPE", "2001:db8::/64")
+    result = NmapArm().invoke(_spec(), "scan", {
+        "target": target, "mode": "version-light", "ports": [443],
+    })
+    assert result.ok
+    audit = capsys.readouterr().err
+    assert "scope=2001:db8::/64 target=[2001:db8::10]" in audit
+    assert result.output["dispatch"]["target"] == "[2001:db8::10]"
+    assert json.loads(result.output["output"])["argv"] == [
+        "-6", "-sT", "-sV", "--version-light", "-Pn", "-n", "--unprivileged",
+        "-T4", "-oX", "-", "-p", "443", "2001:db8::10",
+    ]
+
+
 def test_scan_nonzero_exit_is_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     binary = _fake_binary(tmp_path, FAIL_BODY)
     monkeypatch.setenv("NMAP_BIN", str(binary))

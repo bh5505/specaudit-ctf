@@ -36,6 +36,7 @@ def _fake_binary(tmp_path: Path, body: str, stem: str = "nmap") -> Path:
 
 def test_dispatch_profiles_are_admitted_with_honest_truth() -> None:
     expected = {
+        "asset-recon.probe",
         "nmap.scan",
         "zaproxy.ascan_scan",
         "zaproxy.spider_scan",

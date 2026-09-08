@@ -130,6 +130,18 @@ and module blueprints. Current runnable coverage is deliberately partial. Empty
 or design-ready areas are program truth, not an invitation to overclaim the
 existing telecom/AWS rehearsal as a complete telecom stack.
 
+## Asset-association evidence practice
+
+The [asset reconnaissance capability](docs/scope-recon.md) provides a bounded
+inventory-association exercise across CT, DNS, certificate fingerprints,
+ASN/registry and optional Shodan evidence. It supports `FND-*`, `AUD-*`,
+`CYB-01/05/09` and synthetic telecom responsibility cases by making source
+paths, exclusions, competing explanations and missing evidence reviewable.
+Its separately armed observation action does not make discovered candidates
+authorized targets. The offline analyst worksheet is available as teaching
+material; it is not a new machine-scored challenge, a maintained-support
+promotion or implementation of the proposed non-fixture grading bridge.
+
 ## Governance and learning lifecycle
 
 Program, source, and runtime decisions live in three independent registers:
