@@ -13,8 +13,66 @@ This tree is the public attach surface:
 - `mcp_server.py` — stdio MCP for four tools (`list`, `describe`,
   `invoke`, `run_range`)
 - `arms/dispatch.py` — two-tier scope gate
+- `observations.py` / `observation_profiles.py` — opt-in, pure trusted-side
+  binding for one `vulnify.lookup` result; not an invocation surface
 
 A validation client may attach the same CLI or MCP surface later.
+
+## Opt-in trusted observations
+
+The default runtime does not import or call the observation sidecar.
+`extension.observations` exposes four explicit functions:
+
+- `issue_source_admission(...)` creates a deterministic, per-attempt source
+  admission from validator-held raw bytes and caller-supplied source,
+  authority, custody, revision, time, subject, producer and validity fields;
+- `verify_source_admission(...)` re-parses those raw bytes and checks the
+  complete admission plus its content-derived id;
+- `derive_trusted_observation(...)` accepts a semantic-complete execution
+  envelope, exact policy-report bytes and exact raw bytes, or raises with typed
+  reason codes; and
+- `verify_trusted_observation(...)` re-derives the complete document and also
+  rejects ids present in the validator-supplied replay set.
+
+The replay set is a required argument; an explicitly empty set is appropriate
+only before the first accepted observation in a new durable ledger.
+The observation id is a stable v1 replay identity derived from the schema,
+capability and validator-created attempt id; it is not a content digest. This
+one-profile contract permits one accepted observation per attempt, so neither
+re-verification time nor a numerically equivalent envelope encoding can mint a
+fresh identity. The admission and binding digests plus full re-derivation—not
+the observation id—detect document or evidence mismatch.
+
+The frozen sidecar registry contains only `vulnify.lookup`. It accepts a
+standard CVE-id selector, exactly one `policy-report` artifact, and the
+first-party JSON/JSONL/YAML feed projection. The raw parser is shared with the
+arm, so the selected record, exact-byte digest/length and normalized full-record
+digest are independently recomputed rather than accepted from result prose.
+Both contracts have closed structural Draft-07 schemas under `schema/`; callers
+must still use the runtime verifiers for cross-field time ordering/duration,
+content identities, replay and byte bindings. The runtime has no `jsonschema`
+dependency.
+
+An admission validity interval is limited to 24 hours. This is a maximum, not
+a freshness claim; operators should use the shortest interval their run needs.
+
+The sidecar performs no I/O, clock read, dispatch, persistence or state
+mutation. The caller supplies already-acquired immutable bytes and all times.
+It does not add a CLI/MCP tool, invocation profile, catalog row or manifest;
+does not modify execution-result v1, traces or fixture grading; and grants no
+finding, workpaper, lifecycle, support-tier, rights or source-promotion
+authority. The observation is a source-declared CVE record with applicability
+explicitly not assessed.
+
+The custody fields are assertions by the trusted validator. Execution-result
+v1 does not say whether a result carrying an attempt id also used
+`--artifact-dir`, so this pure helper cannot prove descriptor-relative Mode-A
+acquisition. `validator-attested-mode-a` must be backed by the operator's
+actual Mode-A receipt/read and retained replay state. The admission JSON is
+content-bound but unsigned; the trusted caller still owns issuer
+authentication, pre-attempt creation, channel custody and durable append-only
+storage. R01 remains an unselected research source with unreviewed rights in
+the partial governance register, so no default R01 admission exists.
 
 ## Asset reconnaissance
 
@@ -101,8 +159,10 @@ data actions are deliberately `synthetic_only: false` because local and
 read-only does not mean the supplied evidence is synthetic. The v1 manifest
 still has a static policy URI in `touched_scope`, not the dynamic caller path;
 that field is not proof of file custody. Input containment, content digests,
-source attribution, data rights, and the future trusted-observation bridge are
-separate gates.
+source attribution and data rights remain separate gates. The opt-in
+`vulnify.lookup` sidecar above binds one caller artifact only when a trusted
+validator supplies a separate pre-attempt admission and the exact raw and
+Mode-A result bytes; it does not make other reader results trusted.
 
 - `attack-stix-data` — exact `technique`, `software`, `group`, and bounded
   `relationships` reads over a local STIX bundle; no downloader or broad

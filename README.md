@@ -146,8 +146,41 @@ The current v1 profiles carry a static policy URI in `touched_scope`; they do
 not dynamically bind the caller-selected path. That is a known manifest and
 governance limitation, so the scope field is not evidence of which file was
 read. The arm's bounded input checks and returned content digest remain
-necessary, and a future versioned observation contract must bind the actual
-artifact without weakening the static admission registry.
+necessary. An initial opt-in observation sidecar now binds one admitted
+`vulnify.lookup` slice to the exact raw and result bytes without weakening or
+changing the static admission registry.
+
+### Opt-in trusted-observation slice
+
+`extension.observations` implements the first, deliberately narrow EVID-01
+mechanism. A trusted validator can create a per-attempt
+`specaudit.ctf.source-admission.v1`, then derive and later verify a
+`specaudit.ctf.trusted-observation.v1` for one exact CVE record. Derivation
+requires a reason-free semantic-`complete` `vulnify.lookup` envelope with a
+matching non-null attempt id, one matching `policy-report` artifact, its exact
+canonical Mode-A bytes, and the exact raw feed bytes. The verifier re-parses
+the raw feed with the arm's normalization contract and binds the admission,
+envelope, policy report, source digest/length, record-set digest, source
+revision/time, subject, scope, producer revision, and validity window.
+
+This is a pure API, not a CLI or MCP tool, and `extension` does not import it by
+default. It changes no manifest, action, trace, challenge, grading, finding, or
+governance state. The only observation profile is `vulnify.lookup`; its record
+is classified `declared` and applicability is always `not-assessed`. There is
+no default source or revision: the current research mapping for R01 has no
+selected source revision or rights clearance and cannot mint an admission.
+
+The trusted caller must already hold the source bytes, attest that the result
+artifact came from the validator-owned Mode-A channel, and retain observation
+ids for replay rejection. Execution-result v1 also permits an attempt id
+without an artifact directory, so the sidecar records
+`validator-attested-mode-a`; it cannot independently prove the filesystem
+channel, admission authorship, or pre-existence. JSON hashes provide binding,
+not signatures. See [the extension contract](extension/README.md#opt-in-trusted-observations),
+[operator procedure](OPERATIONS.md#opt-in-vulnify-observation-slice), and the
+closed [source-admission](extension/schema/source-admission.v1.schema.json) and
+[trusted-observation](extension/schema/trusted-observation.v1.schema.json)
+schemas.
 
 Dispatch-class admission (2026-09-01, continued through 2026-09-05) adds
 exactly sixteen scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,

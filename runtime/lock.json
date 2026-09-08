@@ -1749,7 +1749,7 @@
     "extension/arms/stratus/policy.py": "52232afd7755e32fba15f3160bd1695d94bbb3518ef462ffaa9e6387fdd61cbe",
     "extension/arms/strict_data.py": "46f1a79ec954f3e4ee5e84811273314e997b11e9ff3b8237e17fb730e150f5a5",
     "extension/arms/vulnify/__init__.py": "b1d938106b64ce4c26275e1f3f99f4f2e95d5b92db9e1770fafac18c440db9d7",
-    "extension/arms/vulnify/arm.py": "0fd264a168aac26c569abb78f290012ef0d06f54e661bb76be99feb807b6b355",
+    "extension/arms/vulnify/arm.py": "67f61785c2c260de674e23daad8df6d629f150cc8a47abdb43f7b566871e8486",
     "extension/arms/vulnify/policy.py": "70d52593eb9f79045a5114e7ec4c1c76dc793319e1475967d25bee69bac4a5e1",
     "extension/arms/vuls/__init__.py": "223de37585440038b05544757d67de332613503344b8887c4968d95c25b5d391",
     "extension/arms/vuls/arm.py": "2cb12d25c4e7d98462d64c0ea8e61c090919bbeb351b7a193264665e728d8138",
