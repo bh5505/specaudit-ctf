@@ -877,6 +877,35 @@ def test_inventory_only_profile_drift_is_caught_by_global_snapshot(registry) -> 
     assert "runtime-contract-mismatch" not in _codes(report)
 
 
+@pytest.mark.parametrize("mutation", ["add", "delete"])
+def test_post_snapshot_inventory_record_roster_mutation_cannot_pass(
+    registry, mutation: str
+) -> None:
+    inventory = snapshot_invoke_profiles(INVOKE_PROFILES)
+    if mutation == "add":
+        extra = copy.deepcopy(dict(inventory.records["nmap.list_tools"]))
+        extra.update(
+            {
+                "arm_id": "fabricated",
+                "action": "read",
+                "capability_id": "fabricated.read",
+            }
+        )
+        inventory.records["fabricated.read"] = extra
+    else:
+        del inventory.records["nmap.list_tools"]
+
+    report = _validate(registry, inventory)
+
+    assert not report.integrity_ok
+    assert "authoritative-inventory-record-roster-mismatch" in _codes(
+        report, path="inventory.records"
+    )
+    assert "authoritative-inventory-object-mutated" in _codes(
+        report, path="inventory"
+    )
+
+
 def test_profile_contract_drift_cannot_pass(registry) -> None:
     profiles = dict(INVOKE_PROFILES)
     profiles["vulnify.lookup"] = replace(

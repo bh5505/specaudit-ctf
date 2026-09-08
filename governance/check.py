@@ -1471,10 +1471,26 @@ def validate_register(
             "runtime_inventory.authority",
             f"expected {INVENTORY_AUTHORITY_ID!r}",
         )
+    inventory_record_ids: tuple[str, ...] = ()
     try:
+        inventory_record_ids = tuple(sorted(inventory.records))
+        missing_record_ids = sorted(
+            set(inventory.capability_ids) - set(inventory_record_ids)
+        )
+        added_record_ids = sorted(
+            set(inventory_record_ids) - set(inventory.capability_ids)
+        )
+        if missing_record_ids or added_record_ids:
+            _add(
+                issues,
+                "integrity",
+                "authoritative-inventory-record-roster-mismatch",
+                "inventory.records",
+                f"missing={missing_record_ids!r}; added={added_record_ids!r}",
+            )
         inventory_snapshot = [
             inventory.records[capability_id]
-            for capability_id in inventory.capability_ids
+            for capability_id in inventory_record_ids
         ]
         inventory_object_sha256 = _sha256(inventory_snapshot)
     except (KeyError, TypeError, ValueError) as exc:
