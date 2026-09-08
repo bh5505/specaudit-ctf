@@ -518,6 +518,15 @@ def _sha256(value: Any) -> str:
     return "sha256:" + hashlib.sha256(_canonical_json(value)).hexdigest()
 
 
+def _strict_json_equal(left: Any, right: Any) -> bool:
+    """Compare JSON-like values without Python's bool/int/float equivalence."""
+
+    try:
+        return _canonical_json(left) == _canonical_json(right)
+    except (TypeError, ValueError):
+        return False
+
+
 def _profile_record(profile: Any) -> dict[str, Any]:
     record: dict[str, Any] = {}
     for field in _PROFILE_FIELDS:
@@ -910,6 +919,11 @@ def _load_policy_action_arguments(
             # list_tools is served by the common policy surface and accepts no args.
             normalized.setdefault("list_tools", ())
             result[arm_id] = normalized
+        except SystemExit as exc:
+            raise RegisterLoadError(
+                f"cannot read {module_name} action policy: "
+                f"SystemExit({exc.code!r})"
+            ) from exc
         except Exception as exc:
             _add(
                 issues,
@@ -978,7 +992,7 @@ def _github_heading_anchors(markdown: str) -> set[str]:
     occurrences: dict[str, int] = {}
     try:
         tokens = MarkdownIt("commonmark").parse(markdown)
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         raise RegisterLoadError(
             f"cannot parse evidence Markdown: {type(exc).__name__}: {exc}"
         ) from exc
@@ -1035,7 +1049,7 @@ def _check_evidence_ref(
     evidence_ref: Any,
     *,
     path: str,
-    cache: dict[Path, set[str]],
+    cache: dict[Path, set[str] | str],
     issues: list[ValidationIssue],
 ) -> None:
     if not isinstance(evidence_ref, str) or evidence_ref.count("#") != 1:
@@ -1079,14 +1093,23 @@ def _check_evidence_ref(
     try:
         resolved = candidate.resolve(strict=True)
         resolved.relative_to(REPOSITORY_ROOT)
-        anchors = cache.get(resolved)
+        cached = cache.get(resolved)
+        if isinstance(cached, str):
+            raise RegisterLoadError(cached)
+        anchors = cached
         if anchors is None:
-            snapshot = _read_file_snapshot(
-                resolved, label="evidence document", max_bytes=MAX_EVIDENCE_BYTES
-            )
-            anchors = _github_heading_anchors(
-                _strict_utf8(snapshot.data, label="evidence document")
-            )
+            try:
+                snapshot = _read_file_snapshot(
+                    resolved,
+                    label="evidence document",
+                    max_bytes=MAX_EVIDENCE_BYTES,
+                )
+                anchors = _github_heading_anchors(
+                    _strict_utf8(snapshot.data, label="evidence document")
+                )
+            except (OSError, RegisterLoadError, ValueError) as exc:
+                cache[resolved] = str(exc)
+                raise
             cache[resolved] = anchors
     except (OSError, RegisterLoadError, ValueError) as exc:
         _add(
@@ -1344,7 +1367,10 @@ def validate_register(
             "schema",
             f"expected {REGISTER_SCHEMA_ID!r}",
         )
-    if document.get("schema_version") != REGISTER_SCHEMA_VERSION:
+    if (
+        type(document.get("schema_version")) is not int
+        or document["schema_version"] != REGISTER_SCHEMA_VERSION
+    ):
         _add(
             issues,
             "integrity",
@@ -1472,7 +1498,10 @@ def validate_register(
             "authoritative inventory records no longer match their contract digest",
         )
     expected_ids = tuple(inventory_doc["capability_ids"])
-    if inventory_doc["expected_count"] != len(expected_ids):
+    if (
+        type(inventory_doc.get("expected_count")) is not int
+        or inventory_doc["expected_count"] != len(expected_ids)
+    ):
         _add(
             issues,
             "integrity",
@@ -1551,7 +1580,7 @@ def validate_register(
         expected_contract = PR97_CONTRACT_TEMPLATES.get(contract_id)
         if contract is None or expected_contract is None:
             continue
-        if _contract_signature(contract) != expected_contract:
+        if not _strict_json_equal(_contract_signature(contract), expected_contract):
             _add(
                 issues,
                 "integrity",
@@ -1619,7 +1648,7 @@ def validate_register(
 
     for capability_id, row in runtime.items():
         row_path = f"runtime:{capability_id}"
-        if row.get("record_version") != 1:
+        if type(row.get("record_version")) is not int or row["record_version"] != 1:
             _add(
                 issues,
                 "integrity",
@@ -1727,7 +1756,7 @@ def validate_register(
                 if expected == "required":
                     matches = observed is not None
                 else:
-                    matches = observed == expected
+                    matches = _strict_json_equal(observed, expected)
                 if not matches:
                     _add(
                         issues,
@@ -1894,7 +1923,7 @@ def validate_register(
 
     for source_id, row in sources.items():
         row_path = f"source:{source_id}"
-        if row.get("record_version") != 1:
+        if type(row.get("record_version")) is not int or row["record_version"] != 1:
             _add(
                 issues,
                 "integrity",
@@ -1986,7 +2015,7 @@ def validate_register(
 
     for module_id, row in modules.items():
         row_path = f"module:{module_id}"
-        if row.get("record_version") != 1:
+        if type(row.get("record_version")) is not int or row["record_version"] != 1:
             _add(
                 issues,
                 "integrity",
@@ -2042,11 +2071,12 @@ def validate_register(
     }
     relationship_ids: set[str] = set()
     relationship_signatures: dict[str, tuple[Any, ...]] = {}
+    expected_relationships = _expected_relationship_signatures()
     research_targets: dict[str, set[str]] = {}
     proposed_source_pairs: set[tuple[str, str]] = set()
     proposed_use_pairs: set[tuple[str, str]] = set()
     replacement_targets: dict[str, list[str]] = {}
-    evidence_anchor_cache: dict[Path, set[str]] = {}
+    evidence_anchor_cache: dict[Path, set[str] | str] = {}
     allowed_pairs = {
         "research-mapping": ("source", "runtime"),
         "proposed-source": ("module", "source"),
@@ -2063,10 +2093,19 @@ def validate_register(
         relationship_ids.add(rel_id)
         source_ref = relationship["from"]
         targets = relationship["to"]
+        record_version = relationship["record_version"]
+        if type(record_version) is not int or record_version != 1:
+            _add(
+                issues,
+                "integrity",
+                "unsupported-record-version",
+                f"{rel_path}.record_version",
+                "v1 supports only relationship record_version 1",
+            )
         relationship_signatures.setdefault(
             rel_id,
             (
-                relationship["record_version"],
+                record_version,
                 relationship["kind"],
                 source_ref,
                 tuple(targets),
@@ -2074,13 +2113,6 @@ def validate_register(
                 tuple(relationship["limitations"]),
             ),
         )
-        for evidence_index, evidence_ref in enumerate(relationship["evidence_refs"]):
-            _check_evidence_ref(
-                evidence_ref,
-                path=f"{rel_path}.evidence_refs[{evidence_index}]",
-                cache=evidence_anchor_cache,
-                issues=issues,
-            )
         if source_ref not in entity_refs:
             _add(
                 issues,
@@ -2171,7 +2203,6 @@ def validate_register(
                             "consumes requires an exact governed source binding",
                         )
 
-    expected_relationships = _expected_relationship_signatures()
     if set(relationship_signatures) != set(expected_relationships):
         _add(
             issues,
@@ -2182,7 +2213,9 @@ def validate_register(
             f"added={sorted(set(relationship_signatures) - set(expected_relationships))!r}",
         )
     for relationship_id in sorted(set(relationship_signatures) & set(expected_relationships)):
-        if relationship_signatures[relationship_id] != expected_relationships[relationship_id]:
+        observed_signature = relationship_signatures[relationship_id]
+        expected_signature = expected_relationships[relationship_id]
+        if not _strict_json_equal(observed_signature, expected_signature):
             _add(
                 issues,
                 "integrity",
@@ -2191,6 +2224,29 @@ def validate_register(
                 "version, kind, endpoints, evidence refs, or limitations differ "
                 "from the exact v1 baseline",
             )
+
+    relationships_exact = (
+        len(document["relationships"]) == len(expected_relationships)
+        and set(relationship_signatures) == set(expected_relationships)
+        and all(
+            _strict_json_equal(
+                relationship_signatures[relationship_id],
+                expected_relationships[relationship_id],
+            )
+            for relationship_id in expected_relationships
+        )
+    )
+    if relationships_exact:
+        for position, relationship in enumerate(document["relationships"]):
+            for evidence_index, evidence_ref in enumerate(
+                relationship["evidence_refs"]
+            ):
+                _check_evidence_ref(
+                    evidence_ref,
+                    path=f"relationships[{position}].evidence_refs[{evidence_index}]",
+                    cache=evidence_anchor_cache,
+                    issues=issues,
+                )
 
     for source_id, row in sources.items():
         source_ref = f"source:{source_id}"
@@ -2294,7 +2350,16 @@ def validate_register(
                 "promotion event is not referenced by its subject record",
             )
 
-    if not document["scope"]["repository_complete"]:
+    repository_complete_value = document["scope"]["repository_complete"]
+    if type(repository_complete_value) is not bool:
+        _add(
+            issues,
+            "integrity",
+            "scope-repository-complete-type-mismatch",
+            "scope.repository_complete",
+            "repository_complete must be a JSON boolean",
+        )
+    if repository_complete_value is not True:
         _add(
             issues,
             "completeness",
@@ -2310,7 +2375,7 @@ def validate_register(
             "runtime",
             f"{len(runtime)} of {len(inventory.capability_ids)} capabilities have detailed records",
         )
-    declared_repository_complete = bool(document["scope"]["repository_complete"])
+    declared_repository_complete = repository_complete_value is True
     if declared_repository_complete:
         _add(
             issues,
@@ -2398,7 +2463,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         print(json.dumps(payload, allow_nan=False, sort_keys=True), file=sys.stderr)
         return 2
-    except Exception as exc:
+    except (Exception, SystemExit) as exc:
         payload = {
             "schema": "specaudit.ctf.governance.validation-error.v1",
             "ok": False,

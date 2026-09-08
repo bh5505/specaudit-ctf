@@ -552,30 +552,36 @@ def test_raw_mapping_cannot_redefine_runtime_result_schema(
     }
 
 
+@pytest.mark.parametrize("value", [2, True, 1.0])
 @pytest.mark.parametrize(
     ("kind", "path"),
     [
         ("runtime", "runtime:vulnify.lookup.record_version"),
         ("source", "source:R01.record_version"),
         ("module", "module:CYB-05.record_version"),
+        ("relationship", "relationships[0].record_version"),
     ],
 )
 def test_raw_mapping_cannot_self_declare_new_entity_record_version(
-    registry, inventory, kind: str, path: str
+    registry, inventory, value: object, kind: str, path: str
 ) -> None:
     document = _copy_document(registry)
     if kind == "runtime":
         row = _runtime(document, "vulnify.lookup")
     elif kind == "source":
         row = _source(document, "R01")
-    else:
+    elif kind == "module":
         row = document["modules"][0]
-    row["record_version"] = 2
+    else:
+        row = document["relationships"][0]
+    row["record_version"] = value
 
     report = _validate(document, inventory)
 
     assert not report.integrity_ok
     assert _codes(report, path=path) == {"unsupported-record-version"}
+    if kind == "relationship":
+        assert "relationship-baseline-mismatch" in _codes(report)
 
 
 @pytest.mark.parametrize("kind", ["runtime", "source", "module", "relationship"])
@@ -595,6 +601,106 @@ def test_schema_rejects_new_entity_record_version(
 
     with pytest.raises(RegisterLoadError, match="1 was expected"):
         load_register(_write_register(tmp_path, document))
+
+
+@pytest.mark.parametrize("schema_version", [True, 1.0])
+def test_raw_mapping_schema_version_requires_exact_integer_type(
+    registry, inventory, schema_version: object
+) -> None:
+    document = _copy_document(registry)
+    document["schema_version"] = schema_version
+
+    report = _validate(document, inventory)
+
+    assert "register-schema-version-mismatch" in _codes(
+        report, path="schema_version"
+    )
+
+
+def test_raw_mapping_repository_complete_requires_boolean(
+    registry, inventory
+) -> None:
+    document = _copy_document(registry)
+    document["scope"]["repository_complete"] = 0
+
+    report = _validate(document, inventory)
+
+    assert "scope-repository-complete-type-mismatch" in _codes(
+        report, path="scope.repository_complete"
+    )
+    assert not report.repository_complete
+
+
+def test_raw_mapping_inventory_count_requires_exact_integer_type(
+    registry, inventory
+) -> None:
+    document = _copy_document(registry)
+    document["runtime_inventory"]["expected_count"] = 212.0
+
+    report = _validate(document, inventory)
+
+    assert "inventory-self-count-mismatch" in _codes(
+        report, path="runtime_inventory.expected_count"
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("timeout_ms", 30_000.0),
+        ("max_output_bytes", 1_048_576.0),
+        ("max_tool_steps", 1.0),
+        ("cleanup_required", 0),
+        ("default_off", 1),
+        ("synthetic_only", 1),
+        ("approval_required", 0),
+    ],
+)
+def test_raw_mapping_contract_baseline_uses_strict_json_types(
+    registry, inventory, field: str, value: object
+) -> None:
+    document = _copy_document(registry)
+    contract = next(
+        item
+        for item in document["contract_templates"]
+        if item["id"] == "policy-read-v1"
+    )
+    contract[field] = value
+
+    report = _validate(document, inventory)
+
+    assert "contract-template-mismatch" in _codes(
+        report, path="contract_template:policy-read-v1"
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("timeout_ms", 30_000.0),
+        ("max_output_bytes", 1_048_576.0),
+        ("max_tool_steps", 1.0),
+        ("cleanup_required", 0),
+        ("default_off", 1),
+        ("synthetic_only", 0),
+    ],
+)
+def test_authoritative_profile_contract_comparison_uses_strict_json_types(
+    registry, field: str, value: object
+) -> None:
+    profiles = dict(INVOKE_PROFILES)
+    profiles["vulnify.lookup"] = replace(
+        profiles["vulnify.lookup"], **{field: value}
+    )
+    inventory = snapshot_invoke_profiles(profiles)
+    document = _copy_document(registry)
+    document["runtime_inventory"]["contract_sha256"] = inventory.contract_sha256
+
+    report = _validate(document, inventory)
+
+    assert "runtime-contract-mismatch" in _codes(
+        report, path=f"runtime:vulnify.lookup.{field}"
+    )
 
 
 def test_loader_rejects_register_symlink(tmp_path: Path) -> None:
@@ -939,6 +1045,45 @@ def test_actual_policy_allowed_actions_cannot_narrow_independently(
     assert "policy-allowed-action-surface-mismatch" in _codes(
         report, path="policy:vulnify"
     )
+
+
+def test_policy_import_system_exit_fails_closed(
+    registry, inventory, monkeypatch
+) -> None:
+    original_import = governance_check.importlib.import_module
+    target = governance_check.PR97_POLICY_MODULES["vulnify"]
+
+    def terminating_import(name: str):
+        if name == target:
+            raise SystemExit(0)
+        return original_import(name)
+
+    monkeypatch.setattr(
+        governance_check.importlib,
+        "import_module",
+        terminating_import,
+    )
+
+    with pytest.raises(RegisterLoadError, match=r"SystemExit\(0\)"):
+        _validate(registry, inventory)
+
+
+def test_main_normalizes_internal_system_exit_to_exit_two(
+    monkeypatch, capsys
+) -> None:
+    def terminate(*args, **kwargs):
+        raise SystemExit(0)
+
+    monkeypatch.setattr(governance_check, "load_register", terminate)
+
+    exit_code = main(["check", "--as-of", "2026-09-08"])
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.out == ""
+    payload = json.loads(captured.err)
+    assert payload["ok"] is False
+    assert "SystemExit: 0" in payload["error"]
 
 
 @pytest.mark.parametrize(
@@ -1465,15 +1610,64 @@ def test_relationship_safety_caveat_and_version_are_exact(
     ],
 )
 def test_relationship_evidence_must_resolve_inside_repo_to_real_heading(
-    registry, inventory, evidence_ref: str, expected_code: str
+    evidence_ref: str, expected_code: str
+) -> None:
+    issues = []
+
+    governance_check._check_evidence_ref(
+        evidence_ref,
+        path="test.evidence_ref",
+        cache={},
+        issues=issues,
+    )
+
+    assert {issue.code for issue in issues} == {expected_code}
+
+
+def test_nonbaseline_relationship_evidence_is_not_resolved(
+    registry, inventory, monkeypatch
 ) -> None:
     document = _copy_document(registry)
-    document["relationships"][0]["evidence_refs"] = [evidence_ref]
+    document["relationships"][0]["evidence_refs"] = [
+        f"PROGRAM.md#untrusted-{index}" for index in range(5_000)
+    ]
+    calls: list[str] = []
+
+    def unexpected_evidence_check(evidence_ref, **kwargs):
+        calls.append(evidence_ref)
+
+    monkeypatch.setattr(
+        governance_check,
+        "_check_evidence_ref",
+        unexpected_evidence_check,
+    )
 
     report = _validate(document, inventory)
 
-    assert expected_code in _codes(report)
+    assert not report.integrity_ok
     assert "relationship-baseline-mismatch" in _codes(report)
+    assert calls == []
+
+
+def test_failed_evidence_document_parse_is_cached_once_per_path(
+    registry, inventory, monkeypatch
+) -> None:
+    parse_calls = 0
+
+    def fail_parse(markdown: str) -> set[str]:
+        nonlocal parse_calls
+        parse_calls += 1
+        raise RegisterLoadError("causal parser failure")
+
+    monkeypatch.setattr(governance_check, "_github_heading_anchors", fail_parse)
+
+    report = _validate(registry, inventory)
+
+    assert not report.integrity_ok
+    assert parse_calls == 2
+    assert sum(
+        issue.code == "invalid-evidence-ref" for issue in report.issues
+    ) == len(registry.document["relationships"])
 
 
 @pytest.mark.parametrize(
