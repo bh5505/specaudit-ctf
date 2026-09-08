@@ -786,16 +786,34 @@ _LIST_CASES = [
 ]
 
 
+_BATCH8_LOADER_CASES = [
+    (ad_pathfinder_module, "_load_export", "ad_export", R02_ID, AdPathfinderArm(), "list_paths", "export"),
+    (gpohound_module, "_load_evidence", "gpo_evidence", R08_ID, GpohoundArm(), "list_policies", "evidence"),
+    (claude_ad_module, "_load_method", "ad_method", R25_ID, ClaudeAdArm(), "list_techniques", "method_file"),
+    (numasec_module, "_load_ledger", "finding_ledger", R17_ID, NumasecArm(), "list_findings", "ledger"),
+    (rubeus_module, "_load_telemetry", "ad_telemetry", R36_ID, RubeusArm(), "list_telemetry", "telemetry_file"),
+    (m365pwned_module, "_load_cases", "m365_cases", R38_ID, M365PwnedArm(), "list_case_studies", "cases_file"),
+]
+
+
+def test_batch8_loader_regression_roster_is_exact() -> None:
+    pairs = [(row[3], row[1]) for row in _BATCH8_LOADER_CASES]
+    expected = {
+        (R02_ID, "_load_export"),
+        (R08_ID, "_load_evidence"),
+        (R25_ID, "_load_method"),
+        (R17_ID, "_load_ledger"),
+        (R36_ID, "_load_telemetry"),
+        (R38_ID, "_load_cases"),
+    }
+    assert len(_BATCH8_LOADER_CASES) == 6
+    assert len(pairs) == len(set(pairs))
+    assert set(pairs) == expected
+
+
 @pytest.mark.parametrize(
     "module,loader,fixture_name,arm_id,handler,action,path_key",
-    [
-        (ad_pathfinder_module, "_load_export", "ad_export", R02_ID, AdPathfinderArm(), "list_paths", "export"),
-        (gpohound_module, "_load_evidence", "gpo_evidence", R08_ID, GpohoundArm(), "list_policies", "evidence"),
-        (claude_ad_module, "_load_method", "ad_method", R25_ID, ClaudeAdArm(), "list_techniques", "method_file"),
-        (numasec_module, "_load_ledger", "finding_ledger", R17_ID, NumasecArm(), "list_findings", "ledger"),
-        (rubeus_module, "_load_telemetry", "ad_telemetry", R36_ID, RubeusArm(), "list_telemetry", "telemetry_file"),
-        (m365pwned_module, "_load_cases", "m365_cases", R38_ID, M365PwnedArm(), "list_case_studies", "cases_file"),
-    ],
+    _BATCH8_LOADER_CASES,
 )
 def test_every_batch8_direct_loader_boundary_contains_unexpected_exceptions(
     monkeypatch: pytest.MonkeyPatch,
@@ -1235,6 +1253,33 @@ _ALL_EVIDENCE_ACTIONS = [
     (m365pwned_module, "m365_cases", R38_ID, M365PwnedArm(), "list_case_studies", "cases_file", {}),
     (m365pwned_module, "m365_cases", R38_ID, M365PwnedArm(), "list_permissions", "cases_file", {"case_id": "C001"}),
 ]
+
+
+def test_batch8_data_action_regression_roster_is_exact() -> None:
+    pairs = [(row[2], row[4]) for row in _ALL_EVIDENCE_ACTIONS]
+    expected = {
+        (R02_ID, "path"),
+        (R02_ID, "list_paths"),
+        (R02_ID, "list_datasources"),
+        (R08_ID, "policy"),
+        (R08_ID, "list_policies"),
+        (R08_ID, "list_links"),
+        (R25_ID, "technique"),
+        (R25_ID, "list_techniques"),
+        (R25_ID, "list_prerequisites"),
+        (R17_ID, "finding"),
+        (R17_ID, "list_findings"),
+        (R17_ID, "list_transitions"),
+        (R36_ID, "telemetry"),
+        (R36_ID, "list_telemetry"),
+        (R36_ID, "list_indicators"),
+        (R38_ID, "case_study"),
+        (R38_ID, "list_case_studies"),
+        (R38_ID, "list_permissions"),
+    }
+    assert len(_ALL_EVIDENCE_ACTIONS) == 18
+    assert len(pairs) == len(set(pairs))
+    assert set(pairs) == expected
 
 
 @pytest.mark.parametrize(

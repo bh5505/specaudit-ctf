@@ -109,6 +109,7 @@ def dispatch_invoke(
             invoked = True
             result = extension.invoke(arm_id, action, payload)
         except ExtensionError as exc:
+            effects_possible = invoked and not isinstance(exc, NotInstalledError)
             envelope = encode_invoke_failure(
                 exc,
                 arm_id=arm_id,
@@ -116,7 +117,8 @@ def dispatch_invoke(
                 profile=profile,
                 started_at=started,
                 finished_at=utc_now(),
-                tool_steps=1 if invoked else 0,
+                tool_steps=1 if effects_possible else 0,
+                effects_possible=effects_possible,
                 invalid_args=exc is args_error and not invoked,
                 attempt_id=parsed_attempt,
                 artifact_dir=sink,
@@ -137,6 +139,7 @@ def dispatch_invoke(
                 started_at=started,
                 finished_at=utc_now(),
                 tool_steps=1 if invoked else 0,
+                effects_possible=invoked,
                 attempt_id=parsed_attempt,
                 artifact_dir=sink,
             )
@@ -165,6 +168,7 @@ def dispatch_invoke(
                     started_at=started,
                     finished_at=utc_now(),
                     tool_steps=1,
+                    effects_possible=True,
                     attempt_id=parsed_attempt,
                     artifact_dir=sink,
                 )

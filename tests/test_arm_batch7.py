@@ -1369,6 +1369,20 @@ def test_unexpected_loader_failures_do_not_escape_or_echo(
         (r42_arm, "_load_ledger", _ext(R42_ID, PentestkitArm()), R42_ID, "list_results", {"ledger": str(pentestkit_ledger)}),
         (r15_arm, "_load_scenarios", _ext(R15_ID, CollinearArm()), R15_ID, "list_scenarios", {"scenarios_file": str(collinear_scenarios)}),
     ]
+    loader_pairs = [(arm_id, target) for _, target, _, arm_id, _, _ in cases]
+    expected_loader_pairs = {
+        (R43_ID, "_load_index"),
+        (R35_ID, "_load_fixture"),
+        (R01_ID, "_load_feed"),
+        (R33_ID, "_load_corpus"),
+        (R03_ID, "_load_catalog"),
+        (R34_ID, "_read_bounded"),
+        (R42_ID, "_load_ledger"),
+        (R15_ID, "_load_scenarios"),
+    }
+    assert len(cases) == 8
+    assert len(loader_pairs) == len(set(loader_pairs))
+    assert set(loader_pairs) == expected_loader_pairs
     for module, target, extension, arm_id, action, payload in cases:
         with monkeypatch.context() as scoped:
             scoped.setattr(module, target, explode)
@@ -1468,6 +1482,35 @@ _ALL_BATCH7_DATA_ACTIONS = [
         },
     ),
 ]
+
+
+def test_batch7_data_action_regression_roster_is_exact() -> None:
+    pairs = [(row[2], row[4]) for row in _ALL_BATCH7_DATA_ACTIONS]
+    expected = {
+        (R43_ID, "list_rules"),
+        (R43_ID, "search_rules"),
+        (R43_ID, "get_rule"),
+        (R35_ID, "analyze"),
+        (R35_ID, "list_scenarios"),
+        (R01_ID, "lookup"),
+        (R01_ID, "list_vulns"),
+        (R33_ID, "technique"),
+        (R33_ID, "list_techniques"),
+        (R03_ID, "skill"),
+        (R03_ID, "list_skills"),
+        (R34_ID, "playbook"),
+        (R34_ID, "list_playbooks"),
+        (R34_ID, "list_rules"),
+        (R42_ID, "result"),
+        (R42_ID, "list_results"),
+        (R42_ID, "summary"),
+        (R15_ID, "scenario"),
+        (R15_ID, "list_scenarios"),
+        (R15_ID, "verify"),
+    }
+    assert len(_ALL_BATCH7_DATA_ACTIONS) == 20
+    assert len(pairs) == len(set(pairs))
+    assert set(pairs) == expected
 
 
 @pytest.mark.parametrize(

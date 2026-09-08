@@ -110,7 +110,12 @@ python -m extension invoke agent-wiz list_tools
   Stdout is `specaudit.ctf.execution-result.v1`. Process exit 0 is not
   `complete`. `transport_ok` is informational: it means the tool
   invocation/response transport succeeded, not that artifact custody
-  succeeded. Optional `--attempt-id attempt-<64 lowercase hex>` is echoed
+  succeeded. A zero-step pre-invocation refusal reports no touched scope and
+  `none` effects. If an entered arm throws, the failed envelope instead
+  reports the admitted profile's touched scope and side effects as conservative
+  bounds, with an explicit partial-or-unknown-effects limitation; those fields
+  are not proof that every declared effect occurred.
+  Optional `--attempt-id attempt-<64 lowercase hex>` is echoed
   on every structurally valid result for that attempt. Optional
   `--artifact-dir ABSOLUTE_DIR` is a validator-owned response channel
   (not profile `local-write`): it requires a valid attempt id and a

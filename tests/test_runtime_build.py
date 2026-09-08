@@ -61,7 +61,9 @@ def _unseal(root: Path) -> None:
         _chmod_tree(root, dirs=0o755, files=0o644)
 
 
-def _init_revision_repo(tmp_path: Path) -> tuple[Path, dict, str, str]:
+def _init_revision_repo(
+    tmp_path: Path, *, object_format: str = "sha1"
+) -> tuple[Path, dict, str, str]:
     git = build.GIT_EXECUTABLE
     assert git is not None
     repo = tmp_path / "revision-repo"
@@ -96,7 +98,15 @@ def _init_revision_repo(tmp_path: Path) -> tuple[Path, dict, str, str]:
         json.dumps(lock, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
     lock_sha256 = "sha256:" + hashlib.sha256(lock_path.read_bytes()).hexdigest()
-    subprocess.run([git, "init", "-q"], cwd=repo, check=True)
+    init_argv = [git, "init", "-q"]
+    if object_format != "sha1":
+        init_argv.append(f"--object-format={object_format}")
+    initialized = subprocess.run(
+        init_argv, cwd=repo, capture_output=True, check=False
+    )
+    if initialized.returncode != 0 and object_format == "sha256":
+        pytest.skip("installed Git does not support SHA-256 repositories")
+    initialized.check_returncode()
     subprocess.run([git, "add", "."], cwd=repo, check=True)
     subprocess.run(
         [
@@ -124,6 +134,12 @@ def _init_revision_repo(tmp_path: Path) -> tuple[Path, dict, str, str]:
 
 def test_locked_inputs_and_source_closure_are_exact() -> None:
     lock = json.loads(build.LOCK_PATH.read_text())
+    assert build.TRUSTED_PRODUCER_TOOL_FILES == (
+        "runtime/__init__.py",
+        "runtime/build.py",
+        "runtime/_tracer.py",
+        "runtime/tree_hash.py",
+    )
     assert lock["schema"] == "specaudit-ctf.runtime-lock.v1"
     assert lock["cpython"] == {
         "asset": "cpython-3.11.16+20260825-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz",
@@ -270,17 +286,28 @@ def test_committed_source_revision_refuses_dirty_trusted_inputs_even_if_relocked
         )
 
 
-def test_committed_source_revision_refuses_staged_only_producer_change(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    "relpath",
+    [
+        "extension/producer.py",
+        "tests/goldens/capability.json",
+        "LICENSE",
+        "runtime/lock.json",
+        "runtime/_tracer.py",
+    ],
+    ids=["producer", "capability", "license", "lock", "tool"],
+)
+def test_committed_source_revision_refuses_staged_only_trusted_change(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, relpath: str
 ) -> None:
     repo, lock, lock_sha256, _revision = _init_revision_repo(tmp_path)
     git = build.GIT_EXECUTABLE
     assert git is not None
-    producer = repo / "extension" / "producer.py"
-    committed = producer.read_bytes()
-    producer.write_text("producer = 2\n", encoding="utf-8")
-    subprocess.run([git, "add", "extension/producer.py"], cwd=repo, check=True)
-    producer.write_bytes(committed)
+    trusted_path = repo / relpath
+    committed = trusted_path.read_bytes()
+    trusted_path.write_bytes(committed + b"staged-only divergence\n")
+    subprocess.run([git, "add", relpath], cwd=repo, check=True)
+    trusted_path.write_bytes(committed)
     monkeypatch.setattr(build, "REPO_ROOT", repo)
     with pytest.raises(build.BuildError, match="uncommitted changes"):
         build._require_committed_source_revision(
@@ -362,6 +389,137 @@ def test_committed_source_revision_refuses_missing_git_or_changed_head(
 def test_git_source_revision_parser_refuses_malformed_ids(raw: bytes) -> None:
     with pytest.raises(build.BuildError, match="malformed source revision"):
         build._parse_git_revision(raw)
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [(b"sha1\n", ("sha1", 40)), (b"sha256\n", ("sha256", 64))],
+)
+def test_git_object_format_parser_accepts_supported_storage_formats(
+    raw: bytes, expected: tuple[str, int]
+) -> None:
+    assert build._parse_git_object_format(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [b"", b"sha512\n", b"sha1\nsha256\n", b"SHA1\n", b"\xff\n"],
+)
+def test_git_object_format_parser_refuses_ambiguous_or_unknown_values(
+    raw: bytes,
+) -> None:
+    with pytest.raises(build.BuildError, match="object format"):
+        build._parse_git_object_format(raw)
+
+
+@pytest.mark.parametrize(
+    "object_format,revision",
+    [(b"sha1\n", "a" * 64), (b"sha256\n", "a" * 40)],
+)
+def test_git_object_integrity_refuses_revision_width_mismatch(
+    monkeypatch: pytest.MonkeyPatch, object_format: bytes, revision: str
+) -> None:
+    monkeypatch.setattr(
+        build,
+        "_run_git_for_source_revision",
+        lambda *_args, **_kwargs: object_format,
+    )
+    with pytest.raises(build.BuildError, match="revision width"):
+        build._require_git_object_integrity(revision)
+
+
+def test_git_object_integrity_uses_strict_full_non_connectivity_fsck(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, ...]] = []
+
+    def run(*args: str, input_bytes: bytes | None = None) -> bytes:
+        assert input_bytes is None
+        calls.append(args)
+        if args == ("rev-parse", "--show-object-format=storage"):
+            return b"sha1\n"
+        return b""
+
+    monkeypatch.setattr(build, "_run_git_for_source_revision", run)
+    revision = "a" * 40
+    build._require_git_object_integrity(revision)
+    assert calls == [
+        ("rev-parse", "--show-object-format=storage"),
+        (
+            "-c",
+            f"fsck.skipList={os.devnull}",
+            "fsck",
+            "--strict",
+            "--full",
+            "--no-connectivity-only",
+            "--no-dangling",
+            "--no-reflogs",
+            "--no-progress",
+            "--no-cache",
+            "--no-references",
+            revision,
+        ),
+    ]
+    assert "--connectivity-only" not in calls[1]
+
+
+@pytest.mark.parametrize("object_format", ["sha1", "sha256"])
+def test_committed_source_revision_refuses_substituted_loose_object(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    object_format: str,
+) -> None:
+    repo, lock, lock_sha256, _revision = _init_revision_repo(
+        tmp_path, object_format=object_format
+    )
+    git = build.GIT_EXECUTABLE
+    assert git is not None
+    tracer = repo / "runtime" / "_tracer.py"
+    old_object_id = subprocess.run(
+        [git, "rev-parse", "HEAD:runtime/_tracer.py"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    alternate = b"# substituted trusted tracer\nchanged = True\n"
+    new_object_id = subprocess.run(
+        [git, "hash-object", "-w", "--stdin"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        input=alternate,
+    ).stdout.decode("ascii").strip()
+    assert new_object_id != old_object_id
+    old_object = repo / ".git" / "objects" / old_object_id[:2] / old_object_id[2:]
+    new_object = repo / ".git" / "objects" / new_object_id[:2] / new_object_id[2:]
+    assert old_object.is_file() and new_object.is_file()
+    old_object.chmod(old_object.stat().st_mode | stat.S_IWUSR)
+    old_object.write_bytes(new_object.read_bytes())
+    tracer.write_bytes(alternate)
+
+    returned = subprocess.run(
+        [git, "cat-file", "blob", old_object_id],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    ).stdout
+    returned_object_id = subprocess.run(
+        [git, "hash-object", "--stdin"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        input=returned,
+    ).stdout.decode("ascii").strip()
+    assert returned == alternate
+    assert returned_object_id == new_object_id
+    assert returned_object_id != old_object_id
+
+    monkeypatch.setattr(build, "REPO_ROOT", repo)
+    with pytest.raises(build.BuildError, match="object graph.*integrity"):
+        build._require_committed_source_revision(
+            lock, runtime_lock_sha256=lock_sha256
+        )
 
 
 def test_git_source_runner_translates_timeout(
@@ -484,6 +642,17 @@ def test_committed_source_revision_checks_only_staged_diff_without_helpers(
         "--no-ext-diff",
         "--no-textconv",
     )
+    separator = diff_calls[0].index("--")
+    assert set(diff_calls[0][separator + 1 :]) == {
+        "LICENSE",
+        "extension/producer.py",
+        "runtime/__init__.py",
+        "runtime/_tracer.py",
+        "runtime/build.py",
+        "runtime/lock.json",
+        "runtime/tree_hash.py",
+        "tests/goldens/capability.json",
+    }
 
 
 def test_committed_source_revision_refuses_committed_symlink_materialized_as_file(
@@ -620,7 +789,7 @@ def test_assemble_rechecks_same_committed_revision_after_copy(
     lock: dict = {}
     lock_sha256 = "sha256:" + ("1" * 64)
     revision = "a" * 40
-    revision_checks: list[str | None] = []
+    events: list[str] = []
 
     def require_revision(
         received_lock: dict,
@@ -630,7 +799,7 @@ def test_assemble_rechecks_same_committed_revision_after_copy(
     ) -> str:
         assert received_lock is lock
         assert runtime_lock_sha256 == lock_sha256
-        revision_checks.append(expected_revision)
+        events.append(f"revision:{expected_revision or 'none'}")
         return revision
 
     staged_cpython = tmp_path / "cpython"
@@ -657,14 +826,22 @@ def test_assemble_rechecks_same_committed_revision_after_copy(
     monkeypatch.setattr(build, "_stdlib_root", lambda _root: tmp_path / "stdlib")
     monkeypatch.setattr(build, "_unique_relpaths", lambda *_args: [])
     monkeypatch.setattr(build, "_write_licenses", lambda *_args: None)
-    monkeypatch.setattr(build, "_verify_locked_output_bytes", lambda *_args: None)
+    monkeypatch.setattr(
+        build,
+        "_verify_locked_output_bytes",
+        lambda *_args: events.append("output-bytes-verified"),
+    )
     monkeypatch.setattr(build, "_seal_directory_modes", lambda _root: None)
     monkeypatch.setattr(build, "REQUIRED_BUNDLE_FILES", ())
 
     result = build.assemble((tmp_path / "bundle").resolve())
 
     assert result["source_revision"] == revision
-    assert revision_checks == [None, revision]
+    assert events == [
+        "revision:none",
+        "output-bytes-verified",
+        f"revision:{revision}",
+    ]
 
 
 def test_offline_fetch_refuses_missing_cache_without_network(

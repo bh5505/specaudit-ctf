@@ -3,12 +3,18 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 
 import pytest
 
 from extension.__main__ import main as cli_main
 from extension.contract import Extension, ExtensionError, Result
 from extension.dispatch import dispatch_invoke
+from extension.envelopes import (
+    POST_ENTRY_PARTIAL_EFFECTS_LIMITATION,
+    REASON_PROFILE_MISMATCH,
+    parse_execution_result,
+)
 from extension.mcp_server import McpServer
 
 
@@ -29,7 +35,10 @@ def _assert_failed_vulnify_lookup(payload: object) -> None:
     capability = "vulnify.lookup"
     assert payload["status"] == "failed"
     assert payload["transport_ok"] is False
-    assert payload["scope"]["touched"] == []
+    assert payload["scope"]["touched"] == [
+        "policy://extension/arms/vulnify"
+    ]
+    assert payload["side_effects"] == ["local-read"]
     assert payload["artifacts"] == []
     assert payload["coverage"] == {
         "attempted": [capability],
@@ -39,7 +48,10 @@ def _assert_failed_vulnify_lookup(payload: object) -> None:
         "failed": [capability],
         "required": [capability],
     }
-    assert payload["limitations"] == ["invoke failed"]
+    assert payload["limitations"] == [
+        "invoke failed",
+        POST_ENTRY_PARTIAL_EFFECTS_LIMITATION,
+    ]
     assert payload["budget"]["spent"]["output_bytes"] == 0
     assert payload["budget"]["spent"]["tool_steps"] == 1
 
@@ -78,6 +90,8 @@ def test_pre_dispatch_argument_failure_spends_no_tool_step() -> None:
     assert outcome.envelope is not None
     assert outcome.envelope["status"] == "failed"
     assert outcome.envelope["budget"]["spent"]["tool_steps"] == 0
+    assert outcome.envelope["scope"]["touched"] == []
+    assert outcome.envelope["side_effects"] == ["none"]
 
 
 def test_dispatch_turns_unexpected_arm_exception_into_failed_envelope(
@@ -97,6 +111,113 @@ def test_dispatch_turns_unexpected_arm_exception_into_failed_envelope(
     _assert_failed_vulnify_lookup(outcome.envelope)
     rendered = json.dumps(outcome.envelope)
     assert "secret input" not in rendered
+    assert "/operator/private" not in rendered
+
+
+def test_r1_exception_preserves_declared_possible_effects(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    effects_started: list[str] = []
+
+    def start_effect_then_fail(*_args: object, **_kwargs: object) -> object:
+        effects_started.append("subprocess-or-network")
+        raise RuntimeError("secret target at /operator/private/targets.txt")
+
+    monkeypatch.setattr(Extension, "invoke", start_effect_then_fail)
+    outcome = dispatch_invoke(
+        Extension(),
+        arm_id="nmap",
+        action="scan",
+        args={"target": "10.10.0.5"},
+    )
+
+    assert effects_started == ["subprocess-or-network"]
+    assert outcome.exit_code == 1
+    assert outcome.stderr_line == "invoke failed"
+    assert outcome.envelope is not None
+    assert outcome.envelope["status"] == "failed"
+    assert outcome.envelope["transport_ok"] is False
+    assert outcome.envelope["budget"]["spent"]["tool_steps"] == 1
+    assert outcome.envelope["scope"]["touched"] == [
+        "policy://extension/arms/nmap"
+    ]
+    assert outcome.envelope["side_effects"] == [
+        "subprocess",
+        "network-egress",
+    ]
+    assert outcome.envelope["approval_ref"] == (
+        "operator://dispatch-scope/NMAP_DISPATCH_SCOPE"
+    )
+    assert outcome.envelope["roe_ref"] == "doc://README#dispatch-doctrine"
+    assert outcome.envelope["coverage"] == {
+        "attempted": ["nmap.scan"],
+        "complete": [],
+        "skipped": [],
+        "unsupported": [],
+        "failed": ["nmap.scan"],
+        "required": ["nmap.scan"],
+    }
+    assert outcome.envelope["limitations"] == [
+        "invoke failed",
+        POST_ENTRY_PARTIAL_EFFECTS_LIMITATION,
+    ]
+    rendered = json.dumps(outcome.envelope)
+    assert "secret target" not in rendered
+    assert "/operator/private" not in rendered
+    for mutate in (
+        lambda payload: payload["budget"]["spent"].__setitem__("tool_steps", 0),
+        lambda payload: payload["scope"].__setitem__("touched", []),
+        lambda payload: payload.__setitem__("side_effects", ["none"]),
+        lambda payload: payload.__setitem__("limitations", ["invoke failed"]),
+    ):
+        forged = deepcopy(outcome.envelope)
+        mutate(forged)
+        parsed = parse_execution_result(forged)
+        assert REASON_PROFILE_MISMATCH in parsed.reasons
+
+    code = cli_main(
+        ["invoke", "nmap", "scan", '{"target":"10.10.0.5"}']
+    )
+    captured = capsys.readouterr()
+    assert code == 1
+    assert captured.err.strip() == "invoke failed"
+    cli_payload = json.loads(captured.out)
+
+    response = McpServer().handle(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {
+                "name": "invoke",
+                "arguments": {
+                    "id": "nmap",
+                    "action": "scan",
+                    "args": {"target": "10.10.0.5"},
+                },
+            },
+        }
+    )
+    assert response is not None and "error" not in response
+    assert response["result"]["isError"] is True
+    mcp_payload = json.loads(response["result"]["content"][0]["text"])
+    assert effects_started == [
+        "subprocess-or-network",
+        "subprocess-or-network",
+        "subprocess-or-network",
+    ]
+    for payload in (cli_payload, mcp_payload):
+        assert payload["transport_ok"] is False
+        assert payload["budget"]["spent"]["tool_steps"] == 1
+        assert payload["scope"]["touched"] == [
+            "policy://extension/arms/nmap"
+        ]
+        assert payload["side_effects"] == ["subprocess", "network-egress"]
+        assert payload["coverage"] == outcome.envelope["coverage"]
+        assert payload["limitations"] == outcome.envelope["limitations"]
+    rendered = json.dumps([outcome.envelope, cli_payload, response])
+    assert "secret target" not in rendered
     assert "/operator/private" not in rendered
 
 

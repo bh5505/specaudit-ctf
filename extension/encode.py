@@ -21,6 +21,7 @@ from .contract import (
 )
 from .envelopes import (
     MANIFEST_SCHEMA_ID,
+    POST_ENTRY_PARTIAL_EFFECTS_LIMITATION,
     RESULT_SCHEMA_ID,
     SCHEMA_VERSION,
     STATUS_COMPLETE,
@@ -431,13 +432,26 @@ def encode_invoke_failure(
     started_at: str,
     finished_at: str,
     tool_steps: int = 0,
+    effects_possible: bool = False,
     invalid_args: bool = False,
     attempt_id: str | None = None,
     artifact_dir: ArtifactSink | None = None,
 ) -> dict[str, Any]:
-    """Encode a fail-closed invoke that never produced a transport Result."""
+    """Encode a fail-closed invoke that never produced a transport Result.
+
+    Once the arm has been entered, its declared profile is the conservative
+    effects boundary: an exception cannot prove that a subprocess, read, write,
+    or network operation did not already begin.  Pre-invocation refusals retain
+    an empty touched scope and ``none`` effects.
+    """
     if type(tool_steps) is not int or tool_steps not in {0, 1}:
         raise ValueError("failure tool_steps must be zero or one")
+    if type(effects_possible) is not bool:
+        raise ValueError("effects_possible must be a boolean")
+    if effects_possible != (tool_steps == 1):
+        raise ValueError("possible effects require exactly one tool step")
+    if effects_possible and profile is None:
+        raise ValueError("possible effects require an admitted profile")
     if type(invalid_args) is not bool:
         raise ValueError("invalid_args must be a boolean")
     if invalid_args and tool_steps != 0:
@@ -478,13 +492,18 @@ def encode_invoke_failure(
         failed = (cap,)
         required = (cap,)
         limitations = ("invoke failed",)
+    if effects_possible:
+        limitations = (
+            *limitations,
+            POST_ENTRY_PARTIAL_EFFECTS_LIMITATION,
+        )
     candidate = _envelope(
         capability_id=cap,
         tool=_failure_tool(profile),
         authorized=(profile.authorized_scope if profile else _REFUSED_SCOPE),
-        touched=(),
+        touched=(profile.touched_scope if effects_possible else ()),
         safety_class=(profile.safety_class if profile else "R0"),
-        side_effects=("none",),
+        side_effects=(profile.side_effects if effects_possible else ("none",)),
         reserved=(
             _profile_reserved(profile) if profile is not None else _REFUSED_RESERVED
         ),
@@ -504,6 +523,9 @@ def encode_invoke_failure(
         output_bytes=0,
         tool_steps=tool_steps,
         cleanup_required=(profile.cleanup_required if profile else False),
+        cleanup_residual=(
+            effects_possible and profile is not None and profile.cleanup_required
+        ),
         approval_ref=(profile.approval_ref if profile else None),
         roe_ref=(profile.roe_ref if profile else None),
         attempt_id=attempt_id,
@@ -672,6 +694,7 @@ def _envelope(
     approval_ref: str | None,
     roe_ref: str | None,
     attempt_id: str | None = None,
+    cleanup_residual: bool = False,
 ) -> dict[str, Any]:
     finished = finished_at if finished_at >= started_at else started_at
     attempt = parse_attempt_id(attempt_id)
@@ -716,7 +739,7 @@ def _envelope(
             "cleanup": {
                 "required": cleanup_required,
                 "proof_digest": None,
-                "residual": False,
+                "residual": cleanup_residual,
             },
             "limitations": list(dict.fromkeys(item for item in limitations if item)),
         }

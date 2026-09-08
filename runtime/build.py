@@ -1183,6 +1183,59 @@ def _parse_git_revision(raw: bytes) -> str:
     return revision
 
 
+def _parse_git_object_format(raw: bytes) -> tuple[str, int]:
+    """Return the repository storage hash and its full object-id width."""
+
+    try:
+        object_format = raw.decode("ascii", errors="strict").strip()
+    except UnicodeDecodeError as exc:
+        raise BuildError("git returned a malformed object format") from exc
+    widths = {"sha1": 40, "sha256": 64}
+    width = widths.get(object_format)
+    if width is None:
+        raise BuildError("git returned an unsupported object format")
+    return object_format, width
+
+
+def _require_git_object_integrity(revision: str) -> None:
+    """Authenticate the commit and its complete reachable Git object graph.
+
+    ``cat-file`` verifies object framing but does not rehash loose-object
+    content against its pathname. A substituted commit, tree, or blob could
+    otherwise be reported under the reviewed object id. Full fsck delegates
+    SHA-1/SHA-256 object parsing (including packs and deltas) to Git itself.
+    """
+
+    _object_format, object_id_width = _parse_git_object_format(
+        _run_git_for_source_revision(
+            "rev-parse", "--show-object-format=storage"
+        )
+    )
+    if len(revision) != object_id_width:
+        raise BuildError(
+            "source revision width does not match the repository object format"
+        )
+    try:
+        _run_git_for_source_revision(
+            "-c",
+            f"fsck.skipList={os.devnull}",
+            "fsck",
+            "--strict",
+            "--full",
+            "--no-connectivity-only",
+            "--no-dangling",
+            "--no-reflogs",
+            "--no-progress",
+            "--no-cache",
+            "--no-references",
+            revision,
+        )
+    except BuildError as exc:
+        raise BuildError(
+            "committed source object graph failed integrity verification"
+        ) from exc
+
+
 def _committed_source_hashes(
     revision: str, paths: tuple[str, ...]
 ) -> dict[str, str]:
@@ -1393,6 +1446,7 @@ def _require_committed_source_revision(
         raise BuildError(
             "trusted producer inputs have uncommitted changes; commit them before building"
         )
+    _require_git_object_integrity(revision)
     final_revision = _parse_git_revision(
         _run_git_for_source_revision("rev-parse", "--verify", "HEAD^{commit}")
     )

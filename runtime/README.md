@@ -40,10 +40,13 @@ commit ID. Every locked producer file, the capability manifest, the repository
 license, and the exact `runtime/lock.json` snapshot must be regular files whose
 current bytes match both the lock inputs and that commit. The runtime
 builder/tracer/hash tools must also be regular files whose current bytes match
-the commit. Unrelated worktree changes and `runtime/README.md` are outside this
-source-status scope. The manifest records the exact committed lock snapshot
-separately by SHA-256 as well. After `lock-write`, commit the trusted inputs and
-lock before running `build` or `selfcheck`.
+the commit. A strict full Git object check authenticates that commit and every
+reachable tree/blob under the repository's native SHA-1 or SHA-256 format; a
+substituted loose or packed object is refused rather than inheriting the
+reviewed commit label. Unrelated worktree changes and `runtime/README.md` are
+outside this source-status scope. The manifest records the exact committed
+lock snapshot separately by SHA-256 as well. After `lock-write`, commit the
+trusted inputs and lock before running `build` or `selfcheck`.
 
 ```text
 python3 -m runtime.build fetch

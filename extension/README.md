@@ -268,7 +268,12 @@ errors. Do not invent a fallback card. `list` / `describe` include
 `tier` and stay catalog JSON. `invoke` stdout is
 `specaudit.ctf.execution-result.v1`. Process exit 0 is not `complete`.
 `transport_ok` is informational: it means the tool invocation/response
-transport succeeded, not that artifact custody succeeded. Optional
+transport succeeded, not that artifact custody succeeded. A zero-step
+pre-invocation refusal reports no touched scope and `none` effects. If an
+entered arm throws, its failed envelope reports the admitted profile's touched
+scope and side effects as conservative bounds and explicitly records that
+effects may be partial or unknown; those fields do not prove every declared
+effect occurred. Optional
 `--attempt-id` / `--artifact-dir` are Mode A. `--artifact-dir` must be
 an absolute, existing, real, empty per-attempt Unix directory; the
 producer binds it before dispatch. Malformed attempt ids, invalid or
