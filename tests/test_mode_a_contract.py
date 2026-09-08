@@ -535,9 +535,9 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 149 since the caldera read admission (2026-09-06,
     # emulation-listing packet): the eight v2 GET views as
     # endpoint-armed reads (caldera had no profiles before).
-    # 181 since the 8 new research arms (R43, R35, R01, R33, R03, R34, R42, R15):
-    # 8 list_tools policy profiles + 20 read-action local-read profiles.
-    assert len(INVOKE_PROFILES) == 205
+    # 160 after asset-recon; the 14 research-candidate readers add
+    # 14 list_tools profiles and 38 local-read action profiles.
+    assert len(INVOKE_PROFILES) == 212
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -578,7 +578,9 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert profile.safety_class == "R1"
             assert profile.side_effects == ("network-egress",)
             assert profile.synthetic_only is False
-        elif profile.arm_id == "attack-stix-data":
+        elif profile.arm_id == "attack-stix-data" or (
+            profile.arm_id == "asset-recon" and profile.action in ("plan", "parse")
+        ):
             # Local-read admission (2026-09-04): in-process lookups over
             # a caller-named local bundle; no endpoint, no dispatch.
             assert profile.safety_class == "R0"
@@ -659,7 +661,9 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["safety_class"] == "R1"
             assert payload["side_effects"] == ["network-egress"]
             assert payload["synthetic_only"] is False
-        elif profile.arm_id == "attack-stix-data":
+        elif profile.arm_id == "attack-stix-data" or (
+            profile.arm_id == "asset-recon" and profile.action in ("plan", "parse")
+        ):
             # Local-read manifests: R0 local-read, synthetic-only (the
             # in-process reader never leaves the process).
             assert payload["safety_class"] == "R0"

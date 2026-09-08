@@ -535,6 +535,8 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.rubeus import RubeusArm
     from .arms.m365pwned import ARM_ID as M365PWNED_ARM_ID
     from .arms.m365pwned import M365PwnedArm
+    from .arms.assetrecon import ARM_ID as ASSET_RECON_ARM_ID
+    from .arms.assetrecon import AssetReconArm
 
     return {
         BURP_ARM_ID: BurpArm(),
@@ -580,6 +582,7 @@ def _default_arms() -> dict[str, Transport]:
         NUMASEC_ARM_ID: NumasecArm(),
         RUBEUS_ARM_ID: RubeusArm(),
         M365PWNED_ARM_ID: M365PwnedArm(),
+        ASSET_RECON_ARM_ID: AssetReconArm(),
     }
 
 

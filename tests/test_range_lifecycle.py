@@ -418,20 +418,20 @@ def test_uninstalled_curated_arm_is_skipped_held_is_error(
         if entry.kind == CATALOG_KIND_ARM and entry.curated and entry.tier == "held"
     ]
     skipped_ids = [arm_id for arm_id in curated_ids if arm_id not in held_ids]
-    # 37 since the 8 new research arms (R43, R35, R01, R33, R03, R34, R42, R15).
-    assert len(curated_ids) == 43
+    # 44 after asset-recon and the 14 research-candidate readers.
+    assert len(curated_ids) == 44
     assert CURATED_ARM_ID in curated_ids
     # Research tier since the doc-21 dossier (2026-09-03): no endpoint
     # configured, so the arm is skipped as not-installed like other
     # uninstalled curated arms - not a held error row.
     assert CURATED_ARM_ID in skipped_ids
     assert CURATED_ARM_ID not in held_ids
-    # attack-stix-data and rpz-decoder are pure in-process arms: their
+    # attack-stix-data, rpz-decoder and asset-recon are pure in-process arms: their
     # handlers are always installed, so the range's observe probe is an
     # evaluated refusal (error row), not a skip. Every other curated arm
     # stays skipped.
     always_installed = (
-        "attack-stix-data", "rpz-decoder",
+        "attack-stix-data", "rpz-decoder", "asset-recon",
         "security-detections-mcp", "agentseal", "vulnify", "leonidas",
         "specterops-skills", "detection-in-the-cloud", "pentestkit", "collinear",
         "ad-pathfinder", "gpohound", "claude-ad", "numasec", "rubeus", "m365pwned",
@@ -460,10 +460,13 @@ def test_uninstalled_curated_arm_is_skipped_held_is_error(
             # Catalog policy text must not be keyword-mangled ("token").
             assert "[redacted]" not in err
             assert "token passthrough" in err.lower()
-        for arm_id in always_installed:
+        for arm_id in ("attack-stix-data", "rpz-decoder"):
             observe_row = by_id[arm_id]
             assert observe_row["status"] == "error"
             assert "not on the allowlist" in (observe_row.get("error") or "")
+        asset_recon_row = by_id["asset-recon"]
+        assert asset_recon_row["status"] == "error"
+        assert asset_recon_row.get("error") == "operation refused [REDACTED]"
 
 
 def test_held_reason_redacted_when_notes_leak_secrets() -> None:

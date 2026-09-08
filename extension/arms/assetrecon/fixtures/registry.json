@@ -1,0 +1,4 @@
+[
+  {"ip": "192.0.2.10", "prefix": "192.0.2.0/24", "asn": 64496, "organization": "Example Research"},
+  {"ip": "198.51.100.25", "prefix": "198.51.100.0/24", "asn": 64497, "organization": "Example Mail Services"}
+]

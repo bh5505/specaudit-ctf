@@ -441,7 +441,15 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
                 else "operator://endpoint/GTI_MCP_ENDPOINT"
             )
             assert profile.approval_ref == expected_approval
-        elif profile.arm_id == "attack-stix-data":
+        elif profile.arm_id == "asset-recon" and profile.action in ("ct", "ptr", "discover", "probe"):
+            assert profile.safety_class == "R1"
+            assert "network-egress" in profile.side_effects
+            assert profile.default_off is True
+            assert profile.synthetic_only is False
+            assert profile.approval_ref and profile.roe_ref
+        elif profile.arm_id == "attack-stix-data" or (
+            profile.arm_id == "asset-recon" and profile.action in ("plan", "parse")
+        ):
             # Local-read admission (2026-09-04): in-process first-party
             # lookups over a caller-named local STIX bundle; no
             # endpoint, no subprocess, no dispatch tier.
@@ -601,8 +609,8 @@ def test_range_encoder_spends_one_step_under_freeze_budget(
     no_curated_tools: None,
 ) -> None:
     inner = run_range()
-    # 37 since the 8 new research arms (R43, R35, R01, R33, R03, R34, R42, R15).
-    assert len(inner["coverage"]["attempted"]) == 43
+    # 44 after asset-recon and the 14 research-candidate readers.
+    assert len(inner["coverage"]["attempted"]) == 44
     payload = encode_range_document(
         inner,
         started_at="2026-08-25T12:00:00Z",

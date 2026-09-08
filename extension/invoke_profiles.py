@@ -13,7 +13,7 @@ A child-returned or caller-constructed document is not authority.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from .arms.mcp_client import MCP_CALL_TIMEOUT
 
@@ -23,7 +23,7 @@ PACKAGE_VERSION = "0.1.0"
 
 @dataclass(frozen=True)
 class InvokeProfile:
-    """Result-envelope metadata for one admitted read-only action."""
+    """Result-envelope metadata for one admitted action."""
 
     arm_id: str
     action: str
@@ -57,6 +57,7 @@ _STATIC_POLICY_ARMS = (
     "ai-deep-sast",
     "attack-stix-data",
     "rpz-decoder",
+    "asset-recon",
     "dark-moon",
     "deepsec",
     "nmap",
@@ -108,13 +109,12 @@ def _policy_profile(arm_id: str, tier: str = "research") -> InvokeProfile:
 
 
 def _local_read_profile(arm_id: str, action: str, tier: str = "research") -> InvokeProfile:
-    """Read admission for a first-party in-process local-file lookup.
+    """Read admission for first-party in-process planning or file parsing.
 
     Same grammar as the static policy arms (R0, local-read, default-off
     in the validator sense, synthetic-only by construction), scoped per
-    action: the only touched surface is the caller-named local bundle
-    file, validated by the arm's egress gate (existing local file,
-    STIX suffix, size cap; URLs refused). There is no endpoint and no
+    action. Each arm validates its own closed input and bounded local-file
+    contract; the admitted actions do not contact an endpoint or start a
     subprocess.
     """
     capability_id = f"{arm_id}.{action}"
@@ -551,9 +551,43 @@ def _checkov_scan_profile() -> InvokeProfile:
     )
 
 
+def _asset_recon_profiles() -> tuple[InvokeProfile, ...]:
+    """One bounded recon surface; discovery does not authorize probing.
+
+    Discovery can run offline, but its admission conservatively describes
+    the live branch. Providers require exact adapter grants and live=true;
+    target probing separately requires the probe scope and live=true.
+    Live reads use bounded subprocess workers, including native providers.
+    """
+    offline = tuple(
+        replace(_local_read_profile("asset-recon", action), timeout_ms=60_000)
+        for action in ("plan", "parse")
+    )
+    providers = tuple(
+        replace(
+            _dispatch_profile(
+                "asset-recon", action, ("local-read", "subprocess", "network-egress"), 60_000,
+                "ASSET_RECON_PROVIDERS",
+            ),
+            approval_ref="operator://provider-grant/ASSET_RECON_PROVIDERS",
+            max_tool_steps=32,
+        )
+        for action in ("ct", "ptr", "discover")
+    )
+    probe = replace(
+        _dispatch_profile(
+            "asset-recon", "probe", ("subprocess", "network-egress"),
+            60_000, "ASSET_RECON_PROBE_SCOPE",
+        ),
+        max_tool_steps=32,
+    )
+    return (*offline, *providers, probe)
+
+
 INVOKE_PROFILES = {
     profile.capability_id: profile
     for profile in (
+        *_asset_recon_profiles(),
         *(
             _policy_profile(arm_id, tier)
             for arm_id, tier in _POLICY_ARM_TIERS.items()

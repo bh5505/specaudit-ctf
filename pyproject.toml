@@ -58,3 +58,4 @@ extension = [
     "*/expected.json",
     "*/input/*",
 ]
+"extension.arms.assetrecon" = ["fixtures/*.json"]

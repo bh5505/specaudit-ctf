@@ -4,7 +4,7 @@ Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
 
 ## Overview
 
-- **Arms**: 28 specialized adapters. No row is held (the HTTP-MCP
+- **Arms**: 30 specialized adapters. No row is held (the HTTP-MCP
   held set closed 2026-09-04; the tier remains enforced for any
   future held row); the burp-mcp, google-mcp-security, semgrep-mcp,
   prowler-mcp, and metasploit-mcp rows are research integrations on
@@ -24,11 +24,12 @@ Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
   other agent CLIs.
 - **Range**: synthetic fixtures (`live_aws: false`). No live cloud.
 
-`extension/coverage.yaml` classifies the landscape survey (47 ids,
-frozen order). It is a **survey map**, not a ship list: a row is not
+`extension/coverage.yaml` classifies the landscape survey (49 ids;
+the original 48 retain their order, with `asset-recon` appended). It is a
+**survey map**, not a ship list: a row is not
 a promise that an adapter exists. Every row has a support tier
 (`research` | `experimental` | `maintained` | `held`). In this cut
-every arm row is curated (28 handlers) and every methodology-only
+every arm row is curated (30 handlers) and every methodology-only
 row stays uncurated (19). `curated` is not `maintained`.
 
 Per-arm caveats (composite egress, exploitation, LLM spend, source
@@ -51,6 +52,7 @@ the corresponding labs or integrations ship.
 | Instructor or challenge author: delivery, grading, calibration and maintenance | [Instructor guide](INSTRUCTOR_GUIDE.md) |
 | Operator: authorization, environment tiers, containment, custody and cleanup | [Operations](OPERATIONS.md) |
 | Challenge user or author: shipped inventory, exact grading and authoring contract | [Challenges](challenges/README.md) |
+| Reconnaissance operator or learner: association evidence, exclusions and bounded observations | [Asset reconnaissance](docs/scope-recon.md) |
 
 The [program research register](PROGRAM.md#candidate-register-42-unique-candidates)
 contains 42 unique candidates and 12 supplemental methodology/corpus families.
@@ -623,9 +625,10 @@ prefixes.
   repo path in the scope env** — `parse_scope` refuses it as not a
   CIDR, IP, hostname, or URI.
 
-Safe default is unarmed: shipping 28 handlers does not fire a packet
-until `*_BIN` (or endpoint) **and** (for dispatch) `*_DISPATCH_SCOPE`
-are set.
+Dispatch remains unarmed by default. Executable arms need their documented
+binary/endpoint configuration and action gate. The in-process `asset-recon`
+arm needs no binary for offline work; provider collection and target probing
+have separate explicit grants described in the [capability guide](docs/scope-recon.md).
 
 Shared gate: `extension/arms/dispatch.py`. Caveats:
 [extension/README.md](extension/README.md).
@@ -635,6 +638,9 @@ Shared gate: `extension/arms/dispatch.py`. Caveats:
 | Env | Arm | Role |
 | --- | --- | --- |
 | `SPECAUDIT_CTF_ROOT` | launchers | clone root when a head launcher is relocated |
+| `ASSET_RECON_PROVIDERS` | asset-recon | explicit provider grants for live evidence collection; not target-probe authority |
+| `ASSET_RECON_PROBE_SCOPE` | asset-recon | independently armed explicit-target probe scope; delegated scanner methods also require their existing arm scopes |
+| `CERTSPOTTER_TOKEN` / `SHODAN_API_KEY` | asset-recon | optional Cert Spotter authentication / required Shodan credential; neither substitutes for provider grants |
 | `BURP_MCP_ENDPOINT` | burp-mcp | HTTP+SSE MCP URL |
 | `SEMGREP_MCP_ENDPOINT` | semgrep-mcp | streamable-HTTP MCP URL |
 | `CHECKOV_BIN` / `CHECKOV_SCAN_ROOT` | checkov | binary (or PATH); scan root **inside** the packaged range |

@@ -79,6 +79,17 @@ not authorize a newly discovered tool or target. For telecom interconnect work,
 remote signalling tests require the relevant operator/partner roles and consent;
 course ownership alone is not sufficient.
 
+## Asset reconnaissance boundary
+
+For `asset-recon`, apply the [capability procedure](docs/scope-recon.md#actions-and-authority)
+as part of the rules of engagement. Record evidence-provider egress separately
+from explicit-target probe authority. Domain-suffix and IP-range exclusions
+override initial seeds and later candidates; an operator egress range is a
+useful exclusion case. A confidence grade does not widen either authorization.
+Use the offline worksheet at E1; any target-contact observation needs a separate
+E2/E3 or E4 decision, exact IP/port/method, monitoring and limits. Preserve
+partial evidence and its limitations at close.
+
 ## Build the environment
 
 ### Separate planes and identities

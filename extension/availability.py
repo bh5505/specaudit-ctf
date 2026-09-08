@@ -16,6 +16,9 @@ from typing import Any
 
 OS_RELEASE_CANDIDATES = ("/etc/os-release", "/usr/lib/os-release")
 SCOPE_SUFFIX = "_DISPATCH_SCOPE"
+EXPLICIT_AUTHORITY_ENVS = frozenset({
+    "ASSET_RECON_PROVIDERS", "ASSET_RECON_PROBE_SCOPE",
+})
 
 
 def _parse_os_release(path: str) -> dict[str, str]:
@@ -59,12 +62,13 @@ def host_profile(*os_release_paths: str) -> dict[str, Any]:
 
 
 def armed_scopes(environ: dict[str, str] | None = None) -> list[str]:
-    """Names of the dispatch-scope env vars currently set (names only)."""
+    """Names of set dispatch scopes/provider grants (names only, not validity)."""
     environ = environ if environ is not None else os.environ
     return sorted(
         key
         for key in environ
-        if key.endswith(SCOPE_SUFFIX) and environ[key].strip()
+        if (key.endswith(SCOPE_SUFFIX) or key in EXPLICIT_AUTHORITY_ENVS)
+        and environ[key].strip()
     )
 
 

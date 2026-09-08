@@ -104,6 +104,19 @@ APIs, fraud or telecom resilience.
   surfaces. It grades analyst process and evidence, never generated prose, and
   is not a `score/` rubric challenge.
 
+### Asset reconnaissance — offline analyst worksheet
+
+The [asset reconnaissance worksheet](docs/scope-recon.md#offline-analyst-exercise)
+is an additional offline practitioner exercise for Tracks A, C and D. Learners
+start from declared domains or certificate fingerprints, trace CT/forward-DNS/
+PTR/registry associations, apply overriding exclusions, and justify graded
+owned-or-managed hypotheses. Shared hosting, stale/wildcard certificates and
+owner-controlled PTR are deliberate alternatives to an ownership claim.
+The deliverable is an evidence-linked inventory workpaper with limitations and
+a separately scoped next evidence request. This is human-assessed practice,
+not `score/` fixture coverage or a full telecom lab. The guide maps the exercise
+to foundation, audit, general cyber and telecom learning objectives.
+
 ## Complete module map
 
 The module definitions live in [PROGRAM.md](PROGRAM.md#program-architecture).
@@ -114,8 +127,8 @@ mean a runnable package exists.
 | Program area | Current shipped anchor | Target content status |
 |---|---|---|
 | `FND-01`–`03` safety, architecture and evidence | Tracks A, C and D; current runtime and grading boundaries | Design-ready as a coherent foundation sequence |
-| `AUD-01`–`04` engagement, controls, findings and workpapers | Correspondence and exact grading supply a narrow evidence discipline | Design-ready through T01; no complete audit-engagement package ships |
-| `CYB-01` asset/network/configuration | `lab-net-01`, `lab-edge-01`, telecom/AWS exposure cases | Design-ready through T02/T08; target domain is broader |
+| `AUD-01`–`04` engagement, controls, findings and workpapers | Correspondence, exact grading and the asset-recon human worksheet supply bounded evidence practice | Design-ready through T01; no complete audit-engagement package ships |
+| `CYB-01` asset/network/configuration | `lab-net-01`, `lab-edge-01`, telecom/AWS exposure cases and asset-recon association worksheet | Design-ready through T02/T08; target domain is broader |
 | `CYB-02` identity and access | `telecom-aws-03` identity-path precursor | Design-ready through T05; AD/GPO/consent assets do not ship |
 | `CYB-03` cloud and platform | Telecom/AWS sequence; local Checkov/range surfaces under current gates | Design-ready through T02/T08; no live cloud implied |
 | `CYB-04` web/API/mobile/software | `lab-web-01`, `lab-code-01`; current Semgrep/ZAP/Burp surfaces under their gates | Design-ready through T06; full SDLC/API/mobile content remains proposed |
@@ -123,7 +136,7 @@ mean a runnable package exists.
 | `CYB-06` detection/IR/DFIR | `telecom-aws-05/-06` and captured grading evidence | Design-ready through T04; recorded telemetry and forensic corpus do not ship |
 | `CYB-07` threat-informed validation | `lab-knowledge-01`; Caldera and Metasploit **listing** exercises | Proposed beyond current mapping/listing practice; no emulation execution claim |
 | `CYB-08` data/privacy/cryptography | Evidence-custody boundaries only | Proposed |
-| `CYB-09` third-party/supply chain | Source-pinning and admission concepts only | Proposed |
+| `CYB-09` third-party/supply chain | Source-pinning/admission concepts and shared-service attribution in the asset-recon worksheet | Proposed beyond these bounded anchors |
 | `CYB-10` AI/agent/MCP assurance | Track D and current head/MCP boundaries | Design-ready through T07; external agent resources are not bundled |
 | `CYB-11` governance/monitoring | Support tiers, admission and promotion discipline | Proposed as an assurance module |
 | `TEL-01`–`09` telecom specialization | Telecom/AWS framing and `lab-edge-01` only | Design-ready through the blueprints below; new governed cases are not shipped |
@@ -575,7 +588,7 @@ excellent work; missing data disguised as an all-clear cannot.
 
 | Audience | Present action |
 |---|---|
-| Trainee | Complete shipped A–D and the shipped challenges; submit exact findings today. Treat future seed packs and workpapers as design until promoted. |
+| Trainee | Complete shipped A–D and the shipped challenges; submit exact findings in those lanes. Use the asset-recon worksheet for separate human-assessed evidence practice. Treat future seed packs as design until promoted. |
 | Instructor/user | Choose a declared lane and outcome; preserve positive, benign, negative and inconclusive controls; isolate answer keys; version criteria, evidence and rubric. |
 | Challenge author | Apply the authoring contract, prove reset/refusal/tamper cases, and keep scenario story separate from ground truth. |
 | Operator | Take runtime truth from `list`, `describe`, `availability` and per-arm caveats; arm only separately authorized shipped actions. Curriculum prose is never execution authority. |
