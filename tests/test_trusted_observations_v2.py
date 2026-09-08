@@ -935,6 +935,35 @@ def test_replay_state_rejects_one_shot_iterators_before_and_after_exhaustion(
     assert stable_non_builtin.reasons == ()
 
 
+@pytest.mark.parametrize("field", ("schema", "schema_version"))
+def test_v2_schema_preinspection_rejects_hostile_equality_fail_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+) -> None:
+    raw, admission, result, report, observation = _complete(
+        tmp_path, monkeypatch, SECURITY
+    )
+
+    class ExplodingEquality:
+        def __eq__(self, _other: object) -> bool:
+            raise RuntimeError("hostile equality must not execute")
+
+    malformed = copy.deepcopy(observation)
+    malformed[field] = ExplodingEquality()
+    checked = verify_trusted_observation(
+        malformed,
+        admission=admission,
+        execution_result=result,
+        policy_report=report,
+        raw_artifact=raw,
+        verified_at=VERIFIED_AT,
+        seen_observation_ids=(),
+    )
+    assert checked.accepted is False
+    assert checked.reasons == (REASON_OBSERVATION_MISMATCH,)
+
+
 @pytest.mark.parametrize(
     "rule",
     (
@@ -945,6 +974,14 @@ def test_replay_state_rejects_one_shot_iterators_before_and_after_exhaustion(
                 "definition": {"query": "synthetic"},
             },
             id="name-over-legacy-sidecar-text-cap",
+        ),
+        pytest.param(
+            {
+                "rule_id": SECURITY["subject_id"],
+                "name": "Synthetic long-key rule",
+                "k" * 16_385: "synthetic",
+            },
+            id="mapping-key-over-legacy-sidecar-text-cap",
         ),
         pytest.param(
             {

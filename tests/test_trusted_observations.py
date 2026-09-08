@@ -758,6 +758,57 @@ def test_v2_headroom_does_not_change_oversized_v1_reason_semantics(
         assert checked.reasons == (REASON_OBSERVATION_MISMATCH,)
 
 
+def test_v1_verification_does_not_route_through_v2_copy_limits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw, admission, result, report, observation = _complete_slice(
+        tmp_path, monkeypatch
+    )
+
+    def forbidden_v2_copy(_value: Any) -> dict[str, Any]:
+        raise AssertionError("v1 observation routed through v2 copy limits")
+
+    monkeypatch.setattr(
+        observation_module, "_v2_document_copy", forbidden_v2_copy
+    )
+    checked = verify_trusted_observation(
+        observation,
+        admission=admission,
+        execution_result=result,
+        policy_report=report,
+        raw_artifact=raw,
+        verified_at=VERIFIED_AT,
+        seen_observation_ids=(),
+    )
+    assert checked.accepted is True and checked.reasons == ()
+
+
+def test_v1_schema_preinspection_rejects_hostile_equality_fail_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    raw, admission, result, report, observation = _complete_slice(
+        tmp_path, monkeypatch
+    )
+
+    class ExplodingEquality:
+        def __eq__(self, _other: object) -> bool:
+            raise RuntimeError("hostile equality must not execute")
+
+    malformed = copy.deepcopy(observation)
+    malformed["schema"] = ExplodingEquality()
+    checked = verify_trusted_observation(
+        malformed,
+        admission=admission,
+        execution_result=result,
+        policy_report=report,
+        raw_artifact=raw,
+        verified_at=VERIFIED_AT,
+        seen_observation_ids=(),
+    )
+    assert checked.accepted is False
+    assert checked.reasons == (REASON_OBSERVATION_MISMATCH,)
+
+
 def test_mapping_iteration_failure_is_a_fail_closed_verification_result(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

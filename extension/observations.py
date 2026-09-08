@@ -101,6 +101,9 @@ _MAX_TEXT = 16_384
 _V2_MAX_DOCUMENT_NODES = 50_256
 _V2_MAX_DOCUMENT_DEPTH = 68
 _V2_MAX_TEXT = SECURITY_RULE_MAX_OUTPUT_CHARS
+# Security's bounded-tree gate applies the same producer cap to mapping keys;
+# keep that parity explicit while retaining an independently tunable limit.
+_V2_MAX_KEY_TEXT = SECURITY_RULE_MAX_OUTPUT_CHARS
 _MAX_NUMBER_BITS = 65_536
 _MAX_CVE_ID = 32
 _MAX_POLICY_REPORT_BYTES = 1_048_576
@@ -1390,6 +1393,7 @@ def _document_copy(value: Any) -> dict[str, Any]:
         max_nodes=_MAX_DOCUMENT_NODES,
         max_depth=_MAX_DOCUMENT_DEPTH,
         max_text=_MAX_TEXT,
+        max_key_text=_MAX_TEXT,
     )
 
 
@@ -1399,30 +1403,51 @@ def _v2_document_copy(value: Any) -> dict[str, Any]:
         max_nodes=_V2_MAX_DOCUMENT_NODES,
         max_depth=_V2_MAX_DOCUMENT_DEPTH,
         max_text=_V2_MAX_TEXT,
+        max_key_text=_V2_MAX_KEY_TEXT,
     )
 
 
 def _observation_document_copy(value: Any) -> dict[str, Any]:
-    candidate = _v2_document_copy(value)
-    capability_id = candidate.get("capability_id")
+    if not isinstance(value, Mapping):
+        return _document_copy(value)
+    try:
+        schema_id = value.get("schema")
+        schema_version = value.get("schema_version")
+        capability_id = value.get("capability_id")
+    except RuntimeError as exc:
+        raise TypeError("document mapping could not be inspected") from exc
     profile = (
         observation_profile(capability_id)
         if type(capability_id) is str
         else None
     )
     if (
-        candidate.get("schema") == TRUSTED_OBSERVATION_V2_SCHEMA_ID
-        and candidate.get("schema_version") == SCHEMA_VERSION_V2
-        and type(candidate.get("schema_version")) is int
+        type(schema_id) is str
+        and schema_id == TRUSTED_OBSERVATION_V2_SCHEMA_ID
+        and type(schema_version) is int
+        and schema_version == SCHEMA_VERSION_V2
         and profile is not None
         and profile.contract_version == SCHEMA_VERSION_V2
     ):
-        return candidate
-    return _document_copy(candidate)
+        candidate = _v2_document_copy(value)
+        if (
+            candidate.get("schema") == TRUSTED_OBSERVATION_V2_SCHEMA_ID
+            and candidate.get("schema_version") == SCHEMA_VERSION_V2
+            and type(candidate.get("schema_version")) is int
+            and candidate.get("capability_id") == capability_id
+        ):
+            return candidate
+        return _document_copy(candidate)
+    return _document_copy(value)
 
 
 def _bounded_document_copy(
-    value: Any, *, max_nodes: int, max_depth: int, max_text: int
+    value: Any,
+    *,
+    max_nodes: int,
+    max_depth: int,
+    max_text: int,
+    max_key_text: int,
 ) -> dict[str, Any]:
     counters = [0, 0]
     try:
@@ -1433,6 +1458,7 @@ def _bounded_document_copy(
             max_nodes=max_nodes,
             max_depth=max_depth,
             max_text=max_text,
+            max_key_text=max_key_text,
         )
     except RuntimeError as exc:
         raise TypeError("document mapping could not be copied") from exc
@@ -1449,6 +1475,7 @@ def _json_value(
     max_nodes: int,
     max_depth: int,
     max_text: int,
+    max_key_text: int,
 ) -> Any:
     if depth > max_depth:
         raise ValueError("document exceeds depth cap")
@@ -1473,7 +1500,7 @@ def _json_value(
         _add_document_bytes(counters, 2)
         copied: dict[str, Any] = {}
         for key, item in value.items():
-            if type(key) is not str or len(key) > max_text:
+            if type(key) is not str or len(key) > max_key_text:
                 raise TypeError("document keys must be bounded exact strings")
             _require_utf8_text(key)
             if key in copied:
@@ -1488,6 +1515,7 @@ def _json_value(
                 max_nodes=max_nodes,
                 max_depth=max_depth,
                 max_text=max_text,
+                max_key_text=max_key_text,
             )
         return copied
     if isinstance(value, list):
@@ -1504,6 +1532,7 @@ def _json_value(
                     max_nodes=max_nodes,
                     max_depth=max_depth,
                     max_text=max_text,
+                    max_key_text=max_key_text,
                 )
             )
         return copied_list
