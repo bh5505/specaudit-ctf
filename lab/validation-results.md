@@ -373,6 +373,46 @@ API ID + secret pair, so no compatible headless validation exists
 for this key shape. Recorded as-is: key staged (0600), validation
 refused by the upstream authentication scheme, never simulated.
 
+**abuse.ch — VALIDATED 2026-09-07 (all three endpoints).** Key
+staged at a 0600 file, sent as the `Auth-Key` header. Request
+shapes were pinned against the live API docs (the `get_recent`
+op name from older integrations is stale). Measured, with
+key-vs-no-key differentiation:
+- ThreatFox `POST https://threatfox-api.abuse.ch/api/v1/` JSON
+  `{"query": "get_iocs", "days": 1}` → **HTTP 200,
+  `query_status: ok`, 964 IOC records** (first: a live
+  botnet_cc indicator); same body WITHOUT the key → **HTTP 401**.
+- MalwareBazaar `POST https://mb-api.abuse.ch/api/v1/` form
+  `query=get_recent&selector=time` → **HTTP 200, ok, 21 sample
+  records** (real sha256 payloads); this read also succeeds
+  without a key (community reads are open), so MB proves shape +
+  reachability while ThreatFox/URLhaus prove the key itself.
+- URLhaus `GET https://urlhaus-api.abuse.ch/v1/urls/recent/limit/10/`
+  → **HTTP 200 ok** with the key; same GET without → **HTTP 401**.
+  (POST to this endpoint is a 405 — it is GET-only by contract.)
+No MCP server is required upstream; an arm-admission packet would
+wrap these three REST reads directly.
+
+**qfeeds Threat Intelligence Platform — staged, docs not
+machine-readable (2026-09-07).** The operator's TIP key (`tip_…`)
+is staged (0600). The public API documentation is served through
+an interactive portal (`qfeeds.com/downloads/`; `/docs/` is a
+404), so no headless request shape could be pinned this session.
+Recorded awaiting a documented endpoint; never simulated.
+
+**Cyware ThreatFeed TAXII subscription — VALIDATED 2026-09-07.** The
+operator staged subscriber credentials for a TAXII 2.1 threat-feed
+aggregation (ThreatFox, Malware Bazaar, abuse.ch, Emerging Threats,
+Dshield, OpenPhish and ~30 more feeds under one subscription).
+Staging: credentials in a 0600 JSON file; client =
+`taxii2-client` 2.3.0. Measured: TAXII 2.1 discovery + collection
+`46cc884e-…` (ThreatFox) authenticated with the subscriber pair;
+`get_objects` manifest returned **1002 objects, first 200 all STIX
+`indicator`** (real indicator IDs, e.g.
+`indicator--c720d216-…`). This is a feed-delivery (poll) capability,
+not a lookup server: no MCP server exists upstream and none is
+needed — an arm-admission packet would wrap the TAXII poll.
+
 ---
 
 ## claude-code real-head lane (kali + Ubuntu) — RESOLVED: all-muse router re-arm
