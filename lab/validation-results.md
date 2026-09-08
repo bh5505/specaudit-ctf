@@ -363,15 +363,24 @@ assessments, geo/ASN payload). Note the correct API host is
 redirects to the marketing site (404). An arm-admission packet would
 wrap this REST API directly.
 
-**Censys — key refused by the v2 API (2026-09-07).** The operator's
-single-token key (`censys_…`) was refused by
-`https://search.censys.io/api/v2/hosts/8.8.8.8` in both standard
-forms (Bearer and Basic with key-as-ID): 401 "You must authenticate
-with a valid API ID and secret." The best-dedicated community MCP
-server (`nickpending/mcp-censys`) is archived and expects the older
-API ID + secret pair, so no compatible headless validation exists
-for this key shape. Recorded as-is: key staged (0600), validation
-refused by the upstream authentication scheme, never simulated.
+**Censys — credentials refused in every supplied form
+(2026-09-07).** The operator first supplied a single-token key
+(`censys_…`), refused by `https://search.censys.io/api/v2/hosts/
+8.8.8.8` as Bearer and as Basic-with-token-as-ID (401 "You must
+authenticate with a valid API ID and secret."). The operator then
+confirmed the **API ID** is the token's middle segment; the secret
+was derived as the token's tail. That pair, staged (0600) and sent
+as RFC 7617 Basic over the v2 hosts endpoint and the v1 account
+endpoint, was refused in all six permutations tried: Basic(id,
+secret), Basic(id, full token), Basic(secret, id), Bearer(secret),
+plus the two original forms. The error is identical and immediate
+(401 v2 / 403 v1), i.e. the credentials parse but do not
+authenticate — the actual API SECRET must differ from the token
+tail. The dedicated community MCP server (`nickpending/mcp-censys`)
+is archived and expects exactly this ID+secret Basic pair, so the
+moment the true secret is staged the same probe validates it.
+Recorded as-is: ID staged (0600), secret not accepted, never
+simulated.
 
 **abuse.ch — VALIDATED 2026-09-07 (all three endpoints).** Key
 staged at a 0600 file, sent as the `Auth-Key` header. Request
