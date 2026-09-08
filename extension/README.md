@@ -7,7 +7,7 @@ This tree is the public attach surface:
 
 - `coverage.yaml` — classified survey map (not a ship list)
 - `contract.py` — fail-closed `list` / `describe` / `invoke`
-- `arms/` — 28 specialized handlers (families below)
+- `arms/` — 30 specialized handlers (families below)
 - `heads/` — Claude Code CLI, Codex CLI, and other-agent-CLI profiles
 - `range/` — synthetic fixtures only
 - `mcp_server.py` — stdio MCP for four tools (`list`, `describe`,
@@ -15,6 +15,27 @@ This tree is the public attach surface:
 - `arms/dispatch.py` — two-tier scope gate
 
 A validation client may attach the same CLI or MCP surface later.
+
+## Asset reconnaissance
+
+`asset-recon` provides one association graph across CT, forward/reverse DNS,
+ASN/registry and optional Shodan evidence. Its `plan`, `parse`, `ct`, `ptr`,
+`discover`, `probe` and `list_tools` actions use the existing `invoke` boundary.
+Offline planning/import and recursive evidence discovery are separate from
+provider egress and independently armed explicit-target observations.
+
+The [asset reconnaissance guide](../docs/scope-recon.md) is the single action,
+scope/exclusion, provenance, confidence, limitations and exercise reference.
+Exclusions override seeds; candidates and confidence never grant probe
+authority. Adapter presence is not a support promotion, and this arm introduces
+no MCP tool or change to fixture grading.
+
+`ct`, `ptr` and `discover` declare the union of local-read, subprocess and
+network-egress effects; an offline fixture invocation still carries that
+conservative profile. `probe` declares subprocess/network-egress and requires
+eligible explicit global IP targets. Planning, parsing and metadata stay local.
+The guide includes the exact offline and Mode A custody commands; no persistent
+cache or browser/screenshot surface is shipped.
 
 ## Coverage catalog
 
@@ -27,7 +48,7 @@ A validation client may attach the same CLI or MCP surface later.
 Every row has a support `tier`: `research` | `experimental` |
 `maintained` | `held`. `curated: true` is a **deprecated**
 compatibility flag meaning a specialized handler exists in this cut;
-it is **not** `tier: maintained`. **28 arms are curated; zero rows
+it is **not** `tier: maintained`. **30 arms are curated; zero rows
 are held (the HTTP-MCP held set closed 2026-09-04); exactly one
 capability is maintained — the agent-wiz
 read tier `agent-wiz.list_tools` (X5-PROMOTE, doc 13 evidence gate).**
@@ -63,6 +84,12 @@ tool from that register must clear the admission checklist in
 [PROGRAM.md](../PROGRAM.md#admission-checklist) before it is used here at all.
 
 ### Curated arms by family
+
+**In-process reconnaissance** (`tier: research`):
+
+- `asset-recon` — local planning and fixture analysis; separately granted
+  provider collection and explicit-target probes. See the
+  [unified procedure](../docs/scope-recon.md).
 
 **MCP** (`tier: research` on the hardened transport; specialized
 session per arm, not a generic transport):
@@ -290,7 +317,7 @@ every spawn pins `cwd` to that root (deepsec: the workspace that
 holds `deepsec.config.ts`). **Do not put a repo path in the scope
 env.**
 
-Env table (all 26): [root README](../README.md#environment-variables).
+Env table: [root README](../README.md#environment-variables).
 
 Caveats are now the operator contract (`policy.CAVEATS`, catalog
 `notes`, `list_tools`, unarmed `Result.error`, CLI stderr). GUI-only

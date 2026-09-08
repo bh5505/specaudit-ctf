@@ -24,11 +24,13 @@ CLOSED_SCAN_KEYS = frozenset({"target", "mode", "ports"})
 
 # Fixed per-mode flag sets. connect = TCP connect scan (no raw sockets,
 # unprivileged); version = connect scan + service version detection.
+# version-light limits version probes and disables discovery and reverse DNS.
 # Deliberately absent: -sS/-O/--send-eth (raw sockets), -sU, -sC/--script
-# (NSE is unsandboxed Lua), -A, -Pn, -D/-S/-e, -T5, --script-args.
+# (NSE is unsandboxed Lua), -A, -D/-S/-e, -T5, --script-args.
 MODES = {
     "connect": ("-sT",),
     "version": ("-sT", "-sV"),
+    "version-light": ("-sT", "-sV", "--version-light", "-Pn", "-n", "--unprivileged"),
 }
 TIMING_FLAG = "-T4"
 
@@ -45,7 +47,7 @@ MAX_OUTPUT_CHARS = 200_000
 CAVEATS = (
     "Invokes the user's own nmap (NPSL; never bundled). Single-host "
     "targets only — CIDR/range targets are refused before scope. Fixed "
-    "-T4 timing, connect/version modes only; no NSE scripts, OS detect, "
+    "-T4 timing, connect/version/version-light modes only; no NSE scripts, OS detect, "
     "raw-socket, or decoy paths. XML lands on stdout, capped and "
     "keyword-redacted; dispatch defaults refused until NMAP_DISPATCH_SCOPE "
     "names the target."
@@ -151,6 +153,9 @@ def argv_for(binary: str, target: str, mode: str | None, ports: list[int] | None
     already rejected flag-shaped, range, and CIDR inputs.
     """
     argv = [binary, *MODES[mode or "connect"], TIMING_FLAG, "-oX", "-"]
+    if ":" in target:
+        argv.insert(1, "-6")
+        target = target.strip("[]")
     if ports:
         argv += ["-p", ",".join(str(port) for port in ports)]
     else:

@@ -36,7 +36,7 @@ class NmapArm:
     """Specialized transport for catalog id nmap.
 
     list_tools is a static allowlist. scan dispatches one single-host
-    nmap run with a closed flag set (connect/version modes, fixed -T4,
+    nmap run with a closed flag set (connect/version/version-light, fixed -T4,
     explicit top-ports default, XML on stdout) and is refused by default
     until NMAP_DISPATCH_SCOPE names the target.
     """
@@ -92,6 +92,10 @@ class NmapArm:
                     ok=False, arm_id=spec.id, action=action, output=None, error=refusal
                 )
         target = str(payload["target"]).strip()
+        # The shared host scope parser needs bracketed IPv6; nmap needs
+        # a bare address and -6 (translated by the closed argv builder).
+        if ":" in target:
+            target = "[" + target.strip("[]") + "]"
         mode = payload.get("mode")
         ports = payload.get("ports")
         scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, target)

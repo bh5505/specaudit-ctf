@@ -79,10 +79,12 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
     # reader — the demo bundle is caller data, not part of the closure).
     # 108 since the rpz-decoder arm admission (2026-09-08): policy,
     # decoder, arm, __init__ join the producer source closure.
-    assert len(lock["producer_source_files"]) == 108
-    # 107 at the 2026-08 nmap regen; +7 for the transport-gate imports
-    # (base64, hashlib, http.server, secrets and their traced deps).
-    assert len(lock["included_stdlib_files"]) == 114
+    # Unified recon adds ten Python modules and four offline fixture roots
+    # to that 108-file base. Worker XML parsing adds four
+    # file-backed stdlib modules; compiled parser/resource support is built
+    # into the unchanged locked interpreter.
+    assert len(lock["producer_source_files"]) == 122
+    assert len(lock["included_stdlib_files"]) == 118
     assert len(lock["included_yaml_files"]) == 18
     assert lock["capability_manifest"] == {
         "path": "tests/goldens/capability-manifest/agent-wiz.list_tools.json",
@@ -165,6 +167,7 @@ def test_mcp_server_entrypoints_are_locked_producer_roots() -> None:
         "extension/__main__.py",
         "extension/mcp_server.py",
         "extension/schema/execution-result.v1.schema.json",
+        "extension/arms/assetrecon/worker.py",
     ):
         assert relpath in build.EXTRA_PRODUCER_FILES
         assert relpath in lock["producer_source_files"]
@@ -177,6 +180,38 @@ def test_mcp_server_entrypoints_are_locked_producer_roots() -> None:
             "stdlib_module_names",
             "yaml_module_names",
         ]
+
+
+@pytest.mark.skipif(os.name != "posix", reason="live worker requires POSIX")
+def test_worker_trace_refuses_before_network_subprocess_or_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    import resource
+    import socket
+    import subprocess
+    import urllib.request
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("worker refusal attempted an effect")
+
+    monkeypatch.setattr(socket, "create_connection", forbidden)
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", forbidden)
+    monkeypatch.setattr(subprocess, "Popen", forbidden)
+    monkeypatch.setattr(resource, "setrlimit", forbidden)
+    marker = {"stdlib": [], "yaml": [], "extension": []}
+    # This pytest process includes unrelated third-party imports; the real
+    # trace runs in a fresh locked interpreter. Only classification is stubbed.
+    monkeypatch.setattr(_tracer, "_classify_final_modules", lambda: marker)
+    assert _tracer.trace_asset_recon_worker() is marker
+    assert _tracer.WORKER_TRACE_STDIN == b'{"operation":"runtime-refusal-check"}'
+
+
+def test_worker_dependency_closure_is_locked() -> None:
+    lock = json.loads(build.LOCK_PATH.read_text())
+    worker = lock["invocations"]["asset-recon-worker"]
+    # resource is built into the locked ELF and has no standalone file.
+    # Successful worker startup proves that import; file-backed dependencies
+    # must be present in the measured closure, including XML scanner parsing.
+    assert {"ssl", "socket", "subprocess", "urllib.request", "xml.etree.ElementTree"} <= set(worker["stdlib_module_names"])
+    assert "extension/arms/assetrecon/worker.py" in lock["producer_source_files"]
 
 
 def test_tracer_handshake_drives_real_server_serve_loop() -> None:

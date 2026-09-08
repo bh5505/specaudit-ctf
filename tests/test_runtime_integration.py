@@ -87,6 +87,71 @@ def test_offline_build_reextract_and_real_mode_a_smoke(
         )
         assert json.loads(result["timings_path"].read_text()) == result["timings"]
 
+        # The committed offline recon packet ships as measured data roots.
+        # Exercise the public Mode-A action with the sealed ELF and no PATH,
+        # grants, credentials, user site or ambient Python environment.
+        recon_fixtures = bundle / "extension/arms/assetrecon/fixtures"
+        recon_args = {
+            "seeds": {"domains": ["example.test"]}, "limits": {"max_depth": 5},
+            "fixtures": [{"source": source, "path": str(recon_fixtures / name)}
+                         for source, name in (("crtsh", "ct.json"), ("dns", "dns.json"),
+                                              ("registry", "registry.json"), ("shodan", "shodan.json"))],
+        }
+        custody = tmp_path / "recon-custody"
+        custody.mkdir()
+        recon = subprocess.run(
+            [str(bundle / build.LAUNCHER_RELPATH), "-S", "-m", "extension", "invoke",
+             "asset-recon", "discover", json.dumps(recon_args), "--attempt-id",
+             "attempt-" + "c" * 64, "--artifact-dir", str(custody)],
+            cwd=bundle, env=_sealed_env(bundle), capture_output=True, text=True, timeout=30,
+        )
+        assert recon.returncode == 0, recon.stderr
+        envelope = json.loads(recon.stdout)
+        assert envelope["status"] == "complete"
+        artifacts = list(custody.iterdir())
+        assert len(artifacts) == 1
+        assert envelope["artifacts"][0]["digest"] == tree_hash.hash_file(artifacts[0])
+        report = json.loads(artifacts[0].read_bytes())
+        assert report["schema"] == "specaudit.ctf.asset-recon.v1"
+        assert report["status"] == "complete" and report["requests"] == 0
+        assert {"ip:192.0.2.10", "asn:64496", "organization:Example Research"} <= {
+            node["id"] for node in report["nodes"]
+        }
+        refusal = subprocess.run(
+            [str(bundle / build.LAUNCHER_RELPATH), "-S", "-m", "extension.arms.assetrecon.worker"],
+            input='{"operation":"runtime-refusal-check"}', cwd=bundle,
+            env=_sealed_env(bundle), capture_output=True, text=True, timeout=30,
+        )
+        assert refusal.returncode == 0, refusal.stderr
+        assert json.loads(refusal.stdout)["ok"] is False
+
+        # Start away from both checkout and bundle. Only the explicit sealed
+        # package root enters sys.path; the worker must derive its child cwd
+        # from its relocated file, not rely on checkout cwd or PYTHONPATH.
+        unrelated_cwd = tmp_path / "unrelated-cwd"
+        unrelated_cwd.mkdir()
+        launch_script = """
+import pathlib, sys
+bundle = pathlib.Path(sys.argv[1]).resolve()
+sys.path.insert(0, str(bundle))
+from extension.arms.assetrecon import runner
+from extension.arms.assetrecon.model import Refusal
+assert pathlib.Path(runner.__file__).resolve().is_relative_to(bundle)
+try:
+    runner.run_worker({"operation": "runtime-refusal-check"}, 5)
+except Refusal as exc:
+    assert str(exc) == "provider or probe failed", str(exc)
+    print("RELOCATED_WORKER_REFUSAL")
+else:
+    raise SystemExit("invalid worker operation unexpectedly succeeded")
+"""
+        relocated_worker = subprocess.run(
+            [str(bundle / build.LAUNCHER_RELPATH), "-S", "-c", launch_script, str(bundle)],
+            cwd=unrelated_cwd, env=_sealed_env(bundle), capture_output=True, text=True, timeout=15,
+        )
+        assert relocated_worker.returncode == 0, relocated_worker.stderr
+        assert relocated_worker.stdout.strip() == "RELOCATED_WORKER_REFUSAL"
+
         # The CLI intentionally refuses this as unmanifested. Exercise the
         # lower Extension/arm layer directly to lock the narrower contract:
         # absent agent-wiz binary => NotInstalled, never a subprocess fallback.

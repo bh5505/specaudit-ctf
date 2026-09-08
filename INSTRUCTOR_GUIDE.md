@@ -108,6 +108,19 @@ Include cases that discriminate judgment:
 Avoid trick questions whose only distinction is undocumented instructor
 intent. The evidence should support why one conclusion is better.
 
+## Reconnaissance exercise preparation
+
+For the [asset reconnaissance worksheet](docs/scope-recon.md#offline-analyst-exercise),
+freeze a synthetic provider packet and its hashes, seed/exclusion policy,
+checkout revision and limits. Include corroborated and shared-service cases,
+stale and wildcard CT, misleading PTR, an excluded starting IP and missing
+evidence. Dry-run with egress denied and all provider/probe grants unset.
+Keep expected conclusions outside learner reach; grade the cited paths,
+rejected hypotheses and honest partial coverage. A high association confidence
+or a large host count earns no automatic credit. Use the capability guide's
+single procedure and rubric mapping; any optional disposable-service observation
+requires a new operator decision and never inherits a discovered target list.
+
 ## Run of show
 
 ### Plan and dry-run

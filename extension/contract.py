@@ -507,6 +507,8 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.attackstix import AttackStixArm
     from .arms.rpzdecoder import ARM_ID as RPZ_DECODER_ARM_ID
     from .arms.rpzdecoder import RpzDecoderArm
+    from .arms.assetrecon import ARM_ID as ASSET_RECON_ARM_ID
+    from .arms.assetrecon import AssetReconArm
 
     return {
         BURP_ARM_ID: BurpArm(),
@@ -538,6 +540,7 @@ def _default_arms() -> dict[str, Transport]:
         AGENT_WIZ_ARM_ID: AgentWizArm(),
         ATTACK_STIX_ARM_ID: AttackStixArm(),
         RPZ_DECODER_ARM_ID: RpzDecoderArm(),
+        ASSET_RECON_ARM_ID: AssetReconArm(),
     }
 
 
