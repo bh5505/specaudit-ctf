@@ -414,12 +414,40 @@ key-vs-no-key differentiation:
 No MCP server is required upstream; an arm-admission packet would
 wrap these three REST reads directly.
 
-**qfeeds Threat Intelligence Platform — staged, docs not
-machine-readable (2026-09-07).** The operator's TIP key (`tip_…`)
-is staged (0600). The public API documentation is served through
-an interactive portal (`qfeeds.com/downloads/`; `/docs/` is a
-404), so no headless request shape could be pinned this session.
-Recorded awaiting a documented endpoint; never simulated.
+**host.io — VALIDATED 2026-09-07.** Domain-intelligence API
+(domain/DNS/web data). Key staged (0600), sent as
+`Authorization: Bearer` (docs offer Basic-username, Bearer, or
+query-param forms). Measured on the documented reads:
+`GET https://host.io/api/full/facebook.com` with the key →
+**HTTP 200** (full domain record: web rank 4, current IP,
+content metadata); same request without the key → **HTTP 400**
+"API Access Token Required"; `GET /api/dns/example.com` →
+**HTTP 200** with live A/AAAA/MX/NS records. No MCP server
+required upstream; an arm-admission packet would wrap these REST
+reads directly.
+
+**qfeeds Threat Intelligence Platform — VALIDATED 2026-09-07
+(spec found where the whitepaper had none).** The operator's TIP
+key (`tip_…`) was staged-pending because the public docs were an
+interactive portal; the whitepaper the operator pointed to
+(`integrations-whitepaper.pdf`) is a one-page marketing brochure
+(formats STIX/TEXT/CSV/JSON, zero endpoints — pypdf extraction
+confirmed). The machine-readable spec lives at
+`https://api.qfeeds.com/openapi/openapi.yaml` (Swagger UI at
+`/openapi/`, linked from qfeeds.com/downloads/). Staged key (0600)
+validated per spec — auth is `?api_token=` (query) or HTTP Basic
+(api_token as username and password); base `https://api.qfeeds.com`:
+- `GET /api.php?feed_type=malware_ip&type=text&limit=5&api_token=…`
+  → **HTTP 200** with 5 real feed IPs.
+- Same feed request without any token → **HTTP 400** "Missing
+  required parameters."
+- `GET /info.php` with the key → **HTTP 200** returning the
+  operator's own account record (company, `api_usage` counters,
+  licensing summary) — the strongest key evidence.
+- `GET /ioc_lookup.php?ioc=8.8.8.8` → **HTTP 403**
+  `feature_not_licensed`: the IOC Lookup API is a separate license
+  feature; refused by upstream entitlement, recorded as-is (a
+  license upgrade unlocks it with zero client changes).
 
 **Cyware ThreatFeed TAXII subscription — VALIDATED 2026-09-07.** The
 operator staged subscriber credentials for a TAXII 2.1 threat-feed
