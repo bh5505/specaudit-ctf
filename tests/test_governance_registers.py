@@ -9,12 +9,14 @@ the checker fail for the expected reason.
 from __future__ import annotations
 
 import ast
+import builtins
 import copy
 import hashlib
 import json
 import os
 import stat
 import tomllib
+import types
 from dataclasses import dataclass, replace
 from datetime import date
 from pathlib import Path
@@ -24,18 +26,27 @@ import pytest
 import yaml
 
 from extension import invoke_profiles as invoke_profiles_module
+from extension.contract import ArmSpec
 from extension.invoke_profiles import INVOKE_PROFILES
+from extension.arms.vulnify import arm as vulnify_arm
 from extension.arms.vulnify import policy as vulnify_policy
+import governance as governance_package
 import governance.check as governance_check
 from governance.check import (
+    CANONICAL_COVERAGE_SCHEMA_SHA256,
+    DEFAULT_COVERAGE_PATH,
+    DEFAULT_COVERAGE_SCHEMA_PATH,
     DEFAULT_REGISTER_PATH,
     DEFAULT_SCHEMA_PATH,
+    MAX_COVERAGE_BYTES,
     MAX_EVIDENCE_BYTES,
     MAX_EVIDENCE_LINES,
     MAX_STRING_BYTES,
     PR97_ACTION_ARGUMENTS,
     PR97_CAPABILITY_IDS,
+    PR97_COVERAGE_SIGNATURES,
     PR97_IMPLEMENTATION_REVISION,
+    PR97_POLICY_MODULES,
     PR97_SOURCE_BY_ARM,
     RegisterLoadError,
     Registry,
@@ -45,14 +56,19 @@ from governance.check import (
     _module_contract_digest,
     _profile_digest,
     _source_contract_digest,
+    load_coverage_inventory,
     load_register,
     main,
+    snapshot_coverage_catalog,
     snapshot_invoke_profiles,
     validate_register,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXED_AS_OF = date(2026, 9, 8)
+COVERAGE_INVENTORY = load_coverage_inventory()
+ARM_ID = vulnify_policy.ARM_ID
+LIST_ACTIONS = vulnify_policy.LIST_ACTIONS
 
 
 @pytest.fixture(scope="module")
@@ -87,10 +103,18 @@ def _codes(report, *, path: str | None = None) -> set[str]:
     }
 
 
-def _validate(document, inventory, *, as_of: date = FIXED_AS_OF, require="integrity"):
+def _validate(
+    document,
+    inventory,
+    *,
+    coverage=COVERAGE_INVENTORY,
+    as_of: date = FIXED_AS_OF,
+    require="integrity",
+):
     return validate_register(
         document,
         inventory,
+        coverage,
         as_of=as_of,
         scope="pr97-readers",
         require=require,
@@ -101,6 +125,23 @@ def _write_register(tmp_path: Path, document: Mapping[str, Any]) -> Path:
     path = tmp_path / "register.yaml"
     path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
     return path
+
+
+def _write_coverage(tmp_path: Path, document: Mapping[str, Any]) -> Path:
+    path = tmp_path / "coverage.yaml"
+    path.write_text(yaml.safe_dump(document, sort_keys=False), encoding="utf-8")
+    return path
+
+
+def _copy_coverage_document() -> dict[str, Any]:
+    return {
+        "version": COVERAGE_INVENTORY.version,
+        "entries": copy.deepcopy(list(COVERAGE_INVENTORY.records)),
+    }
+
+
+def _coverage_row(document: dict[str, Any], arm_id: str) -> dict[str, Any]:
+    return next(row for row in document["entries"] if row["id"] == arm_id)
 
 
 def test_foundation_binds_exact_inventory_and_pr97_scope(registry, inventory) -> None:
@@ -221,6 +262,230 @@ def test_report_binds_exact_loaded_bytes_and_authoritative_inventory(
     assert payload["authoritative_inventory_contract_sha256"] == (
         inventory.contract_sha256
     )
+    assert payload["coverage_contract_sha256"] == (
+        COVERAGE_INVENTORY.contract_sha256
+    )
+    assert payload["coverage_sha256"] == (
+        "sha256:" + hashlib.sha256(DEFAULT_COVERAGE_PATH.read_bytes()).hexdigest()
+    )
+
+
+def test_package_api_preserves_the_two_argument_validation_call(
+    registry, inventory
+) -> None:
+    assert governance_package.CoverageInventory is governance_check.CoverageInventory
+    assert governance_package.load_coverage_inventory is load_coverage_inventory
+    assert governance_package.snapshot_coverage_catalog is snapshot_coverage_catalog
+
+    report = governance_package.validate_register(
+        registry,
+        inventory,
+        as_of=FIXED_AS_OF,
+        scope="pr97-readers",
+        require="integrity",
+    )
+
+    assert report.integrity_ok
+    assert report.coverage_contract_sha256 == COVERAGE_INVENTORY.contract_sha256
+    assert report.coverage_sha256 == COVERAGE_INVENTORY.source_sha256
+
+
+def test_pr97_coverage_rows_match_the_independent_reader_baseline(
+    registry, inventory
+) -> None:
+    document = _copy_coverage_document()
+    assert document["version"] == 1
+    assert set(PR97_COVERAGE_SIGNATURES) == set(PR97_SOURCE_BY_ARM)
+    for arm_id, signature in PR97_COVERAGE_SIGNATURES.items():
+        row = _coverage_row(document, arm_id)
+        assert set(row) == {"id", "kind", "protocols", "curated", "tier", "notes"}
+        assert (
+            row["kind"],
+            tuple(row["protocols"]),
+            row["curated"],
+            row["tier"],
+        ) == signature
+
+    report = _validate(registry, inventory)
+
+    assert report.integrity_ok
+
+
+def test_deleted_coverage_reader_cannot_shrink_pr97_scope(
+    registry, inventory
+) -> None:
+    document = _copy_coverage_document()
+    document["entries"] = [
+        row for row in document["entries"] if row["id"] != "vulnify"
+    ]
+
+    report = _validate(
+        registry,
+        inventory,
+        coverage=snapshot_coverage_catalog(document),
+    )
+
+    assert not report.integrity_ok
+    assert "coverage-reader-missing" in _codes(
+        report, path="coverage:vulnify"
+    )
+
+
+def test_relabeled_coverage_reader_cannot_hide_pr97_scope(
+    registry, inventory
+) -> None:
+    document = _copy_coverage_document()
+    _coverage_row(document, "vulnify")["id"] = "vulnify-renamed"
+
+    report = _validate(
+        registry,
+        inventory,
+        coverage=snapshot_coverage_catalog(document),
+    )
+
+    assert not report.integrity_ok
+    assert "coverage-reader-missing" in _codes(
+        report, path="coverage:vulnify"
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_code"),
+    [
+        ("kind", "head", "coverage-reader-kind-mismatch"),
+        ("protocols", ["cli", "http"], "coverage-reader-protocols-mismatch"),
+        ("protocols", ("cli",), "coverage-reader-protocols-mismatch"),
+        ("curated", 1, "coverage-reader-curated-mismatch"),
+    ],
+)
+def test_pr97_coverage_row_shape_uses_independent_exact_types(
+    registry,
+    inventory,
+    field: str,
+    value: object,
+    expected_code: str,
+) -> None:
+    document = _copy_coverage_document()
+    _coverage_row(document, "vulnify")[field] = value
+
+    report = _validate(
+        registry,
+        inventory,
+        coverage=snapshot_coverage_catalog(document),
+    )
+
+    assert expected_code in _codes(report, path=f"coverage:vulnify.{field}")
+
+
+def test_duplicate_coverage_id_is_semantic_failure_not_silence(
+    registry, inventory
+) -> None:
+    document = _copy_coverage_document()
+    document["entries"].append(
+        copy.deepcopy(_coverage_row(document, "vulnify"))
+    )
+
+    report = _validate(
+        registry,
+        inventory,
+        coverage=snapshot_coverage_catalog(document),
+    )
+
+    assert not report.integrity_ok
+    assert "coverage-duplicate-id" in _codes(
+        report, path="coverage:vulnify"
+    )
+
+
+def test_catalog_only_tier_drift_fails_every_cross_surface_check(
+    registry, inventory
+) -> None:
+    document = _copy_coverage_document()
+    _coverage_row(document, "vulnify")["tier"] = "experimental"
+
+    report = _validate(
+        registry,
+        inventory,
+        coverage=snapshot_coverage_catalog(document),
+    )
+
+    codes = _codes(report, path="coverage:vulnify.tier")
+    assert "coverage-reader-tier-mismatch" in codes
+    assert "coverage-runtime-tier-mismatch" in codes
+    assert "coverage-profile-tier-mismatch" in codes
+
+
+def test_profile_only_tier_drift_fails_catalog_reconciliation(registry) -> None:
+    profiles = dict(INVOKE_PROFILES)
+    profiles["vulnify.lookup"] = replace(
+        profiles["vulnify.lookup"], tier="experimental"
+    )
+    drifted_inventory = snapshot_invoke_profiles(profiles)
+    document = _copy_document(registry)
+    document["runtime_inventory"]["contract_sha256"] = (
+        drifted_inventory.contract_sha256
+    )
+
+    report = _validate(document, drifted_inventory)
+
+    assert "coverage-profile-tier-mismatch" in _codes(
+        report, path="coverage:vulnify.tier"
+    )
+    assert "runtime-tier-mismatch" in _codes(
+        report, path="runtime:vulnify.lookup"
+    )
+
+
+def test_register_only_tier_drift_fails_catalog_reconciliation(
+    registry, inventory
+) -> None:
+    document = _copy_document(registry)
+    _runtime(document, "vulnify.lookup")["support_tier"] = "experimental"
+
+    report = _validate(document, inventory)
+
+    assert "coverage-runtime-tier-mismatch" in _codes(
+        report, path="coverage:vulnify.tier"
+    )
+    assert "runtime-tier-mismatch" in _codes(
+        report, path="runtime:vulnify.lookup"
+    )
+
+
+def test_coordinated_catalog_profile_and_register_tier_drift_stays_red(
+    registry,
+) -> None:
+    coverage_document = _copy_coverage_document()
+    _coverage_row(coverage_document, "vulnify")["tier"] = "experimental"
+    profiles = dict(INVOKE_PROFILES)
+    document = _copy_document(registry)
+    for action in PR97_ACTION_ARGUMENTS["vulnify"]:
+        capability_id = f"vulnify.{action}"
+        profiles[capability_id] = replace(
+            profiles[capability_id], tier="experimental"
+        )
+        _runtime(document, capability_id)["support_tier"] = "experimental"
+    drifted_inventory = snapshot_invoke_profiles(profiles)
+    document["runtime_inventory"]["contract_sha256"] = (
+        drifted_inventory.contract_sha256
+    )
+
+    report = _validate(
+        document,
+        drifted_inventory,
+        coverage=snapshot_coverage_catalog(coverage_document),
+    )
+
+    assert not report.integrity_ok
+    assert "coverage-reader-tier-mismatch" in _codes(
+        report, path="coverage:vulnify.tier"
+    )
+    assert "coverage-runtime-tier-mismatch" not in _codes(
+        report, path="coverage:vulnify.tier"
+    )
+    assert "coverage-profile-tier-mismatch" not in _codes(
+        report, path="coverage:vulnify.tier"
+    )
 
 
 @pytest.mark.parametrize("mutation", ["nested-edit", "added-key"])
@@ -280,6 +545,7 @@ def test_full_requested_target_does_not_relabel_partial_register(
     report = validate_register(
         registry,
         inventory,
+        COVERAGE_INVENTORY,
         as_of=FIXED_AS_OF,
         scope="full",
         require="complete",
@@ -302,6 +568,7 @@ def test_v1_refuses_stored_full_scope_even_for_raw_mapping(
     report = validate_register(
         document,
         inventory,
+        COVERAGE_INVENTORY,
         as_of=FIXED_AS_OF,
         scope="pr97-readers",
         require="integrity",
@@ -331,6 +598,184 @@ def test_schema_rejects_unknown_fields_with_exit_two(
     assert captured.out == ""
     assert json.loads(captured.err)["ok"] is False
     assert "Additional properties" in captured.err
+
+
+def test_coverage_loader_rejects_duplicate_yaml_keys(tmp_path: Path) -> None:
+    path = tmp_path / "duplicate-coverage.yaml"
+    path.write_text(
+        "version: 1\nversion: 1\nentries: []\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RegisterLoadError, match="duplicate YAML mapping key"):
+        load_coverage_inventory(path)
+
+
+def test_coverage_loader_rejects_yaml_aliases_and_anchors(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "alias-coverage.yaml"
+    path.write_text(
+        "version: 1\nentries:\n"
+        "  - &shared {id: sample, kind: arm, protocols: [cli], "
+        "curated: true, tier: research, notes: sample}\n"
+        "  - *shared\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(RegisterLoadError, match="aliases and anchors"):
+        load_coverage_inventory(path)
+
+
+def test_coverage_loader_rejects_symlinked_catalog(tmp_path: Path) -> None:
+    path = tmp_path / "coverage-link.yaml"
+    path.symlink_to(DEFAULT_COVERAGE_PATH)
+
+    with pytest.raises(RegisterLoadError, match="must not be a symlink"):
+        load_coverage_inventory(path)
+
+
+def test_coverage_loader_rejects_oversized_catalog(tmp_path: Path) -> None:
+    path = tmp_path / "oversized-coverage.yaml"
+    path.write_bytes(b" " * (MAX_COVERAGE_BYTES + 1))
+
+    with pytest.raises(RegisterLoadError, match="exceeds the .*byte input cap"):
+        load_coverage_inventory(path)
+
+
+def test_coverage_loader_rejects_coercible_version_type(tmp_path: Path) -> None:
+    document = _copy_coverage_document()
+    document["version"] = 1.0
+    path = _write_coverage(tmp_path, document)
+
+    with pytest.raises(RegisterLoadError):
+        load_coverage_inventory(path)
+
+
+def test_coverage_schema_coedit_is_exit_two(
+    tmp_path: Path, capsys
+) -> None:
+    schema = json.loads(DEFAULT_COVERAGE_SCHEMA_PATH.read_text(encoding="utf-8"))
+    schema["title"] = "co-edited permissive coverage schema"
+    schema_path = tmp_path / "coverage.schema.json"
+    schema_path.write_text(json.dumps(schema), encoding="utf-8")
+
+    exit_code = main(
+        [
+            "check",
+            "--coverage-schema",
+            str(schema_path),
+            "--scope",
+            "pr97-readers",
+            "--require",
+            "integrity",
+            "--as-of",
+            "2026-09-08",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.out == ""
+    assert json.loads(captured.err)["ok"] is False
+    assert CANONICAL_COVERAGE_SCHEMA_SHA256 in captured.err
+
+
+def test_schema_valid_duplicate_coverage_id_is_cli_exit_one(
+    tmp_path: Path, capsys
+) -> None:
+    document = _copy_coverage_document()
+    document["entries"].append(
+        copy.deepcopy(_coverage_row(document, "vulnify"))
+    )
+    path = _write_coverage(tmp_path, document)
+
+    exit_code = main(
+        [
+            "check",
+            "--coverage",
+            str(path),
+            "--scope",
+            "pr97-readers",
+            "--require",
+            "integrity",
+            "--as-of",
+            "2026-09-08",
+        ]
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 1
+    assert captured.err == ""
+    assert payload["ok"] is False
+    assert any(
+        issue["code"] == "coverage-duplicate-id"
+        for issue in payload["issues"]
+    )
+
+
+@pytest.mark.parametrize("mutation", ["relabel", "tier"])
+def test_schema_valid_coverage_drift_is_cli_exit_one(
+    tmp_path: Path, capsys, mutation: str
+) -> None:
+    document = _copy_coverage_document()
+    row = _coverage_row(document, "vulnify")
+    if mutation == "relabel":
+        row["id"] = "vulnify-renamed"
+        expected_code = "coverage-reader-missing"
+    else:
+        row["tier"] = "experimental"
+        expected_code = "coverage-reader-tier-mismatch"
+    path = _write_coverage(tmp_path, document)
+
+    exit_code = main(
+        [
+            "check",
+            "--coverage",
+            str(path),
+            "--scope",
+            "pr97-readers",
+            "--require",
+            "integrity",
+            "--as-of",
+            "2026-09-08",
+        ]
+    )
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+
+    assert exit_code == 1
+    assert captured.err == ""
+    assert any(issue["code"] == expected_code for issue in payload["issues"])
+
+
+def test_schema_invalid_coverage_is_cli_exit_two(
+    tmp_path: Path, capsys
+) -> None:
+    document = _copy_coverage_document()
+    _coverage_row(document, "vulnify")["curated"] = "true"
+    path = _write_coverage(tmp_path, document)
+
+    exit_code = main(
+        [
+            "check",
+            "--coverage",
+            str(path),
+            "--scope",
+            "pr97-readers",
+            "--require",
+            "integrity",
+            "--as-of",
+            "2026-09-08",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert exit_code == 2
+    assert captured.out == ""
+    assert json.loads(captured.err)["ok"] is False
+    assert "coverage schema error" in captured.err
 
 
 def test_loader_rejects_duplicate_yaml_keys(tmp_path: Path) -> None:
@@ -894,6 +1339,44 @@ def test_inventory_only_profile_drift_is_caught_by_global_snapshot(registry) -> 
     assert "runtime-contract-mismatch" not in _codes(report)
 
 
+@pytest.mark.parametrize("mutation", ["add", "relabel-unrelated"])
+def test_coordinated_inventory_refreeze_cannot_widen_the_pr97_profile_roster(
+    registry,
+    mutation: str,
+) -> None:
+    profiles = dict(INVOKE_PROFILES)
+    if mutation == "add":
+        profiles["vulnify.new_read"] = replace(
+            profiles["vulnify.lookup"],
+            capability_id="vulnify.new_read",
+            action="new_read",
+        )
+    else:
+        unrelated = profiles.pop("nmap.list_tools")
+        profiles["vulnify.new_read"] = replace(
+            unrelated,
+            capability_id="vulnify.new_read",
+            arm_id="vulnify",
+            action="new_read",
+        )
+    widened_inventory = snapshot_invoke_profiles(profiles)
+    document = _copy_document(registry)
+    document["runtime_inventory"].update(
+        {
+            "expected_count": len(widened_inventory.capability_ids),
+            "capability_ids": list(widened_inventory.capability_ids),
+            "contract_sha256": widened_inventory.contract_sha256,
+        }
+    )
+
+    report = _validate(document, widened_inventory)
+
+    assert not report.integrity_ok
+    assert _codes(report, path="inventory:pr97-readers") == {
+        "authoritative-pr97-profile-roster-mismatch"
+    }
+
+
 @pytest.mark.parametrize("mutation", ["add", "delete"])
 def test_post_snapshot_inventory_record_roster_mutation_cannot_pass(
     registry, mutation: str
@@ -1093,6 +1576,343 @@ def test_actual_policy_allowed_actions_cannot_narrow_independently(
     )
 
 
+def test_all_pr97_policy_metadata_has_the_exact_governed_types() -> None:
+    for arm_id, module_name in PR97_POLICY_MODULES.items():
+        module = governance_check.importlib.import_module(module_name)
+        expected_data_actions = set(PR97_ACTION_ARGUMENTS[arm_id]) - {"list_tools"}
+
+        assert type(module.ARM_ID) is str
+        assert module.ARM_ID == arm_id
+        assert type(module.ALLOWED_ACTIONS) is frozenset
+        assert module.ALLOWED_ACTIONS == expected_data_actions
+        assert type(module.ARG_KEYS) is dict
+        assert set(module.ARG_KEYS) == expected_data_actions
+        assert all(type(value) is frozenset for value in module.ARG_KEYS.values())
+        assert type(module.LIST_ACTIONS) is frozenset
+        assert module.LIST_ACTIONS == frozenset({"list_tools", "tools/list"})
+        assert type(module.CAVEATS) is tuple and module.CAVEATS
+        assert all(type(value) is str and value.strip() for value in module.CAVEATS)
+        assert type(module.ARMING) is str and module.ARMING.strip()
+
+
+@pytest.mark.parametrize(
+    ("list_actions", "expected_code"),
+    [
+        (frozenset({"tools/list"}), "policy-list-action-surface-mismatch"),
+        (frozenset({"list_tools"}), "policy-list-action-surface-mismatch"),
+        (
+            frozenset({"list_tools", "tools/list", "list"}),
+            "policy-list-action-surface-mismatch",
+        ),
+        ({"list_tools", "tools/list"}, "policy-list-actions-invalid"),
+    ],
+)
+def test_policy_list_surface_must_prove_primary_alias_and_exact_type(
+    registry, inventory, monkeypatch, list_actions: object, expected_code: str
+) -> None:
+    monkeypatch.setattr(vulnify_policy, "LIST_ACTIONS", list_actions)
+
+    report = _validate(registry, inventory)
+
+    assert not report.integrity_ok
+    assert expected_code in _codes(report, path="policy:vulnify")
+    assert "policy-action-surface-mismatch" in _codes(
+        report, path="policy:vulnify"
+    )
+    assert "runtime-policy-action-surface-mismatch" in _codes(
+        report, path="runtime:vulnify.list_tools"
+    )
+
+
+@pytest.mark.parametrize("removed_action", ["list_tools", "tools/list"])
+def test_runtime_handler_must_serve_both_policy_discovery_actions(
+    registry, inventory, monkeypatch, removed_action: str
+) -> None:
+    monkeypatch.setattr(
+        vulnify_arm,
+        "LIST_ACTIONS",
+        frozenset({"list_tools", "tools/list"} - {removed_action}),
+    )
+
+    report = _validate(registry, inventory)
+
+    assert not report.integrity_ok
+    assert "handler-list-action-mismatch" in _codes(
+        report, path=f"handler:vulnify.{removed_action}"
+    )
+    assert "policy-list-action-surface-mismatch" not in _codes(
+        report, path="policy:vulnify"
+    )
+
+
+def test_runtime_discovery_aliases_must_refuse_all_caller_arguments(
+    registry, inventory, monkeypatch
+) -> None:
+    original = vulnify_arm.VulnifyArm._list_tools
+
+    def ignore_payload(self, spec, action, payload):
+        return original(self, spec, action, {})
+
+    monkeypatch.setattr(vulnify_arm.VulnifyArm, "_list_tools", ignore_payload)
+
+    report = _validate(registry, inventory)
+
+    assert not report.integrity_ok
+    for action in ("list_tools", "tools/list"):
+        assert "handler-list-argument-refusal-mismatch" in _codes(
+            report, path=f"handler:vulnify.{action}"
+        )
+
+
+def test_selective_discovery_argument_widening_cannot_evade_the_canary(
+    registry, inventory, monkeypatch
+) -> None:
+    original = vulnify_arm.VulnifyArm._list_tools
+
+    def accept_only_limit(self, spec, action, payload):
+        if payload == {"limit": 1}:
+            return original(self, spec, action, {})
+        return original(self, spec, action, payload)
+
+    monkeypatch.setattr(
+        vulnify_arm.VulnifyArm,
+        "_list_tools",
+        accept_only_limit,
+    )
+    handler = vulnify_arm.VulnifyArm()
+    spec = ArmSpec(
+        id="vulnify",
+        protocols=("cli",),
+        curated=True,
+        notes="selective widening regression",
+        tier="research",
+    )
+    assert handler.invoke(spec, "list_tools", {"unexpected": True}).ok is False
+    assert handler.invoke(spec, "list_tools", {"limit": 1}).ok is True
+
+    report = _validate(registry, inventory)
+
+    assert not report.integrity_ok
+    assert "handler-list-zero-argument-source-mismatch" in _codes(
+        report, path="handler:vulnify"
+    )
+
+
+def test_handler_cannot_shadow_the_builtin_payload_copy(
+    registry, inventory, monkeypatch
+) -> None:
+    def selective_dict(value):
+        if value == {"limit": 1}:
+            return {}
+        return builtins.dict(value)
+
+    monkeypatch.setattr(vulnify_arm, "dict", selective_dict, raising=False)
+    handler = vulnify_arm.VulnifyArm()
+    spec = ArmSpec(
+        id="vulnify",
+        protocols=("cli",),
+        curated=True,
+        notes="shadowed payload-copy regression",
+        tier="research",
+    )
+    assert handler.invoke(spec, "list_tools", {"unexpected": True}).ok is False
+    assert handler.invoke(spec, "list_tools", {"limit": 1}).ok is True
+
+    report = _validate(registry, inventory)
+
+    assert not report.integrity_ok
+    assert "handler-list-zero-argument-source-mismatch" in _codes(
+        report, path="handler:vulnify"
+    )
+
+
+def test_handler_cannot_capture_a_shadow_payload_copy_in_a_closure(
+    registry, inventory, monkeypatch
+) -> None:
+    original_invoke = vulnify_arm.VulnifyArm.invoke
+
+    def selective_dict(value):
+        if value == {"limit": 1}:
+            return {}
+        return builtins.dict(value)
+
+    def make_invoke():
+        dict = selective_dict
+
+        def invoke(self, spec, action, args):
+            if spec.id != ARM_ID:
+                raise vulnify_arm.NotInstalledError(spec.id)
+            payload = dict(args)
+            if action in LIST_ACTIONS:
+                return self._list_tools(spec, action, payload)
+            return original_invoke(self, spec, action, args)
+
+        return invoke
+
+    monkeypatch.setattr(vulnify_arm.VulnifyArm, "invoke", make_invoke())
+    handler = vulnify_arm.VulnifyArm()
+    spec = ArmSpec(
+        id="vulnify",
+        protocols=("cli",),
+        curated=True,
+        notes="closure payload-copy regression",
+        tier="research",
+    )
+    assert handler.invoke(spec, "list_tools", {"unexpected": True}).ok is False
+    assert handler.invoke(spec, "list_tools", {"limit": 1}).ok is True
+
+    report = _validate(registry, inventory)
+
+    assert not report.integrity_ok
+    assert "handler-list-zero-argument-source-mismatch" in _codes(
+        report, path="handler:vulnify"
+    )
+
+
+def test_handler_cannot_replace_dict_in_its_function_builtins(
+    registry, inventory, monkeypatch
+) -> None:
+    original_invoke = vulnify_arm.VulnifyArm.invoke
+
+    def selective_dict(value):
+        if value == {"limit": 1}:
+            return {}
+        return builtins.dict(value)
+
+    custom_globals = builtins.dict(original_invoke.__globals__)
+    custom_builtins = builtins.dict(original_invoke.__builtins__)
+    custom_builtins["dict"] = selective_dict
+    custom_globals.pop("dict", None)
+    custom_globals["__builtins__"] = custom_builtins
+    shadowed_invoke = types.FunctionType(
+        original_invoke.__code__,
+        custom_globals,
+        name=original_invoke.__name__,
+        argdefs=original_invoke.__defaults__,
+        closure=original_invoke.__closure__,
+    )
+    monkeypatch.setattr(vulnify_arm.VulnifyArm, "invoke", shadowed_invoke)
+    handler = vulnify_arm.VulnifyArm()
+    spec = ArmSpec(
+        id="vulnify",
+        protocols=("cli",),
+        curated=True,
+        notes="function builtins regression",
+        tier="research",
+    )
+    assert handler.invoke(spec, "list_tools", {"unexpected": True}).ok is False
+    assert handler.invoke(spec, "list_tools", {"limit": 1}).ok is True
+
+    report = _validate(registry, inventory)
+
+    assert not report.integrity_ok
+    assert "handler-list-zero-argument-source-mismatch" in _codes(
+        report, path="handler:vulnify"
+    )
+
+
+def test_runtime_handler_must_be_selectable_on_the_public_path(
+    registry, inventory, monkeypatch
+) -> None:
+    monkeypatch.setattr(
+        vulnify_arm.VulnifyArm,
+        "installed",
+        lambda self, spec: False,
+    )
+
+    report = _validate(registry, inventory)
+
+    assert "handler-not-selectable" in _codes(
+        report, path="handler:vulnify"
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("CAVEATS", ("diverged handler caveat",)),
+        ("ARMING", "diverged handler arming guidance"),
+    ],
+)
+def test_runtime_discovery_metadata_must_match_the_policy_module(
+    registry,
+    inventory,
+    monkeypatch,
+    field: str,
+    value: object,
+) -> None:
+    monkeypatch.setattr(vulnify_arm, field, value)
+
+    report = _validate(registry, inventory)
+
+    assert not report.integrity_ok
+    assert "handler-list-output-mismatch" in _codes(
+        report, path="handler:vulnify.list_tools"
+    )
+    assert "handler-list-output-mismatch" in _codes(
+        report, path="handler:vulnify.tools/list"
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_code"),
+    [
+        ("ARM_ID", "vulnify-renamed", "policy-arm-id-mismatch"),
+        ("ARM_ID", 1, "policy-arm-id-mismatch"),
+        ("CAVEATS", (), "policy-caveats-invalid"),
+        ("CAVEATS", ["still nonempty"], "policy-caveats-invalid"),
+        ("ARMING", "", "policy-arming-invalid"),
+        ("ARMING", ["not a string"], "policy-arming-invalid"),
+    ],
+)
+def test_policy_identity_and_operator_metadata_fail_closed(
+    registry,
+    inventory,
+    monkeypatch,
+    field: str,
+    value: object,
+    expected_code: str,
+) -> None:
+    monkeypatch.setattr(vulnify_policy, field, value)
+
+    report = _validate(registry, inventory)
+
+    assert expected_code in _codes(report, path="policy:vulnify")
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_code"),
+    [
+        (
+            "ALLOWED_ACTIONS",
+            {"lookup", "list_vulns"},
+            "policy-allowed-actions-invalid",
+        ),
+        (
+            "ARG_KEYS",
+            {
+                "lookup": {"feed", "cve_id", "name"},
+                "list_vulns": frozenset({"feed", "limit"}),
+            },
+            "policy-arg-keys-invalid",
+        ),
+    ],
+)
+def test_policy_action_metadata_rejects_coercible_container_types(
+    registry,
+    inventory,
+    monkeypatch,
+    field: str,
+    value: object,
+    expected_code: str,
+) -> None:
+    monkeypatch.setattr(vulnify_policy, field, value)
+
+    report = _validate(registry, inventory)
+
+    assert expected_code in _codes(report, path="policy:vulnify")
+
+
 def test_policy_import_system_exit_fails_closed(
     registry, inventory, monkeypatch
 ) -> None:
@@ -1142,6 +1962,11 @@ def test_main_normalizes_internal_system_exit_to_exit_two(
         ),
         ("PR97_ACTION_ARGUMENTS", "vulnify", "pr97-action-anchor-mismatch"),
         ("PR97_POLICY_MODULES", "vulnify", "pr97-policy-anchor-mismatch"),
+        (
+            "PR97_COVERAGE_SIGNATURES",
+            "vulnify",
+            "pr97-coverage-anchor-mismatch",
+        ),
         (
             "PR97_CONTRACT_TEMPLATES",
             "caller-file-read-v1",
@@ -1416,6 +2241,8 @@ def test_runtime_promotion_must_accept_exact_known_limitations(
     assert {
         issue.code for issue in report.issues if issue.category == "integrity"
     } == {
+        "coverage-profile-tier-mismatch",
+        "coverage-runtime-tier-mismatch",
         "promotion-limitations-mismatch",
         "promotion-verifier-unimplemented",
     }
@@ -1519,7 +2346,11 @@ def test_self_consistent_fabricated_promotion_is_refused(
     assert not report.integrity_ok
     assert {
         issue.code for issue in report.issues if issue.category == "integrity"
-    } == {"promotion-verifier-unimplemented"}
+    } == {
+        "coverage-profile-tier-mismatch",
+        "coverage-runtime-tier-mismatch",
+        "promotion-verifier-unimplemented",
+    }
 
 
 def test_source_admission_without_pin_rights_or_evidence_fails(
