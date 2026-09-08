@@ -340,7 +340,38 @@ record).
 **ThreatJammer — CEASED OPERATIONS (operator, 2026-09-07).** The
 API key is staged (0600) but the upstream service has shut down:
 there is nothing to stage a server against and nothing to validate.
-Recorded awaiting-revival; never simulated.
+Research confirms no MCP server ever existed for it and the domain
+is parked. Recorded awaiting-revival; never simulated.
+
+**Shodan — VALIDATED 2026-09-07.** Server: `@burtthecoder/mcp-shodan`
+1.0.22 (npm; community — no official Shodan MCP exists per research;
+this one is the official-MCP-registry listing). Stdio server with
+`SHODAN_API_KEY`. Measured: 7 tools served (`ip_lookup`,
+`shodan_search`, `cve_lookup`, `dns_lookup`, `reverse_dns_lookup`,
+`cpe_lookup`, `cves_by_product` — all reads); `ip_lookup 8.8.8.8`
+→ **OK** with live Shodan API data (last-update + geo payloads
+returned).
+
+**OPSWAT MetaDefender Cloud — VALIDATED at the REST API level
+2026-09-07.** Research found NO MCP server upstream (official or
+community — GitHub org search, MCP registry, and Smithery all empty),
+so the staging proof is a direct authenticated read:
+`GET https://api.metadefender.com/v4/ip/8.8.8.8` with the operator's
+key → **HTTP 200** with a full MetaDefender lookup (20+ provider
+assessments, geo/ASN payload). Note the correct API host is
+`api.metadefender.com`; `metadefender.opswat.com/api/v4/...` now
+redirects to the marketing site (404). An arm-admission packet would
+wrap this REST API directly.
+
+**Censys — key refused by the v2 API (2026-09-07).** The operator's
+single-token key (`censys_…`) was refused by
+`https://search.censys.io/api/v2/hosts/8.8.8.8` in both standard
+forms (Bearer and Basic with key-as-ID): 401 "You must authenticate
+with a valid API ID and secret." The best-dedicated community MCP
+server (`nickpending/mcp-censys`) is archived and expects the older
+API ID + secret pair, so no compatible headless validation exists
+for this key shape. Recorded as-is: key staged (0600), validation
+refused by the upstream authentication scheme, never simulated.
 
 ---
 
