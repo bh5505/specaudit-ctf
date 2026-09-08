@@ -9,15 +9,19 @@ is never imported by dispatch or the sealed runtime.
 from __future__ import annotations
 
 import argparse
+import ast
+import builtins
 import copy
 import hashlib
 import importlib
+import inspect
 import json
 import math
 import os
 import re
 import stat
 import sys
+import textwrap
 import unicodedata
 from dataclasses import dataclass, fields
 from datetime import date
@@ -32,6 +36,10 @@ from yaml.events import AliasEvent
 DEFAULT_REGISTER_PATH = Path(__file__).resolve().with_name("register.v1.yaml")
 DEFAULT_SCHEMA_PATH = Path(__file__).resolve().parent / "schema" / "register.v1.schema.json"
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_COVERAGE_PATH = REPOSITORY_ROOT / "extension" / "coverage.yaml"
+DEFAULT_COVERAGE_SCHEMA_PATH = (
+    REPOSITORY_ROOT / "extension" / "schema" / "coverage.schema.json"
+)
 
 REGISTER_SCHEMA_ID = "specaudit.ctf.governance.register.v1"
 REGISTER_SCHEMA_VERSION = 1
@@ -39,6 +47,9 @@ INVENTORY_AUTHORITY_ID = "extension.invoke_profiles.INVOKE_PROFILES"
 EXECUTION_RESULT_SCHEMA_ID = "specaudit.ctf.execution-result.v1"
 CANONICAL_SCHEMA_SHA256 = (
     "sha256:8e8edbd7aadcb071dd997437256e9e6b56fbbd344763423172e1183993e60e53"
+)
+CANONICAL_COVERAGE_SCHEMA_SHA256 = (
+    "sha256:481137fed428de6e2c2c8bce6c109fb9c98fdc654b7cfc0f88bbcfc823a306b3"
 )
 REGISTER_TOP_LEVEL_KEYS = frozenset(
     {
@@ -59,8 +70,14 @@ PR97_SCOPE_ID = "pr97-readers"
 FULL_SCOPE_ID = "full"
 REQUIREMENTS = ("integrity", "current", "complete")
 PR97_IMPLEMENTATION_REVISION = "9c6819c4709397d1d91f68cbb4ae13901d6d85f1"
+PR97_LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
+PR97_CATALOG_ROW_KEYS = frozenset(
+    {"id", "kind", "protocols", "curated", "tier", "notes"}
+)
 MAX_REGISTER_BYTES = 256 * 1024
 MAX_SCHEMA_BYTES = 128 * 1024
+MAX_COVERAGE_BYTES = 128 * 1024
+MAX_COVERAGE_SCHEMA_BYTES = 64 * 1024
 MAX_EVIDENCE_BYTES = 128 * 1024
 MAX_EVIDENCE_LINES = 20_000
 MAX_DOCUMENT_NODES = 20_000
@@ -87,6 +104,28 @@ PR97_ARM_IDS = frozenset(
         "vulnify",
     }
 )
+
+# Literal coverage signatures are independent of coverage.yaml, the governance
+# register, and InvokeProfile objects.  All four surfaces must agree before the
+# checker can report the PR97 reader slice as integrity-clean.
+PR97_COVERAGE_SIGNATURES: Mapping[
+    str, tuple[str, tuple[str, ...], bool, str]
+] = {
+    "ad-pathfinder": ("arm", ("cli",), True, "research"),
+    "agentseal": ("arm", ("cli",), True, "research"),
+    "claude-ad": ("arm", ("cli",), True, "research"),
+    "collinear": ("arm", ("cli",), True, "research"),
+    "detection-in-the-cloud": ("arm", ("cli",), True, "research"),
+    "gpohound": ("arm", ("cli",), True, "research"),
+    "leonidas": ("arm", ("cli",), True, "research"),
+    "m365pwned": ("arm", ("cli",), True, "research"),
+    "numasec": ("arm", ("cli",), True, "research"),
+    "pentestkit": ("arm", ("cli",), True, "research"),
+    "rubeus": ("arm", ("cli",), True, "research"),
+    "security-detections-mcp": ("arm", ("cli",), True, "research"),
+    "specterops-skills": ("arm", ("cli",), True, "research"),
+    "vulnify": ("arm", ("cli",), True, "research"),
+}
 
 # Explicit imports are intentionally named rather than discovered by walking
 # ``extension.arms``.  Each policy is an independent action-input authority.
@@ -340,6 +379,8 @@ class RegisterLoadError(ValueError):
 class _UniqueKeyLoader(yaml.SafeLoader):
     """Safe YAML loader with duplicate, alias, node, and depth refusal."""
 
+    document_label = "register"
+
     def __init__(self, stream: str) -> None:
         super().__init__(stream)
         self._node_count = 0
@@ -348,14 +389,21 @@ class _UniqueKeyLoader(yaml.SafeLoader):
     def compose_node(self, parent: Any, index: Any) -> Any:
         event = self.peek_event()
         if isinstance(event, AliasEvent) or getattr(event, "anchor", None) is not None:
-            raise RegisterLoadError("YAML aliases and anchors are not allowed")
+            raise RegisterLoadError(
+                "YAML aliases and anchors are not allowed in "
+                f"the {self.document_label}"
+            )
         self._node_count += 1
         if self._node_count > MAX_DOCUMENT_NODES:
-            raise RegisterLoadError("register YAML exceeds the node cap")
+            raise RegisterLoadError(
+                f"{self.document_label} YAML exceeds the node cap"
+            )
         self._depth += 1
         if self._depth > MAX_DOCUMENT_DEPTH:
             self._depth -= 1
-            raise RegisterLoadError("register YAML exceeds the nesting-depth cap")
+            raise RegisterLoadError(
+                f"{self.document_label} YAML exceeds the nesting-depth cap"
+            )
         try:
             return super().compose_node(parent, index)
         finally:
@@ -371,9 +419,13 @@ def _construct_unique_mapping(
         try:
             duplicate = key in mapping
         except TypeError as exc:
-            raise RegisterLoadError("register mapping key is not hashable") from exc
+            raise RegisterLoadError(
+                f"{loader.document_label} mapping key is not hashable"
+            ) from exc
         if duplicate:
-            raise RegisterLoadError(f"duplicate YAML mapping key: {key!r}")
+            raise RegisterLoadError(
+                f"duplicate YAML mapping key in {loader.document_label}: {key!r}"
+            )
         mapping[key] = loader.construct_object(value_node, deep=deep)
     return mapping
 
@@ -381,6 +433,12 @@ def _construct_unique_mapping(
 _UniqueKeyLoader.add_constructor(
     yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _construct_unique_mapping
 )
+
+
+class _CoverageUniqueKeyLoader(_UniqueKeyLoader):
+    """Apply the register's safe YAML rules with coverage-specific errors."""
+
+    document_label = "coverage catalog"
 
 
 @dataclass(frozen=True)
@@ -408,6 +466,16 @@ class Inventory:
     capability_ids: tuple[str, ...]
     contract_sha256: str
     records: Mapping[str, Mapping[str, Any]]
+
+
+@dataclass(frozen=True)
+class CoverageInventory:
+    """Strict semantic snapshot of the shipped coverage catalog."""
+
+    version: int
+    contract_sha256: str
+    records: tuple[Mapping[str, Any], ...]
+    source_sha256: str | None = None
 
 
 @dataclass(frozen=True, order=True)
@@ -438,6 +506,8 @@ class ValidationReport:
     register_sha256: str | None
     schema_sha256: str | None
     authoritative_inventory_contract_sha256: str
+    coverage_contract_sha256: str
+    coverage_sha256: str | None
     requirement: str
     as_of: date
     repository_complete: bool
@@ -486,6 +556,8 @@ class ValidationReport:
             "authoritative_inventory_contract_sha256": (
                 self.authoritative_inventory_contract_sha256
             ),
+            "coverage_contract_sha256": self.coverage_contract_sha256,
+            "coverage_sha256": self.coverage_sha256,
             "requirement": self.requirement,
             "as_of": self.as_of.isoformat(),
             "ok": self.ok,
@@ -572,6 +644,30 @@ def snapshot_invoke_profiles(profiles: Mapping[str, Any]) -> Inventory:
     ids = tuple(records)
     snapshot = [records[capability_id] for capability_id in ids]
     return Inventory(ids, _sha256(snapshot), records)
+
+
+def snapshot_coverage_catalog(
+    document: Mapping[str, Any], *, source_sha256: str | None = None
+) -> CoverageInventory:
+    """Freeze a parsed coverage document without normalizing its row values."""
+
+    if type(document) is not dict:
+        raise ValueError("coverage catalog must be an exact mapping")
+    version = document.get("version")
+    rows = document.get("entries")
+    if type(version) is not int:
+        raise ValueError("coverage catalog version must be an exact integer")
+    if type(rows) is not list:
+        raise ValueError("coverage catalog entries must be an exact list")
+    if not all(type(row) is dict for row in rows):
+        raise ValueError("coverage catalog entries must be exact mappings")
+    snapshot = {"version": version, "entries": copy.deepcopy(rows)}
+    return CoverageInventory(
+        version=version,
+        contract_sha256=_sha256(snapshot),
+        records=tuple(snapshot["entries"]),
+        source_sha256=source_sha256,
+    )
 
 
 def _read_file_snapshot(path: Path, *, label: str, max_bytes: int) -> _FileSnapshot:
@@ -736,6 +832,85 @@ def _reject_nonlocal_refs(value: Any, *, path: str = "$") -> None:
             _reject_nonlocal_refs(child, path=f"{path}[{index}]")
 
 
+def load_coverage_inventory(
+    path: Path | str = DEFAULT_COVERAGE_PATH,
+    *,
+    schema_path: Path | str = DEFAULT_COVERAGE_SCHEMA_PATH,
+) -> CoverageInventory:
+    """Load a bounded, schema-valid snapshot of ``extension/coverage.yaml``."""
+
+    coverage_path = Path(path)
+    coverage_snapshot = _read_file_snapshot(
+        coverage_path, label="coverage catalog", max_bytes=MAX_COVERAGE_BYTES
+    )
+    raw = _strict_utf8(coverage_snapshot.data, label="coverage catalog")
+    try:
+        document = yaml.load(raw, Loader=_CoverageUniqueKeyLoader)
+    except RegisterLoadError:
+        raise
+    except (RecursionError, yaml.YAMLError) as exc:
+        raise RegisterLoadError(f"invalid coverage catalog YAML: {exc}") from exc
+    if type(document) is not dict:
+        raise RegisterLoadError("coverage catalog must be a mapping")
+    _validate_bounded_tree(document, label="coverage catalog")
+
+    schema_file = Path(schema_path)
+    schema_snapshot = _read_file_snapshot(
+        schema_file,
+        label="coverage schema",
+        max_bytes=MAX_COVERAGE_SCHEMA_BYTES,
+    )
+    schema_raw = _strict_utf8(schema_snapshot.data, label="coverage schema")
+    try:
+        schema = json.loads(
+            schema_raw,
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except RegisterLoadError:
+        raise
+    except (RecursionError, json.JSONDecodeError) as exc:
+        raise RegisterLoadError(
+            f"cannot load coverage schema {schema_file}: {exc}"
+        ) from exc
+    _validate_bounded_tree(schema, label="coverage schema")
+    _reject_nonlocal_refs(schema)
+    if schema_snapshot.sha256 != CANONICAL_COVERAGE_SCHEMA_SHA256:
+        raise RegisterLoadError(
+            "coverage schema does not match the canonical schema digest: "
+            f"expected {CANONICAL_COVERAGE_SCHEMA_SHA256}, "
+            f"got {schema_snapshot.sha256}"
+        )
+    try:
+        jsonschema.Draft7Validator.check_schema(schema)
+        validator = jsonschema.Draft7Validator(
+            schema, format_checker=jsonschema.FormatChecker()
+        )
+        errors = sorted(
+            validator.iter_errors(document),
+            key=lambda error: tuple(str(part) for part in error.absolute_path),
+        )
+    except jsonschema.SchemaError as exc:
+        raise RegisterLoadError(f"invalid coverage schema: {exc.message}") from exc
+    except Exception as exc:
+        raise RegisterLoadError(
+            "coverage schema validation failed closed: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
+    if errors:
+        error = errors[0]
+        location = ".".join(str(part) for part in error.absolute_path) or "$"
+        raise RegisterLoadError(
+            f"coverage schema error at {location}: {error.message}"
+        )
+    try:
+        return snapshot_coverage_catalog(
+            document, source_sha256=coverage_snapshot.sha256
+        )
+    except ValueError as exc:
+        raise RegisterLoadError(str(exc)) from exc
+
+
 def load_register(
     path: Path | str = DEFAULT_REGISTER_PATH,
     *,
@@ -880,8 +1055,12 @@ def _contract_signature(contract: Mapping[str, Any]) -> dict[str, Any]:
 
 def _load_policy_action_arguments(
     issues: list[ValidationIssue],
-) -> dict[str, dict[str, tuple[str, ...]]]:
+) -> tuple[
+    dict[str, dict[str, tuple[str, ...]]],
+    dict[str, tuple[tuple[str, ...], str]],
+]:
     result: dict[str, dict[str, tuple[str, ...]]] = {}
+    discovery_metadata: dict[str, tuple[tuple[str, ...], str]] = {}
     for arm_id in sorted(PR97_ARM_IDS):
         module_name = PR97_POLICY_MODULES.get(arm_id)
         if module_name is None:
@@ -895,29 +1074,137 @@ def _load_policy_action_arguments(
             continue
         try:
             module = importlib.import_module(module_name)
-            raw = getattr(module, "ARG_KEYS")
-            if not isinstance(raw, Mapping):
-                raise TypeError("ARG_KEYS is not a mapping")
-            raw_allowed = getattr(module, "ALLOWED_ACTIONS")
-            if not isinstance(raw_allowed, (set, frozenset)) or not all(
-                isinstance(action, str) for action in raw_allowed
-            ):
-                raise TypeError("ALLOWED_ACTIONS is not a string set")
+            policy_path = f"policy:{arm_id}"
+            declared_arm_id = getattr(module, "ARM_ID", None)
+            if type(declared_arm_id) is not str or declared_arm_id != arm_id:
+                _add(
+                    issues,
+                    "integrity",
+                    "policy-arm-id-mismatch",
+                    policy_path,
+                    f"ARM_ID must be the exact built-in string {arm_id!r}",
+                )
+
+            raw = getattr(module, "ARG_KEYS", None)
+            args_valid = type(raw) is dict
             normalized: dict[str, tuple[str, ...]] = {}
-            for action, keys in raw.items():
-                if not isinstance(action, str) or isinstance(keys, (str, bytes)):
-                    raise TypeError("ARG_KEYS has an invalid action or key set")
-                normalized[action] = tuple(sorted(keys))
-            if set(normalized) != set(raw_allowed):
+            if args_valid:
+                for action, keys in raw.items():
+                    if (
+                        type(action) is not str
+                        or not action
+                        or type(keys) is not frozenset
+                        or not all(type(key) is str and key for key in keys)
+                    ):
+                        args_valid = False
+                        break
+                    normalized[action] = tuple(sorted(keys))
+            if not args_valid:
+                normalized = {}
+                _add(
+                    issues,
+                    "integrity",
+                    "policy-arg-keys-invalid",
+                    policy_path,
+                    "ARG_KEYS must be an exact dict from nonempty built-in strings "
+                    "to frozensets of nonempty built-in strings",
+                )
+
+            raw_allowed = getattr(module, "ALLOWED_ACTIONS", None)
+            allowed_valid = type(raw_allowed) is frozenset and all(
+                type(action) is str and action for action in raw_allowed
+            )
+            if not allowed_valid:
+                _add(
+                    issues,
+                    "integrity",
+                    "policy-allowed-actions-invalid",
+                    policy_path,
+                    "ALLOWED_ACTIONS must be a frozenset of nonempty built-in strings",
+                )
+
+            expected_actions = PR97_ACTION_ARGUMENTS.get(arm_id, {})
+            expected_data_actions = {
+                action: keys
+                for action, keys in expected_actions.items()
+                if action != "list_tools"
+            }
+            if normalized != expected_data_actions:
+                _add(
+                    issues,
+                    "integrity",
+                    "policy-action-surface-mismatch",
+                    policy_path,
+                    "ARG_KEYS does not match the independently frozen PR97 data-action surface",
+                )
+            if allowed_valid and raw_allowed != frozenset(expected_data_actions):
                 _add(
                     issues,
                     "integrity",
                     "policy-allowed-action-surface-mismatch",
-                    f"policy:{arm_id}",
+                    policy_path,
+                    "ALLOWED_ACTIONS does not match the independently frozen PR97 data actions",
+                )
+            if allowed_valid and args_valid and set(normalized) != set(raw_allowed):
+                _add(
+                    issues,
+                    "integrity",
+                    "policy-allowed-action-surface-mismatch",
+                    policy_path,
                     "ALLOWED_ACTIONS and ARG_KEYS must name the same data actions",
                 )
-            # list_tools is served by the common policy surface and accepts no args.
-            normalized.setdefault("list_tools", ())
+
+            raw_list_actions = getattr(module, "LIST_ACTIONS", None)
+            list_actions_valid = type(raw_list_actions) is frozenset and all(
+                type(action) is str and action for action in raw_list_actions
+            )
+            if not list_actions_valid:
+                _add(
+                    issues,
+                    "integrity",
+                    "policy-list-actions-invalid",
+                    policy_path,
+                    "LIST_ACTIONS must be a frozenset of nonempty built-in strings",
+                )
+            elif raw_list_actions != PR97_LIST_ACTIONS:
+                _add(
+                    issues,
+                    "integrity",
+                    "policy-list-action-surface-mismatch",
+                    policy_path,
+                    "LIST_ACTIONS must remain exactly ['list_tools', 'tools/list']",
+                )
+            else:
+                # The governed zero-argument capability exists only when the
+                # imported policy proves the exact primary action and alias.
+                normalized["list_tools"] = ()
+
+            caveats = getattr(module, "CAVEATS", None)
+            caveats_valid = (
+                type(caveats) is tuple
+                and caveats
+                and all(type(item) is str and item.strip() for item in caveats)
+            )
+            if not caveats_valid:
+                _add(
+                    issues,
+                    "integrity",
+                    "policy-caveats-invalid",
+                    policy_path,
+                    "CAVEATS must be a nonempty tuple of nonempty built-in strings",
+                )
+            arming = getattr(module, "ARMING", None)
+            arming_valid = type(arming) is str and bool(arming.strip())
+            if not arming_valid:
+                _add(
+                    issues,
+                    "integrity",
+                    "policy-arming-invalid",
+                    policy_path,
+                    "ARMING must be a nonempty built-in string",
+                )
+            if caveats_valid and arming_valid:
+                discovery_metadata[arm_id] = (caveats, arming)
             result[arm_id] = normalized
         except SystemExit as exc:
             raise RegisterLoadError(
@@ -933,7 +1220,584 @@ def _load_policy_action_arguments(
                 f"cannot read {module_name} action policy: "
                 f"{type(exc).__name__}: {exc}",
             )
-    return result
+    return result, discovery_metadata
+
+
+def _handler_zero_argument_source_contract(handler: Any) -> tuple[bool, str]:
+    """Prove the common list-action routing and truthy-payload refusal shape."""
+
+    def parse_method(method: Any, name: str) -> tuple[ast.FunctionDef | None, str]:
+        try:
+            source = inspect.getsource(method)
+            tree = ast.parse(textwrap.dedent(source))
+        except (Exception, SystemExit) as exc:
+            return None, f"{name} source is unreadable: {type(exc).__name__}: {exc}"
+        if len(tree.body) != 1 or type(tree.body[0]) is not ast.FunctionDef:
+            return None, f"{name} source is not one function definition"
+        function = tree.body[0]
+        if function.decorator_list:
+            return None, f"{name} must not be wrapped by a decorator"
+        return function, ""
+
+    def exact_arguments(function: ast.FunctionDef, expected: tuple[str, ...]) -> bool:
+        arguments = function.args
+        return (
+            tuple(arg.arg for arg in arguments.posonlyargs + arguments.args)
+            == expected
+            and not arguments.kwonlyargs
+            and arguments.vararg is None
+            and arguments.kwarg is None
+            and not arguments.defaults
+            and not arguments.kw_defaults
+        )
+
+    def name(node: ast.AST, expected: str) -> bool:
+        return type(node) is ast.Name and node.id == expected
+
+    def attribute(node: ast.AST, base: str, expected: str) -> bool:
+        return (
+            type(node) is ast.Attribute
+            and node.attr == expected
+            and name(node.value, base)
+        )
+
+    invoke_method = getattr(handler, "invoke", None)
+    invoke_function = getattr(invoke_method, "__func__", invoke_method)
+    invoke_code = getattr(invoke_function, "__code__", None)
+    if invoke_code is None or invoke_code.co_freevars:
+        return False, "invoke must be a closure-free module-level method"
+    invoke_globals = getattr(invoke_function, "__globals__", None)
+    if type(invoke_globals) is not dict:
+        return False, "invoke globals are unavailable"
+    if invoke_globals.get("dict", builtins.dict) is not builtins.dict:
+        return False, "invoke's dict name does not resolve to builtins.dict"
+    invoke_builtins = getattr(invoke_function, "__builtins__", None)
+    if (
+        type(invoke_builtins) is not dict
+        or invoke_builtins.get("dict") is not builtins.dict
+    ):
+        return False, "invoke's builtins do not bind the canonical dict"
+    handler_list_actions = invoke_globals.get("LIST_ACTIONS")
+    if (
+        type(handler_list_actions) is not frozenset
+        or handler_list_actions != PR97_LIST_ACTIONS
+    ):
+        return False, "invoke's LIST_ACTIONS does not match the frozen aliases"
+
+    list_method_object = getattr(handler, "_list_tools", None)
+    list_function = getattr(list_method_object, "__func__", list_method_object)
+    list_code = getattr(list_function, "__code__", None)
+    if list_code is None or list_code.co_freevars:
+        return False, "_list_tools must be a closure-free module-level method"
+
+    invoke, problem = parse_method(invoke_method, "invoke")
+    if invoke is None:
+        return False, problem
+    list_method, problem = parse_method(list_method_object, "_list_tools")
+    if list_method is None:
+        return False, problem
+    if not exact_arguments(invoke, ("self", "spec", "action", "args")):
+        return False, "invoke has a noncanonical argument contract"
+    if not exact_arguments(
+        list_method, ("self", "spec", "action", "payload")
+    ):
+        return False, "_list_tools has a noncanonical argument contract"
+    if len(invoke.body) < 3:
+        return False, "invoke is missing the canonical list-action routing prefix"
+
+    spec_gate = invoke.body[0]
+    valid_spec_gate = (
+        type(spec_gate) is ast.If
+        and type(spec_gate.test) is ast.Compare
+        and attribute(spec_gate.test.left, "spec", "id")
+        and len(spec_gate.test.ops) == 1
+        and type(spec_gate.test.ops[0]) is ast.NotEq
+        and len(spec_gate.test.comparators) == 1
+        and name(spec_gate.test.comparators[0], "ARM_ID")
+        and len(spec_gate.body) == 1
+        and type(spec_gate.body[0]) is ast.Raise
+        and not spec_gate.orelse
+    )
+    if not valid_spec_gate:
+        return False, "invoke must begin with the canonical arm-id refusal"
+
+    payload_assignment = invoke.body[1]
+    valid_payload_assignment = (
+        type(payload_assignment) is ast.Assign
+        and len(payload_assignment.targets) == 1
+        and name(payload_assignment.targets[0], "payload")
+        and type(payload_assignment.value) is ast.Call
+        and name(payload_assignment.value.func, "dict")
+        and len(payload_assignment.value.args) == 1
+        and name(payload_assignment.value.args[0], "args")
+        and not payload_assignment.value.keywords
+    )
+    if not valid_payload_assignment:
+        return False, "invoke must copy args directly into a built-in payload"
+
+    list_gate = invoke.body[2]
+    valid_list_gate = (
+        type(list_gate) is ast.If
+        and type(list_gate.test) is ast.Compare
+        and name(list_gate.test.left, "action")
+        and len(list_gate.test.ops) == 1
+        and type(list_gate.test.ops[0]) is ast.In
+        and len(list_gate.test.comparators) == 1
+        and name(list_gate.test.comparators[0], "LIST_ACTIONS")
+        and len(list_gate.body) == 1
+        and type(list_gate.body[0]) is ast.Return
+        and type(list_gate.body[0].value) is ast.Call
+        and attribute(list_gate.body[0].value.func, "self", "_list_tools")
+        and len(list_gate.body[0].value.args) == 3
+        and name(list_gate.body[0].value.args[0], "spec")
+        and name(list_gate.body[0].value.args[1], "action")
+        and name(list_gate.body[0].value.args[2], "payload")
+        and not list_gate.body[0].value.keywords
+        and not list_gate.orelse
+    )
+    if not valid_list_gate:
+        return False, "invoke must route LIST_ACTIONS directly to _list_tools"
+
+    if not list_method.body:
+        return False, "_list_tools has no payload refusal"
+    payload_gate = list_method.body[0]
+    valid_payload_gate = (
+        type(payload_gate) is ast.If
+        and name(payload_gate.test, "payload")
+        and len(payload_gate.body) == 1
+        and type(payload_gate.body[0]) is ast.Return
+        and type(payload_gate.body[0].value) is ast.Call
+        and name(payload_gate.body[0].value.func, "_fail")
+        and len(payload_gate.body[0].value.args) == 3
+        and name(payload_gate.body[0].value.args[0], "spec")
+        and name(payload_gate.body[0].value.args[1], "action")
+        and type(payload_gate.body[0].value.args[2]) is ast.Constant
+        and type(payload_gate.body[0].value.args[2].value) is str
+        and bool(payload_gate.body[0].value.args[2].value.strip())
+        and not payload_gate.body[0].value.keywords
+        and not payload_gate.orelse
+    )
+    if not valid_payload_gate:
+        return False, "_list_tools must first refuse every truthy payload via _fail"
+    return True, ""
+
+
+def _check_pr97_handler_list_actions(
+    issues: list[ValidationIssue],
+    policy_discovery_metadata: Mapping[str, tuple[tuple[str, ...], str]],
+) -> None:
+    """Exercise both discovery routes and their zero-argument contract."""
+
+    try:
+        from extension.contract import ArmSpec, Result, _default_arms
+
+        handlers = _default_arms()
+    except (Exception, SystemExit) as exc:
+        _add(
+            issues,
+            "integrity",
+            "handler-registry-unreadable",
+            "handlers:pr97-readers",
+            "cannot construct the runtime handler registry: "
+            f"{type(exc).__name__}: {exc}",
+        )
+        return
+
+    for arm_id in sorted(PR97_ARM_IDS):
+        handler = handlers.get(arm_id)
+        handler_path = f"handler:{arm_id}"
+        if handler is None:
+            _add(
+                issues,
+                "integrity",
+                "handler-missing",
+                handler_path,
+                "the runtime handler registry has no PR97 specialized handler",
+            )
+            continue
+        expected_actions = PR97_ACTION_ARGUMENTS.get(arm_id)
+        if not isinstance(expected_actions, Mapping):
+            continue
+        expected_arg_keys = {
+            action: list(keys)
+            for action, keys in sorted(expected_actions.items())
+            if action != "list_tools"
+        }
+        expected_read_actions = sorted(
+            set(expected_arg_keys) | set(PR97_LIST_ACTIONS)
+        )
+        expected_metadata = policy_discovery_metadata.get(arm_id)
+        spec = ArmSpec(
+            id=arm_id,
+            protocols=("cli",),
+            curated=True,
+            notes="governance integrity probe",
+            tier="research",
+        )
+        try:
+            installed = handler.installed(spec)
+        except (Exception, SystemExit) as exc:
+            _add(
+                issues,
+                "integrity",
+                "handler-install-probe-unreadable",
+                handler_path,
+                "specialized-handler selection probe raised: "
+                f"{type(exc).__name__}: {exc}",
+            )
+            continue
+        if installed is not True:
+            _add(
+                issues,
+                "integrity",
+                "handler-not-selectable",
+                handler_path,
+                "the public extension path would not select this PR97 handler",
+            )
+            continue
+        source_contract_ok, source_contract_problem = (
+            _handler_zero_argument_source_contract(handler)
+        )
+        if not source_contract_ok:
+            _add(
+                issues,
+                "integrity",
+                "handler-list-zero-argument-source-mismatch",
+                handler_path,
+                source_contract_problem,
+            )
+        outputs: dict[str, Any] = {}
+        for action in sorted(PR97_LIST_ACTIONS):
+            action_path = f"{handler_path}.{action}"
+            try:
+                refusal = handler.invoke(spec, action, {"unexpected": True})
+            except (Exception, SystemExit) as exc:
+                _add(
+                    issues,
+                    "integrity",
+                    "handler-list-argument-refusal-unreadable",
+                    action_path,
+                    "nonempty-argument discovery probe raised instead of "
+                    "returning a refusal: "
+                    f"{type(exc).__name__}: {exc}",
+                )
+            else:
+                valid_refusal = (
+                    type(refusal) is Result
+                    and refusal.ok is False
+                    and type(refusal.arm_id) is str
+                    and refusal.arm_id == arm_id
+                    and type(refusal.action) is str
+                    and refusal.action == action
+                    and refusal.output is None
+                    and type(refusal.error) is str
+                    and bool(refusal.error.strip())
+                )
+                if not valid_refusal:
+                    _add(
+                        issues,
+                        "integrity",
+                        "handler-list-argument-refusal-mismatch",
+                        action_path,
+                        "zero-argument discovery route accepted or silently "
+                        "ignored caller arguments",
+                    )
+            try:
+                result = handler.invoke(spec, action, {})
+            except (Exception, SystemExit) as exc:
+                _add(
+                    issues,
+                    "integrity",
+                    "handler-list-action-unreadable",
+                    action_path,
+                    "zero-argument discovery raised instead of returning a result: "
+                    f"{type(exc).__name__}: {exc}",
+                )
+                continue
+            valid_result = (
+                type(result) is Result
+                and result.ok is True
+                and type(result.arm_id) is str
+                and result.arm_id == arm_id
+                and type(result.action) is str
+                and result.action == action
+                and result.error is None
+                and type(result.output) is dict
+            )
+            if not valid_result:
+                _add(
+                    issues,
+                    "integrity",
+                    "handler-list-action-mismatch",
+                    action_path,
+                    "runtime handler did not return an exact successful discovery result",
+                )
+                continue
+            output = result.output
+            valid_output_shape = set(output) == {
+                "read_actions",
+                "dispatch_actions",
+                "arg_keys",
+                "caveats",
+                "arming",
+            }
+            valid_read_actions = (
+                type(output.get("read_actions")) is list
+                and all(
+                    type(value) is str for value in output["read_actions"]
+                )
+                and output["read_actions"] == expected_read_actions
+            )
+            valid_dispatch_actions = (
+                type(output.get("dispatch_actions")) is list
+                and output["dispatch_actions"] == []
+            )
+            arg_keys = output.get("arg_keys")
+            valid_arg_keys = (
+                type(arg_keys) is dict
+                and all(
+                    type(key) is str
+                    and type(values) is list
+                    and all(type(value) is str for value in values)
+                    for key, values in arg_keys.items()
+                )
+                and _strict_json_equal(arg_keys, expected_arg_keys)
+            )
+            caveats = output.get("caveats")
+            valid_caveats = (
+                type(caveats) is list
+                and bool(caveats)
+                and all(type(value) is str and value.strip() for value in caveats)
+                and (
+                    expected_metadata is None
+                    or _strict_json_equal(caveats, list(expected_metadata[0]))
+                )
+            )
+            arming = output.get("arming")
+            valid_arming = (
+                type(arming) is str
+                and bool(arming.strip())
+                and (
+                    expected_metadata is None
+                    or arming == expected_metadata[1]
+                )
+            )
+            if not all(
+                (
+                    valid_output_shape,
+                    valid_read_actions,
+                    valid_dispatch_actions,
+                    valid_arg_keys,
+                    valid_caveats,
+                    valid_arming,
+                )
+            ):
+                _add(
+                    issues,
+                    "integrity",
+                    "handler-list-output-mismatch",
+                    action_path,
+                    "runtime discovery metadata does not match the frozen PR97 "
+                    "read surface",
+                )
+                continue
+            outputs[action] = output
+        if set(outputs) == set(PR97_LIST_ACTIONS) and not _strict_json_equal(
+            outputs["list_tools"], outputs["tools/list"]
+        ):
+            _add(
+                issues,
+                "integrity",
+                "handler-list-alias-divergence",
+                handler_path,
+                "list_tools and tools/list returned different discovery metadata",
+            )
+
+
+def _check_pr97_coverage(
+    coverage: CoverageInventory,
+    runtime: Mapping[str, Mapping[str, Any]],
+    inventory: Inventory,
+    issues: list[ValidationIssue],
+) -> None:
+    """Reconcile frozen PR97 facts across catalog and runtime surfaces."""
+
+    coverage_path = "coverage:pr97-readers"
+    if type(coverage.version) is not int or coverage.version != 1:
+        _add(
+            issues,
+            "integrity",
+            "coverage-version-mismatch",
+            f"{coverage_path}.version",
+            "the PR97 coverage catalog must use exact integer version 1",
+        )
+
+    try:
+        coverage_records = list(coverage.records)
+        observed_digest = _sha256(
+            {"version": coverage.version, "entries": coverage_records}
+        )
+    except (TypeError, ValueError) as exc:
+        coverage_records = []
+        observed_digest = None
+        _add(
+            issues,
+            "integrity",
+            "coverage-snapshot-invalid",
+            coverage_path,
+            "cannot recompute the coverage snapshot: "
+            f"{type(exc).__name__}: {exc}",
+        )
+    if (
+        observed_digest is not None
+        and observed_digest != coverage.contract_sha256
+    ):
+        _add(
+            issues,
+            "integrity",
+            "coverage-snapshot-mutated",
+            coverage_path,
+            "coverage rows changed after their semantic snapshot",
+        )
+
+    rows_by_id: dict[str, list[Mapping[str, Any]]] = {}
+    for position, row in enumerate(coverage_records):
+        row_path = f"coverage.entries[{position}]"
+        if type(row) is not dict:
+            _add(
+                issues,
+                "integrity",
+                "coverage-row-invalid",
+                row_path,
+                "coverage entries must be exact mappings",
+            )
+            continue
+        row_id = row.get("id")
+        if type(row_id) is not str or not row_id:
+            _add(
+                issues,
+                "integrity",
+                "coverage-row-id-invalid",
+                f"{row_path}.id",
+                "coverage entry id must be a nonempty built-in string",
+            )
+            continue
+        rows_by_id.setdefault(row_id, []).append(row)
+
+    for row_id, matches in sorted(rows_by_id.items()):
+        if len(matches) > 1:
+            _add(
+                issues,
+                "integrity",
+                "coverage-duplicate-id",
+                f"coverage:{row_id}",
+                f"coverage entry id occurs {len(matches)} times",
+            )
+
+    for arm_id in sorted(PR97_COVERAGE_SIGNATURES):
+        row_path = f"coverage:{arm_id}"
+        matching = rows_by_id.get(arm_id, [])
+        if not matching:
+            _add(
+                issues,
+                "integrity",
+                "coverage-reader-missing",
+                row_path,
+                "the independently frozen PR97 arm is absent from coverage.yaml",
+            )
+            continue
+        if len(matching) != 1:
+            continue
+        row = matching[0]
+        if set(row) != PR97_CATALOG_ROW_KEYS:
+            _add(
+                issues,
+                "integrity",
+                "coverage-reader-field-roster-mismatch",
+                row_path,
+                "PR97 coverage rows must contain exactly id, kind, protocols, "
+                "curated, tier, and notes",
+            )
+
+        expected_kind, expected_protocols, expected_curated, expected_tier = (
+            PR97_COVERAGE_SIGNATURES[arm_id]
+        )
+        expected_fields: Mapping[str, Any] = {
+            "id": arm_id,
+            "kind": expected_kind,
+            "protocols": list(expected_protocols),
+            "curated": expected_curated,
+            "tier": expected_tier,
+        }
+        for field, expected in expected_fields.items():
+            observed = row.get(field)
+            exact_type = (
+                type(observed) is list
+                and all(type(item) is str for item in observed)
+                if field == "protocols"
+                else type(observed) is type(expected)
+            )
+            if not exact_type or not _strict_json_equal(observed, expected):
+                _add(
+                    issues,
+                    "integrity",
+                    f"coverage-reader-{field.replace('_', '-')}-mismatch",
+                    f"{row_path}.{field}",
+                    f"expected independently frozen value {expected!r}, "
+                    f"got {observed!r}",
+                )
+        notes = row.get("notes")
+        if type(notes) is not str or not notes.strip():
+            _add(
+                issues,
+                "integrity",
+                "coverage-reader-notes-invalid",
+                f"{row_path}.notes",
+                "notes must be a nonempty built-in string",
+            )
+
+        coverage_tier = row.get("tier")
+        expected_actions = PR97_ACTION_ARGUMENTS.get(arm_id)
+        if not isinstance(expected_actions, Mapping):
+            continue
+        expected_capabilities = sorted(
+            f"{arm_id}.{action}" for action in expected_actions
+        )
+        runtime_mismatches = [
+            (capability_id, runtime.get(capability_id, {}).get("support_tier"))
+            for capability_id in expected_capabilities
+            if not _strict_json_equal(
+                runtime.get(capability_id, {}).get("support_tier"),
+                coverage_tier,
+            )
+        ]
+        if runtime_mismatches:
+            _add(
+                issues,
+                "integrity",
+                "coverage-runtime-tier-mismatch",
+                f"{row_path}.tier",
+                "coverage tier does not match every detailed PR97 runtime row: "
+                f"coverage={coverage_tier!r}, mismatches={runtime_mismatches!r}",
+            )
+        profile_mismatches = [
+            (capability_id, inventory.records.get(capability_id, {}).get("tier"))
+            for capability_id in expected_capabilities
+            if not _strict_json_equal(
+                inventory.records.get(capability_id, {}).get("tier"),
+                coverage_tier,
+            )
+        ]
+        if profile_mismatches:
+            _add(
+                issues,
+                "integrity",
+                "coverage-profile-tier-mismatch",
+                f"{row_path}.tier",
+                "coverage tier does not match every authoritative PR97 "
+                "InvokeProfile: "
+                f"coverage={coverage_tier!r}, mismatches={profile_mismatches!r}",
+            )
 
 
 def _expected_relationship_signatures() -> dict[str, tuple[Any, ...]]:
@@ -1322,6 +2186,7 @@ def _check_generic_promotion_refs(
 def validate_register(
     registry: Registry | Mapping[str, Any],
     inventory: Inventory,
+    coverage: CoverageInventory | None = None,
     *,
     as_of: date,
     scope: str = FULL_SCOPE_ID,
@@ -1331,13 +2196,16 @@ def validate_register(
 
     Schema validation belongs to :func:`load_register`.  This function accepts
     a raw mapping as a testing convenience, but still fails closed on semantic
-    mismatches and never mutates its input.
+    mismatches and never mutates its input.  Omitting ``coverage`` preserves the
+    original package call shape by loading the strict canonical catalog.
     """
 
     if scope not in (PR97_SCOPE_ID, FULL_SCOPE_ID):
         raise ValueError(f"unknown scope: {scope}")
     if require not in REQUIREMENTS:
         raise ValueError(f"unknown requirement: {require}")
+    if coverage is None:
+        coverage = load_coverage_inventory()
     loaded_registry = registry if isinstance(registry, Registry) else None
     document = loaded_registry.document if loaded_registry is not None else registry
     if (
@@ -1420,6 +2288,12 @@ def validate_register(
             PR97_ARM_IDS,
         ),
         (
+            "pr97-coverage-anchor-mismatch",
+            "PR97_COVERAGE_SIGNATURES",
+            set(PR97_COVERAGE_SIGNATURES),
+            PR97_ARM_IDS,
+        ),
+        (
             "pr97-source-identity-anchor-mismatch",
             "PR97_SOURCE_IDENTITIES",
             set(PR97_SOURCE_IDENTITIES),
@@ -1449,7 +2323,10 @@ def validate_register(
                 f"added={sorted(observed - set(expected))!r}",
             )
 
-    policy_action_arguments = _load_policy_action_arguments(issues)
+    policy_action_arguments, policy_discovery_metadata = (
+        _load_policy_action_arguments(issues)
+    )
+    _check_pr97_handler_list_actions(issues, policy_discovery_metadata)
     for arm_id in sorted(PR97_ARM_IDS):
         literal_actions = PR97_ACTION_ARGUMENTS.get(arm_id)
         policy_actions = policy_action_arguments.get(arm_id)
@@ -1580,6 +2457,23 @@ def validate_register(
                 "profile.capability_id must equal profile.arm_id + '.' + profile.action",
             )
 
+    authoritative_pr97_ids = {
+        capability_id
+        for capability_id, profile_record in inventory.records.items()
+        if profile_record.get("arm_id") in PR97_ARM_IDS
+    }
+    if authoritative_pr97_ids != PR97_CAPABILITY_IDS:
+        _add(
+            issues,
+            "integrity",
+            "authoritative-pr97-profile-roster-mismatch",
+            "inventory:pr97-readers",
+            "authoritative profiles for the frozen PR97 arms differ from the "
+            "independent capability baseline: "
+            f"missing={sorted(PR97_CAPABILITY_IDS - authoritative_pr97_ids)!r}; "
+            f"added={sorted(authoritative_pr97_ids - PR97_CAPABILITY_IDS)!r}",
+        )
+
     contracts = _index_unique(
         document["contract_templates"], name="contract_templates", issues=issues
     )
@@ -1634,6 +2528,7 @@ def validate_register(
         )
 
     runtime_ids = set(runtime)
+    _check_pr97_coverage(coverage, runtime, inventory, issues)
     if runtime_ids != PR97_CAPABILITY_IDS:
         _add(
             issues,
@@ -2415,6 +3310,8 @@ def validate_register(
             loaded_registry.schema_sha256 if loaded_registry is not None else None
         ),
         authoritative_inventory_contract_sha256=inventory.contract_sha256,
+        coverage_contract_sha256=coverage.contract_sha256,
+        coverage_sha256=coverage.source_sha256,
         requirement=require,
         as_of=as_of,
         repository_complete=effective_repository_complete,
@@ -2446,6 +3343,18 @@ def _parser() -> argparse.ArgumentParser:
         default=DEFAULT_SCHEMA_PATH,
         help="path to byte-identical canonical v1 schema",
     )
+    check.add_argument(
+        "--coverage",
+        type=Path,
+        default=DEFAULT_COVERAGE_PATH,
+        help="path to the coverage catalog snapshot",
+    )
+    check.add_argument(
+        "--coverage-schema",
+        type=Path,
+        default=DEFAULT_COVERAGE_SCHEMA_PATH,
+        help="path to the byte-identical canonical coverage schema",
+    )
     check.add_argument("--scope", choices=(PR97_SCOPE_ID, FULL_SCOPE_ID), default=FULL_SCOPE_ID)
     check.add_argument("--require", choices=REQUIREMENTS, default="complete")
     check.add_argument("--as-of", type=_iso_date, required=True)
@@ -2460,6 +3369,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         registry = load_register(args.register, schema_path=args.schema)
+        coverage = load_coverage_inventory(
+            args.coverage,
+            schema_path=args.coverage_schema,
+        )
         # Import only in the maintainer command, never on extension/runtime paths.
         from extension.invoke_profiles import INVOKE_PROFILES
 
@@ -2467,6 +3380,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         report = validate_register(
             registry,
             inventory,
+            coverage,
             as_of=args.as_of,
             scope=args.scope,
             require=args.require,
