@@ -520,6 +520,19 @@ evidence, change runtime admission, or edit the catalog. Sequence further work
 by the dependency order below rather than by dates; continue one vertical
 slice at a time.
 
+`SAFE-01` also has a checkout-only [reader-safety requirements
+inventory](safety/README.md) for the named PR97 caller-file reader surfaces.
+Its integrity check proves only correspondence to those named PR97 checkout
+surfaces. It provisions no approved input root, stable nofollow snapshot,
+trusted custody/classification, egress denial, ambient-credential
+isolation, independent hard kill/monitoring, untrusted-content boundary, or
+grader-plane separation. It grants no authority and does not satisfy `SAFE-01`.
+
+The safety inventory does not collapse the roadmap boundaries: `EVID-01` still
+owns trusted observation, custody, and grading; `GOV-01` owns source/runtime
+promotion and currentness; and `DATA-01` / `DATA-02` own admitted source
+revisions, rights, snapshots, and their empirical denied-egress behavior.
+
 Four program workstreams travel through this dependency graph rather than
 creating a second roadmap: `GOV-01` owns the module/source/currentness
 registers and governance of the `TEL-01`–`TEL-09` blueprints; `AUDIT-01` and

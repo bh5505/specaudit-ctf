@@ -84,6 +84,23 @@ new third argument is omitted. `CoverageInventory`, `load_coverage_inventory`,
 and `snapshot_coverage_catalog` are exported for callers that need to validate
 an explicit alternate snapshot.
 
+## Reader safety register
+
+The checkout-only [reader-safety register](../safety/README.md) inventories
+requirements that remain permanently unverified by the checkout for the named
+PR97 caller-file reader surfaces. Its integrity check proves only
+correspondence to those named PR97 checkout surfaces. It provisions no approved
+input root, stable nofollow snapshot, trusted custody/classification, egress
+denial, ambient-credential isolation, independent hard kill/monitoring,
+untrusted-content boundary, or grader-plane separation. It grants no authority
+and does not satisfy `SAFE-01`. The checkout cannot produce a passing `ready`
+result.
+
+That safety inventory is not `EVID-01` trusted observation, custody, or grading
+evidence; `GOV-01` source/runtime promotion or currentness; or `DATA-01` /
+`DATA-02` source admission, rights, snapshot, and denied-egress evidence. Those
+gates remain independent.
+
 The promotion-event shape reserves the subject and contract digests,
 implementation revision, reviewer, exercised path, regression result, supported
 versions, source revisions, and accepted limitations needed by a future

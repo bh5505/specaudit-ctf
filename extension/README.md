@@ -178,6 +178,18 @@ and only when a trusted validator supplies a separate pre-attempt admission and
 the exact raw and Mode-A result bytes; it does not make other reader results
 trusted.
 
+The checkout-only [reader-safety register](../safety/README.md) inventories
+requirements that remain permanently unverified by the checkout for these
+named PR97 reader surfaces. Its integrity check proves only correspondence to
+the named PR97 checkout surfaces. It provisions no approved input root, stable
+nofollow snapshot, trusted custody/classification, egress denial,
+ambient-credential isolation, independent hard kill/monitoring,
+untrusted-content boundary, or grader-plane separation. It grants no authority
+and does not satisfy `SAFE-01`. It is also not
+`EVID-01` observation/custody/grading evidence, `GOV-01` promotion/currentness,
+or `DATA-01` / `DATA-02` source admission, rights, snapshot, or denied-egress
+evidence; those gates remain independent.
+
 - `attack-stix-data` — exact `technique`, `software`, `group`, and bounded
   `relationships` reads over a local STIX bundle; no downloader or broad
   enumeration.
