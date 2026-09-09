@@ -85,6 +85,16 @@ smoke are offline. Generated runtimes are not committed. See
 [runtime/README.md](runtime/README.md) for the lock, reproducibility,
 installation, rotation, and rollback contract.
 
+## Evidence tooling (ASM/VM)
+
+`tools/` also holds the ASM/VM evidence tooling: evidence builders, a read-only
+live-fire capture of the exposure claims the checks make, the SEIF round trip, and
+two instruments used to decide whether a run can be trusted -
+`csv_type_preflight.py` (does this evidence corpus load the way the checks assume,
+column by column, including what `read_csv`'s sample window infers) and
+`check_probe.py` (does this SQL rewrite return the same rows, under a wall-clock
+budget). See [tools/README.md](tools/README.md).
+
 ## CLI
 
 From the repository root:
