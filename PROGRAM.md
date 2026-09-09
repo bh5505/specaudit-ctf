@@ -331,8 +331,9 @@ scope.
 
 **Initial mechanisms, not bridge completion.** The opt-in
 `extension.observations` sidecar implements pre-grading singleton slices for an
-exact `vulnify.lookup` CVE record, `security-detections-mcp.get_rule` rule, or
-`rubeus.telemetry` event. It binds validator-supplied source admission,
+exact `vulnify.lookup` CVE record, `security-detections-mcp.get_rule` rule,
+`rubeus.telemetry` event, or `gpohound.policy` record. It binds
+validator-supplied source admission,
 execution envelope, Mode-A policy-report bytes and raw source bytes while
 leaving the fixture lane and every invocation surface unchanged. Each record
 remains source-`declared`, freshness/applicability remain `not-assessed`,

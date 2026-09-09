@@ -165,13 +165,34 @@ class GpohoundArm:
 
 
 def _load_evidence(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Read once and delegate strict evidence parsing to the byte API."""
     raw = _read_bounded(path)
+    policies, source, _provenance = parse_policy_evidence_bytes(
+        raw, format=path.suffix.lower().lstrip(".")
+    )
+    return policies, source
+
+
+def parse_policy_evidence_bytes(
+    raw: bytes, *, format: str
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    """Parse exact policy evidence bytes without I/O and bind normalization."""
+    if type(raw) is not bytes:
+        raise _EvidenceError("evidence bytes must be immutable bytes")
+    if type(format) is not str:
+        raise _EvidenceError("evidence format is not supported")
+    if len(raw) > MAX_EVIDENCE_BYTES:
+        raise _EvidenceError(
+            f"evidence exceeds the {MAX_EVIDENCE_BYTES} byte read cap"
+        )
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise _EvidenceError("evidence is not strict UTF-8") from exc
+    if format not in {"json", "yaml", "yml"}:
+        raise _EvidenceError("evidence format is not supported")
     try:
-        if path.suffix.lower() == ".json":
+        if format == "json":
             data = strict_json_loads(text)
         else:
             if _yaml is None:
@@ -182,7 +203,7 @@ def _load_evidence(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     except StrictDataError as exc:
         raise _EvidenceError(str(exc)) from exc
     except Exception as exc:  # parser boundary: never surface raw parser failures
-        raise _EvidenceError(f"invalid {path.suffix.lower().lstrip('.')} evidence") from exc
+        raise _EvidenceError(f"invalid {format} evidence") from exc
     if isinstance(data, list):
         rows = data
     elif isinstance(data, dict) and set(data) == {"policies"} and isinstance(data["policies"], list):
@@ -191,7 +212,21 @@ def _load_evidence(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
         raise _EvidenceError("evidence must be an array or an object containing only a policies array")
     if len(rows) > _MAX_TREE_NODES:
         raise _EvidenceError(f"evidence exceeds the {_MAX_TREE_NODES} policy cap")
-    return _validate_policies(rows), _source(raw)
+    policies = _validate_policies(rows)
+    canonical = json.dumps(
+        policies,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    provenance = {
+        "snapshot_digest": f"sha256:{hashlib.sha256(raw).hexdigest()}",
+        "normalization": {
+            "records_sha256": f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+        },
+    }
+    return policies, _source(raw), provenance
 
 
 def _load_yaml(text: str) -> Any:
@@ -390,9 +425,16 @@ def _optional_query(value: Any) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
+def render_producer_output_bytes(output: Any) -> bytes:
+    """Render the exact UTF-8 form used by this arm's output size gate."""
+    return json.dumps(
+        output, sort_keys=True, ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+
+
 def _ok(spec: ArmSpec, action: str, output: Any) -> Result:
     try:
-        size = len(json.dumps(output, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+        size = len(render_producer_output_bytes(output))
     except (TypeError, ValueError, OverflowError) as exc:
         return _fail(spec, action, f"result could not be encoded: {exc}")
     if size > MAX_OUTPUT_CHARS:

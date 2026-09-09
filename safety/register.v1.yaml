@@ -14,7 +14,7 @@ surface_anchors:
   coverage: sha256:dc5304d5eee526f4c081a64090577b999ad75e230154b582b1a985a6e942494b
   invoke_profiles: sha256:0e4564f9de9a705bbcd3d5e65d71d3f2353d5336005b8eee295026460c90e16b
   policies: sha256:93e32e6028237e38ffa0132f5e269eb00c0fa1cf3b1edcf7f0a123697eacf987
-  reader_runtime: sha256:2bbb040a0602de6973fa56a807720592c9d4aa3485687e6ab8cbfeaf378f37a9
+  reader_runtime: sha256:662bd7f5b2a76775742b7597727e1c3dedf7a70a67a5c0ccc9fa15d3a60a3007
 hazards:
 - id: HZ-AMBIENT-CREDENTIAL-EXPOSURE
   record_version: 1

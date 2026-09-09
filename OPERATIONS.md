@@ -239,7 +239,8 @@ cover.
 ### Opt-in source-declared observation slices
 
 The EVID-01 sidecar covers exactly one declared record returned by
-`vulnify.lookup`, `security-detections-mcp.get_rule`, or `rubeus.telemetry`.
+`vulnify.lookup`, `security-detections-mcp.get_rule`, `rubeus.telemetry`, or
+`gpohound.policy`.
 It is not enabled merely by invoking an arm. A trusted validator must, before
 dispatch:
 
@@ -255,7 +256,7 @@ dispatch:
 Use `issue_source_admission` for the byte-compatible v1 vulnify contract, or
 `issue_profile_source_admission` with the exact capability and subject for the
 profile-aware API. The latter still routes vulnify to v1; only the rule and
-telemetry profiles mint v2 documents.
+telemetry profiles mint v2 documents, while GPOHound policy mints v3.
 
 After dispatch, the validator reads the one policy-report artifact through its
 own retained Mode-A channel and passes those immutable bytes, the execution
@@ -265,13 +266,15 @@ artifact bytes and observation separately. On retry, call
 `verify_trusted_observation` with the durable set of already-seen observation
 ids; the pure library stores no replay state.
 
-Do not mint an admission from the repository's R01, R36 or R43 research
+Do not mint an admission from the repository's R01, R08, R36 or R43 research
 mapping alone. Those rows currently have no selected revision or
 license/data-rights clearance. A per-attempt admission is also not a governance
 promotion or an upstream-equivalence decision. Every derived record stays
 `declared`, with freshness and applicability `not-assessed`; a rule does not
 establish deployment or operating effectiveness, and sanitized telemetry does
-not establish event authenticity, event time or compromise. No profile
+not establish event authenticity, event time or compromise. A declared GPO
+record does not establish policy application, effective access, filter
+applicability, item-level targeting, or conflict resolution. No profile
 supplies finding, grading, workpaper or lifecycle authority.
 
 The observation says `validator-attested-mode-a`, not “custody verified.”
