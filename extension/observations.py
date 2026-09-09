@@ -1,4 +1,4 @@
-"""Pure, opt-in trusted-observation derivation for one local-read slice.
+"""Pure, opt-in trusted-observation derivation for exact local-read slices.
 
 The default extension does not import this module.  A trusted caller supplies
 an admission minted before dispatch, the parsed execution-result object, the
@@ -17,24 +17,45 @@ import hashlib
 import json
 import math
 import re
-from collections.abc import Collection, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from types import MappingProxyType
 from typing import Any
 
+from .arms.rubeus.arm import (
+    parse_telemetry_bytes,
+    render_producer_output_bytes as render_rubeus_output_bytes,
+)
+from .arms.rubeus.policy import MAX_OUTPUT_CHARS as RUBEUS_MAX_OUTPUT_CHARS
+from .arms.security_detections_mcp.arm import (
+    parse_index_bytes,
+    render_producer_output_bytes as render_security_rule_output_bytes,
+)
+from .arms.security_detections_mcp.policy import (
+    MAX_OUTPUT_CHARS as SECURITY_RULE_MAX_OUTPUT_CHARS,
+)
 from .arms.strict_data import StrictDataError, strict_json_loads
 from .arms.vulnify.arm import (
     FeedError,
     parse_feed_bytes,
-    render_producer_output_bytes,
+    render_producer_output_bytes as render_vulnify_output_bytes,
 )
-from .arms.vulnify.policy import MAX_OUTPUT_CHARS
+from .arms.vulnify.policy import MAX_OUTPUT_CHARS as VULNIFY_MAX_OUTPUT_CHARS
 from .envelopes import STATUS_COMPLETE, parse_execution_result
-from .observation_profiles import ObservationProfile, observation_profile
+from .invoke_profiles import INVOKE_PROFILES
+from .observation_profiles import (
+    OBSERVATION_PROFILES,
+    ObservationProfile,
+    observation_profile,
+)
 
 SOURCE_ADMISSION_SCHEMA_ID = "specaudit.ctf.source-admission.v1"
 TRUSTED_OBSERVATION_SCHEMA_ID = "specaudit.ctf.trusted-observation.v1"
 SCHEMA_VERSION = 1
+SOURCE_ADMISSION_V2_SCHEMA_ID = "specaudit.ctf.source-admission.v2"
+TRUSTED_OBSERVATION_V2_SCHEMA_ID = "specaudit.ctf.trusted-observation.v2"
+SCHEMA_VERSION_V2 = 2
 
 REASON_INVALID_ADMISSION = "invalid-source-admission"
 REASON_UNKNOWN_SCHEMA = "unknown-observation-schema"
@@ -73,15 +94,20 @@ _MAX_DOCUMENT_BYTES = 2_097_152
 _MAX_DOCUMENT_NODES = 50_000
 _MAX_DOCUMENT_DEPTH = 64
 _MAX_TEXT = 16_384
+# The security source tree and each selected Rubeus record are bounded at
+# 50,000 nodes and depth 64.  Their v2 singleton reports and observation
+# documents add bounded contract wrappers, so reserve explicit headroom rather
+# than rejecting an arm-complete artifact at the sidecar boundary.
+_V2_MAX_DOCUMENT_NODES = 50_256
+_V2_MAX_DOCUMENT_DEPTH = 68
+_V2_MAX_TEXT = SECURITY_RULE_MAX_OUTPUT_CHARS
+# Security's bounded-tree gate applies the same producer cap to mapping keys;
+# keep that parity explicit while retaining an independently tunable limit.
+_V2_MAX_KEY_TEXT = SECURITY_RULE_MAX_OUTPUT_CHARS
 _MAX_NUMBER_BITS = 65_536
 _MAX_CVE_ID = 32
 _MAX_POLICY_REPORT_BYTES = 1_048_576
 _MAX_ADMISSION_VALIDITY_SECONDS = 24 * 60 * 60
-_DERIVED_LIMITATIONS = (
-    "applicability-not-assessed",
-    "source-admission-is-not-governance-promotion",
-    "upstream-equivalence-not-established",
-)
 
 _ADMISSION_KEYS = frozenset(
     {
@@ -166,6 +192,77 @@ class ObservationError(ValueError):
     def __init__(self, reasons: Sequence[str]) -> None:
         self.reasons = _unique(reasons)
         super().__init__(", ".join(self.reasons))
+
+
+_ParsedSource = tuple[
+    list[dict[str, Any]], dict[str, Any], dict[str, Any]
+]
+
+
+@dataclass(frozen=True)
+class _ReplayAdapter:
+    adapter_id: str
+    parse: Callable[[bytes, str], _ParsedSource]
+    render: Callable[[Any], bytes]
+    max_output_bytes: int
+    report_has_provenance: bool
+    project_evidence: Callable[[dict[str, Any]], dict[str, Any]]
+
+
+def _parse_vulnify_source(raw: bytes, format: str) -> _ParsedSource:
+    return parse_feed_bytes(raw, format=format)
+
+
+def _parse_security_rule_source(raw: bytes, format: str) -> _ParsedSource:
+    return parse_index_bytes(raw, format=format)
+
+
+def _parse_rubeus_source(raw: bytes, format: str) -> _ParsedSource:
+    return parse_telemetry_bytes(raw, format=format)
+
+
+def _complete_evidence_record(record: dict[str, Any]) -> dict[str, Any]:
+    return _document_copy(record)
+
+
+def _security_rule_evidence_record(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "rule_id": record["rule_id"],
+        "name": record["name"],
+        "definition_digest": _sha256(_canonical_bytes(record)),
+    }
+
+
+_REPLAY_ADAPTERS = MappingProxyType(
+    {
+        "vulnify.lookup": _ReplayAdapter(
+            adapter_id="vulnify-feed-v1",
+            parse=_parse_vulnify_source,
+            render=render_vulnify_output_bytes,
+            max_output_bytes=VULNIFY_MAX_OUTPUT_CHARS,
+            report_has_provenance=True,
+            project_evidence=_complete_evidence_record,
+        ),
+        "security-detections-mcp.get_rule": _ReplayAdapter(
+            adapter_id="security-detections-index-v1",
+            parse=_parse_security_rule_source,
+            render=render_security_rule_output_bytes,
+            max_output_bytes=SECURITY_RULE_MAX_OUTPUT_CHARS,
+            report_has_provenance=False,
+            project_evidence=_security_rule_evidence_record,
+        ),
+        "rubeus.telemetry": _ReplayAdapter(
+            adapter_id="rubeus-telemetry-v1",
+            parse=_parse_rubeus_source,
+            render=render_rubeus_output_bytes,
+            max_output_bytes=RUBEUS_MAX_OUTPUT_CHARS,
+            report_has_provenance=False,
+            project_evidence=_complete_evidence_record,
+        ),
+    }
+)
 
 
 def issue_source_admission(
@@ -286,6 +383,162 @@ def issue_source_admission(
     return admission
 
 
+def issue_profile_source_admission(
+    *,
+    capability_id: str,
+    subject_id: str,
+    attempt_id: str,
+    raw_artifact: bytes,
+    source_format: str,
+    source_id: str,
+    source_revision: str,
+    source_timestamp: str | None,
+    logical_locator: str,
+    raw_artifact_locator: str,
+    authority_ref: str,
+    issuer_id: str,
+    issuer_version: str,
+    producer_revision: str,
+    issued_at: str,
+    valid_from: str,
+    valid_until: str,
+    limitations: Sequence[str] = (),
+) -> dict[str, Any]:
+    """Build an explicit admission for one frozen observation profile.
+
+    ``vulnify.lookup`` deliberately routes through the original v1 issuer so
+    its public contract and serialized output remain byte-compatible.  The
+    two singleton profiles added after v1 mint only the closed v2 contract.
+    """
+    profile = _required_profile(capability_id)
+    if profile.contract_version == SCHEMA_VERSION:
+        if profile.capability_id != "vulnify.lookup":
+            raise ObservationError((REASON_PROFILE_MISMATCH,))
+        return issue_source_admission(
+            attempt_id=attempt_id,
+            raw_artifact=raw_artifact,
+            source_format=source_format,
+            source_id=source_id,
+            source_revision=source_revision,
+            source_timestamp=source_timestamp,
+            logical_locator=logical_locator,
+            raw_artifact_locator=raw_artifact_locator,
+            authority_ref=authority_ref,
+            cve_id=subject_id,
+            issuer_id=issuer_id,
+            issuer_version=issuer_version,
+            producer_revision=producer_revision,
+            issued_at=issued_at,
+            valid_from=valid_from,
+            valid_until=valid_until,
+            limitations=limitations,
+        )
+    if profile.contract_version != SCHEMA_VERSION_V2:
+        raise ObservationError((REASON_PROFILE_MISMATCH,))
+
+    reasons = _profile_issue_input_reasons(
+        profile=profile,
+        subject_id=subject_id,
+        attempt_id=attempt_id,
+        raw_artifact=raw_artifact,
+        source_format=source_format,
+        source_id=source_id,
+        source_revision=source_revision,
+        source_timestamp=source_timestamp,
+        logical_locator=logical_locator,
+        raw_artifact_locator=raw_artifact_locator,
+        authority_ref=authority_ref,
+        issuer_id=issuer_id,
+        issuer_version=issuer_version,
+        producer_revision=producer_revision,
+        issued_at=issued_at,
+        valid_from=valid_from,
+        valid_until=valid_until,
+        limitations=limitations,
+    )
+    if reasons:
+        raise ObservationError(reasons)
+    adapter = _adapter_for_profile(profile)
+    try:
+        records, source_claim, provenance = adapter.parse(
+            raw_artifact, source_format
+        )
+    except (TypeError, ValueError) as exc:
+        raise ObservationError((REASON_SOURCE_PARSE,)) from exc
+    matches = [
+        record
+        for record in records
+        if record.get(profile.subject_id_field) == subject_id
+    ]
+    if len(matches) != 1:
+        raise ObservationError((REASON_SUBJECT_MISMATCH,))
+
+    source_time = {
+        "status": "known" if source_timestamp is not None else "unknown",
+        "value": source_timestamp,
+    }
+    body: dict[str, Any] = {
+        "schema": SOURCE_ADMISSION_V2_SCHEMA_ID,
+        "schema_version": SCHEMA_VERSION_V2,
+        "attempt_id": attempt_id,
+        "capability_id": profile.capability_id,
+        "arm_id": profile.arm_id,
+        "action": profile.action,
+        "issuer": {"id": issuer_id, "version": issuer_version},
+        "producer": {
+            "id": profile.tool_name,
+            "version": profile.tool_version,
+            "revision": producer_revision,
+        },
+        "issued_at": issued_at,
+        "validity": {"not_before": valid_from, "not_after": valid_until},
+        "source": {
+            "id": source_id,
+            "revision": source_revision,
+            "schema": {
+                "id": profile.source_schema_id,
+                "version": profile.source_schema_version,
+                "format": source_format,
+            },
+            "timestamp": source_time,
+            "freshness": "not-assessed",
+            "logical_locator": logical_locator,
+            "authority_ref": authority_ref,
+            "raw_artifact": {
+                "digest": source_claim["sha256"],
+                "bytes": source_claim["bytes"],
+                "normalized_records_digest": provenance["normalization"][
+                    "records_sha256"
+                ],
+            },
+        },
+        "subject": {
+            "kind": profile.subject_kind,
+            profile.subject_id_field: subject_id,
+        },
+        "scope": {
+            "kind": profile.scope_kind,
+            "identifier": f"{profile.scope_prefix}:{subject_id}",
+        },
+        "custody": {
+            "controller": issuer_id,
+            "source_assertion": "validator-held-before-attempt",
+            "raw_artifact_locator": raw_artifact_locator,
+        },
+        "evidence_class": profile.evidence_class,
+        "limitations": sorted(set(limitations)),
+    }
+    admission = _add_content_id(
+        body, field="admission_id", prefix="source-admission"
+    )
+    checked = verify_source_admission(
+        admission, raw_artifact=raw_artifact, at_time=valid_from
+    )
+    if not checked.accepted:
+        raise ObservationError(checked.reasons)
+    return admission
+
+
 def verify_source_admission(
     admission: Mapping[str, Any], *, raw_artifact: bytes, at_time: str
 ) -> VerificationResult:
@@ -297,6 +550,13 @@ def verify_source_admission(
     reasons = list(_admission_structure_reasons(document))
     if reasons:
         return _verification(reasons)
+    profile = _profile_for_document(document, observation=False)
+    if profile is None:
+        return _verification((REASON_PROFILE_MISMATCH,))
+    try:
+        adapter = _adapter_for_profile(profile)
+    except ObservationError as exc:
+        return _verification(exc.reasons)
     if not _valid_timestamp(at_time):
         reasons.append(REASON_ADMISSION_WINDOW)
     else:
@@ -317,22 +577,30 @@ def verify_source_admission(
         reasons.append(REASON_RAW_ARTIFACT_MISMATCH)
     else:
         try:
-            records, computed_source, provenance = parse_feed_bytes(
-                raw_artifact, format=source["schema"]["format"]
+            records, computed_source, provenance = adapter.parse(
+                raw_artifact, source["schema"]["format"]
             )
         except (FeedError, TypeError, ValueError):
             reasons.append(REASON_SOURCE_PARSE)
         else:
-            if raw_claim != {
+            expected_raw_claim = {
                 "digest": computed_source["sha256"],
                 "bytes": computed_source["bytes"],
                 "normalized_records_digest": provenance["normalization"][
                     "records_sha256"
                 ],
-            }:
+            }
+            if _canonical_bytes(raw_claim) != _canonical_bytes(
+                expected_raw_claim
+            ):
                 reasons.append(REASON_RAW_ARTIFACT_MISMATCH)
-            cve_id = document["subject"]["cve_id"]
-            if not any(record.get("cve_id") == cve_id for record in records):
+            subject_id = document["subject"][profile.subject_id_field]
+            matches = [
+                record
+                for record in records
+                if record.get(profile.subject_id_field) == subject_id
+            ]
+            if len(matches) != 1:
                 reasons.append(REASON_SUBJECT_MISMATCH)
     return _verification(reasons)
 
@@ -376,24 +644,33 @@ def verify_trusted_observation(
     """Verify an exact observation bundle and reject caller-tracked replay.
 
     Replay state is intentionally external: this pure helper accepts the
-    validator's already-seen id set and never mutates it.
+    validator's already-seen id collection and never mutates it.  The trusted
+    caller must preserve that collection across calls; this call rejects
+    collections whose length or iteration is internally inconsistent.
     """
     try:
-        document = _document_copy(observation)
+        document = _observation_document_copy(observation)
     except (TypeError, ValueError):
         return _verification((REASON_OBSERVATION_MISMATCH,))
     reasons = list(_observation_structure_reasons(document))
     observation_id = document.get("observation_id")
     try:
-        if isinstance(seen_observation_ids, (str, bytes)):
-            raise TypeError("seen ids must be a collection of ids")
+        if isinstance(seen_observation_ids, (str, bytes)) or not isinstance(
+            seen_observation_ids, Collection
+        ):
+            raise TypeError("seen ids must be a repeatable collection")
+        size_before = len(seen_observation_ids)
         replayed = False
+        seen_count = 0
         for item in seen_observation_ids:
+            seen_count += 1
             if type(item) is not str or not _OBSERVATION_ID_RE.fullmatch(item):
                 raise ValueError("seen ids must contain exact observation ids")
             if type(observation_id) is str and item == observation_id:
                 replayed = True
-    except (TypeError, ValueError, RuntimeError):
+        if len(seen_observation_ids) != size_before or seen_count != size_before:
+            raise ValueError("seen ids must have stable complete iteration")
+    except (OverflowError, TypeError, ValueError, RuntimeError):
         reasons.append(REASON_REPLAY)
     else:
         if replayed:
@@ -479,7 +756,13 @@ def _validated_inputs(
     if parsed.result is None:
         return None, _unique(reasons)
 
-    profile = _required_profile()
+    profile = _profile_for_document(admission_doc, observation=False)
+    if profile is None:
+        return None, _unique([*reasons, REASON_PROFILE_MISMATCH])
+    try:
+        adapter = _adapter_for_profile(profile)
+    except ObservationError as exc:
+        return None, _unique([*reasons, *exc.reasons])
     result = parsed.result
     if result.capability_id != profile.capability_id:
         reasons.append(REASON_PROFILE_MISMATCH)
@@ -543,12 +826,24 @@ def _validated_inputs(
     if result.budget.spent.output_bytes != len(policy_report):
         reasons.append(REASON_ARTIFACT_MISMATCH)
 
+    if profile.contract_version == SCHEMA_VERSION_V2:
+        report_max_nodes = _V2_MAX_DOCUMENT_NODES
+        report_max_depth = _V2_MAX_DOCUMENT_DEPTH
+        report_copy = _v2_document_copy
+    else:
+        report_max_nodes = _MAX_DOCUMENT_NODES
+        report_max_depth = _MAX_DOCUMENT_DEPTH
+        report_copy = _document_copy
     try:
         text = policy_report.decode("utf-8")
-        report_value = strict_json_loads(text)
+        report_value = strict_json_loads(
+            text,
+            max_nodes=report_max_nodes,
+            max_depth=report_max_depth,
+        )
         if not isinstance(report_value, dict):
             raise ValueError("policy report is not an object")
-        report_doc = _document_copy(report_value)
+        report_doc = report_copy(report_value)
         if _canonical_bytes(report_doc) != policy_report:
             raise ValueError("policy report is not the canonical producer artifact")
     except (
@@ -562,34 +857,43 @@ def _validated_inputs(
         return None, _unique(reasons)
 
     try:
-        producer_rendered = render_producer_output_bytes(report_doc)
-    except (TypeError, ValueError):
+        producer_rendered = adapter.render(report_doc)
+    except (OverflowError, TypeError, ValueError):
         reasons.append(REASON_INVALID_POLICY_REPORT)
         return None, _unique(reasons)
-    if len(producer_rendered) > MAX_OUTPUT_CHARS:
+    if len(producer_rendered) > adapter.max_output_bytes:
         reasons.append(REASON_INVALID_POLICY_REPORT)
         return None, _unique(reasons)
-    if set(report_doc) != {"vulnerability", "source", "provenance"}:
+    expected_report_keys = {profile.report_record_key, "source"}
+    if adapter.report_has_provenance:
+        expected_report_keys.add("provenance")
+    if set(report_doc) != expected_report_keys:
         reasons.append(REASON_INVALID_POLICY_REPORT)
     try:
-        records, expected_source, expected_provenance = parse_feed_bytes(
-            raw_artifact, format=admission_doc["source"]["schema"]["format"]
+        records, expected_source, expected_provenance = adapter.parse(
+            raw_artifact, admission_doc["source"]["schema"]["format"]
         )
     except (FeedError, TypeError, ValueError):
         reasons.append(REASON_SOURCE_PARSE)
         return None, _unique(reasons)
-    cve_id = admission_doc["subject"]["cve_id"]
-    matches = [record for record in records if record.get("cve_id") == cve_id]
+    subject_id = admission_doc["subject"][profile.subject_id_field]
+    matches = [
+        record
+        for record in records
+        if record.get(profile.subject_id_field) == subject_id
+    ]
     if len(matches) != 1 or _canonical_bytes(
-        report_doc.get("vulnerability")
+        report_doc.get(profile.report_record_key)
     ) != _canonical_bytes(matches[0]):
         reasons.append(REASON_SUBJECT_MISMATCH)
-    if (
-        _canonical_bytes(report_doc.get("source"))
-        != _canonical_bytes(expected_source)
-        or _canonical_bytes(report_doc.get("provenance"))
-        != _canonical_bytes(expected_provenance)
-    ):
+    source_mismatch = _canonical_bytes(
+        report_doc.get("source")
+    ) != _canonical_bytes(expected_source)
+    if adapter.report_has_provenance:
+        source_mismatch = source_mismatch or _canonical_bytes(
+            report_doc.get("provenance")
+        ) != _canonical_bytes(expected_provenance)
+    if source_mismatch:
         reasons.append(REASON_SOURCE_MISMATCH)
     if reasons:
         return None, _unique(reasons)
@@ -604,25 +908,41 @@ def _build_observation(
     *,
     verified_at: str,
 ) -> dict[str, Any]:
+    profile = _profile_for_document(admission, observation=False)
+    if profile is None:
+        raise ValueError("admission does not select a frozen profile")
+    adapter = _adapter_for_profile(profile)
     policy_digest = _sha256(policy_report)
     attempt_id = admission["attempt_id"]
     filename = "sha256-" + policy_digest.removeprefix("sha256:")
-    limitations = sorted(set(admission["limitations"]) | set(_DERIVED_LIMITATIONS))
+    limitations = sorted(
+        set(admission["limitations"]) | set(profile.derived_limitations)
+    )
+    if profile.contract_version == SCHEMA_VERSION:
+        schema_id = TRUSTED_OBSERVATION_SCHEMA_ID
+        schema_version = SCHEMA_VERSION
+        document_copy = _document_copy
+    elif profile.contract_version == SCHEMA_VERSION_V2:
+        schema_id = TRUSTED_OBSERVATION_V2_SCHEMA_ID
+        schema_version = SCHEMA_VERSION_V2
+        document_copy = _v2_document_copy
+    else:
+        raise ValueError("profile selects an unknown contract version")
     body: dict[str, Any] = {
-        "schema": TRUSTED_OBSERVATION_SCHEMA_ID,
-        "schema_version": SCHEMA_VERSION,
+        "schema": schema_id,
+        "schema_version": schema_version,
         "admission_id": admission["admission_id"],
         "attempt_id": attempt_id,
         "capability_id": admission["capability_id"],
         "arm_id": admission["arm_id"],
         "action": admission["action"],
-        "producer": _document_copy(admission["producer"]),
-        "verifier": _document_copy(admission["issuer"]),
-        "subject": _document_copy(admission["subject"]),
-        "scope": _document_copy(admission["scope"]),
+        "producer": document_copy(admission["producer"]),
+        "verifier": document_copy(admission["issuer"]),
+        "subject": document_copy(admission["subject"]),
+        "scope": document_copy(admission["scope"]),
         "collected_at": execution_result["finished_at"],
         "verified_at": verified_at,
-        "source": _document_copy(admission["source"]),
+        "source": document_copy(admission["source"]),
         "custody": {
             "controller": admission["custody"]["controller"],
             "source_assertion": admission["custody"]["source_assertion"],
@@ -644,12 +964,14 @@ def _build_observation(
         },
         "evidence": {
             "class": admission["evidence_class"],
-            "record": _document_copy(report["vulnerability"]),
+            "record": adapter.project_evidence(
+                document_copy(report[profile.report_record_key])
+            ),
             "applicability": {"assessed": False, "status": "not-assessed"},
         },
         "limitations": limitations,
     }
-    observation = _document_copy(body)
+    observation = document_copy(body)
     observation["observation_id"] = _observation_identity(observation)
     return observation
 
@@ -707,15 +1029,63 @@ def _issue_input_reasons(**values: Any) -> tuple[str, ...]:
     return _unique(reasons)
 
 
+def _profile_issue_input_reasons(
+    *, profile: ObservationProfile, subject_id: Any, **values: Any
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    if type(values["attempt_id"]) is not str or not _ATTEMPT_ID_RE.fullmatch(
+        values["attempt_id"]
+    ):
+        reasons.append(REASON_INVALID_ADMISSION)
+    if type(values["raw_artifact"]) is not bytes:
+        reasons.append(REASON_RAW_ARTIFACT_MISMATCH)
+    if (
+        type(values["source_format"]) is not str
+        or values["source_format"] not in profile.source_formats
+    ):
+        reasons.append(REASON_INVALID_ADMISSION)
+    for field in ("source_id", "source_revision", "issuer_id", "issuer_version"):
+        if not _valid_identifier(values[field]):
+            reasons.append(REASON_INVALID_ADMISSION)
+    if not _valid_identifier(values["producer_revision"]):
+        reasons.append(REASON_INVALID_ADMISSION)
+    for field in ("logical_locator", "raw_artifact_locator", "authority_ref"):
+        if not _valid_ref(values[field]):
+            reasons.append(REASON_INVALID_ADMISSION)
+    if not _valid_subject_id(profile, subject_id):
+        reasons.append(REASON_INVALID_ADMISSION)
+    for field in ("issued_at", "valid_from", "valid_until"):
+        if not _valid_timestamp(values[field]):
+            reasons.append(REASON_ADMISSION_WINDOW)
+    source_timestamp = values["source_timestamp"]
+    if source_timestamp is not None and not _valid_timestamp(source_timestamp):
+        reasons.append(REASON_ADMISSION_WINDOW)
+    if not _valid_admission_window(
+        values["issued_at"], values["valid_from"], values["valid_until"]
+    ):
+        reasons.append(REASON_ADMISSION_WINDOW)
+    if not reasons and source_timestamp is not None:
+        if source_timestamp > values["issued_at"]:
+            reasons.append(REASON_ADMISSION_WINDOW)
+    try:
+        _normalized_limitations(values["limitations"])
+    except (TypeError, ValueError):
+        reasons.append(REASON_INVALID_ADMISSION)
+    if type(values["raw_artifact"]) is bytes:
+        try:
+            _adapter_for_profile(profile).parse(
+                values["raw_artifact"], values["source_format"]
+            )
+        except (ObservationError, TypeError, ValueError):
+            reasons.append(REASON_SOURCE_PARSE)
+    return _unique(reasons)
+
+
 def _admission_structure_reasons(document: dict[str, Any]) -> tuple[str, ...]:
     reasons: list[str] = []
     if set(document) != _ADMISSION_KEYS:
         return (REASON_INVALID_ADMISSION,)
-    if (
-        document.get("schema") != SOURCE_ADMISSION_SCHEMA_ID
-        or document.get("schema_version") != SCHEMA_VERSION
-        or type(document.get("schema_version")) is not int
-    ):
+    if _contract_version_for_document(document, observation=False) is None:
         reasons.append(REASON_UNKNOWN_SCHEMA)
     if not isinstance(document.get("admission_id"), str) or not _ADMISSION_ID_RE.fullmatch(
         document["admission_id"]
@@ -725,7 +1095,10 @@ def _admission_structure_reasons(document: dict[str, Any]) -> tuple[str, ...]:
         document["attempt_id"]
     ):
         reasons.append(REASON_INVALID_ADMISSION)
-    profile = _required_profile()
+    profile = _profile_for_structure(document, observation=False)
+    if profile is None:
+        reasons.append(REASON_PROFILE_MISMATCH)
+        return _unique(reasons)
     if (
         document.get("capability_id") != profile.capability_id
         or document.get("arm_id") != profile.arm_id
@@ -765,16 +1138,19 @@ def _admission_structure_reasons(document: dict[str, Any]) -> tuple[str, ...]:
         reasons.append(REASON_INVALID_ADMISSION)
     subject = document.get("subject")
     scope = document.get("scope")
+    subject_id = (
+        subject.get(profile.subject_id_field)
+        if isinstance(subject, dict)
+        else None
+    )
     if (
-        not _exact_mapping(subject, {"kind", "cve_id"})
+        not _exact_mapping(subject, {"kind", profile.subject_id_field})
         or subject.get("kind") != profile.subject_kind
-        or not isinstance(subject.get("cve_id"), str)
-        or len(subject.get("cve_id", "")) > _MAX_CVE_ID
-        or not _CVE_ID_RE.fullmatch(subject["cve_id"])
+        or not _valid_subject_id(profile, subject_id)
         or scope
         != {
             "kind": profile.scope_kind,
-            "identifier": f"cve:{subject.get('cve_id')}",
+            "identifier": f"{profile.scope_prefix}:{subject_id}",
         }
     ):
         reasons.append(REASON_SUBJECT_MISMATCH)
@@ -803,12 +1179,16 @@ def _observation_structure_reasons(document: dict[str, Any]) -> tuple[str, ...]:
     reasons: list[str] = []
     if set(document) != _OBSERVATION_KEYS:
         return (REASON_OBSERVATION_MISMATCH,)
-    if (
-        document.get("schema") != TRUSTED_OBSERVATION_SCHEMA_ID
-        or document.get("schema_version") != SCHEMA_VERSION
-        or type(document.get("schema_version")) is not int
-    ):
+    contract_version = _contract_version_for_document(
+        document, observation=True
+    )
+    if contract_version is None:
         reasons.append(REASON_UNKNOWN_SCHEMA)
+    elif (
+        contract_version == SCHEMA_VERSION_V2
+        and _profile_for_structure(document, observation=True) is None
+    ):
+        reasons.append(REASON_PROFILE_MISMATCH)
     if not isinstance(document.get("observation_id"), str) or not _OBSERVATION_ID_RE.fullmatch(
         document["observation_id"]
     ):
@@ -859,8 +1239,8 @@ def _valid_source(
         or schema.get("id") != profile.source_schema_id
         or schema.get("version") != profile.source_schema_version
         or type(schema.get("version")) is not int
-        or not isinstance(schema.get("format"), str)
-        or schema.get("format") not in {"json", "jsonl", "yaml"}
+        or type(schema.get("format")) is not str
+        or schema.get("format") not in profile.source_formats
         or not _exact_mapping(timestamp, {"status", "value"})
         or not _exact_mapping(
             raw, {"digest", "bytes", "normalized_records_digest"}
@@ -880,11 +1260,114 @@ def _valid_source(
     return timestamp == {"status": "unknown", "value": None}
 
 
-def _required_profile() -> ObservationProfile:
-    profile = observation_profile("vulnify.lookup")
+def _contract_version_for_document(
+    document: Mapping[str, Any], *, observation: bool
+) -> int | None:
+    schema = document.get("schema")
+    version = document.get("schema_version")
+    if type(version) is not int:
+        return None
+    if observation:
+        if schema == TRUSTED_OBSERVATION_SCHEMA_ID and version == SCHEMA_VERSION:
+            return version
+        if (
+            schema == TRUSTED_OBSERVATION_V2_SCHEMA_ID
+            and version == SCHEMA_VERSION_V2
+        ):
+            return version
+        return None
+    if schema == SOURCE_ADMISSION_SCHEMA_ID and version == SCHEMA_VERSION:
+        return version
+    if (
+        schema == SOURCE_ADMISSION_V2_SCHEMA_ID
+        and version == SCHEMA_VERSION_V2
+    ):
+        return version
+    return None
+
+
+def _profile_for_document(
+    document: Mapping[str, Any], *, observation: bool
+) -> ObservationProfile | None:
+    version = _contract_version_for_document(document, observation=observation)
+    capability_id = document.get("capability_id")
+    if version is None or type(capability_id) is not str:
+        return None
+    profile = observation_profile(capability_id)
+    if profile is None or profile.contract_version != version:
+        return None
+    return profile
+
+
+def _profile_for_structure(
+    document: Mapping[str, Any], *, observation: bool
+) -> ObservationProfile | None:
+    """Select a capability profile without conflating an unknown schema.
+
+    Structure validation reports an unknown schema independently.  A profile
+    mismatch is warranted only when the capability itself is unknown or a
+    recognized contract version conflicts with that capability's frozen
+    profile.
+    """
+    capability_id = document.get("capability_id")
+    if type(capability_id) is not str:
+        return None
+    profile = observation_profile(capability_id)
+    if profile is None:
+        return None
+    version = _contract_version_for_document(document, observation=observation)
+    if version is not None and profile.contract_version != version:
+        return None
+    return profile
+
+
+def _required_profile(
+    capability_id: str = "vulnify.lookup",
+) -> ObservationProfile:
+    if type(capability_id) is not str:
+        raise ObservationError((REASON_PROFILE_MISMATCH,))
+    profile = observation_profile(capability_id)
     if profile is None:
         raise ObservationError((REASON_PROFILE_MISMATCH,))
     return profile
+
+
+def _adapter_for_profile(profile: ObservationProfile) -> _ReplayAdapter:
+    if tuple(_REPLAY_ADAPTERS) != tuple(OBSERVATION_PROFILES):
+        raise ObservationError((REASON_PROFILE_MISMATCH,))
+    adapter = _REPLAY_ADAPTERS.get(profile.capability_id)
+    invoke = INVOKE_PROFILES.get(profile.capability_id)
+    if (
+        adapter is None
+        or adapter.adapter_id != profile.replay_adapter_id
+        or invoke is None
+        or (
+            profile.capability_id,
+            profile.arm_id,
+            profile.action,
+            profile.tool_name,
+            profile.tool_version,
+        )
+        != (
+            invoke.capability_id,
+            invoke.arm_id,
+            invoke.action,
+            invoke.tool_name,
+            invoke.tool_version,
+        )
+    ):
+        raise ObservationError((REASON_PROFILE_MISMATCH,))
+    return adapter
+
+
+def _valid_subject_id(profile: ObservationProfile, value: Any) -> bool:
+    if profile.capability_id == "vulnify.lookup":
+        return (
+            type(value) is str
+            and len(value) <= _MAX_CVE_ID
+            and bool(_CVE_ID_RE.fullmatch(value))
+        )
+    return _valid_identifier(value)
 
 
 def _normalized_limitations(value: Any) -> list[str]:
@@ -905,22 +1388,103 @@ def _normalized_limitations(value: Any) -> list[str]:
 
 
 def _document_copy(value: Any) -> dict[str, Any]:
+    return _bounded_document_copy(
+        value,
+        max_nodes=_MAX_DOCUMENT_NODES,
+        max_depth=_MAX_DOCUMENT_DEPTH,
+        max_text=_MAX_TEXT,
+        max_key_text=_MAX_TEXT,
+    )
+
+
+def _v2_document_copy(value: Any) -> dict[str, Any]:
+    return _bounded_document_copy(
+        value,
+        max_nodes=_V2_MAX_DOCUMENT_NODES,
+        max_depth=_V2_MAX_DOCUMENT_DEPTH,
+        max_text=_V2_MAX_TEXT,
+        max_key_text=_V2_MAX_KEY_TEXT,
+    )
+
+
+def _observation_document_copy(value: Any) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return _document_copy(value)
+    try:
+        schema_id = value.get("schema")
+        schema_version = value.get("schema_version")
+        capability_id = value.get("capability_id")
+    except RuntimeError as exc:
+        raise TypeError("document mapping could not be inspected") from exc
+    profile = (
+        observation_profile(capability_id)
+        if type(capability_id) is str
+        else None
+    )
+    if (
+        type(schema_id) is str
+        and schema_id == TRUSTED_OBSERVATION_V2_SCHEMA_ID
+        and type(schema_version) is int
+        and schema_version == SCHEMA_VERSION_V2
+        and profile is not None
+        and profile.contract_version == SCHEMA_VERSION_V2
+    ):
+        candidate = _v2_document_copy(value)
+        if (
+            candidate.get("schema") == TRUSTED_OBSERVATION_V2_SCHEMA_ID
+            and candidate.get("schema_version") == SCHEMA_VERSION_V2
+            and type(candidate.get("schema_version")) is int
+            and candidate.get("capability_id") == capability_id
+        ):
+            return candidate
+        return _document_copy(candidate)
+    return _document_copy(value)
+
+
+def _bounded_document_copy(
+    value: Any,
+    *,
+    max_nodes: int,
+    max_depth: int,
+    max_text: int,
+    max_key_text: int,
+) -> dict[str, Any]:
     counters = [0, 0]
-    copied = _json_value(value, depth=0, counters=counters)
+    try:
+        copied = _json_value(
+            value,
+            depth=0,
+            counters=counters,
+            max_nodes=max_nodes,
+            max_depth=max_depth,
+            max_text=max_text,
+            max_key_text=max_key_text,
+        )
+    except RuntimeError as exc:
+        raise TypeError("document mapping could not be copied") from exc
     if not isinstance(copied, dict):
         raise TypeError("document must be a mapping")
     return copied
 
 
-def _json_value(value: Any, *, depth: int, counters: list[int]) -> Any:
-    if depth > _MAX_DOCUMENT_DEPTH:
+def _json_value(
+    value: Any,
+    *,
+    depth: int,
+    counters: list[int],
+    max_nodes: int,
+    max_depth: int,
+    max_text: int,
+    max_key_text: int,
+) -> Any:
+    if depth > max_depth:
         raise ValueError("document exceeds depth cap")
     counters[0] += 1
-    if counters[0] > _MAX_DOCUMENT_NODES:
+    if counters[0] > max_nodes:
         raise ValueError("document exceeds node cap")
     if value is None or type(value) in {bool, int, str}:
         if type(value) is str:
-            if len(value) > _MAX_TEXT:
+            if len(value) > max_text:
                 raise ValueError("document text exceeds cap")
             _require_utf8_text(value)
         if type(value) is int and value.bit_length() > _MAX_NUMBER_BITS:
@@ -936,7 +1500,7 @@ def _json_value(value: Any, *, depth: int, counters: list[int]) -> Any:
         _add_document_bytes(counters, 2)
         copied: dict[str, Any] = {}
         for key, item in value.items():
-            if type(key) is not str or len(key) > _MAX_TEXT:
+            if type(key) is not str or len(key) > max_key_text:
                 raise TypeError("document keys must be bounded exact strings")
             _require_utf8_text(key)
             if key in copied:
@@ -944,7 +1508,15 @@ def _json_value(value: Any, *, depth: int, counters: list[int]) -> Any:
             if copied:
                 _add_document_bytes(counters, 1)
             _add_document_bytes(counters, len(_scalar_json_bytes(key)) + 1)
-            copied[key] = _json_value(item, depth=depth + 1, counters=counters)
+            copied[key] = _json_value(
+                item,
+                depth=depth + 1,
+                counters=counters,
+                max_nodes=max_nodes,
+                max_depth=max_depth,
+                max_text=max_text,
+                max_key_text=max_key_text,
+            )
         return copied
     if isinstance(value, list):
         _add_document_bytes(counters, 2)
@@ -953,7 +1525,15 @@ def _json_value(value: Any, *, depth: int, counters: list[int]) -> Any:
             if copied_list:
                 _add_document_bytes(counters, 1)
             copied_list.append(
-                _json_value(item, depth=depth + 1, counters=counters)
+                _json_value(
+                    item,
+                    depth=depth + 1,
+                    counters=counters,
+                    max_nodes=max_nodes,
+                    max_depth=max_depth,
+                    max_text=max_text,
+                    max_key_text=max_key_text,
+                )
             )
         return copied_list
     raise TypeError("document is not strict JSON data")
@@ -1000,7 +1580,7 @@ def _content_id(body: Mapping[str, Any], *, prefix: str) -> str:
 
 
 def _observation_identity(document: Mapping[str, Any]) -> str:
-    """Return the v1 one-observation-per-attempt replay identity."""
+    """Return the per-schema one-observation-per-attempt replay identity."""
     return _content_id(
         {
             "schema": document.get("schema"),
@@ -1079,11 +1659,15 @@ def _unique(values: Sequence[str]) -> tuple[str, ...]:
 
 __all__ = [
     "SCHEMA_VERSION",
+    "SCHEMA_VERSION_V2",
     "SOURCE_ADMISSION_SCHEMA_ID",
+    "SOURCE_ADMISSION_V2_SCHEMA_ID",
     "TRUSTED_OBSERVATION_SCHEMA_ID",
+    "TRUSTED_OBSERVATION_V2_SCHEMA_ID",
     "ObservationError",
     "VerificationResult",
     "derive_trusted_observation",
+    "issue_profile_source_admission",
     "issue_source_admission",
     "verify_source_admission",
     "verify_trusted_observation",

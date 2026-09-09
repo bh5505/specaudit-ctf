@@ -146,16 +146,39 @@ class RubeusArm:
         )
 
 
-def _load_telemetry(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+def _load_telemetry(
+    path: Path,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Read once and delegate strict telemetry parsing to the byte API."""
     raw = _read_bounded(path)
+    events, source, _provenance = parse_telemetry_bytes(
+        raw, format=path.suffix.lower().lstrip(".")
+    )
+    return events, source
+
+
+def parse_telemetry_bytes(
+    raw: bytes, *, format: str
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    """Parse exact telemetry bytes without I/O and bind normalized events."""
+    if type(raw) is not bytes:
+        raise _TelemetryError("telemetry bytes must be immutable bytes")
+    if type(format) is not str:
+        raise _TelemetryError("telemetry format is not supported")
+    if len(raw) > MAX_TELEMETRY_BYTES:
+        raise _TelemetryError(
+            f"telemetry exceeds the {MAX_TELEMETRY_BYTES} byte read cap"
+        )
     try:
         text = raw.decode("utf-8")
     except UnicodeDecodeError as exc:
         raise _TelemetryError("telemetry is not strict UTF-8") from exc
     if not text.strip():
         raise _TelemetryError("telemetry file is empty")
+    if format not in {"json", "jsonl"}:
+        raise _TelemetryError("telemetry format is not supported")
     try:
-        if path.suffix.lower() == ".json":
+        if format == "json":
             data = strict_json_loads(text)
             if isinstance(data, list):
                 rows = data
@@ -170,10 +193,24 @@ def _load_telemetry(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     except StrictDataError as exc:
         raise _TelemetryError(str(exc)) from exc
     except Exception as exc:
-        raise _TelemetryError(f"invalid {path.suffix.lower().lstrip('.')} telemetry") from exc
+        raise _TelemetryError(f"invalid {format} telemetry") from exc
     if len(rows) > _MAX_RECORDS:
         raise _TelemetryError(f"telemetry exceeds the {_MAX_RECORDS} record cap")
-    return _validate_events(rows), _source(raw)
+    events = _validate_events(rows)
+    canonical = json.dumps(
+        events,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    provenance = {
+        "snapshot_digest": f"sha256:{hashlib.sha256(raw).hexdigest()}",
+        "normalization": {
+            "records_sha256": f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+        },
+    }
+    return events, _source(raw), provenance
 
 
 def _parse_jsonl(text: str) -> list[Any]:
@@ -297,9 +334,16 @@ def _optional_query(value: Any) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
+def render_producer_output_bytes(output: Any) -> bytes:
+    """Render the exact UTF-8 form used by this arm's output size gate."""
+    return json.dumps(
+        output, sort_keys=True, ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+
+
 def _ok(spec: ArmSpec, action: str, output: Any) -> Result:
     try:
-        size = len(json.dumps(output, sort_keys=True, ensure_ascii=False).encode("utf-8"))
+        size = len(render_producer_output_bytes(output))
     except (TypeError, ValueError, OverflowError) as exc:
         return _fail(spec, action, f"result could not be encoded: {exc}")
     if size > MAX_OUTPUT_CHARS:

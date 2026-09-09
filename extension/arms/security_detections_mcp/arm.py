@@ -218,44 +218,81 @@ class SecurityDetectionsMcpArm:
         )
 
 
+class IndexParseError(ValueError):
+    """The supplied index is not bounded, strict, valid detection data."""
+
+
 def _load_index(
     path: Path,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]] | str:
-    """Load a detection-rule index from JSON or YAML.  Returns list or refusal."""
+    """Read once and delegate strict index parsing to the byte API."""
     try:
         with path.open("rb") as handle:
             raw = handle.read(MAX_INDEX_BYTES + 1)
     except OSError:
         return "index is unreadable"
+    try:
+        rules, source, _provenance = parse_index_bytes(
+            raw, format=path.suffix.lower().lstrip(".")
+        )
+    except IndexParseError as exc:
+        return str(exc)
+    return rules, source
+
+
+def parse_index_bytes(
+    raw: bytes, *, format: str
+) -> tuple[list[dict[str, Any]], dict[str, Any], dict[str, Any]]:
+    """Parse exact index bytes without I/O and bind their normalized records."""
+    if type(raw) is not bytes:
+        raise IndexParseError("index bytes must be immutable bytes")
+    if type(format) is not str:
+        raise IndexParseError("index format is not supported")
     if len(raw) > MAX_INDEX_BYTES:
-        return f"index exceeds the {MAX_INDEX_BYTES} byte read cap"
+        raise IndexParseError(f"index exceeds the {MAX_INDEX_BYTES} byte read cap")
     try:
         text = raw.decode("utf-8")
-    except UnicodeDecodeError:
-        return "index is not valid UTF-8"
-    suffix = path.suffix.lower()
+    except UnicodeDecodeError as exc:
+        raise IndexParseError("index is not valid UTF-8") from exc
+    if format not in {"json", "yaml", "yml"}:
+        raise IndexParseError("index format is not supported")
     try:
-        if suffix == ".json":
+        if format == "json":
             data = strict_json_loads(text)
         else:
             data = yaml.load(text, Loader=_BoundedSafeLoader)
     except StrictDataError as exc:
-        return str(exc)
-    except (json.JSONDecodeError, RecursionError, yaml.YAMLError, ValueError):
-        return f"index is not valid {suffix.lstrip('.').upper()}"
+        raise IndexParseError(str(exc)) from exc
+    except (json.JSONDecodeError, RecursionError, yaml.YAMLError, ValueError) as exc:
+        raise IndexParseError(f"index is not valid {format.upper()}") from exc
     refusal = _tree_refusal(data)
     if refusal:
-        return f"index {refusal}"
+        raise IndexParseError(f"index {refusal}")
     if isinstance(data, list):
         rules = data
     elif isinstance(data, dict) and isinstance(data.get("rules"), list):
         rules = data["rules"]
     else:
-        return "index must be a list of rules or a mapping with a 'rules' list"
+        raise IndexParseError(
+            "index must be a list of rules or a mapping with a 'rules' list"
+        )
     validated = _validate_rules(rules)
     if isinstance(validated, str):
-        return validated
-    return validated, _source(raw)
+        raise IndexParseError(validated)
+    canonical = json.dumps(
+        validated,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    provenance = {
+        "snapshot_digest": f"sha256:{hashlib.sha256(raw).hexdigest()}",
+        "normalization": {
+            "records_sha256": f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+        },
+    }
+    return validated, _source(raw), provenance
 
 
 class _BoundedSafeLoader(StrictMappingMixin, yaml.SafeLoader):
@@ -328,11 +365,16 @@ def _source(raw: bytes) -> dict[str, Any]:
     }
 
 
+def render_producer_output_bytes(output: Any) -> bytes:
+    """Render the exact UTF-8 form used by this arm's output size gate."""
+    return json.dumps(
+        output, sort_keys=True, ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+
+
 def _ok(spec: ArmSpec, action: str, output: Any, *, narrow: str = "narrow the lookup") -> Result:
     try:
-        rendered = json.dumps(
-            output, sort_keys=True, ensure_ascii=False, allow_nan=False
-        ).encode("utf-8")
+        rendered = render_producer_output_bytes(output)
     except (TypeError, ValueError):
         return _fail(spec, action, "result could not be encoded safely")
     if len(rendered) > MAX_OUTPUT_CHARS:

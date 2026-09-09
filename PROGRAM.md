@@ -329,16 +329,18 @@ accepting agent-supplied file paths, or granting every claimed finding
 credit because one invocation succeeded are all explicitly out of
 scope.
 
-**Initial mechanism, not bridge completion.** The opt-in
-`extension.observations` sidecar implements one pre-grading slice for an exact
-`vulnify.lookup` CVE record. It binds validator-supplied source admission,
-execution envelope, Mode-A policy-report bytes and raw feed bytes while leaving
-the fixture lane and every invocation surface unchanged. The record remains
-source-`declared`, freshness/applicability remain `not-assessed`, custody is
-validator-attested, and no finding or grading credit follows. EVID-01 remains
-open for authenticated/durable custody, workpaper/adjudication integration and
-the complete refusal/evaluation boundary; DATA-01 remains open for an admitted
-source revision, rights decision and empirical containment.
+**Initial mechanisms, not bridge completion.** The opt-in
+`extension.observations` sidecar implements pre-grading singleton slices for an
+exact `vulnify.lookup` CVE record, `security-detections-mcp.get_rule` rule, or
+`rubeus.telemetry` event. It binds validator-supplied source admission,
+execution envelope, Mode-A policy-report bytes and raw source bytes while
+leaving the fixture lane and every invocation surface unchanged. Each record
+remains source-`declared`, freshness/applicability remain `not-assessed`,
+custody is validator-attested, and no finding or grading credit follows.
+EVID-01 remains open for authenticated/durable custody,
+workpaper/adjudication integration and the complete refusal/evaluation
+boundary; DATA-01 and DATA-02 remain open for admitted source revisions,
+rights decisions and empirical containment.
 
 ## First proposed vertical slice
 
@@ -358,10 +360,11 @@ The slice needs no new live scanner and no cloud credentials.
 6. **A source-linked workpaper** — every conclusion tracing to an
    observation, with explicit uncertainty.
 
-Rule intelligence and recorded telemetry follow as the second slice.
-Live identity, cloud, and hypervisor mutation remain a separate,
-explicitly approved decision — never carried along by a data or
-curriculum change.
+Rule intelligence and recorded telemetry now have the same narrow
+source-declared byte-binding mechanism, but not source-governance admission,
+authenticity, effectiveness, finding or grading authority. Live identity,
+cloud, and hypervisor mutation remain a separate, explicitly approved
+decision — never carried along by a data or curriculum change.
 
 ## Proposed T01–T08 release-wave seed map
 

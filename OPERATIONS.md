@@ -219,19 +219,26 @@ in [README.md](README.md). Their HMAC-chained traces and validator-owned artifac
 channels must not be generalized into proof for evidence types they do not
 cover.
 
-### Opt-in vulnify observation slice
+### Opt-in source-declared observation slices
 
-The first EVID-01 sidecar covers only a declared CVE record returned by
-`vulnify.lookup`. It is not enabled by invoking the arm. A trusted validator
-must, before dispatch:
+The EVID-01 sidecar covers exactly one declared record returned by
+`vulnify.lookup`, `security-detections-mcp.get_rule`, or `rubeus.telemetry`.
+It is not enabled merely by invoking an arm. A trusted validator must, before
+dispatch:
 
-1. hold and classify the exact raw feed bytes;
+1. hold and classify the exact raw source bytes;
 2. supply its own issuer identity, authority reference, source id/revision,
-   source time (or explicit unknown), logical and custody locators, exact CVE
-   subject, producer revision and a validity window no longer than 24 hours;
+   source time (or explicit unknown), logical and custody locators, the exact
+   profile subject, producer revision and a validity window no longer than 24
+   hours;
 3. mint one source admission bound to the validator-created attempt id; and
 4. invoke through Mode A using that attempt id and a fresh validator-owned
    artifact directory.
+
+Use `issue_source_admission` for the byte-compatible v1 vulnify contract, or
+`issue_profile_source_admission` with the exact capability and subject for the
+profile-aware API. The latter still routes vulnify to v1; only the rule and
+telemetry profiles mint v2 documents.
 
 After dispatch, the validator reads the one policy-report artifact through its
 own retained Mode-A channel and passes those immutable bytes, the execution
@@ -241,12 +248,14 @@ artifact bytes and observation separately. On retry, call
 `verify_trusted_observation` with the durable set of already-seen observation
 ids; the pure library stores no replay state.
 
-Do not mint an admission from the repository's R01 research mapping alone.
-That row currently has no selected revision and no license/data-rights
-clearance. A per-attempt admission is also not a governance promotion or an
-upstream-equivalence decision. The derived record stays `declared`, with
-freshness and applicability `not-assessed`; it supplies no finding, grading,
-workpaper or lifecycle authority.
+Do not mint an admission from the repository's R01, R36 or R43 research
+mapping alone. Those rows currently have no selected revision or
+license/data-rights clearance. A per-attempt admission is also not a governance
+promotion or an upstream-equivalence decision. Every derived record stays
+`declared`, with freshness and applicability `not-assessed`; a rule does not
+establish deployment or operating effectiveness, and sanitized telemetry does
+not establish event authenticity, event time or compromise. No profile
+supplies finding, grading, workpaper or lifecycle authority.
 
 The observation says `validator-attested-mode-a`, not “custody verified.”
 Execution-result v1 cannot distinguish `--attempt-id` alone from an invocation
@@ -304,6 +313,6 @@ For this checkout:
 
 The [program roadmap](PROGRAM.md#proposed-roadmap) includes remaining
 hard-containment and trusted-observation/grading work that does not ship today.
-The opt-in vulnify sidecar above is only a partial binding mechanism; do not
-operate a proposed environment or evidence lane as though its documentation
-were implementation.
+The opt-in source-declared observation sidecar above is only a partial binding
+mechanism; do not operate a proposed environment or evidence lane as though
+its documentation were implementation.

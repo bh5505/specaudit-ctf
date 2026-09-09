@@ -1939,3 +1939,176 @@ def test_m365_filesystem_root_is_explicitly_refused() -> None:
     path, refusal = cases_file_refusal("/")
     assert path is None
     assert refusal == "args.cases_file must not be a filesystem root"
+
+
+# ======================================================================
+# R36 byte-parser and producer-render replay contract
+# ======================================================================
+
+def test_rubeus_byte_parser_matches_json_and_jsonl_path_loaders(
+    ad_telemetry: Path, tmp_path: Path
+) -> None:
+    raw_json = ad_telemetry.read_bytes()
+    raw_rows = json.loads(raw_json)
+    raw_jsonl = ("\n".join(json.dumps(row) for row in raw_rows) + "\n").encode(
+        "utf-8"
+    )
+    expected_records = [
+        {
+            "event_id": row["event_id"],
+            "category": row["category"],
+            "description": row["description"],
+            "severity": row["severity"],
+            "indicators": [
+                {"type": indicator["type"]} for indicator in row["indicators"]
+            ],
+        }
+        for row in raw_rows
+    ]
+    canonical = json.dumps(
+        expected_records,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    normalized_digest = "sha256:" + hashlib.sha256(canonical).hexdigest()
+    parsed_by_format = {}
+
+    for format, suffix, raw in (
+        ("json", ".json", raw_json),
+        ("jsonl", ".jsonl", raw_jsonl),
+    ):
+        path = tmp_path / f"telemetry{suffix}"
+        path.write_bytes(raw)
+        parsed = rubeus_module.parse_telemetry_bytes(raw, format=format)
+        assert rubeus_module._load_telemetry(path) == parsed[:2]
+        records, source, provenance = parsed
+        raw_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+        assert records == expected_records
+        assert "REDACTED" not in json.dumps(records)
+        assert source == {
+            "kind": "operator-file",
+            "sha256": raw_digest,
+            "bytes": len(raw),
+        }
+        assert provenance == {
+            "snapshot_digest": raw_digest,
+            "normalization": {"records_sha256": normalized_digest},
+        }
+        parsed_by_format[format] = parsed
+
+    assert parsed_by_format["json"][2]["snapshot_digest"] != parsed_by_format[
+        "jsonl"
+    ][2]["snapshot_digest"]
+    assert parsed_by_format["json"][2]["normalization"] == parsed_by_format[
+        "jsonl"
+    ][2]["normalization"]
+
+    result = _ext(R36_ID, RubeusArm()).invoke(
+        R36_ID,
+        "telemetry",
+        {"telemetry_file": str(ad_telemetry), "event_id": "E001"},
+    )
+    assert result.ok is True
+    assert set(result.output) == {"telemetry", "source"}
+
+
+def test_rubeus_byte_parser_requires_exact_boundary_types(
+    ad_telemetry: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class WrappedBytes(bytes):
+        pass
+
+    class WrappedText(str):
+        pass
+
+    raw = ad_telemetry.read_bytes()
+    for wrong_raw in (bytearray(raw), memoryview(raw), WrappedBytes(raw)):
+        with pytest.raises(ValueError, match="immutable bytes"):
+            rubeus_module.parse_telemetry_bytes(wrong_raw, format="json")
+    for wrong_format in (b"json", WrappedText("json")):
+        with pytest.raises(ValueError, match="format is not supported"):
+            rubeus_module.parse_telemetry_bytes(raw, format=wrong_format)
+    with pytest.raises(ValueError, match="format is not supported"):
+        rubeus_module.parse_telemetry_bytes(raw, format="yaml")
+
+    monkeypatch.setattr(rubeus_module, "MAX_TELEMETRY_BYTES", len(raw) - 1)
+    with pytest.raises(ValueError, match="byte read cap"):
+        rubeus_module.parse_telemetry_bytes(raw, format="json")
+
+
+@pytest.mark.parametrize(
+    "raw,format,error",
+    [
+        (
+            b'[{"event_id":"E1","event_id":"E2","category":"ad",'
+            b'"description":"event","severity":"low","indicators":[]}]',
+            "json",
+            "duplicate mapping key",
+        ),
+        (
+            b'[{"event_id":"E1","category":"ad","description":"event",'
+            b'"severity":"low","indicators":[],"score":NaN}]',
+            "json",
+            "non-finite",
+        ),
+        (
+            b'{"event_id":"E1","event_id":"E2","category":"ad",'
+            b'"description":"event","severity":"low","indicators":[]}\n',
+            "jsonl",
+            "duplicate mapping key",
+        ),
+        (
+            b'[{"event_id":"E1","category":"ad","description":"event",'
+            b'"severity":"low","indicators":[{"type":"ticket",'
+            b'"value":"real-ticket"}]}]',
+            "json",
+            "redaction sentinel",
+        ),
+    ],
+)
+def test_rubeus_byte_parser_rejects_ambiguous_or_weaponized_data(
+    raw: bytes, format: str, error: str
+) -> None:
+    with pytest.raises(ValueError, match=error):
+        rubeus_module.parse_telemetry_bytes(raw, format=format)
+
+
+def test_rubeus_byte_parser_keeps_structure_and_record_caps(
+    monkeypatch: pytest.MonkeyPatch, ad_telemetry: Path
+) -> None:
+    too_deep = ("[" * 65 + "0" + "]" * 65).encode("utf-8")
+    with pytest.raises(ValueError, match="nesting-depth cap"):
+        rubeus_module.parse_telemetry_bytes(too_deep, format="json")
+
+    rows = json.loads(ad_telemetry.read_text(encoding="utf-8"))
+    monkeypatch.setattr(rubeus_module, "_MAX_RECORDS", 1)
+    with pytest.raises(ValueError, match="record cap"):
+        rubeus_module.parse_telemetry_bytes(
+            json.dumps(rows).encode("utf-8"), format="json"
+        )
+
+
+def test_rubeus_public_renderer_is_the_exact_output_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {"telemetry": {"description": "Unicode snowman ☃", "count": 1}}
+    assert rubeus_module.render_producer_output_bytes(payload) == json.dumps(
+        payload,
+        sort_keys=True,
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+
+    extension = _ext(R36_ID, RubeusArm())
+    baseline = extension.invoke(R36_ID, "list_tools", {})
+    assert baseline.ok is True
+    rendered = rubeus_module.render_producer_output_bytes(baseline.output)
+
+    monkeypatch.setattr(rubeus_module, "MAX_OUTPUT_CHARS", len(rendered))
+    assert extension.invoke(R36_ID, "list_tools", {}).ok is True
+    monkeypatch.setattr(rubeus_module, "MAX_OUTPUT_CHARS", len(rendered) - 1)
+    refused = extension.invoke(R36_ID, "list_tools", {})
+    assert refused.ok is False
+    assert "output cap" in refused.error

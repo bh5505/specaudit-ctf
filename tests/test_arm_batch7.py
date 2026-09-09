@@ -2458,3 +2458,161 @@ def test_collinear_recursively_strips_instructor_keys(tmp_path: Path) -> None:
 def test_wrong_id_raises(arm_id: str, handler) -> None:
     with pytest.raises(NotInstalledError):
         handler.invoke(_spec("wrong-id"), "list_tools", {})
+
+
+# ======================================================================
+# R43 byte-parser and producer-render replay contract
+# ======================================================================
+
+@pytest.mark.parametrize(
+    "suffix,format",
+    [(".json", "json"), (".yaml", "yaml"), (".yml", "yml")],
+)
+def test_security_detections_byte_parser_matches_path_loader(
+    tmp_path: Path, suffix: str, format: str
+) -> None:
+    raw_rule = {
+        "rule_id": " R-REPLAY ",
+        "name": " Replay Rule ",
+        "severity": "high",
+        "metadata": {"nested": ["retained", {"enabled": True}]},
+    }
+    document: object = [raw_rule] if format == "json" else {"rules": [raw_rule]}
+    raw = (
+        json.dumps(document, indent=2, ensure_ascii=False).encode("utf-8")
+        if format == "json"
+        else yaml.safe_dump(document, sort_keys=False).encode("utf-8")
+    )
+    path = tmp_path / f"rules{suffix}"
+    path.write_bytes(raw)
+
+    parsed = r43_arm.parse_index_bytes(raw, format=format)
+    assert r43_arm._load_index(path) == parsed[:2]
+    records, source, provenance = parsed
+    expected_records = [
+        {
+            "rule_id": "R-REPLAY",
+            "name": "Replay Rule",
+            "severity": "high",
+            "metadata": {"nested": ["retained", {"enabled": True}]},
+        }
+    ]
+    canonical = json.dumps(
+        expected_records,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    raw_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+    assert records == expected_records
+    assert source == {
+        "kind": "operator-file",
+        "sha256": raw_digest,
+        "bytes": len(raw),
+    }
+    assert provenance == {
+        "snapshot_digest": raw_digest,
+        "normalization": {
+            "records_sha256": "sha256:" + hashlib.sha256(canonical).hexdigest()
+        },
+    }
+
+    result = _ext(R43_ID, SecurityDetectionsMcpArm()).invoke(
+        R43_ID, "get_rule", {"index": str(path), "rule_id": "R-REPLAY"}
+    )
+    assert result.ok is True
+    assert set(result.output) == {"rule", "source"}
+
+
+def test_security_detections_byte_parser_requires_exact_boundary_types(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class WrappedBytes(bytes):
+        pass
+
+    class WrappedText(str):
+        pass
+
+    raw = b'[{"rule_id":"R1","name":"Rule"}]'
+    for wrong_raw in (bytearray(raw), memoryview(raw), WrappedBytes(raw)):
+        with pytest.raises(ValueError, match="immutable bytes"):
+            r43_arm.parse_index_bytes(wrong_raw, format="json")
+    for wrong_format in (b"json", WrappedText("json")):
+        with pytest.raises(ValueError, match="format is not supported"):
+            r43_arm.parse_index_bytes(raw, format=wrong_format)
+    with pytest.raises(ValueError, match="format is not supported"):
+        r43_arm.parse_index_bytes(raw, format="toml")
+
+    monkeypatch.setattr(r43_arm, "MAX_INDEX_BYTES", len(raw) - 1)
+    with pytest.raises(ValueError, match="byte read cap"):
+        r43_arm.parse_index_bytes(raw, format="json")
+
+
+@pytest.mark.parametrize(
+    "raw,format,error",
+    [
+        (
+            b'[{"rule_id":"R1","rule_id":"R2","name":"Rule"}]',
+            "json",
+            "duplicate mapping key",
+        ),
+        (
+            b'[{"rule_id":"R1","name":"Rule","score":NaN}]',
+            "json",
+            "non-finite",
+        ),
+        (
+            b"rule: &r {rule_id: R1, name: Rule}\nrules: [*r]\n",
+            "yaml",
+            "not valid YAML",
+        ),
+    ],
+)
+def test_security_detections_byte_parser_rejects_ambiguous_data(
+    raw: bytes, format: str, error: str
+) -> None:
+    with pytest.raises(ValueError, match=error):
+        r43_arm.parse_index_bytes(raw, format=format)
+
+
+@pytest.mark.parametrize(
+    "constant,error",
+    [
+        ("MAX_DOCUMENT_DEPTH", "nesting-depth"),
+        ("MAX_DOCUMENT_NODES", "node cap"),
+    ],
+)
+def test_security_detections_byte_parser_keeps_yaml_composition_caps(
+    monkeypatch: pytest.MonkeyPatch, constant: str, error: str
+) -> None:
+    monkeypatch.setattr(r43_arm, constant, 2)
+    with pytest.raises(ValueError, match="not valid YAML") as excinfo:
+        r43_arm.parse_index_bytes(
+            b"rules:\n  - rule_id: R1\n    name: Rule\n", format="yaml"
+        )
+    assert error in str(excinfo.value.__cause__)
+
+
+def test_security_detections_public_renderer_is_the_exact_output_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {"rule": {"name": "Unicode snowman ☃", "enabled": True}}
+    assert r43_arm.render_producer_output_bytes(payload) == json.dumps(
+        payload,
+        sort_keys=True,
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+
+    extension = _ext(R43_ID, SecurityDetectionsMcpArm())
+    baseline = extension.invoke(R43_ID, "list_tools", {})
+    assert baseline.ok is True
+    rendered = r43_arm.render_producer_output_bytes(baseline.output)
+
+    monkeypatch.setattr(r43_arm, "MAX_OUTPUT_CHARS", len(rendered))
+    assert extension.invoke(R43_ID, "list_tools", {}).ok is True
+    monkeypatch.setattr(r43_arm, "MAX_OUTPUT_CHARS", len(rendered) - 1)
+    refused = extension.invoke(R43_ID, "list_tools", {})
+    assert refused.ok is False
+    assert "output cap" in refused.error
