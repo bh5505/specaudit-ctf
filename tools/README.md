@@ -33,12 +33,63 @@ says which. Read them before changing behaviour.
 
 | script | what it is for |
 | --- | --- |
-| `build_asmvm_evidence.py`, `rebuild_evidence_asmvm.py` | Generate the pack's evidence CSVs (exporters, and the `ext_telecom_asmvm_asm_vm_surface` patch that rewrites asset-keyed rows onto real IP rows). |
-| `capture_livefire.py` | Read-only verification of the pack's exposure claims against lab addresses: TCP banner grab and `openssl s_client` certificate capture, plus one DNS lookup. Nothing is mutated on the target; the host set is restricted to loopback/RFC1918 and the DNS name defaults to a `.local` name (`--dns-name`, `ASMVM_DNS_PROBE_NAME`) so a stray lookup does not disclose anything. |
-| `build_target_list.py` | Derives the live-fire target list from the pack's own reproduction queue (which endpoints the checks say are exposed), so the live-fire set is derived rather than invented. |
-| `build_livefire_overlay.py` | Applies live observations to the evidence and re-runs the checks. The overlay is a delta: it patches existing rows (a host observed listening moves `has_active_service`/`is_exposed`), it does not invent new findings. |
-| `replay_seif_asmvm.py`, `seif_ivanti_roundtrip.py`, `seif_roundtrip_export.py`, `seif_variant_c.py`, `seif_ivanti_asset_id_variant.py`, `make_seif_evidence_dir.py` | SEIF (asset/finding interchange) round trip: export evidence, read it back through the pack's own projection code, and report per column what survived. See the report for what does not survive. |
-| `compare_reports.py` | Diff two run reports per check id. |
+| `asmvm_evidence_builder.py` | Generate the pack's evidence CSVs (exporters, and the `ext_telecom_asmvm_asm_vm_surface` patch that rewrites asset-keyed rows onto real IP rows). |
+| `livefire_capture.py` | Read-only verification of the pack's exposure claims against lab addresses: TCP banner grab and `openssl s_client` certificate capture, plus one DNS lookup. Nothing is mutated on the target; the host set is restricted to loopback/RFC1918 and the DNS name defaults to a `.local` name (`--dns-name`, `ASMVM_DNS_PROBE_NAME`) so a stray lookup does not disclose anything. |
+| `livefire_target_list.py` | Derives the live-fire target list from the pack's own reproduction queue (which endpoints the checks say are exposed), so the live-fire set is derived rather than invented. |
+| `livefire_overlay.py` | Applies live observations to the evidence and re-runs the checks. The overlay is a delta: it patches existing rows (a host observed listening moves `has_active_service`/`is_exposed`), it does not invent new findings. |
+| `indirect_recon.py` | Corroborates ASM service claims using only data the pack already holds plus this host's local services file - **zero packets**. See "Indirect recon" below. |
+| `seif_ivanti_roundtrip.py`, `seif_ivanti_asset_id_variant.py`, `make_seif_evidence_dir.py` | SEIF (asset/finding interchange) round trip: export evidence, read it back through the pack's own projection code, and report per column what survived. See the report for what does not survive. |
+| `report_diff.py` | Diff two run reports per check id. |
+
+## Indirect recon: what the data already knows about a claim (`indirect_recon.py`)
+
+The reproduction queue in this pack is long because nothing outside the two feeds
+has checked the ASM's claims. Actively checking means traffic to hosts that belong
+to whoever the ASM describes - not ours to probe. Most of the question can still
+be asked offline, from three things already in hand:
+
+1. the vulnerability feed's **own port observations** on the same IP - a second
+   sensor of the same estate, already in the pack's tables;
+2. **this host's services file**, parsed rather than looked up, so no name service
+   is consulted and a miss means "not in the file", not "the resolver did
+   something"; plus a small table of telecom/infra ports the file does not know
+   (GTP-C/GTP-U, SIGTRAN, TR-069, NETCONF) with where each assignment comes from;
+3. the **pack's port classes** (telecom control plane, management ports).
+
+Per claimed endpoint the receipt records whether the other sensor agrees the port
+is open, whether the service name matches what that port normally carries, and
+the port class. Service-name comparison is deliberately conservative: banner prose
+that names the right service (`http server at host:443`) counts as agreement by
+equivalent name, prose that names nothing comparable is `claim_not_comparable`,
+and only a claim that names a different service is a `label_disagreement` - a
+wrong disagreement sends an auditor to a port that is fine.
+
+Measured on a 240k-finding corpus (77,098 ASM service endpoints, 39,845 IPs,
+`packets_sent: 0`):
+
+| observation | endpoints |
+| --- | --- |
+| VM feed open on the **same ip:port** | 2,196 (2.8 %) |
+| VM feed open on the same IP, different port | 7,542 (9.8 %) |
+| no VM-feed observation of that IP at all | 67,360 (87.4 %) |
+| service label agrees with the port (incl. equivalents) | 72,955 |
+| label is banner prose, not comparable | 2,359 |
+| outright label disagreement | 0 |
+| port unknown to this host's services file | 1,784 |
+| telecom control-plane endpoints | 3,597 |
+
+Two results are worth more than the tool cost. First, **2.8 %**: the ASM's
+advertised surface is almost entirely uncorroborated by the vulnerability feed -
+the visibility gap the pack's checks assert, now quantified with no traffic.
+Second, this corpus carries **no `service_endpoint` rows at all** for GTP
+(2123/2152/3386) or SIGTRAN (2905/2904/2901) even though those ports appear in
+the surface census - a check that reads `service_endpoint` cannot see the telecom
+control plane at all; only one reading the census can.
+
+What it does not do, stated in the receipt itself: it is not live fire, not
+independent **active** reproduction, not adversarial re-verification. The second
+sensor is another dataset, not a new observation, so it must not be allowed to
+flip a `has_live_fire` flag.
 
 ## Where column types come from (this one changed results, not just speed)
 

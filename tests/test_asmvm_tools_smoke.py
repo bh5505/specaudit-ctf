@@ -598,3 +598,102 @@ def test_seif_projection_states_what_the_round_trip_lost(tmp_path):
     rows_b = list(csv.DictReader(out_b.open(encoding="utf-8", newline="")))
     assert rows_b[0]["plugin_family"] == "Web Server"
     assert stats_b["fields_with_no_seif_home"]["plugin_family"] == 0
+
+
+# --------------------------------------------------------------------------
+# 10. indirect recon: corroborate ASM service claims without sending anything
+# --------------------------------------------------------------------------
+
+
+def _write_csv(path, header, rows):
+    with open(path, "w", encoding="utf-8", newline="") as fh:
+        fh.write(header + "\n")
+        for row in rows:
+            fh.write(",".join(str(cell) for cell in row) + "\n")
+
+
+def _recon_module():
+    import importlib
+    return importlib.import_module("indirect_recon")
+
+
+def test_indirect_recon_corroborates_and_disagrees_without_packets(tmp_path,
+                                                                  monkeypatch):
+    """A VM-feed observation on the same ip:port is corroboration; a claim that
+    names a different service for that port is a disagreement; and none of it
+    sent a packet, which is the only reason this arm is allowed to exist."""
+    recon = _recon_module()
+
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    _write_csv(evidence / "ext_telecom_asmvm_service_endpoint.csv",
+               "run_id,ip,port,protocol,service_name,service_type,"
+               "product_version,source_system",
+               [["r1", "10.0.0.1", 443, "tcp", "http server at api.internal:443",
+                 "web", "", "asm"],
+                ["r1", "10.0.0.2", 22, "tcp", "ssh", "remote access", "", "asm"],
+                ["r1", "10.0.0.3", 7547, "tcp", "ftp", "file", "", "asm"],
+                ["r1", "10.0.0.4", 65001, "tcp", "telemetry", "other", "", "asm"],
+                ["r2", "10.9.9.9", 443, "tcp", "https", "web", "", "asm"]])
+    _write_csv(evidence / "ext_telecom_asmvm_vm_finding.csv",
+               "run_id,finding_id,ip,port,protocol,is_open,status",
+               [["r1", "f1", "10.0.0.1", 443, "tcp", "true", "open"],
+                ["r1", "f2", "10.0.0.1", 443, "tcp", "false", "resolved"],
+                ["r1", "f3", "10.0.0.2", 80, "tcp", "true", "open"],
+                ["r1", "f4", "10.0.0.3", 0, "tcp", "true", "open"]])
+
+    # Hermetic registry: no dependence on the host's services file. Port 7547 is
+    # in the tool's own known-unregistered table (TR-069/CWMP), so the
+    # disagreement below is deterministic whatever the host has installed.
+    monkeypatch.setattr(recon, "load_local_services",
+                        lambda: {22: ("ssh", {"ssh"}),
+                                 443: ("https", {"https"})})
+
+    summary = recon.run(str(evidence), str(tmp_path / "out"), run_id="r1")
+
+    rows = list(csv.DictReader((tmp_path / "out" / "indirect_recon_receipts.csv")
+                               .open(encoding="utf-8")))
+    by_ip = {row["ip"]: row for row in rows}
+    assert summary["endpoints_examined"] == 4, "run_id must scope the scan"
+    assert by_ip["10.0.0.1"]["label_agreement"] == "agree_by_equivalent_name"
+    assert by_ip["10.0.0.1"]["vm_corroboration"] == "vm_feed_same_port"
+    assert by_ip["10.0.0.1"]["vm_open_findings_on_port"] == "1", \
+        "a resolved finding must not corroborate an open port"
+    assert by_ip["10.0.0.2"]["label_agreement"] == "agree"
+    assert by_ip["10.0.0.2"]["vm_corroboration"] == "vm_feed_same_ip_other_port"
+    assert by_ip["10.0.0.3"]["label_agreement"] == "label_disagreement"
+    assert by_ip["10.0.0.3"]["port_class"] == "cpe_management"
+    assert by_ip["10.0.0.3"]["vm_corroboration"] == "no_vm_feed_observation", \
+        "a finding with port 0 (not a per-port finding) says nothing about 7547"
+    assert by_ip["10.0.0.4"]["label_agreement"] == "no_local_reference"
+
+    assert summary["packets_sent"] == 0
+    # The gate this arm must never claim: corroboration from data we already
+    # hold is not an observation of the endpoint.
+    assert set(summary["does_not_satisfy"]) >= {
+        "live_fire", "independent_active_reproduction", "adversarial_reverify"}
+    assert summary["evidence_class"] == recon.EVIDENCE_CLASS
+
+
+def test_indirect_recon_label_comparison_is_conservative():
+    """A wrong 'disagreement' sends an auditor to a port that is fine, so prose
+    and unknown ports must not be called contradictions."""
+    recon = _recon_module()
+
+    names_443 = {"https"}
+    assert recon.label_agreement(443, "http server at host.internal:443",
+                                 names_443) == "agree_by_equivalent_name"
+    assert recon.label_agreement(443, "https", names_443) == "agree"
+    assert recon.label_agreement(443, "ssh", names_443) == "label_disagreement"
+    assert recon.label_agreement(443, "a banner that names nothing usable",
+                                 names_443) == "claim_not_comparable"
+    assert recon.label_agreement(443, "", names_443) == "no_claim"
+    assert recon.label_agreement(65001, "telemetry", set()) == "no_local_reference"
+    # 7680 is in the pack's management list; winrm and wsman are one service
+    assert recon.label_agreement(
+        7680, "wsman",
+        {"http", "winrm"}) == "agree_by_equivalent_name"
+    # port classes come from the pack's classes, not invented here
+    assert recon.classify(2152) == "gtp_core"
+    assert recon.classify(7680) == "management_port"
+    assert recon.classify(443) == "other"
