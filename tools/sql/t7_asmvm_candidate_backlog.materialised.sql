@@ -2,6 +2,14 @@
 --
 -- Same row contract, same eligible-population definition, different shape.
 --
+-- KEPT AS THE NEGATIVE CONTROL, not as the fix: materialising the aggregates
+-- still leaves `eligible` a non-aggregate CTE, so SQLite still flattens it and
+-- re-runs the correlated EXISTS per candidate row. Measured on the 240k-finding
+-- corpus with tools/check_probe.py: DuckDB 0.121 s, row-identical; SQLite still
+-- TIMEOUT at a 600 s budget (and ~18 min when run as part of a full pack run,
+-- which is where it was killed). The scalar form
+-- (t7_asmvm_candidate_backlog.scalar_eligible.sql) is the one that finishes.
+--
 -- WHY: the shipped form puts four filtered selects, two of them containing a
 -- correlated EXISTS over unindexed ingest tables (vm_cve_observation 412k rows,
 -- asm_vm_surface 108k rows, vm_finding 240k rows), into a single CTE that the

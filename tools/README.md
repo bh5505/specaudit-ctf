@@ -53,9 +53,19 @@ subquery (one row per producer, uncorrelated) gives SQLite a constant to bind:
 `TIMEOUT_INCOMPLETE` - note `progress_handler: armed`, which is what makes that
 a real timeout rather than a slow run).
 
-A first attempt that only materialised the aggregates (still a non-aggregate
-`eligible` CTE) was still over 600 s on SQLite: what fixes it is removing the
+`sql/t7_asmvm_candidate_backlog.scalar_eligible.sql` is that rewrite, verified with
+`check_probe.py` against the real corpus on both engines. `sql/t7_asmvm_candidate_backlog.materialised.sql`
+is the first attempt - aggregates pre-computed but `eligible` still a
+non-aggregate CTE - kept as the negative control: DuckDB 0.121 s and row-identical,
+SQLite still `TIMEOUT_INCOMPLETE` at a 600 s budget (and ~18 min inside a full pack
+run, which is where that run was killed). What fixes SQLite is removing the
 correlation, not pre-aggregating.
+
+It is a candidate, not a replacement: the pack's own check file is unchanged, and
+swapping it in is the owner's call. Whoever swaps it should re-run
+`check_probe.py --check <pack check> --candidate sql/t7_asmvm_candidate_backlog.scalar_eligible.sql`
+on both engines against a corpus, and both full pack runs; the row sets were
+identical when this was measured, on a corpus, not in the abstract.
 
 `csv_type_preflight.py` caught the related ingest risk: the SEIF round trip's
 first variant put Ivanti asset ids into `ip` (alias order prefers `Asset ID`),
