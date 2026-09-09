@@ -306,6 +306,7 @@ def test_observation_registry_is_frozen_and_does_not_admit_actions() -> None:
         "vulnify.lookup",
         "security-detections-mcp.get_rule",
         "rubeus.telemetry",
+        "gpohound.policy",
     )
     for capability_id, profile in OBSERVATION_PROFILES.items():
         assert observation_profile(capability_id) is profile

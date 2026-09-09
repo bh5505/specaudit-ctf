@@ -735,7 +735,7 @@ EXPECTED_READER_SOURCE_SHA256: Mapping[str, str] = {
     "extension/arms/detection_in_the_cloud/arm.py": "sha256:efc6b43ef1c0d15e5790753edd733f3dec5d399349a14059e23032893606cbff",
     "extension/arms/detection_in_the_cloud/policy.py": "sha256:81d19ddb78274a5a1a91c371705c9bcff4a5ec973a85707513e8a84ca18e2158",
     "extension/arms/gpohound/__init__.py": "sha256:200b70b389bcbce4ce83918c672d3ba5fc5501dd963a95d6d99f3a663803b913",
-    "extension/arms/gpohound/arm.py": "sha256:54cc75660514ce2d6f471d490e774bf2fd0ccf60fc491d58538ecc83be4fcfeb",
+    "extension/arms/gpohound/arm.py": "sha256:7d851fd603aa25b969f4710119ac24b89a7185e55d1ff342f77fca36ea2a026f",
     "extension/arms/gpohound/policy.py": "sha256:fb4b5748b51fd681f4c9f30c7b8a48f2fc456053c845a75f3fab0beb844e30e4",
     "extension/arms/leonidas/__init__.py": "sha256:22f094cb0497be1ce6d02f432173e0a19990786af5df3fc3980d8981d5e3b407",
     "extension/arms/leonidas/arm.py": "sha256:970cffec0456e9328ea0bb4efe9b84528f8eb6c0e282482ed252df9e29f4b0eb",
@@ -791,7 +791,7 @@ EXPECTED_SURFACE_SHA256: Mapping[str, str] = {
     "coverage": "sha256:dc5304d5eee526f4c081a64090577b999ad75e230154b582b1a985a6e942494b",
     "invoke_profiles": "sha256:0e4564f9de9a705bbcd3d5e65d71d3f2353d5336005b8eee295026460c90e16b",
     "policies": "sha256:93e32e6028237e38ffa0132f5e269eb00c0fa1cf3b1edcf7f0a123697eacf987",
-    "reader_runtime": "sha256:2bbb040a0602de6973fa56a807720592c9d4aa3485687e6ab8cbfeaf378f37a9",
+    "reader_runtime": "sha256:662bd7f5b2a76775742b7597727e1c3dedf7a70a67a5c0ccc9fa15d3a60a3007",
 }
 
 

@@ -118,6 +118,36 @@ _RUBEUS_TELEMETRY = ObservationProfile(
     ),
 )
 
+_GPOHOUND_POLICY = ObservationProfile(
+    contract_version=3,
+    capability_id="gpohound.policy",
+    arm_id="gpohound",
+    action="policy",
+    tool_name="specaudit-ctf",
+    tool_version="0.1.0",
+    source_schema_id="specaudit.ctf.gpohound-policy-evidence-projection.v1",
+    source_schema_version=1,
+    source_formats=("json", "yaml", "yml"),
+    subject_kind="gpo-policy",
+    subject_id_field="policy_id",
+    scope_kind="gpo-policy-record",
+    scope_prefix="policy",
+    report_record_key="policy",
+    replay_adapter_id="gpohound-policy-evidence-v1",
+    artifact_kind="policy-report",
+    artifact_redaction="credentials-stripped",
+    evidence_class="declared",
+    derived_limitations=(
+        *_GENERAL_DERIVED_LIMITATIONS,
+        "policy-application-not-established",
+        "effective-access-not-inferred",
+        "security-filter-applicability-not-assessed",
+        "wmi-filter-applicability-not-assessed",
+        "item-level-targeting-not-represented",
+        "policy-conflicts-not-simulated",
+    ),
+)
+
 OBSERVATION_PROFILES: Mapping[str, ObservationProfile] = MappingProxyType(
     {
         profile.capability_id: profile
@@ -125,6 +155,7 @@ OBSERVATION_PROFILES: Mapping[str, ObservationProfile] = MappingProxyType(
             _VULNIFY_LOOKUP,
             _SECURITY_DETECTIONS_GET_RULE,
             _RUBEUS_TELEMETRY,
+            _GPOHOUND_POLICY,
         )
     }
 )

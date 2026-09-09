@@ -386,7 +386,7 @@ def test_no_individual_required_control_can_be_omitted(
 
 @pytest.mark.parametrize(
     "anchor",
-    ("coverage", "policies", "invoke_profiles", "governance"),
+    ("coverage", "policies", "invoke_profiles", "governance", "reader_runtime"),
 )
 def test_each_surface_anchor_drift_fails_independently(
     registry, surfaces, tmp_path: Path, anchor: str
@@ -836,7 +836,7 @@ def test_reader_runtime_projection_binds_exact_sources_and_profiles(
 def test_reader_runtime_source_drift_changes_the_gated_projection(
     registry, surfaces, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    relative_path = "extension/arms/vulnify/arm.py"
+    relative_path = "extension/arms/gpohound/arm.py"
     source_path = ROOT / relative_path
     original = safety_check._safe_snapshot
 
@@ -862,7 +862,7 @@ def test_reader_runtime_source_drift_changes_the_gated_projection(
 def test_each_expected_reader_source_digest_is_causally_enforced(
     registry, surfaces, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    relative_path = "extension/arms/vulnify/arm.py"
+    relative_path = "extension/arms/gpohound/arm.py"
     monkeypatch.setitem(
         safety_check.EXPECTED_READER_SOURCE_SHA256,
         relative_path,

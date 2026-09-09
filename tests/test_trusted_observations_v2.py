@@ -370,6 +370,12 @@ def test_v1_schema_bytes_are_frozen_and_v2_schemas_are_closed_draft7() -> None:
     assert hashlib.sha256(OBSERVATION_V1_SCHEMA.read_bytes()).hexdigest() == (
         "5675b3724da896192d63b6ca848c2c3c0cbc7bd8534b5b65540539866c0e8748"
     )
+    assert hashlib.sha256(ADMISSION_V2_SCHEMA.read_bytes()).hexdigest() == (
+        "6a6c3174013f1369ac0d535b0733c5a90e116dfe8a14e0d4f0b4dc91a09157c2"
+    )
+    assert hashlib.sha256(OBSERVATION_V2_SCHEMA.read_bytes()).hexdigest() == (
+        "41e13fcefd8eb1d764df92e04b4623f13ead5ebdd1214dc7e2d5d7611bf81bd1"
+    )
     for path, schema_id in (
         (ADMISSION_V2_SCHEMA, SOURCE_ADMISSION_V2_SCHEMA_ID),
         (OBSERVATION_V2_SCHEMA, TRUSTED_OBSERVATION_V2_SCHEMA_ID),
@@ -389,6 +395,7 @@ def test_v2_registry_is_frozen_ordered_and_does_not_expand_public_dispatch() -> 
         "vulnify.lookup",
         "security-detections-mcp.get_rule",
         "rubeus.telemetry",
+        "gpohound.policy",
     )
     assert TOOLS == ("list", "describe", "invoke", "run_range")
     assert len(INVOKE_PROFILES) == 212

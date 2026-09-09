@@ -2112,3 +2112,193 @@ def test_rubeus_public_renderer_is_the_exact_output_gate(
     refused = extension.invoke(R36_ID, "list_tools", {})
     assert refused.ok is False
     assert "output cap" in refused.error
+
+
+# ======================================================================
+# R08 byte-parser and producer-render replay contract
+# ======================================================================
+
+def test_gpohound_byte_parser_matches_json_yaml_and_yml_path_loaders(
+    gpo_evidence: Path, tmp_path: Path
+) -> None:
+    yaml = pytest.importorskip("yaml")
+    raw_json = gpo_evidence.read_bytes()
+    rows = json.loads(raw_json)
+    expected_policies = json.loads(raw_json)
+    expected_policies[1]["filters"] = {"security": [], "wmi": []}
+    canonical = json.dumps(
+        expected_policies,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    normalized_digest = "sha256:" + hashlib.sha256(canonical).hexdigest()
+    encoded_by_format = {
+        "json": raw_json,
+        "yaml": yaml.safe_dump(
+            rows, sort_keys=False, allow_unicode=True
+        ).encode("utf-8"),
+        "yml": yaml.safe_dump(
+            {"policies": rows}, sort_keys=False, allow_unicode=True
+        ).encode("utf-8"),
+    }
+    parsed_by_format = {}
+
+    for format, raw in encoded_by_format.items():
+        path = tmp_path / f"policies.{format}"
+        path.write_bytes(raw)
+        parsed = gpohound_module.parse_policy_evidence_bytes(raw, format=format)
+        assert gpohound_module._load_evidence(path) == parsed[:2]
+        policies, source, provenance = parsed
+        raw_digest = "sha256:" + hashlib.sha256(raw).hexdigest()
+        assert policies == expected_policies
+        assert source == {
+            "kind": "operator-file",
+            "sha256": raw_digest,
+            "bytes": len(raw),
+        }
+        assert provenance == {
+            "snapshot_digest": raw_digest,
+            "normalization": {"records_sha256": normalized_digest},
+        }
+        assert provenance["snapshot_digest"] != normalized_digest
+        parsed_by_format[format] = parsed
+
+    assert len(
+        {parsed[2]["snapshot_digest"] for parsed in parsed_by_format.values()}
+    ) == 3
+    assert len(
+        {
+            parsed[2]["normalization"]["records_sha256"]
+            for parsed in parsed_by_format.values()
+        }
+    ) == 1
+
+    extension = _ext(R08_ID, GpohoundArm())
+    for action, args in (
+        ("policy", {"policy_id": "GPO-001"}),
+        ("list_policies", {}),
+        ("list_links", {"gpo_id": "GPO-001"}),
+    ):
+        result = extension.invoke(
+            R08_ID, action, {"evidence": str(gpo_evidence), **args}
+        )
+        assert result.ok is True
+        assert "source" in result.output
+        assert "provenance" not in result.output
+
+
+def test_gpohound_byte_parser_requires_exact_boundary_types(
+    gpo_evidence: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class WrappedBytes(bytes):
+        pass
+
+    class WrappedText(str):
+        pass
+
+    raw = gpo_evidence.read_bytes()
+    for wrong_raw in (bytearray(raw), memoryview(raw), WrappedBytes(raw)):
+        with pytest.raises(ValueError) as exc_info:
+            gpohound_module.parse_policy_evidence_bytes(
+                wrong_raw, format="json"
+            )
+        assert str(exc_info.value) == "evidence bytes must be immutable bytes"
+
+    for wrong_format in (b"json", WrappedText("json"), "jsonl"):
+        with pytest.raises(ValueError) as exc_info:
+            gpohound_module.parse_policy_evidence_bytes(
+                raw, format=wrong_format
+            )
+        assert str(exc_info.value) == "evidence format is not supported"
+
+    monkeypatch.setattr(gpohound_module, "MAX_EVIDENCE_BYTES", len(raw) - 1)
+    with pytest.raises(ValueError) as exc_info:
+        gpohound_module.parse_policy_evidence_bytes(raw, format="json")
+    assert str(exc_info.value) == (
+        f"evidence exceeds the {len(raw) - 1} byte read cap"
+    )
+
+
+def test_gpohound_byte_parser_retains_fail_closed_evidence_checks(
+    gpo_evidence: Path
+) -> None:
+    rows = json.loads(gpo_evidence.read_text(encoding="utf-8"))
+
+    duplicate_key = gpo_evidence.read_bytes().replace(
+        b'"policy_id": "GPO-001"',
+        b'"policy_id": "shadow", "policy_id": "GPO-001"',
+        1,
+    )
+    duplicate_id = json.loads(json.dumps(rows))
+    duplicate_id[1]["policy_id"] = "GPO-001"
+    unknown_field = json.loads(json.dumps(rows))
+    unknown_field[0]["trusted"] = True
+    secret_field = json.loads(json.dumps(rows))
+    secret_field[0]["settings"]["client_secret"] = "must-not-surface"
+    giant_integer = json.loads(json.dumps(rows))
+    giant_integer[0]["settings"]["retry_count"] = 1 << 5000
+    nonfinite = json.loads(json.dumps(rows))
+    nonfinite[0]["settings"]["weight"] = float("nan")
+
+    hostile_inputs = (
+        (duplicate_key, "json", "duplicate mapping key"),
+        (
+            json.dumps(duplicate_id).encode("utf-8"),
+            "json",
+            "duplicate policy_id",
+        ),
+        (
+            json.dumps(unknown_field).encode("utf-8"),
+            "json",
+            "unknown fields",
+        ),
+        (
+            json.dumps(secret_field).encode("utf-8"),
+            "json",
+            "secret-shaped field",
+        ),
+        (
+            json.dumps(giant_integer).encode("utf-8"),
+            "json",
+            "integer exceeding the magnitude cap",
+        ),
+        (
+            json.dumps(nonfinite).encode("utf-8"),
+            "json",
+            "non-finite",
+        ),
+        (b"first: &shared []\nsecond: *shared\n", "yaml", "aliases and anchors"),
+        (b"[\xff]", "json", "strict UTF-8"),
+    )
+    for raw, format, error in hostile_inputs:
+        with pytest.raises(ValueError, match=error):
+            gpohound_module.parse_policy_evidence_bytes(raw, format=format)
+
+    too_deep = ("[" * 65 + "0" + "]" * 65).encode("utf-8")
+    with pytest.raises(ValueError, match="nesting-depth cap"):
+        gpohound_module.parse_policy_evidence_bytes(too_deep, format="json")
+
+
+def test_gpohound_public_renderer_is_the_exact_output_gate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    payload = {"policy": {"name": "Stratégie ☃", "count": 1}}
+    rendered = gpohound_module.render_producer_output_bytes(payload)
+    assert rendered == json.dumps(
+        payload,
+        sort_keys=True,
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+
+    monkeypatch.setattr(gpohound_module, "MAX_OUTPUT_CHARS", len(rendered))
+    accepted = gpohound_module._ok(_spec(R08_ID), "policy", payload)
+    assert accepted.ok is True
+    assert accepted.output == payload
+    monkeypatch.setattr(gpohound_module, "MAX_OUTPUT_CHARS", len(rendered) - 1)
+    refused = gpohound_module._ok(_spec(R08_ID), "policy", payload)
+    assert refused.ok is False
+    assert refused.output is None
+    assert "output cap" in refused.error

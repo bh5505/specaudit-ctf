@@ -23,6 +23,11 @@ from datetime import datetime
 from types import MappingProxyType
 from typing import Any
 
+from .arms.gpohound.arm import (
+    parse_policy_evidence_bytes,
+    render_producer_output_bytes as render_gpohound_output_bytes,
+)
+from .arms.gpohound.policy import MAX_OUTPUT_CHARS as GPOHOUND_MAX_OUTPUT_CHARS
 from .arms.rubeus.arm import (
     parse_telemetry_bytes,
     render_producer_output_bytes as render_rubeus_output_bytes,
@@ -56,6 +61,9 @@ SCHEMA_VERSION = 1
 SOURCE_ADMISSION_V2_SCHEMA_ID = "specaudit.ctf.source-admission.v2"
 TRUSTED_OBSERVATION_V2_SCHEMA_ID = "specaudit.ctf.trusted-observation.v2"
 SCHEMA_VERSION_V2 = 2
+SOURCE_ADMISSION_V3_SCHEMA_ID = "specaudit.ctf.source-admission.v3"
+TRUSTED_OBSERVATION_V3_SCHEMA_ID = "specaudit.ctf.trusted-observation.v3"
+SCHEMA_VERSION_V3 = 3
 
 REASON_INVALID_ADMISSION = "invalid-source-admission"
 REASON_UNKNOWN_SCHEMA = "unknown-observation-schema"
@@ -84,6 +92,10 @@ _OBSERVATION_ID_RE = re.compile(r"^trusted-observation-[0-9a-f]{64}$")
 _DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 _CVE_ID_RE = re.compile(r"^CVE-[0-9]{4}-[0-9]{4,}$")
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,255}$")
+_BRACED_GPO_ID_RE = re.compile(
+    r"^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-"
+    r"[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$"
+)
 _LIMITATION_RE = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 _REF_RE = re.compile(r"^[a-z][a-z0-9+.-]*://[^\s]+$")
 _TIMESTAMP_RE = re.compile(
@@ -104,6 +116,12 @@ _V2_MAX_TEXT = SECURITY_RULE_MAX_OUTPUT_CHARS
 # Security's bounded-tree gate applies the same producer cap to mapping keys;
 # keep that parity explicit while retaining an independently tunable limit.
 _V2_MAX_KEY_TEXT = SECURITY_RULE_MAX_OUTPUT_CHARS
+# GPOHound bounds each selected policy to 50,000 settings nodes at depth 24
+# with 4,096-character text.  The v3 singleton report adds fixed wrappers.
+_V3_MAX_DOCUMENT_NODES = 50_256
+_V3_MAX_DOCUMENT_DEPTH = 28
+_V3_MAX_TEXT = 4_096
+_V3_MAX_KEY_TEXT = 4_096
 _MAX_NUMBER_BITS = 65_536
 _MAX_CVE_ID = 32
 _MAX_POLICY_REPORT_BYTES = 1_048_576
@@ -221,6 +239,10 @@ def _parse_rubeus_source(raw: bytes, format: str) -> _ParsedSource:
     return parse_telemetry_bytes(raw, format=format)
 
 
+def _parse_gpohound_source(raw: bytes, format: str) -> _ParsedSource:
+    return parse_policy_evidence_bytes(raw, format=format)
+
+
 def _complete_evidence_record(record: dict[str, Any]) -> dict[str, Any]:
     return _document_copy(record)
 
@@ -231,6 +253,17 @@ def _security_rule_evidence_record(
     return {
         "rule_id": record["rule_id"],
         "name": record["name"],
+        "definition_digest": _sha256(_canonical_bytes(record)),
+    }
+
+
+def _gpohound_policy_evidence_record(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "policy_id": record["policy_id"],
+        "name": record["name"],
+        "declared_status": record["status"],
         "definition_digest": _sha256(_canonical_bytes(record)),
     }
 
@@ -260,6 +293,14 @@ _REPLAY_ADAPTERS = MappingProxyType(
             max_output_bytes=RUBEUS_MAX_OUTPUT_CHARS,
             report_has_provenance=False,
             project_evidence=_complete_evidence_record,
+        ),
+        "gpohound.policy": _ReplayAdapter(
+            adapter_id="gpohound-policy-evidence-v1",
+            parse=_parse_gpohound_source,
+            render=render_gpohound_output_bytes,
+            max_output_bytes=GPOHOUND_MAX_OUTPUT_CHARS,
+            report_has_provenance=False,
+            project_evidence=_gpohound_policy_evidence_record,
         ),
     }
 )
@@ -408,7 +449,7 @@ def issue_profile_source_admission(
 
     ``vulnify.lookup`` deliberately routes through the original v1 issuer so
     its public contract and serialized output remain byte-compatible.  The
-    two singleton profiles added after v1 mint only the closed v2 contract.
+    later singleton profiles mint only their closed versioned contracts.
     """
     profile = _required_profile(capability_id)
     if profile.contract_version == SCHEMA_VERSION:
@@ -433,7 +474,13 @@ def issue_profile_source_admission(
             valid_until=valid_until,
             limitations=limitations,
         )
-    if profile.contract_version != SCHEMA_VERSION_V2:
+    if profile.contract_version == SCHEMA_VERSION_V2:
+        schema_id = SOURCE_ADMISSION_V2_SCHEMA_ID
+        schema_version = SCHEMA_VERSION_V2
+    elif profile.contract_version == SCHEMA_VERSION_V3:
+        schema_id = SOURCE_ADMISSION_V3_SCHEMA_ID
+        schema_version = SCHEMA_VERSION_V3
+    else:
         raise ObservationError((REASON_PROFILE_MISMATCH,))
 
     reasons = _profile_issue_input_reasons(
@@ -478,8 +525,8 @@ def issue_profile_source_admission(
         "value": source_timestamp,
     }
     body: dict[str, Any] = {
-        "schema": SOURCE_ADMISSION_V2_SCHEMA_ID,
-        "schema_version": SCHEMA_VERSION_V2,
+        "schema": schema_id,
+        "schema_version": schema_version,
         "attempt_id": attempt_id,
         "capability_id": profile.capability_id,
         "arm_id": profile.arm_id,
@@ -830,6 +877,10 @@ def _validated_inputs(
         report_max_nodes = _V2_MAX_DOCUMENT_NODES
         report_max_depth = _V2_MAX_DOCUMENT_DEPTH
         report_copy = _v2_document_copy
+    elif profile.contract_version == SCHEMA_VERSION_V3:
+        report_max_nodes = _V3_MAX_DOCUMENT_NODES
+        report_max_depth = _V3_MAX_DOCUMENT_DEPTH
+        report_copy = _v3_document_copy
     else:
         report_max_nodes = _MAX_DOCUMENT_NODES
         report_max_depth = _MAX_DOCUMENT_DEPTH
@@ -926,6 +977,10 @@ def _build_observation(
         schema_id = TRUSTED_OBSERVATION_V2_SCHEMA_ID
         schema_version = SCHEMA_VERSION_V2
         document_copy = _v2_document_copy
+    elif profile.contract_version == SCHEMA_VERSION_V3:
+        schema_id = TRUSTED_OBSERVATION_V3_SCHEMA_ID
+        schema_version = SCHEMA_VERSION_V3
+        document_copy = _v3_document_copy
     else:
         raise ValueError("profile selects an unknown contract version")
     body: dict[str, Any] = {
@@ -1185,7 +1240,7 @@ def _observation_structure_reasons(document: dict[str, Any]) -> tuple[str, ...]:
     if contract_version is None:
         reasons.append(REASON_UNKNOWN_SCHEMA)
     elif (
-        contract_version == SCHEMA_VERSION_V2
+        contract_version in (SCHEMA_VERSION_V2, SCHEMA_VERSION_V3)
         and _profile_for_structure(document, observation=True) is None
     ):
         reasons.append(REASON_PROFILE_MISMATCH)
@@ -1275,12 +1330,22 @@ def _contract_version_for_document(
             and version == SCHEMA_VERSION_V2
         ):
             return version
+        if (
+            schema == TRUSTED_OBSERVATION_V3_SCHEMA_ID
+            and version == SCHEMA_VERSION_V3
+        ):
+            return version
         return None
     if schema == SOURCE_ADMISSION_SCHEMA_ID and version == SCHEMA_VERSION:
         return version
     if (
         schema == SOURCE_ADMISSION_V2_SCHEMA_ID
         and version == SCHEMA_VERSION_V2
+    ):
+        return version
+    if (
+        schema == SOURCE_ADMISSION_V3_SCHEMA_ID
+        and version == SCHEMA_VERSION_V3
     ):
         return version
     return None
@@ -1367,6 +1432,11 @@ def _valid_subject_id(profile: ObservationProfile, value: Any) -> bool:
             and len(value) <= _MAX_CVE_ID
             and bool(_CVE_ID_RE.fullmatch(value))
         )
+    if profile.capability_id == "gpohound.policy":
+        return type(value) is str and (
+            bool(_IDENTIFIER_RE.fullmatch(value))
+            or bool(_BRACED_GPO_ID_RE.fullmatch(value))
+        )
     return _valid_identifier(value)
 
 
@@ -1407,6 +1477,16 @@ def _v2_document_copy(value: Any) -> dict[str, Any]:
     )
 
 
+def _v3_document_copy(value: Any) -> dict[str, Any]:
+    return _bounded_document_copy(
+        value,
+        max_nodes=_V3_MAX_DOCUMENT_NODES,
+        max_depth=_V3_MAX_DOCUMENT_DEPTH,
+        max_text=_V3_MAX_TEXT,
+        max_key_text=_V3_MAX_KEY_TEXT,
+    )
+
+
 def _observation_document_copy(value: Any) -> dict[str, Any]:
     if not isinstance(value, Mapping):
         return _document_copy(value)
@@ -1433,6 +1513,23 @@ def _observation_document_copy(value: Any) -> dict[str, Any]:
         if (
             candidate.get("schema") == TRUSTED_OBSERVATION_V2_SCHEMA_ID
             and candidate.get("schema_version") == SCHEMA_VERSION_V2
+            and type(candidate.get("schema_version")) is int
+            and candidate.get("capability_id") == capability_id
+        ):
+            return candidate
+        return _document_copy(candidate)
+    if (
+        type(schema_id) is str
+        and schema_id == TRUSTED_OBSERVATION_V3_SCHEMA_ID
+        and type(schema_version) is int
+        and schema_version == SCHEMA_VERSION_V3
+        and profile is not None
+        and profile.contract_version == SCHEMA_VERSION_V3
+    ):
+        candidate = _v3_document_copy(value)
+        if (
+            candidate.get("schema") == TRUSTED_OBSERVATION_V3_SCHEMA_ID
+            and candidate.get("schema_version") == SCHEMA_VERSION_V3
             and type(candidate.get("schema_version")) is int
             and candidate.get("capability_id") == capability_id
         ):
@@ -1660,10 +1757,13 @@ def _unique(values: Sequence[str]) -> tuple[str, ...]:
 __all__ = [
     "SCHEMA_VERSION",
     "SCHEMA_VERSION_V2",
+    "SCHEMA_VERSION_V3",
     "SOURCE_ADMISSION_SCHEMA_ID",
     "SOURCE_ADMISSION_V2_SCHEMA_ID",
+    "SOURCE_ADMISSION_V3_SCHEMA_ID",
     "TRUSTED_OBSERVATION_SCHEMA_ID",
     "TRUSTED_OBSERVATION_V2_SCHEMA_ID",
+    "TRUSTED_OBSERVATION_V3_SCHEMA_ID",
     "ObservationError",
     "VerificationResult",
     "derive_trusted_observation",

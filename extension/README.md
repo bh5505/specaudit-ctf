@@ -14,7 +14,7 @@ This tree is the public attach surface:
   `invoke`, `run_range`)
 - `arms/dispatch.py` — two-tier scope gate
 - `observations.py` / `observation_profiles.py` — opt-in, pure trusted-side
-  binding for three exact singleton reader results; not an invocation surface
+  binding for four exact singleton reader results; not an invocation surface
 
 A validation client may attach the same CLI or MCP surface later.
 
@@ -47,15 +47,19 @@ fresh identity. The admission and binding digests plus full re-derivation—not
 the observation id—detect document or evidence mismatch.
 
 The frozen sidecar registry contains exactly `vulnify.lookup`,
-`security-detections-mcp.get_rule`, and `rubeus.telemetry`. Each accepts only
-its exact singleton action and selector, exactly one `policy-report` artifact,
+`security-detections-mcp.get_rule`, `rubeus.telemetry`, and `gpohound.policy`.
+Each accepts only its exact singleton action and selector, exactly one
+`policy-report` artifact,
 and its declared source formats: JSON/JSONL/YAML for vulnify, JSON/YAML/YML for a
-detection-rule index, and JSON/JSONL for deweaponized Rubeus telemetry. The raw
+detection-rule index, JSON/JSONL for deweaponized Rubeus telemetry, and
+JSON/YAML/YML for GPOHound policy evidence. The raw
 parsers are shared with the arms, so the selected record, exact-byte
 digest/length and normalized full-record digest are independently recomputed
 rather than accepted from result prose. The v1 vulnify schemas remain closed
-and unchanged; the two new profiles use separate closed v2 Draft-07 schemas.
-Callers must still use the runtime verifiers for cross-field time
+and unchanged; the two v2 profiles use separate closed Draft-07 schemas.
+The GPOHound profile uses separate closed v3 Draft-07 schemas; neither later
+version widens the published v1 or v2 schemas. Callers must still use the
+runtime verifiers for cross-field time
 ordering/duration, content identities, replay and byte bindings. The runtime
 has no `jsonschema` dependency.
 
@@ -74,7 +78,13 @@ name fields); it establishes neither deployment nor operating effectiveness. A
 telemetry observation retains the bounded event projection and indicator
 `type` fields while omitting indicator `value` fields; other caller-supplied
 prose remains untrusted. It establishes neither event authenticity nor event
-time, and it does not infer compromise.
+time, and it does not infer compromise. A GPOHound observation exposes the
+policy id, name, declared status, and a `definition_digest` over the full
+replayed policy record. It does not establish application, effective access,
+security/WMI-filter applicability, item-level targeting, or policy-conflict
+resolution. Execution-result v1 does not retain invocation arguments, so v3
+binds the returned record to the admitted policy id without claiming whether
+the arm selected it by id or by its unique name.
 
 The custody fields are assertions by the trusted validator. Execution-result
 v1 does not say whether a result carrying an attempt id also used
@@ -83,9 +93,9 @@ acquisition. `validator-attested-mode-a` must be backed by the operator's
 actual Mode-A receipt/read and retained replay state. The admission JSON is
 content-bound but unsigned; the trusted caller still owns issuer
 authentication, pre-attempt creation, channel custody and durable append-only
-storage. R01, R36 and R43 remain unselected research sources with unreviewed
-rights in the partial governance register, so no default admission exists for
-any of the three profiles.
+storage. R01, R08, R36 and R43 remain unselected research sources with
+unreviewed rights in the partial governance register, so no default admission
+exists for any of the four profiles.
 
 ## Asset reconnaissance
 
