@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""build_pack_evidence.py — project the Glasswing dev silver DB into the real
+"""build_pack_evidence.py — project the rehearsal silver DB into the real
 pack-shaped tables of packs/ext_telecom_asmvm and write one CSV per table.
 
-The dev workspace (glasswing_silver.duckdb, built by build_glasswing_silver.py)
+The dev workspace (rehearsal_silver.duckdb, built by build_rehearsal_silver.py)
 uses gw_silver_ext_* staging tables whose columns are close to, but not equal
 to, the pack schema. This script creates the pack's own DDL (from the pack
 migrations), inserts with explicit column lists, and exports pack-shaped CSVs
@@ -23,8 +23,8 @@ import sys
 import duckdb
 
 RUN_ID = "gw-asmvm-20260902"
-ENGAGEMENT = "glasswing-2026"
-BATCH = "glasswing-asmvm-20260902"
+ENGAGEMENT = "asmvm-rehearsal-2026"
+BATCH = "asmvm-rehearsal-20260902"
 VERSION = "asmvm-v1"
 REFERENCE_TS = "2026-09-02 12:00:00"
 SLA_DAYS = 14
@@ -419,7 +419,7 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                CASE WHEN subject_ip IS NULL THEN 'grouping' ELSE 'ip' END,
                source_system, severity, rule_name, detail_ref, NULL,
                dedupe_hash, first_seen_ts, last_seen_ts, 2026,
-               'glasswing_rehearsal', 'candidate_ledger.csv',
+               'asmvm_rehearsal', 'candidate_ledger.csv',
                row_number() OVER (ORDER BY candidate_id),
                md5(concat('candsubj|', candidate_id)), '{BATCH}', '{VERSION}',
                '{VERSION}'

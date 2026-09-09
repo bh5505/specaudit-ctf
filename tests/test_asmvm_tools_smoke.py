@@ -1,7 +1,7 @@
 """Smoke tests for the ASM/VM tools in tools/ (asmvm evidence builder, check
 probe, CSV type preflight, live-fire helpers, SEIF round-trip projection).
 
-These tools came out of the Glasswing pre-test loop, where each one encoded a
+These tools came out of an ASM/VM rehearsal loop, where each one encoded a
 defect found against real evidence. The tests keep the *reason they exist*
 alive on a mini fixture - no scanner, no network, no vendor export:
 
@@ -31,6 +31,7 @@ from __future__ import annotations
 import csv
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 from pathlib import Path
@@ -275,23 +276,163 @@ def test_fast_csv_rejects_headers_the_migrations_do_not_declare(mini_pack,
           "--db", "sqlite", "--run-id", RUN_ID, "--limit", "100"])
 
 
-def test_duckdb_needs_fast_csv_for_typed_comparisons(mini_pack, mini_evidence,
-                                                     tmp_path):
-    """Characterisation, not aspiration: the row-by-row loader inserts CSV values
-    as text, SQLite's dynamic typing forgives a numeric comparison written for
-    typed columns and DuckDB does not. So a pack that claims both engines runs
-    duckdb+--fast-csv and sqlite+row-by-row - two different loads - and
-    csv_type_preflight is what says whether they see the same column types."""
-    proc = _run([RUNNER, "--pack", str(mini_pack),
-                 "--evidence-dir", str(mini_evidence),
-                 "--out-dir", str(tmp_path / "out_row_duck"),
-                 "--db", "duckdb", "--run-id", RUN_ID, "--limit", "100"],
-                expect_ok=False)
-    assert "smoke_vm_finding" in (proc.stderr + proc.stdout) or "severity" in proc.stderr
-    _run([RUNNER, "--pack", str(mini_pack),
-          "--evidence-dir", str(mini_evidence),
-          "--out-dir", str(tmp_path / "out_row_sqlite"),
-          "--db", "sqlite", "--run-id", RUN_ID, "--limit", "100"])
+def test_duckdb_loads_the_same_way_with_and_without_fast_csv(mini_pack, mini_evidence,
+                                                             tmp_path):
+    """The loader takes column types from the pack's migrations, so the two
+    DuckDB load paths (native read_csv with declared types, and row-by-row with
+    converted values) agree.
+
+    This used to be an asymmetry: the row-by-row path inserted everything as
+    text and DuckDB then refused ``severity >= 9.0`` on a VARCHAR column, so
+    ``--fast-csv`` was not a speed option but a correctness one. Typing from the
+    DDL removed the difference; the fast path stays the one production uses."""
+    reports = {}
+    for tag, extra in (("fast", ["--fast-csv"]), ("rowby", [])):
+        out = tmp_path / ("out_" + tag)
+        _run([RUNNER, "--pack", str(mini_pack),
+              "--evidence-dir", str(mini_evidence),
+              "--out-dir", str(out),
+              "--db", "duckdb"] + extra + ["--run-id", RUN_ID, "--limit", "100"])
+        reports[tag] = _report(out)
+    for field in ("finding_alias", "details", "risk_score", "affected_count"):
+        assert [f[field] for f in reports["fast"]["findings"]] == \
+            [f[field] for f in reports["rowby"]["findings"]], field
+    assert reports["fast"]["findings"], "the mini pack must produce findings to compare"
+
+
+def _load_mini_table_on_sqlite(module, evidence, tmp_path, table, ddl_types, tag="typed"):
+    conn = sqlite3.connect(str(tmp_path / (tag + "-" + table + ".db")))
+    conn.row_factory = sqlite3.Row
+    with (evidence / (table + ".csv")).open(encoding="utf-8", newline="") as fh:
+        reader = csv.reader(fh)
+        headers = next(reader)
+        rows = [row for row in reader]
+    module.create_table(conn, "sqlite", table, rows, headers, ddl_types=ddl_types)
+    return conn
+
+
+def test_declared_ddl_types_beat_what_the_values_look_like(tmp_path):
+    """The defect this guards: a column full of numeric-looking text keeps TEXT
+    affinity in SQLite, and in SQLite any TEXT sorts above any REAL. A check
+    written against the declared DOUBLE therefore silently becomes true for
+    every row - measured on the corpus as 3,998 findings scoring 60 where the
+    data said 58. Typing from the migrations is what makes the two engines
+    agree; inferring from values is what made them disagree."""
+    runner = pytest.importorskip("ctf_run_checks")
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    with (evidence / "smoke_vm_finding.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["run_id", "ip", "severity", "is_open"])
+        w.writerows([["stale", "10.0.0.5", "9.64", "true"],
+                     ["stale", "10.0.0.6", "9.1", "false"]])
+    ddl_types = {"smoke_vm_finding": {"run_id": "VARCHAR", "ip": "VARCHAR",
+                                     "severity": "DOUBLE", "is_open": "BOOLEAN"}}
+    score = ("SELECT CASE WHEN (SELECT MAX(severity) FROM smoke_vm_finding) >= 9.8 "
+             "THEN 60 ELSE 58 END")
+
+    typed = _load_mini_table_on_sqlite(runner, evidence, tmp_path,
+                                       "smoke_vm_finding", ddl_types)
+    types = {row[1]: row[2] for row in typed.execute("PRAGMA table_info(smoke_vm_finding)")}
+    assert types["severity"].upper() == "DOUBLE"
+    assert types["is_open"].upper() in ("BOOLEAN", "BOOL")
+    assert typed.execute(score).fetchone()[0] == 58, "typed: 9.64 is not >= 9.8"
+    # 'true' has to mean true: CAST('true' AS BOOLEAN) is 0 in SQLite
+    assert typed.execute("SELECT COUNT(*) FROM smoke_vm_finding"
+                         " WHERE CAST(is_open AS BOOLEAN)").fetchone()[0] == 1
+
+    inferred = _load_mini_table_on_sqlite(runner, evidence, tmp_path,
+                                         "smoke_vm_finding", None, tag="inferred")
+    inferred_types = {row[1]: row[2] for row in
+                      inferred.execute("PRAGMA table_info(smoke_vm_finding)")}
+    assert inferred_types["severity"].upper() in ("TEXT", "VARCHAR"), (
+        "value inference gives text affinity, which is the problem")
+    assert inferred.execute(score).fetchone()[0] == 60, (
+        "the value-inference path is the bug: text '9.64' compares >= 9.8 in SQLite")
+
+
+def test_a_value_that_does_not_fit_its_declared_type_is_kept_and_reported(tmp_path,
+                                                                          capsys):
+    """Evidence with a bad cell should produce findings, not an exception - and
+    the run has to say how many cells did not fit."""
+    runner = pytest.importorskip("ctf_run_checks")
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    with (evidence / "smoke_vm_finding.csv").open("w", newline="", encoding="utf-8") as fh:
+        w = csv.writer(fh)
+        w.writerow(["run_id", "ip", "severity", "is_open"])
+        w.writerows([["stale", "10.0.0.5", "9.5", "true"],
+                     ["stale", "10.0.0.6", "not-a-number", "true"]])
+    ddl_types = {"smoke_vm_finding": {"run_id": "VARCHAR", "ip": "VARCHAR",
+                                     "severity": "DOUBLE", "is_open": "BOOLEAN"}}
+    conn = _load_mini_table_on_sqlite(runner, evidence, tmp_path,
+                                      "smoke_vm_finding", ddl_types)
+    rows = conn.execute("SELECT ip, severity FROM smoke_vm_finding ORDER BY ip").fetchall()
+    assert [r[0] for r in rows] == ["10.0.0.5", "10.0.0.6"], "the bad row is not dropped"
+    assert float(rows[0][1]) == 9.5
+    assert rows[1][1] == "not-a-number", "kept as text so the check can still see it"
+    captured = capsys.readouterr()
+    runner.report_type_mismatches("smoke_vm_finding",
+                                 {"severity": 1, "_sample_DOUBLE": "not-a-number"})
+    reported = capsys.readouterr()
+    out = captured.out + captured.err + reported.out + reported.err
+    assert "smoke_vm_finding" in out and "severity" in out and "not-a-number" in out
+
+
+def test_sqlite_join_indexes_come_from_the_pack_checks(tmp_path):
+    """SQLite needs join indexes the hash-joining engine does not: without them
+    an aggregate-per-candidate check over 400k-row evidence does not finish
+    inside its budget (measured >240s unindexed, 13.4s after the runner built
+    12 indexes derived from the pack's own JOIN clauses, whole pack run 1m57s).
+    They are run_id-scoped and never created for DuckDB."""
+    runner = pytest.importorskip("ctf_run_checks")
+    conn = sqlite3.connect(str(tmp_path / "indexes.db"))
+    for table in ("smoke_vm_finding", "smoke_service", "smoke_candidate"):
+        conn.execute("CREATE TABLE %s (run_id TEXT, ip TEXT, cve TEXT)" % table)
+    loaded = {"smoke_vm_finding", "smoke_service", "smoke_candidate"}
+    runner.sqlite_join_indexes(conn, "sqlite", [CHECK_T1, CHECK_T2], loaded)
+    indexed = {row[0] for row in conn.execute(
+        "SELECT name FROM sqlite_master WHERE type = 'index'")}
+    assert "ix_smoke_vm_finding_run_id_ip" in indexed, indexed
+    assert "ix_smoke_service_run_id_ip" in indexed, indexed
+
+    duckdb = pytest.importorskip("duckdb")
+    duck = duckdb.connect(str(tmp_path / "indexes.duckdb"))
+    for table in ("smoke_vm_finding", "smoke_service", "smoke_candidate"):
+        duck.execute("CREATE TABLE %s (run_id VARCHAR, ip VARCHAR, cve VARCHAR)" % table)
+    runner.sqlite_join_indexes(duck, "duckdb", [CHECK_T1, CHECK_T2], loaded)
+    assert duck.execute("SELECT COUNT(*) FROM duckdb_indexes()").fetchone()[0] == 0
+
+
+def test_boolean_and_timestamp_detail_text_agrees_across_engines(tmp_path):
+    """The pack renders details text as CASE ... 'true'/'false' and
+    SUBSTR(CAST(ts AS VARCHAR), 1, 19) instead of CAST(bool/ts AS VARCHAR).
+    Not cosmetics: on the corpus DuckDB and SQLite disagreed in the details
+    string of 4,554 findings - true vs 1, and ...44.9893 vs ...44.989300 - and
+    details is what reaches the workpaper and the SARIF artifact."""
+    duckdb = pytest.importorskip("duckdb")
+    sql = {
+        "cast_bool": "SELECT CAST(is_open AS VARCHAR) FROM t",
+        "case_bool": "SELECT CASE WHEN is_open THEN 'true' ELSE 'false' END FROM t",
+        "cast_ts": "SELECT CAST(last_seen_ts AS VARCHAR) FROM t",
+        "substr_ts": "SELECT SUBSTR(CAST(last_seen_ts AS VARCHAR), 1, 19) FROM t",
+    }
+    duck = duckdb.connect(str(tmp_path / "render.duckdb"))
+    duck.execute("CREATE TABLE t (is_open BOOLEAN, last_seen_ts TIMESTAMP)")
+    duck.execute("INSERT INTO t VALUES (true, '2026-08-17 13:53:44.989300')")
+    lite = sqlite3.connect(str(tmp_path / "render.db"))
+    lite.execute("CREATE TABLE t (is_open BOOLEAN, last_seen_ts TIMESTAMP)")
+    lite.execute("INSERT INTO t VALUES (1, '2026-08-17 13:53:44.989300')")
+
+    duck_values = {name: duck.execute(query).fetchone()[0] for name, query in sql.items()}
+    lite_values = {name: lite.execute(query).fetchone()[0] for name, query in sql.items()}
+
+    assert duck_values["cast_bool"] == "true" and lite_values["cast_bool"] == "1"
+    assert duck_values["case_bool"] == lite_values["case_bool"] == "true"
+    assert duck_values["cast_ts"] != lite_values["cast_ts"], (
+        "microsecond text differs between the engines; if this stops being true "
+        "the SUBSTR form is still the one to use")
+    assert duck_values["substr_ts"] == lite_values["substr_ts"] == "2026-08-17 13:53:44"
 
 
 def test_check_probe_reports_equivalence_and_arms_budget(mini_pack, mini_evidence,

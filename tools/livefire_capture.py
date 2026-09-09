@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Glasswing live-fire banner / TLS / cert capture - lab and loopback only.
+"""ASM/VM live-fire banner / TLS / cert capture - lab and loopback only.
 
 Reads a target list (one target per line: "ip proto/port [note]"; '#' lines are
 comments and are NEVER probed), performs one bounded observation per endpoint
@@ -21,8 +21,8 @@ Outputs (in --out-dir):
 
 No evidence tables are written here - that is livefire_overlay.py.
 
-The DNS lanes ask about a name the operator owns (default glasswing-livecheck.local, override
-with --dns-name or GLASSWING_DNS_PROBE_NAME); nothing here resolves or connects
+The DNS lanes ask about a name the operator owns (default asmvm-livecheck.local, override
+with --dns-name or ASMVM_DNS_PROBE_NAME); nothing here resolves or connects
 outside the address space the target file names, and the classifier still aborts
 on public addresses.
 """
@@ -36,8 +36,8 @@ import os
 
 # Name the DNS lanes ask about. Owner-configurable; nothing in this tool
 # resolves a name it was not told to use.
-DNS_PROBE_NAME = os.environ.get("GLASSWING_DNS_PROBE_NAME",
-                                "glasswing-livecheck.local")
+DNS_PROBE_NAME = os.environ.get("ASMVM_DNS_PROBE_NAME",
+                                "asmvm-livecheck.local")
 import socket
 import ssl
 import subprocess
@@ -245,7 +245,7 @@ def tls_cert_openssl(ip, port, timeout):
 def http_get(sock, ip, port, proto, timeout):
     """One GET. Never a mutating verb."""
     scheme = "https" if proto == "tls" else "http"
-    req = ("GET / HTTP/1.1\r\nHost: %s\r\nUser-Agent: glasswing-livefire/1.0 "
+    req = ("GET / HTTP/1.1\r\nHost: %s\r\nUser-Agent: asmvm-livefire/1.0 "
            "(pre-test verification)\r\nAccept: */*\r\nConnection: close\r\n\r\n"
            % ip)
     try:
@@ -352,7 +352,7 @@ def main():
     ap.add_argument("--targets", required=True)
     ap.add_argument("--out-dir", required=True)
     ap.add_argument("--run-id", default="gw-livefire")
-    ap.add_argument("--engagement-id", default="glasswing-2026")
+    ap.add_argument("--engagement-id", default="asmvm-rehearsal-2026")
     ap.add_argument("--timeout", type=float, default=3.0)
     ap.add_argument("--dns-name", default=DNS_PROBE_NAME,
                     help="name to ask the resolver for; must be a name the "

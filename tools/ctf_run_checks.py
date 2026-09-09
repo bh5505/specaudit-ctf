@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """ctf_run_checks.py - loopback check runner for the specaudit-ctf telecom
-pack (Project Glasswing rehearsal).
+pack (an ASM/VM rehearsal).
 
 Materializes the seven evidence CSVs produced by gen_evidence.py into a
 chosen engine (DuckDB when importable, SQLite fallback), creates a
@@ -10,7 +10,7 @@ SQL from the pack's manifest.yaml, and writes:
     <out-dir>/report.json   - {pack_id, run_id, generated_at, engine, findings[]}
     <out-dir>/report.sarif  - SARIF 2.1.0
 
-With --export-bin <specaudit-server>, the run's complete artifact set
+With --export-bin <the pack export binary>, the run's complete artifact set
 (report.json + report.sarif + the auto-rendered two-sided-declared workpaper
 + export_manifest.json) is then promoted into one directory via the engine's
 `pack export` subcommand (tracker #7). The export re-validates the pack's
@@ -87,7 +87,7 @@ try:
 except ImportError:
     duckdb = None
 
-ENGAGEMENT_ID = "glasswing-2026"
+ENGAGEMENT_ID = "asmvm-rehearsal-2026"
 ZERO_ACCEPT_EVENT_ID = "00000000-0000-0000-0000-000000000000"
 
 SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "informational": 0}
@@ -317,22 +317,75 @@ def _infer_columns(rows, headers):
     return cols
 
 
-def _convert_value(value, coltype):
-    if value == "":
-        return None  # empty CSV cell -> NULL, mirroring the server accept path
-    if coltype == "INTEGER":
-        stripped = str(value).strip().lower()
-        if stripped in ("true", "false"):
-            return 1 if stripped == "true" else 0
+_INT_TYPES = {"INTEGER", "BIGINT", "SMALLINT", "TINYINT", "HUGEINT", "UBIGINT",
+              "USMALLINT", "UTINYINT"}
+_FLOAT_TYPES = {"DOUBLE", "REAL", "FLOAT"}
+_TRUE_WORDS = {"true", "t", "yes", "y", "1"}
+_FALSE_WORDS = {"false", "f", "no", "n", "0", ""}
+
+
+def _type_base(coltype):
+    return str(coltype or "VARCHAR").upper().split("(")[0].strip()
+
+
+def _convert_value(value, coltype, mismatch=None):
+    """Bind one CSV cell to the column's declared SQL type.
+
+    An empty cell is NULL, mirroring the server accept path. Everything else is
+    converted to the type the pack's migrations declare, because both engines
+    otherwise fall back to text and silently change what a check means: SQLite
+    compares any TEXT as greater than any number, so `severity >= 9.0` over a
+    text severity column is true for every row (measured: 3,998 findings of the
+    ASM/VM pack came out in the wrong risk band on SQLite for this reason), and
+    DuckDB rejects the comparison outright without --fast-csv.
+
+    A value that does not fit its declared type is loaded as text and counted in
+    `mismatch` so create_table can report it - the alternative is failing a whole
+    evidence load over one cell.
+    """
+    if value == "" or value is None:
+        return None
+    base = _type_base(coltype)
+    if base in _INT_TYPES or base == "DECIMAL" or base == "NUMERIC":
+        stripped = str(value).strip()
+        low = stripped.lower()
+        if low in ("true", "false"):
+            return 1 if low == "true" else 0
         try:
-            return int(stripped)  # numeric spine column: real int, not a string
+            return int(stripped)
         except ValueError:
-            return value
-    if coltype == "TIMESTAMP":
+            pass
+        if base in _INT_TYPES:
+            try:
+                return int(float(stripped))  # '9.0' from a float-formatted export
+            except ValueError:
+                pass
+        else:
+            try:
+                return float(stripped)
+            except ValueError:
+                pass
+    elif base in _FLOAT_TYPES:
         try:
-            return datetime.fromisoformat(str(value))
+            return float(str(value).strip())
         except ValueError:
-            return value
+            pass
+    elif base == "BOOLEAN":
+        low = str(value).strip().lower()
+        if low in _TRUE_WORDS:
+            return 1 if low != "" else None
+        if low in _FALSE_WORDS:
+            return 0
+    elif base in ("TIMESTAMP", "DATE", "DATETIME"):
+        try:
+            return datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        except ValueError:
+            pass
+    else:
+        return value  # VARCHAR/TEXT/UUID/JSON and friends
+    if mismatch is not None:
+        mismatch[str(coltype)] = mismatch.get(str(coltype), 0) + 1
+        mismatch.setdefault("_sample_" + str(coltype), str(value)[:40])
     return value
 
 
@@ -357,13 +410,35 @@ def open_engine(db_choice):
 _INSERT_CHUNK = 20000
 
 
-def _insert_chunk(insert, rows, cols):
-    return [[_convert_value(v, ctype) for v, (_, ctype) in zip(row, cols)]
+def _insert_chunk(insert, rows, cols, mismatch=None):
+    return [[_convert_value(v, ctype, mismatch) for v, (_, ctype) in zip(row, cols)]
             for row in rows]
 
 
-def create_table(conn, engine, table, rows, headers):
-    cols = _infer_columns(rows, headers)
+def declared_columns(ddl_types, table, headers):
+    """[(name, declared type)] when the pack's migrations declare this table.
+
+    The migrations are the contract the checks are written against, so they -
+    not value sniffing - decide how evidence is bound. Headers the migration
+    does not declare fall back to VARCHAR (the header guard in --fast-csv, and
+    the mapping's column aliases, keep this list honest).
+    """
+    types = (ddl_types or {}).get(table)
+    if not types:
+        return None
+    return [(header, types.get(header, "VARCHAR")) for header in headers]
+
+
+def create_table(conn, engine, table, rows, headers, ddl_types=None):
+    cols = declared_columns(ddl_types, table, headers) or _infer_columns(rows, headers)
+    mismatch = {}
+    for name, ctype in cols:
+        if _type_base(ctype) not in _INT_TYPES | _FLOAT_TYPES | {"BOOLEAN", "TIMESTAMP",
+                                                                "DECIMAL", "NUMERIC"}:
+            continue
+        # Only report a mismatch rate for columns that declare a non-text type;
+        # a text column accepting anything is not a defect.
+        mismatch.setdefault("_declared_" + name, _type_base(ctype))
     coldefs = ", ".join("%s %s" % (_quote_identifier(name), ctype) for name, ctype in cols)
     quoted_table = _quote_identifier(table)
     conn.execute(
@@ -380,12 +455,24 @@ def create_table(conn, engine, table, rows, headers):
         # transaction before an INSERT, and "BEGIN" inside it is an error.
         with conn:
             for start in range(0, len(rows), _INSERT_CHUNK):
-                conn.executemany(insert, _insert_chunk(insert, rows[start:start + _INSERT_CHUNK], cols))
+                conn.executemany(insert, _insert_chunk(insert, rows[start:start + _INSERT_CHUNK], cols, mismatch))
                 _progress(table, start + _INSERT_CHUNK, len(rows))
     else:
         for start in range(0, len(rows), _INSERT_CHUNK):
-            conn.executemany(insert, _insert_chunk(insert, rows[start:start + _INSERT_CHUNK], cols))
+            conn.executemany(insert, _insert_chunk(insert, rows[start:start + _INSERT_CHUNK], cols, mismatch))
             _progress(table, start + _INSERT_CHUNK, len(rows))
+    report_type_mismatches(table, mismatch)
+
+
+def report_type_mismatches(table, mismatch):
+    """Print the cells that did not fit their declared type, if any."""
+    counts = {k: v for k, v in mismatch.items()
+              if not k.startswith("_sample_") and not k.startswith("_declared_")}
+    for coltype, count in sorted(counts.items()):
+        sample = mismatch.get("_sample_" + coltype, "")
+        print("  WARNING %s: %d value(s) do not fit declared type %s "
+              "(first: %r); loaded as text" % (table, count, coltype, sample),
+              file=sys.stderr, flush=True)
 
 
 _RUN_T0 = time.monotonic()
@@ -457,6 +544,77 @@ def stamp_accept_lineage(conn, table, headers, run_id, *, preserve_run_id=False)
             "\"accept_event_id\" = ?" % quoted_table,
             (run_id, ENGAGEMENT_ID, ZERO_ACCEPT_EVENT_ID),
         )
+
+
+_FROM_JOIN_RE = re.compile(
+    r"\b(?:FROM|JOIN)\s+([A-Za-z_][\w.]*)"
+    r"(?:\s+(?!ON\b|WHERE\b|GROUP\b|ORDER\b|LIMIT\b|LEFT\b|RIGHT\b|FULL\b|INNER\b|"
+    r"CROSS\b|JOIN\b|USING\b|VALUES\b|UNION\b|SET\b)([A-Za-z_]\w*))?",
+    re.I)
+_JOIN_EQ_RE = re.compile(
+    r"\b([A-Za-z_]\w*)\.([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\.([A-Za-z_]\w*)")
+
+
+def sqlite_join_indexes(conn, engine, check_sqls, loaded_tables):
+    """Index the columns the pack's own checks join on (SQLite only).
+
+    Evidence arrives as CSV, so on SQLite it arrives with no indexes at all, and
+    a correlated EXISTS across two 400k-row tables is a nested-loop scan: the
+    ASM/VM pack's candidate-backlog check needed over 240 s (and did not finish
+    inside any sane budget) and took 13.4 s once the join keys were indexed, for
+    3 s of index build. DuckDB builds hash joins itself and needs nothing.
+
+    The index set is derived from the checks rather than hardcoded, so it follows
+    the pack when its joins change. Aliases that resolve to more than one table
+    in the same file are skipped rather than guessed.
+    """
+    if engine != "sqlite":
+        return []
+    wanted = {}
+    known = set(loaded_tables)
+    for sql in check_sqls:
+        aliases = {}
+        for table, alias in _FROM_JOIN_RE.findall(sql):
+            name = table.split(".")[-1]
+            if name not in known:
+                continue
+            aliases[alias or name] = name
+            aliases.setdefault(name, name)
+        for left, lcol, right, rcol in _JOIN_EQ_RE.findall(sql):
+            lt, rt = aliases.get(left), aliases.get(right)
+            if lt and lt == rt and lcol == rcol:
+                continue
+            if lt and lcol != "run_id":
+                wanted.setdefault(lt, [])
+                if lcol not in wanted[lt]:
+                    wanted[lt].append(lcol)
+            if rt and rcol != "run_id":
+                wanted.setdefault(rt, [])
+                if rcol not in wanted[rt]:
+                    wanted[rt].append(rcol)
+    created = []
+    for table in sorted(wanted):
+        cols = [r[1] for r in conn.execute(
+            "PRAGMA table_info(%s)" % _quote_identifier(table)).fetchall()]
+        use = ["run_id"] if "run_id" in cols else []
+        use += [c for c in wanted[table] if c in cols and c != "run_id"]
+        if len(use) < 2:
+            continue
+        name = ("ix_%s_%s" % (table, "_".join(use)))[:60]
+        stmt = ("CREATE INDEX IF NOT EXISTS %s ON %s (%s)"
+                % (_quote_identifier(name), _quote_identifier(table),
+                   ", ".join(_quote_identifier(c) for c in use)))
+        try:
+            conn.execute(stmt)
+        except Exception as exc:  # a bad index must not break the run
+            print("  sqlite index skipped (%s): %s" % (name, exc), file=sys.stderr)
+            continue
+        created.append(name)
+    if created:
+        conn.commit()
+        print("sqlite join indexes (%d): %s" % (len(created), ", ".join(created)),
+              flush=True)
+    return created
 
 
 def execute_check(conn, engine, sql, run_id, limit):
@@ -561,13 +719,8 @@ def _read_csv_header(csv_path):
         return next(csv.reader(fh), None) or []
 
 
-def load_ddl_columns(pack_root):
-    """{table: {column}} from the pack's schema/migrations/*.sql.
-
-    The migrations are the authoritative table shape, so they are what a
-    header-perfect evidence directory must match (the mapping spec may declare
-    only the columns that need renaming or value translation).
-    """
+def _parse_migration_tables(pack_root):
+    """{table: [(column, declared type)]} from schema/migrations/*.sql, in order."""
     tables = {}
     for sql_path in sorted((pack_root / "schema" / "migrations").glob("*.sql")):
         text = re.sub(r"--[^\n]*", "", sql_path.read_text(encoding="utf-8"))
@@ -587,12 +740,38 @@ def load_ddl_columns(pack_root):
                 else:
                     cur += char
             cols.append(cur.strip())
-            tables[name] = {
-                part.split()[0] for part in cols
-                if part and not re.match(r"^(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT)\b",
-                                         part, re.I)
-            }
+            parsed = []
+            for part in cols:
+                if not part or re.match(r"^(PRIMARY|FOREIGN|UNIQUE|CHECK|CONSTRAINT)\b",
+                                        part, re.I):
+                    continue
+                tokens = part.split(None, 2)
+                col = tokens[0].strip('"`[]')
+                coltype = tokens[1].upper() if len(tokens) > 1 else "VARCHAR"
+                parsed.append((col, coltype))
+            tables.setdefault(name, []).extend(parsed)
     return tables
+
+
+def load_ddl_column_types(pack_root):
+    """{table: {column: declared type}} - how evidence cells must be bound.
+
+    Without this the loader decides types from the values it sees, which gives
+    every text-shaped number a text column, and a text column changes what a
+    check means (see _convert_value). The migrations already decide; read them.
+    """
+    return {table: dict(cols) for table, cols in _parse_migration_tables(pack_root).items()}
+
+
+def load_ddl_columns(pack_root):
+    """{table: {column}} from the pack's schema/migrations/*.sql.
+
+    The migrations are the authoritative table shape, so they are what a
+    header-perfect evidence directory must match (the mapping spec may declare
+    only the columns that need renaming or value translation).
+    """
+    return {table: {name for name, _ in cols}
+            for table, cols in _parse_migration_tables(pack_root).items()}
 
 
 def _require_declared_headers(ddl_columns, table, headers, csv_path):
@@ -611,24 +790,57 @@ def _require_declared_headers(ddl_columns, table, headers, csv_path):
             % (csv_path, table, ", ".join(sorted(undeclared))))
 
 
-def load_evidence_native_csv(conn, evidence_dir, mapping, ddl_columns):
+def _read_csv_type_arg(ddl_types, table, headers):
+    """read_csv() `types=` argument from the declared schema, as SQL text.
+
+    Declaring the types is what keeps the two engines on the same schema:
+    read_csv's own inference types an all-digits `ip` column BIGINT (a real Ivanti
+    export whose ip column holds asset ids did exactly that, and the pack then
+    failed to join it to the VARCHAR asm_vm_surface.ip), and it cannot infer a
+    type at all from an all-empty column. Columns the CSV does not carry are left
+    out; an unrecognised declared type is left to inference rather than guessed.
+    """
+    types = (ddl_types or {}).get(table)
+    if not types:
+        return ""
+    known = ("VARCHAR", "TEXT", "BOOLEAN", "TIMESTAMP", "DATE", "BLOB", "UUID", "JSON")
+    numeric = _INT_TYPES | _FLOAT_TYPES
+    pairs = []
+    for header in headers:
+        coltype = str(types.get(header, "")).upper()
+        base = coltype.split("(")[0]
+        if base in numeric:
+            sqltype = "BIGINT" if base in _INT_TYPES else (
+                "DECIMAL" + coltype[len(base):] if coltype.startswith(base + "(")
+                else "DOUBLE")
+        elif base in known:
+            sqltype = "TEXT" if coltype == "TEXT" else base
+        else:
+            continue
+        pairs.append("'%s': '%s'" % (header.replace("'", "''"), sqltype))
+    if not pairs:
+        return ""
+    return ", types={%s}" % ", ".join(pairs)
+
+
+def load_evidence_native_csv(conn, evidence_dir, mapping, ddl_columns, ddl_types=None):
     """DuckDB-native CSV load (vectorised, no Python row loop).
 
     Only for evidence whose headers already name real pack columns - mapping
     aliases and value maps are NOT applied here, which is verified per table by
-    _require_declared_headers. Typing comes from read_csv's own inference
-    (BOOLEAN/TIMESTAMP/BIGINT), which is what the product's accept path
-    produces, so pack checks must not depend on the runner's INTEGER-bool
-    quirk.
+    _require_declared_headers. Column types come from the pack's migrations when
+    they declare the table (so DuckDB and SQLite see the same schema), and from
+    read_csv's own inference only for columns the migrations leave open.
     """
     loaded = []
     for csv_path in sorted(evidence_dir.glob("*.csv")):
         table = _table_for(mapping, csv_path.name)
-        _require_declared_headers(ddl_columns, table,
-                                 _read_csv_header(csv_path), csv_path.name)
+        headers = _read_csv_header(csv_path)
+        _require_declared_headers(ddl_columns, table, headers, csv_path.name)
         conn.execute(
-            "CREATE TABLE %s AS SELECT * FROM read_csv('%s', header=true)"
-            % (_quote_identifier(table), csv_path.as_posix().replace("'", "''")))
+            "CREATE TABLE %s AS SELECT * FROM read_csv('%s', header=true%s)"
+            % (_quote_identifier(table), csv_path.as_posix().replace("'", "''"),
+               _read_csv_type_arg(ddl_types, table, headers)))
         loaded.append(table)
         n = conn.execute("SELECT count(*) FROM %s" % _quote_identifier(table)).fetchone()[0]
         print("loaded %s -> table %s (%d rows, duckdb native read_csv)"
@@ -665,9 +877,13 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
     if not csv_files:
         raise RunnerError("no *.csv files in evidence dir %s" % evidence_dir)
     loaded_tables = []
+    # Declared column types drive both load paths: the row-by-row path binds
+    # cells to them, and --fast-csv hands them to read_csv. Value-sniffed types
+    # made the two engines disagree about what a check means.
+    ddl_types = load_ddl_column_types(pack_root)
     if fast_csv:
         loaded_tables = load_evidence_native_csv(conn, evidence_dir, mapping,
-                                                load_ddl_columns(pack_root))
+                                                load_ddl_columns(pack_root), ddl_types)
         for table in loaded_tables:
             headers = [r[0] for r in conn.execute(
                 "DESCRIBE %s" % _quote_identifier(table)).fetchall()]
@@ -688,7 +904,7 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
         table = _table_for(mapping, csv_path.name)
         headers = apply_mapping_column_aliases(mapping_columns, table, headers)
         rows = apply_mapping_value_maps(mapping_value_maps, table, headers, rows)
-        create_table(conn, engine, table, rows, headers)
+        create_table(conn, engine, table, rows, headers, ddl_types=ddl_types)
         stamp_accept_lineage(
             conn, table, headers, run_id,
             preserve_run_id=mapping_declares_run_id_source(
@@ -697,15 +913,18 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
         loaded_tables.append(table)
         print("loaded %s -> table %s (%d rows)" % (csv_path.name, table, len(rows)))
 
-    findings = []
+    check_sqls = []
     for check in manifest["checks"]:
-        check_id = str(check["id"])
-        rel_file = str(check.get("file") or "")
-        sql_path = pack_root / rel_file
+        sql_path = pack_root / str(check.get("file") or "")
         if not sql_path.is_file():
             raise RunnerError("check file missing: %s" % sql_path)
         with open(sql_path, "r", encoding="utf-8") as fh:
-            sql = fh.read()
+            check_sqls.append(fh.read())
+    sqlite_join_indexes(conn, engine, check_sqls, loaded_tables)
+
+    findings = []
+    for check, sql in zip(manifest["checks"], check_sqls):
+        check_id = str(check["id"])
         rows = execute_check(conn, engine, sql, run_id, limit)
         severity = str(check.get("severity") or "medium").lower()
         technique = check.get("technique")
@@ -895,7 +1114,7 @@ def main(argv=None):
                              "mapping aliases and value maps are NOT applied, and the "
                              "runner verifies that per table.")
     parser.add_argument("--export-bin", default=None,
-                        help="Path to a built specaudit-server binary; when given, the "
+                        help="Path to a built pack export binary; when given, the "
                              "run's artifact set (report.json + report.sarif + auto-rendered "
                              "workpaper + export manifest) is exported via `pack export` "
                              "after the checks.")

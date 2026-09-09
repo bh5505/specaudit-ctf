@@ -171,7 +171,7 @@ def main():
     ap.add_argument("--receipts", default="livefire_receipts.csv")
     ap.add_argument("--run-id", default="gw-asmvm-20260902")
     ap.add_argument("--livefire-run-id", default="gw-livefire-20260909")
-    ap.add_argument("--engagement-id", default="glasswing-2026")
+    ap.add_argument("--engagement-id", default="asmvm-rehearsal-2026")
     args = ap.parse_args()
 
     base = os.path.abspath(args.baseline)
@@ -230,7 +230,7 @@ def main():
         "source_row_id": "1-%d" % len(receipts),
         "record_hash": md5("livefire-bundle", args.livefire_run_id),
         "lineage_batch_id": args.livefire_run_id,
-        "mapping_version": "glasswing-fit-1-livefire",
+        "mapping_version": "asmvm-fit-1-livefire",
         "model_version": "fit-1",
     })
     bundles.append(lb)

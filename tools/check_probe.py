@@ -101,6 +101,7 @@ def main():
     mapping = m.load_mapping_spec(pack_root)
     mapping_columns = m.load_mapping_columns(pack_root)
     ddl_columns = m.load_ddl_columns(pack_root)
+    ddl_types = m.load_ddl_column_types(pack_root)
     mapping_value_maps = m.load_mapping_value_maps(pack_root)
 
     sql_main = io.open(args.check, encoding="utf-8").read()
@@ -115,12 +116,12 @@ def main():
 
     conn, engine = m.open_engine(args.engine)
     if engine == "duckdb" and not args.fast_csv:
-        # The row-by-row loader inserts CSV values as text. SQLite's dynamic
-        # typing lets a pack's typed comparisons through; DuckDB binds them
-        # against VARCHAR and raises, or worse compares text to text. Packs run
-        # on DuckDB are run with --fast-csv so columns get real types.
-        print("warning: engine=duckdb without --fast-csv loads every column as "
-              "text; results are not comparable to the pack's normal DuckDB run",
+        # Both paths now bind cells to the types the pack's migrations declare;
+        # --fast-csv stays the way the pack is normally run, and this probe still
+        # says which one it used, because a probe that disagrees with production's
+        # load path proves nothing about production.
+        print("note: engine=duckdb without --fast-csv (row-by-row load; declared "
+              "types still applied, but --fast-csv is how the pack normally runs)",
               flush=True)
     m.create_fusion_runs_shim(conn, args.run_id)
     t_load = time.time()
@@ -134,9 +135,11 @@ def main():
                                         m._read_csv_header(csv_path),
                                         csv_path.name)
             conn.execute(
-                "CREATE TABLE %s AS SELECT * FROM read_csv('%s', header=true)"
+                "CREATE TABLE %s AS SELECT * FROM read_csv('%s', header=true%s)"
                 % (m._quote_identifier(table),
-                   csv_path.as_posix().replace("'", "''")))
+                   csv_path.as_posix().replace("'", "''"),
+                   m._read_csv_type_arg(ddl_types, table,
+                                        m._read_csv_header(csv_path))))
             # Stamp accept lineage exactly like the runner's fast path does. The
             # check SQL filters on run_id, so a probe that skips this silently
             # reports "ok rows=0" for any evidence whose run_id column holds a
@@ -167,7 +170,7 @@ def main():
             rows = [r for r in reader]
         headers = m.apply_mapping_column_aliases(mapping_columns, table, headers)
         rows = m.apply_mapping_value_maps(mapping_value_maps, table, headers, rows)
-        m.create_table(conn, engine, table, rows, headers)
+        m.create_table(conn, engine, table, rows, headers, ddl_types=ddl_types)
         m.stamp_accept_lineage(
             conn, table, headers, args.run_id,
             preserve_run_id=m.mapping_declares_run_id_source(mapping_columns, table))

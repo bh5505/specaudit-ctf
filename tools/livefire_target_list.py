@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the scoped live-fire target list for the Glasswing pre-test loop.
+"""Build the scoped live-fire target list for the ASM/VM rehearsal loop.
 
 Inputs
   - report.json from the baseline run  -> T1 findings (address-scoped)
@@ -243,8 +243,8 @@ def main():
     chosen = probeable[:args.max_targets]
     with open(os.path.join(args.out_dir, "targets.txt"), "w",
               encoding="utf-8", newline="\n") as fh:
-        fh.write("# Glasswing live-fire scoped target list\n")
-        fh.write("# run: gw-livefire (engagement glasswing-2026)  base run: %s\n" % RUN)
+        fh.write("# ASM/VM live-fire scoped target list\n")
+        fh.write("# run: gw-livefire (engagement asmvm-rehearsal-2026)  base run: %s\n" % RUN)
         fh.write("# selection: reproduction-queue candidates AND a T1 finding, "
                  "restricted to lab/RFC1918/CGNAT/loopback or an org-owned range\n")
         fh.write("# population: %d address-bearing T1/queue IPv4; lab-scoped %d; "

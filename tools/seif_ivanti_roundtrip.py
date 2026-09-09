@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """SEIF round-trip on the Ivanti Neurons export: DuckDB export -> SEIF -> pack table.
 
-Question this answers (Glasswing fit-test task 5): if the Ivanti VM/RBVM evidence
+Question this answers (ASM/VM fit-test task 5): if the Ivanti VM/RBVM evidence
 enters the pack *through SEIF* instead of the bespoke CSV the pack was built
 against, what survives the trip? "Round-trip works" is only meaningful as a
 per-column statement, so this measures it:
@@ -272,7 +272,7 @@ def project(seif_path, out_csv, variant, lineage_batch):
             dropped_fields["protocol"] += 1
             w.writerow({
                 "run_id": "gw-seif-roundtrip-20260909",
-                "engagement_id": "glasswing-2026",
+                "engagement_id": "asmvm-rehearsal-2026",
                 "accept_event_id": "00000000-0000-0000-0000-000000000000",
                 "finding_id": f.get("finding_id"),
                 "ip": f.get("resource_uid") or "",
