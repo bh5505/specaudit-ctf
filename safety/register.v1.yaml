@@ -1,0 +1,1123 @@
+schema: specaudit.ctf.safety.register.v1
+schema_version: 1
+register_revision: 1
+scope:
+  id: pr97-readers
+  description: Checkout-only safety-requirement foundation for the 14 PR97 caller-file readers; no control is verified or provisioned.
+  repository_complete: false
+  safety_complete: false
+  arm_count: 14
+  discovery_action_count: 14
+  data_action_count: 38
+surface_anchors:
+  governance: sha256:69e26496efa65e78272cc1774a162383e45f7be17e796f2d27d728239a9b5bd2
+  coverage: sha256:dc5304d5eee526f4c081a64090577b999ad75e230154b582b1a985a6e942494b
+  invoke_profiles: sha256:0e4564f9de9a705bbcd3d5e65d71d3f2353d5336005b8eee295026460c90e16b
+  policies: sha256:93e32e6028237e38ffa0132f5e269eb00c0fa1cf3b1edcf7f0a123697eacf987
+  reader_runtime: sha256:2bbb040a0602de6973fa56a807720592c9d4aa3485687e6ab8cbfeaf378f37a9
+hazards:
+- id: HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  record_version: 1
+  category: credentials
+  title: Ambient credentials are reachable
+  condition: The reader or consuming agent may inherit host credentials, tokens, or provider profiles.
+  impact: A nominally local read can disclose or use authority outside the approved exercise.
+  required_control_ids:
+  - CTL-NO-AMBIENT-CREDENTIALS
+- id: HZ-DATA-CLASSIFICATION-UNPROVEN
+  record_version: 1
+  category: data
+  title: Input and output classification is unproven
+  condition: No trusted classification decision is bound to the caller-selected artifact or derived output.
+  impact: Sensitive or prohibited data can enter learner, model, trace, or retained-artifact channels.
+  required_control_ids:
+  - CTL-DATA-CLASSIFICATION
+- id: HZ-DIRECTORY-SNAPSHOT-DRIFT
+  record_version: 1
+  category: filesystem
+  title: Directory contents can drift during a read
+  condition: Directory enumeration and later child-file reads are not bound to one stable snapshot.
+  impact: The reported inventory or digest can describe different bytes from those parsed.
+  required_control_ids:
+  - CTL-STABLE-INPUT-SNAPSHOT
+- id: HZ-GROUND-TRUTH-COLOCATION
+  record_version: 1
+  category: grading
+  title: Ground truth shares the learner or agent plane
+  condition: Expected findings or trace keys are readable by the same context whose submission is graded.
+  impact: A result can pass by reading the answer rather than performing the assessment.
+  required_control_ids:
+  - CTL-GRADER-PLANE-ISOLATION
+- id: HZ-HARD-LIMIT-UNPROVEN
+  record_version: 1
+  category: availability
+  title: Resource and time limits are not independently enforced
+  condition: Manifest timeout and output values do not preempt an in-process reader or its consumer.
+  impact: A malformed or hostile input can outlive the attempt or exhaust shared resources.
+  required_control_ids:
+  - CTL-HARD-RESOURCE-BOUND
+- id: HZ-INPUT-CUSTODY-UNPROVEN
+  record_version: 1
+  category: integrity
+  title: Input custody is unproven
+  condition: A caller path and digest do not establish origin, transfer history, or trusted admission.
+  impact: Unrelated, replayed, or substituted data can be treated as exercise evidence.
+  required_control_ids:
+  - CTL-TRUSTED-INPUT-CUSTODY
+- id: HZ-INPUT-IDENTITY-RACE
+  record_version: 1
+  category: filesystem
+  title: Input identity can change between validation and use
+  condition: Path checks and parsing reopen the input without one stable no-follow descriptor or trusted copy.
+  impact: Validation can apply to different bytes or a different filesystem object than the parser consumes.
+  required_control_ids:
+  - CTL-STABLE-INPUT-SNAPSHOT
+- id: HZ-INPUT-PATH-UNBOUND
+  record_version: 1
+  category: filesystem
+  title: Caller path is not bound to an approved root
+  condition: The admitted capability names only a static policy URI while the caller selects a local path.
+  impact: The reader can consume an unauthorized local artifact outside the intended exercise scope.
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+- id: HZ-MONITORING-UNPROVEN
+  record_version: 1
+  category: integrity
+  title: Independent monitoring is absent
+  condition: The workload or consuming agent is the only source of execution and denial telemetry.
+  impact: Escapes, degradation, policy denials, or lost visibility can remain indistinguishable from a complete run.
+  required_control_ids:
+  - CTL-INDEPENDENT-MONITORING
+- id: HZ-NETWORK-DENY-UNPROVEN
+  record_version: 1
+  category: network
+  title: Effective egress denial is unproven
+  condition: No environment-level denied-egress test is bound to the reader and consuming agent context.
+  impact: Unexpected code or untrusted content can reach unapproved destinations despite a local-read declaration.
+  required_control_ids:
+  - CTL-DENY-EGRESS
+- id: HZ-SECRET-BEARING-INPUT
+  record_version: 1
+  category: data
+  title: Input may contain reusable secrets
+  condition: Caller-selected files can contain credentials, keys, tickets, tokens, or secret-shaped prose.
+  impact: Secrets can be disclosed through results, traces, prompts, logs, or retained artifacts.
+  required_control_ids:
+  - CTL-SECRET-EXCLUSION
+- id: HZ-UNTRUSTED-CONTENT
+  record_version: 1
+  category: instruction
+  title: Untrusted content can be treated as instruction
+  condition: Parsed prose or structured fields may flow into an agent context without a data-only boundary.
+  impact: Hostile content can influence tool choice, scope, disclosure, or grading behavior.
+  required_control_ids:
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+controls:
+- id: CTL-APPROVED-INPUT-ROOT
+  record_version: 1
+  type: preventive
+  enforcement_owners:
+  - operator-environment
+  - trusted-input-custodian
+  objective: Constrain every caller-selected input to a separately approved read-only root.
+  verification_requirement: From the actual reader context, prove allowed inputs open and traversal, alternate roots, and redirected paths fail closed.
+  status: unverified
+  evidence_refs: []
+  limitations:
+  - v1-has-no-approved-root-verifier
+- id: CTL-DATA-CLASSIFICATION
+  record_version: 1
+  type: preventive
+  enforcement_owners:
+  - trusted-input-custodian
+  objective: Bind trusted input and output classifications to the exact admitted artifact and attempt.
+  verification_requirement: Show a trusted classification record covering exact bytes, derived outputs, model exposure, retention, and prohibited-data handling.
+  status: unverified
+  evidence_refs: []
+  limitations:
+  - v1-has-no-classification-verifier
+- id: CTL-DENY-EGRESS
+  record_version: 1
+  type: preventive
+  enforcement_owners:
+  - operator-environment
+  objective: Deny network egress for both the reader and its consuming agent context.
+  verification_requirement: Exercise DNS, direct-address, redirect, proxy, and subresource attempts from inside the effective context and preserve independent denial evidence.
+  status: unverified
+  evidence_refs: []
+  limitations:
+  - v1-has-no-egress-verifier
+- id: CTL-GRADER-PLANE-ISOLATION
+  record_version: 1
+  type: preventive
+  enforcement_owners:
+  - operator-environment
+  - trusted-validator
+  objective: Keep expected findings, trace keys, and grader authority outside the learner and agent plane.
+  verification_requirement: Prove the learner and agent identities cannot read grader material and that verification occurs in a separate trusted context.
+  status: unverified
+  evidence_refs: []
+  limitations:
+  - v1-has-no-grader-isolation-verifier
+- id: CTL-HARD-RESOURCE-BOUND
+  record_version: 1
+  type: preventive
+  enforcement_owners:
+  - operator-environment
+  - independent-supervisor
+  objective: Enforce time, memory, process, filesystem, and output bounds outside the workload.
+  verification_requirement: Cause timeout, memory, output, and interruption cases and prove the independent supervisor terminates work while preserving degraded state.
+  status: unverified
+  evidence_refs: []
+  limitations:
+  - profile-budget-metadata-is-not-a-hard-limit
+- id: CTL-INDEPENDENT-MONITORING
+  record_version: 1
+  type: detective
+  enforcement_owners:
+  - independent-supervisor
+  objective: Observe execution, denials, resource use, and visibility loss outside the workload.
+  verification_requirement: Demonstrate independently protected attempt/action/denial records and an explicit alarm when monitoring is interrupted.
+  status: unverified
+  evidence_refs: []
+  limitations:
+  - v1-has-no-monitoring-verifier
+- id: CTL-NO-AMBIENT-CREDENTIALS
+  record_version: 1
+  type: preventive
+  enforcement_owners:
+  - operator-environment
+  objective: Remove host, cloud, directory, provider, and model credentials from the effective context.
+  verification_requirement: Inspect the effective identity, environment, files, sockets, and metadata paths and prove seeded canary credentials are unreachable.
+  status: unverified
+  evidence_refs: []
+  limitations:
+  - v1-has-no-credential-isolation-verifier
+- id: CTL-SECRET-EXCLUSION
+  record_version: 1
+  type: preventive
+  enforcement_owners:
+  - trusted-input-custodian
+  - trusted-validator
+  objective: Exclude reusable secrets from admitted inputs and all derived channels.
+  verification_requirement: Use canary secret cases to prove admission, results, traces, prompts, logs, and retained artifacts reject or redact secret-bearing data.
+  status: unverified
+  evidence_refs: []
+  limitations:
+  - v1-has-no-secret-exclusion-verifier
+- id: CTL-STABLE-INPUT-SNAPSHOT
+  record_version: 1
+  type: preventive
+  enforcement_owners:
+  - trusted-input-custodian
+  objective: Bind validation and parsing to one stable no-follow descriptor, immutable copy, or directory snapshot.
+  verification_requirement: Exercise symlink, replacement, truncation, growth, and directory-child races and prove every identity change fails closed.
+  status: unverified
+  evidence_refs: []
+  limitations:
+  - runtime-readers-reopen-caller-paths
+- id: CTL-TRUSTED-INPUT-CUSTODY
+  record_version: 1
+  type: preventive
+  enforcement_owners:
+  - trusted-input-custodian
+  objective: Bind source, transfer, exact bytes, admission, and attempt identity through a trusted custody channel.
+  verification_requirement: Show tampered, replayed, unrelated, missing, and post-admission substituted inputs are refused by a trusted verifier.
+  status: unverified
+  evidence_refs: []
+  limitations:
+  - reader-digests-do-not-establish-custody
+- id: CTL-UNTRUSTED-CONTENT-BOUNDARY
+  record_version: 1
+  type: preventive
+  enforcement_owners:
+  - trusted-validator
+  objective: Keep parsed caller content data-only and unable to widen tool, scope, disclosure, or grading authority.
+  verification_requirement: Run hostile-instruction fixtures and prove content cannot alter admitted actions, scope, evidence rules, or grader decisions.
+  status: unverified
+  evidence_refs: []
+  limitations:
+  - v1-has-no-content-boundary-verifier
+arms:
+- record_version: 1
+  arm_id: ad-pathfinder
+  source_id: R02
+  policy_module: extension.arms.ad_pathfinder.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: export
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .yaml
+    - .yml
+    max_directory_entries: null
+  discovery_capability_id: ad-pathfinder.list_tools
+  data_actions:
+  - capability_id: ad-pathfinder.list_datasources
+    action: list_datasources
+    input_keys:
+    - export
+    path_argument: export
+    input_kind: file
+  - capability_id: ad-pathfinder.list_paths
+    action: list_paths
+    input_keys:
+    - export
+    - limit
+    path_argument: export
+    input_kind: file
+  - capability_id: ad-pathfinder.path
+    action: path
+    input_keys:
+    - export
+    - path_id
+    - source
+    - target
+    path_argument: export
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+- record_version: 1
+  arm_id: agentseal
+  source_id: R35
+  policy_module: extension.arms.agentseal.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: fixture
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .yaml
+    - .yml
+    max_directory_entries: null
+  discovery_capability_id: agentseal.list_tools
+  data_actions:
+  - capability_id: agentseal.analyze
+    action: analyze
+    input_keys:
+    - fixture
+    - limit
+    - scenario_id
+    path_argument: fixture
+    input_kind: file
+  - capability_id: agentseal.list_scenarios
+    action: list_scenarios
+    input_keys:
+    - fixture
+    - limit
+    path_argument: fixture
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+- record_version: 1
+  arm_id: claude-ad
+  source_id: R25
+  policy_module: extension.arms.claude_ad.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: method_file
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .yaml
+    - .yml
+    max_directory_entries: null
+  discovery_capability_id: claude-ad.list_tools
+  data_actions:
+  - capability_id: claude-ad.list_prerequisites
+    action: list_prerequisites
+    input_keys:
+    - method_file
+    path_argument: method_file
+    input_kind: file
+  - capability_id: claude-ad.list_techniques
+    action: list_techniques
+    input_keys:
+    - category
+    - limit
+    - method_file
+    path_argument: method_file
+    input_kind: file
+  - capability_id: claude-ad.technique
+    action: technique
+    input_keys:
+    - method_file
+    - name
+    - technique_id
+    path_argument: method_file
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+- record_version: 1
+  arm_id: collinear
+  source_id: R15
+  policy_module: extension.arms.collinear.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: scenarios_file
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .yaml
+    - .yml
+    max_directory_entries: null
+  discovery_capability_id: collinear.list_tools
+  data_actions:
+  - capability_id: collinear.list_scenarios
+    action: list_scenarios
+    input_keys:
+    - limit
+    - scenarios_file
+    path_argument: scenarios_file
+    input_kind: file
+  - capability_id: collinear.scenario
+    action: scenario
+    input_keys:
+    - name
+    - scenario_id
+    - scenarios_file
+    path_argument: scenarios_file
+    input_kind: file
+  - capability_id: collinear.verify
+    action: verify
+    input_keys:
+    - scenario_id
+    - scenarios_file
+    - submission
+    path_argument: scenarios_file
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  - HZ-GROUND-TRUTH-COLOCATION
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  - CTL-GRADER-PLANE-ISOLATION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+  - grader-plane-isolation-unverified
+- record_version: 1
+  arm_id: detection-in-the-cloud
+  source_id: R34
+  policy_module: extension.arms.detection_in_the_cloud.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: playbook_dir
+    input_kind: directory
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .yaml
+    - .yml
+    - .md
+    max_directory_entries: 10000
+  discovery_capability_id: detection-in-the-cloud.list_tools
+  data_actions:
+  - capability_id: detection-in-the-cloud.list_playbooks
+    action: list_playbooks
+    input_keys:
+    - limit
+    - playbook_dir
+    path_argument: playbook_dir
+    input_kind: directory
+  - capability_id: detection-in-the-cloud.list_rules
+    action: list_rules
+    input_keys:
+    - category
+    - limit
+    - playbook_dir
+    path_argument: playbook_dir
+    input_kind: directory
+  - capability_id: detection-in-the-cloud.playbook
+    action: playbook
+    input_keys:
+    - name
+    - playbook_dir
+    path_argument: playbook_dir
+    input_kind: directory
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  - HZ-DIRECTORY-SNAPSHOT-DRIFT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+  - directory-snapshot-stability-unverified
+- record_version: 1
+  arm_id: gpohound
+  source_id: R08
+  policy_module: extension.arms.gpohound.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: evidence
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .yaml
+    - .yml
+    max_directory_entries: null
+  discovery_capability_id: gpohound.list_tools
+  data_actions:
+  - capability_id: gpohound.list_links
+    action: list_links
+    input_keys:
+    - evidence
+    - gpo_id
+    path_argument: evidence
+    input_kind: file
+  - capability_id: gpohound.list_policies
+    action: list_policies
+    input_keys:
+    - evidence
+    - limit
+    - status
+    path_argument: evidence
+    input_kind: file
+  - capability_id: gpohound.policy
+    action: policy
+    input_keys:
+    - evidence
+    - name
+    - policy_id
+    path_argument: evidence
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+- record_version: 1
+  arm_id: leonidas
+  source_id: R33
+  policy_module: extension.arms.leonidas.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: corpus
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .yaml
+    - .yml
+    max_directory_entries: null
+  discovery_capability_id: leonidas.list_tools
+  data_actions:
+  - capability_id: leonidas.list_techniques
+    action: list_techniques
+    input_keys:
+    - corpus
+    - limit
+    path_argument: corpus
+    input_kind: file
+  - capability_id: leonidas.technique
+    action: technique
+    input_keys:
+    - corpus
+    - name
+    - technique_id
+    path_argument: corpus
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+- record_version: 1
+  arm_id: m365pwned
+  source_id: R38
+  policy_module: extension.arms.m365pwned.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: cases_file
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .yaml
+    - .yml
+    max_directory_entries: null
+  discovery_capability_id: m365pwned.list_tools
+  data_actions:
+  - capability_id: m365pwned.case_study
+    action: case_study
+    input_keys:
+    - case_id
+    - cases_file
+    - name
+    path_argument: cases_file
+    input_kind: file
+  - capability_id: m365pwned.list_case_studies
+    action: list_case_studies
+    input_keys:
+    - cases_file
+    - limit
+    path_argument: cases_file
+    input_kind: file
+  - capability_id: m365pwned.list_permissions
+    action: list_permissions
+    input_keys:
+    - case_id
+    - cases_file
+    path_argument: cases_file
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+- record_version: 1
+  arm_id: numasec
+  source_id: R17
+  policy_module: extension.arms.numasec.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: ledger
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .jsonl
+    max_directory_entries: null
+  discovery_capability_id: numasec.list_tools
+  data_actions:
+  - capability_id: numasec.finding
+    action: finding
+    input_keys:
+    - finding_id
+    - ledger
+    path_argument: ledger
+    input_kind: file
+  - capability_id: numasec.list_findings
+    action: list_findings
+    input_keys:
+    - ledger
+    - limit
+    - status
+    path_argument: ledger
+    input_kind: file
+  - capability_id: numasec.list_transitions
+    action: list_transitions
+    input_keys:
+    - finding_id
+    - ledger
+    path_argument: ledger
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+- record_version: 1
+  arm_id: pentestkit
+  source_id: R42
+  policy_module: extension.arms.pentestkit.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: ledger
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .jsonl
+    - .yaml
+    - .yml
+    max_directory_entries: null
+  discovery_capability_id: pentestkit.list_tools
+  data_actions:
+  - capability_id: pentestkit.list_results
+    action: list_results
+    input_keys:
+    - ledger
+    - limit
+    - phase
+    path_argument: ledger
+    input_kind: file
+  - capability_id: pentestkit.result
+    action: result
+    input_keys:
+    - ledger
+    - run_id
+    path_argument: ledger
+    input_kind: file
+  - capability_id: pentestkit.summary
+    action: summary
+    input_keys:
+    - ledger
+    path_argument: ledger
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+- record_version: 1
+  arm_id: rubeus
+  source_id: R36
+  policy_module: extension.arms.rubeus.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: telemetry_file
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .jsonl
+    max_directory_entries: null
+  discovery_capability_id: rubeus.list_tools
+  data_actions:
+  - capability_id: rubeus.list_indicators
+    action: list_indicators
+    input_keys:
+    - indicator_type
+    - telemetry_file
+    path_argument: telemetry_file
+    input_kind: file
+  - capability_id: rubeus.list_telemetry
+    action: list_telemetry
+    input_keys:
+    - category
+    - limit
+    - telemetry_file
+    path_argument: telemetry_file
+    input_kind: file
+  - capability_id: rubeus.telemetry
+    action: telemetry
+    input_keys:
+    - event_id
+    - telemetry_file
+    path_argument: telemetry_file
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+- record_version: 1
+  arm_id: security-detections-mcp
+  source_id: R43
+  policy_module: extension.arms.security_detections_mcp.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: index
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .yaml
+    - .yml
+    max_directory_entries: null
+  discovery_capability_id: security-detections-mcp.list_tools
+  data_actions:
+  - capability_id: security-detections-mcp.get_rule
+    action: get_rule
+    input_keys:
+    - index
+    - rule_id
+    path_argument: index
+    input_kind: file
+  - capability_id: security-detections-mcp.list_rules
+    action: list_rules
+    input_keys:
+    - index
+    - limit
+    path_argument: index
+    input_kind: file
+  - capability_id: security-detections-mcp.search_rules
+    action: search_rules
+    input_keys:
+    - index
+    - limit
+    - query
+    path_argument: index
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+- record_version: 1
+  arm_id: specterops-skills
+  source_id: R03
+  policy_module: extension.arms.specterops_skills.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: catalog
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .yaml
+    - .yml
+    max_directory_entries: null
+  discovery_capability_id: specterops-skills.list_tools
+  data_actions:
+  - capability_id: specterops-skills.list_skills
+    action: list_skills
+    input_keys:
+    - catalog
+    - category
+    - limit
+    path_argument: catalog
+    input_kind: file
+  - capability_id: specterops-skills.skill
+    action: skill
+    input_keys:
+    - catalog
+    - name
+    - skill_id
+    path_argument: catalog
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+- record_version: 1
+  arm_id: vulnify
+  source_id: R01
+  policy_module: extension.arms.vulnify.policy
+  state: documented-unverified
+  input_contract:
+    path_argument: feed
+    input_kind: file
+    max_file_bytes: 67108864
+    allowed_suffixes:
+    - .json
+    - .jsonl
+    - .yaml
+    - .yml
+    max_directory_entries: null
+  discovery_capability_id: vulnify.list_tools
+  data_actions:
+  - capability_id: vulnify.list_vulns
+    action: list_vulns
+    input_keys:
+    - feed
+    - limit
+    path_argument: feed
+    input_kind: file
+  - capability_id: vulnify.lookup
+    action: lookup
+    input_keys:
+    - cve_id
+    - feed
+    - name
+    path_argument: feed
+    input_kind: file
+  hazard_ids:
+  - HZ-INPUT-PATH-UNBOUND
+  - HZ-INPUT-IDENTITY-RACE
+  - HZ-INPUT-CUSTODY-UNPROVEN
+  - HZ-DATA-CLASSIFICATION-UNPROVEN
+  - HZ-NETWORK-DENY-UNPROVEN
+  - HZ-AMBIENT-CREDENTIAL-EXPOSURE
+  - HZ-HARD-LIMIT-UNPROVEN
+  - HZ-MONITORING-UNPROVEN
+  - HZ-UNTRUSTED-CONTENT
+  - HZ-SECRET-BEARING-INPUT
+  required_control_ids:
+  - CTL-APPROVED-INPUT-ROOT
+  - CTL-STABLE-INPUT-SNAPSHOT
+  - CTL-TRUSTED-INPUT-CUSTODY
+  - CTL-DATA-CLASSIFICATION
+  - CTL-DENY-EGRESS
+  - CTL-NO-AMBIENT-CREDENTIALS
+  - CTL-HARD-RESOURCE-BOUND
+  - CTL-INDEPENDENT-MONITORING
+  - CTL-UNTRUSTED-CONTENT-BOUNDARY
+  - CTL-SECRET-EXCLUSION
+  limitations:
+  - caller-path-not-bound-to-approved-root
+  - input-custody-and-classification-unverified
+  - environment-containment-and-monitoring-unverified
+limitations:
+- v1-documents-requirements-but-verifies-no-environment-control
+- register-integrity-does-not-grant-execution-or-data-access-authority
+- reader-source-binding-is-not-a-transitive-runtime-proof
+- caller-paths-remain-unbound-to-approved-input-roots
+- safety-01-remains-open

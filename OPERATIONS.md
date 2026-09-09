@@ -56,6 +56,23 @@ actual deployment. The tier label describes the environment; it does not claim
 that this repository provisions all controls or that an action is safe because
 it is called “read-only.”
 
+### Checkout reader-safety inventory
+
+The checkout-only [reader-safety register](safety/README.md) inventories
+requirements that remain permanently unverified by the checkout for the named
+PR97 caller-file reader surfaces. An integrity pass proves only correspondence
+to those named PR97 checkout surfaces. It provisions no approved input root,
+stable nofollow snapshot, trusted custody/classification, egress denial,
+ambient-credential isolation, independent hard kill/monitoring,
+untrusted-content boundary, or grader-plane separation. It grants no authority
+and does not satisfy `SAFE-01`; the operator must supply and verify those
+controls outside the reader process.
+
+Do not substitute this inventory for `EVID-01` trusted observation, custody, or
+grading; `GOV-01` source/runtime promotion or currentness; or `DATA-01` /
+`DATA-02` source admission, rights, snapshots, and empirical denied-egress
+evidence. Those gates remain independent.
+
 ## Authorization and rules of engagement
 
 Before E2–E4, preserve an approved rules-of-engagement record containing:
