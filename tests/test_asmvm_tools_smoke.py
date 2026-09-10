@@ -675,6 +675,169 @@ def test_indirect_recon_corroborates_and_disagrees_without_packets(tmp_path,
     assert summary["evidence_class"] == recon.EVIDENCE_CLASS
 
 
+def _livefire_fixture(tmp_path):
+    """A three-row baseline: one owned range, one ingested ip that came from a
+    vendor bundle, one spine row for that ip. Enough for the overlay rules to be
+    exercised without a vendor export."""
+    base = tmp_path / "base"
+    base.mkdir()
+    _write_csv(base / "ext_telecom_asmvm_owned_ip_range.csv",
+               "first_ip,last_ip", [["127.0.0.0", "127.255.255.255"]])
+    _write_csv(base / "ext_telecom_asmvm_ip.csv",
+               "ip,source_file", [["198.51.100.7", "vendor_ip_export.csv"]])
+    _write_csv(base / "ext_telecom_asmvm_evidence_bundle.csv",
+               "bundle_id,source_file,has_report,has_receipt,has_live_fire,"
+               "has_adversarial_reverify,is_sandboxed",
+               [["bundle-vendor", "vendor_ip_export.csv",
+                 "true", "false", "false", "false", "true"]])
+    _write_csv(base / "ext_telecom_asmvm_service_endpoint.csv",
+               "service_endpoint_id,ip,service_name,service_type,port,protocol,"
+               "is_active,mapping_version",
+               [["svc-1", "198.51.100.7", "ssh at 198.51.100.7:22/tcp",
+                 "SshServer", "22", "tcp", "true", "asmvm-v1"]])
+    _write_csv(base / "ext_telecom_asmvm_asm_vm_surface.csv",
+               "ip,ip_bigint,prefix_16,prefix_24,has_active_service,"
+               "inside_owned_range,in_vm_estate,asm_exposed_services,seen_via,"
+               "source_system,source_file,source_row_id",
+               [["198.51.100.7", "3145454599", "198.51.0.0/16", "198.51.100.0/24",
+                 "false", "false", "false", "0", "service",
+                 "vendor_asm", "vendor_ip_export.csv", "1"]])
+    _write_csv(base / "ext_telecom_asmvm_website_endpoint.csv",
+               "website_endpoint_id,ip,port,is_active,http_type", [])
+    receipts = tmp_path / "receipts.csv"
+    _write_csv(receipts,
+               "target_ip,proto,port,endpoint_status,banner,tls_protocol,"
+               "http_status,dns_rcode",
+               [["198.51.100.7", "tcp", "22", "open", "SSH-2.0-OpenSSH_9.9",
+                 "", "", ""],
+                ["127.0.0.1", "tcp", "14443", "open", "HTTP/1.1 200 OK",
+                 "TLSv1.3", "200", ""]])
+    return base, receipts
+
+
+def _run_overlay(tmp_path, monkeypatch, dataset_ips_path):
+    base, receipts = _livefire_fixture(tmp_path)
+    out = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "livefire_overlay.py", "--baseline", str(base), "--out", str(out),
+        "--receipts", str(receipts), "--dataset-ips", str(dataset_ips_path)])
+    assert overlay.main() == 0
+    manifest = json.loads((out / "livefire_overlay_manifest.json")
+                          .read_text(encoding="utf-8"))
+    return base, out, manifest
+
+
+def test_lab_fixture_receipts_cannot_claim_live_fire(tmp_path, monkeypatch):
+    """Rule R6. A probe of our own loopback fixture exercises the capture path
+    and proves nothing about the estate, so it must not flip has_live_fire and
+    must not be appended to the estate spine (that would invent an asset in
+    every per-prefix count), and it must not be appended to service_endpoint or
+    website_endpoint either - an endpoint row whose ip has no ip-ledger row is
+    an orphan that the next ingest can turn into estate exposure without a new
+    observation. A probe of an address the feeds describe may do both."""
+    import csv as _csv
+    dataset = tmp_path / "dataset_ips.csv"
+    dataset.write_text("ip\n198.51.100.7\n", encoding="utf-8")
+    base, out, manifest = _run_overlay(tmp_path, monkeypatch, dataset)
+
+    assert manifest["receipts_dataset_endpoints"] == 1
+    assert manifest["receipts_lab_fixtures"] == 1
+    assert manifest["has_live_fire"] == "true"
+    # only the bundle that described the observed address flips, and it records
+    # which address justified it
+    assert [f["bundle_id"] for f in manifest["bundle_flips"]] == ["bundle-vendor"]
+    assert manifest["bundle_flips"][0]["reproduced_ips"] == ["198.51.100.7"]
+
+    spine = list(_csv.DictReader((out / "ext_telecom_asmvm_asm_vm_surface.csv")
+                                 .open(encoding="utf-8")))
+    assert [r["ip"] for r in spine] == ["198.51.100.7"], \
+        "loopback fixture must not become an asset row"
+    assert spine[0]["has_active_service"] == "true"
+    assert "live_fire" in spine[0]["seen_via"]
+    skipped = [s for s in manifest["skipped"] if s["rule"] == "R6"]
+    assert sorted(s["table"] for s in skipped) == [
+        "asm_vm_surface", "service_endpoint", "website_endpoint"], \
+        "R6 has to cover every estate table, not just the spine"
+    assert all(s["key"].startswith("127.0.0.1") for s in skipped), \
+        "every skip has to name the lab address it refused to write"
+    assert all("--allow-lab-fixture-live-fire" in s["reason"] for s in skipped), \
+        "the skip has to say how to override it"
+
+    endpoints = list(_csv.DictReader((out / "ext_telecom_asmvm_service_endpoint.csv")
+                                     .open(encoding="utf-8")))
+    added = [r for r in endpoints
+             if r["mapping_version"].startswith("asmvm-v1-livefire")]
+    assert [r["ip"] for r in added] == ["198.51.100.7"], \
+        "only the receipt of an address the feeds describe may add an endpoint"
+    assert sorted(r["mapping_version"] for r in added) == [
+        "asmvm-v1-livefire-dataset_endpoint"]
+    websites = list(_csv.DictReader((out / "ext_telecom_asmvm_website_endpoint.csv")
+                                    .open(encoding="utf-8")))
+    assert websites == [], "the lab fixture's TLS listener must not become a website"
+
+
+def test_lab_fixture_override_says_so_in_the_reason(tmp_path, monkeypatch):
+    """The override exists for wiring tests, so the manifest must not describe the
+    run as if an address the feeds describe had been re-observed."""
+    dataset = tmp_path / "dataset_ips_empty.csv"
+    dataset.write_text("ip\n203.0.113.99\n", encoding="utf-8")
+    base, receipts = _livefire_fixture(tmp_path)
+    out = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "livefire_overlay.py", "--baseline", str(base), "--out", str(out),
+        "--receipts", str(receipts), "--dataset-ips", str(dataset),
+        "--allow-lab-fixture-live-fire"])
+    assert overlay.main() == 0
+    manifest = json.loads((out / "livefire_overlay_manifest.json")
+                          .read_text(encoding="utf-8"))
+
+    assert manifest["receipts_dataset_endpoints"] == 0
+    assert manifest["lab_fixture_live_fire_override"] is True
+    assert manifest["has_live_fire"] == "true"
+    reason = manifest["has_live_fire_reason"]
+    assert "--allow-lab-fixture-live-fire" in reason
+    assert "no receipt re-observed an address the feeds describe" in reason, \
+        "the reason must not claim an estate observation the run did not make"
+    skipped = [s for s in manifest["skipped"] if s["rule"] == "R6"]
+    assert skipped == [], "the override has to let the lab rows through as well"
+    import csv as _csv
+    spine = list(_csv.DictReader((out / "ext_telecom_asmvm_asm_vm_surface.csv")
+                                 .open(encoding="utf-8")))
+    assert "127.0.0.1" in [r["ip"] for r in spine], \
+        "under the override the lab ip does enter the spine, which is the point"
+
+    bundles = list(_csv.DictReader((out / "ext_telecom_asmvm_evidence_bundle.csv")
+                                   .open(encoding="utf-8")))
+    vendor = [b for b in bundles if b["bundle_id"] == "bundle-vendor"][0]
+    assert vendor["has_live_fire"] == "true"
+    livefire = [b for b in bundles if b["bundle_id"].startswith("livefire-")][0]
+    assert livefire["has_live_fire"] == "true"
+    assert livefire["has_adversarial_reverify"] == "false", \
+        "nobody tried to disprove these observations"
+    base_bundle = list(_csv.DictReader(
+        (base / "ext_telecom_asmvm_evidence_bundle.csv")
+        .open(encoding="utf-8")))[0]
+    assert base_bundle["has_live_fire"] == "false", "baseline must not be mutated"
+
+
+def test_no_dataset_observation_means_no_live_fire_claim(tmp_path, monkeypatch):
+    """Same receipts, no dataset addresses named: nothing may claim live fire."""
+    dataset = tmp_path / "dataset_ips_empty.csv"
+    dataset.write_text("ip\n203.0.113.99\n", encoding="utf-8")
+    base, out, manifest = _run_overlay(tmp_path, monkeypatch, dataset)
+
+    assert manifest["receipts_dataset_endpoints"] == 0
+    assert manifest["receipts_lab_fixtures"] == 2
+    assert manifest["has_live_fire"] == "false"
+    assert manifest["bundle_flips"] == []
+    assert "lab fixture" in manifest["has_live_fire_reason"]
+    bundles = list(__import__("csv").DictReader(
+        (out / "ext_telecom_asmvm_evidence_bundle.csv").open(encoding="utf-8")))
+    livefire = [b for b in bundles if b["bundle_id"].startswith("livefire-")][0]
+    assert livefire["has_live_fire"] == "false"
+    assert livefire["has_receipt"] == "true", "receipts exist either way"
+
+
 def test_indirect_recon_label_comparison_is_conservative():
     """A wrong 'disagreement' sends an auditor to a port that is fine, so prose
     and unknown ports must not be called contradictions."""

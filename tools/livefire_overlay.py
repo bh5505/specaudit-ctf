@@ -34,6 +34,19 @@ R5 website_endpoint.  HTTP(S) receipts are recorded there too. No check in the
   pack reads that table (see report); the rows are recorded anyway so the
   evidence is not lost to the table that was built for it.
 
+R6 a probe of a lab fixture does not reproduce anything.  `--dataset-ips` names
+  the addresses the feeds actually describe. A receipt whose target is one of
+  those is a `dataset_endpoint` observation - a genuine attempt to reproduce a
+  claim. A receipt of anything else (loopback, a lab gateway, a fixture we
+  started for the purpose) is a `lab_fixture`: it proves the capture path works,
+  and nothing about the estate. Only dataset_endpoint receipts may flip a
+  bundle's has_live_fire (R1) and only they may touch asm_vm_surface (R4) -
+  appending our own lab host to the estate spine invents an asset, which is the
+  one thing an ASM audit must not do. Lab-fixture receipts are still written to
+  service_endpoint/website_endpoint (with `mapping_version` saying so) and are
+  counted in the manifest, so the plumbing evidence is kept and labelled instead
+  of being thrown away or mistaken for reproduction.
+
 run_id/engagement_id/accept_event_id are stamped by the runner at load
 (ctr_run_checks.stamp_accept_lineage), so they carry the analytic run scope;
 live-fire provenance travels in lineage_batch_id / source_system / source_file /
@@ -66,6 +79,55 @@ BANNER_SERVICE_TYPE = [
     ("netbios", "NetBiosSessionService"),
     ("rpc", "RpcbindServer"),
 ]
+
+
+DATASET_ENDPOINT = "dataset_endpoint"
+LAB_FIXTURE = "lab_fixture"
+
+# Rule R6, applied to every estate silver table, not just asm_vm_surface. A lab
+# fixture is something we observed; it is not something the feeds describe. If it
+# lands in service_endpoint/website_endpoint it sits there as a row whose ip has
+# no ip-ledger row, and the next ingest that happens to cover the lab range turns
+# it into estate exposure without any new observation having been made. The
+# capture is still auditable: R2 keeps the capture bundle (with has_live_fire
+# false) and every skipped append is named in the manifest.
+LAB_FIXTURE_SKIP_REASON = (
+    "lab fixture: observed by us, not described by the feeds; rule R6 keeps "
+    "lab observations out of estate silver tables (override: "
+    "--allow-lab-fixture-live-fire)")
+
+
+def load_dataset_ips(path):
+    """Addresses the feeds describe: a CSV with an `ip` column, or a plain list.
+
+    This is what separates a reproduction attempt from a lab fixture, so it is
+    loaded from an explicit file rather than inferred from RFC1918 conventions -
+    our own lab is RFC1918 too, and so is part of the estate.
+    """
+    if not path or not os.path.exists(path):
+        return set()
+    ips = set()
+    with open(path, encoding="utf-8-sig", newline="") as fh:
+        first = fh.readline()
+        fh.seek(0)
+        if "," in first and "ip" in first.split(",")[0].lower():
+            for row in csv.DictReader(fh):
+                ip = (row.get("ip") or "").strip()
+                if ip:
+                    ips.add(ip)
+        else:
+            for line in fh:
+                line = line.split("#", 1)[0].strip()
+                if line:
+                    ips.add(line)
+    return ips
+
+
+def observation_class(receipt, dataset_ips):
+    """R6: does this receipt observe something the feeds describe, or our own
+    lab fixture?"""
+    return (DATASET_ENDPOINT if (receipt.get("target_ip") or "").strip()
+            in dataset_ips else LAB_FIXTURE)
 
 
 def classify(port, proto, status, banner, tls_proto):
@@ -172,12 +234,30 @@ def main():
     ap.add_argument("--run-id", default="gw-asmvm-20260902")
     ap.add_argument("--livefire-run-id", default="gw-livefire-20260909")
     ap.add_argument("--engagement-id", default="asmvm-rehearsal-2026")
+    ap.add_argument("--dataset-ips", default=None,
+                    help="CSV with an ip column (or a plain ip list): the "
+                         "addresses the feeds describe. Receipts of anything "
+                         "else are lab fixtures and cannot flip has_live_fire "
+                         "or touch the estate spine (rule R6).")
+    ap.add_argument("--allow-lab-fixture-live-fire", action="store_true",
+                    help="override R6: let lab-fixture receipts flip "
+                         "has_live_fire. Recorded in the manifest, so a run "
+                         "that used it is distinguishable from one that did not.")
     args = ap.parse_args()
 
     base = os.path.abspath(args.baseline)
     out = os.path.abspath(args.out)
     os.makedirs(out, exist_ok=True)
     receipts, _ = read_csv(args.receipts)
+    dataset_ips = load_dataset_ips(args.dataset_ips)
+    receipt_class = {id(r): observation_class(r, dataset_ips) for r in receipts}
+    live_receipts = [r for r in receipts
+                     if receipt_class[id(r)] == DATASET_ENDPOINT
+                     or args.allow_lab_fixture_live_fire]
+    dataset_receipt_count = sum(1 for c in receipt_class.values()
+                                if c == DATASET_ENDPOINT)
+    lab_receipt_count = sum(1 for c in receipt_class.values()
+                            if c == LAB_FIXTURE)
     nets = load_owned_ranges(base)
     now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0).isoformat(sep=" ")
 
@@ -187,22 +267,53 @@ def main():
         "built_at_utc": now,
         "receipts_file": os.path.abspath(args.receipts),
         "receipt_rows": len(receipts),
+        "dataset_ips_file": os.path.abspath(args.dataset_ips)
+        if args.dataset_ips else None,
+        "dataset_ips_loaded": len(dataset_ips),
+        "receipts_dataset_endpoints": sum(
+            1 for c in receipt_class.values() if c == DATASET_ENDPOINT),
+        "receipts_lab_fixtures": sum(1 for c in receipt_class.values()
+                                     if c == LAB_FIXTURE),
+        "lab_fixture_live_fire_override": bool(args.allow_lab_fixture_live_fire),
+        "has_live_fire": "true" if live_receipts else "false",
+        # The reason has to stay true when the override is used. Saying "at least
+        # one receipt re-observed an address the feeds describe" while
+        # receipts_dataset_endpoints == 0 makes the manifest assert something the
+        # run did not do, and a reader cannot tell estate live fire from a wiring
+        # test without also reading the override flag.
+        "has_live_fire_reason": (
+            "at least one receipt re-observed an address the feeds describe"
+            if dataset_receipt_count else (
+                "no receipt re-observed an address the feeds describe "
+                "(dataset receipts=%d, lab fixtures=%d); has_live_fire=true "
+                "only because --allow-lab-fixture-live-fire was passed, which "
+                "records a lab fixture as reproduction - a wiring test, not "
+                "estate evidence" % (dataset_receipt_count, lab_receipt_count)
+                if args.allow_lab_fixture_live_fire else
+                "every receipt was a lab fixture: it exercises the capture "
+                "path, it does not reproduce a claim about the estate "
+                "(rule R6)")),
         "rules": ["R1 bundle provenance via ip->source_file->bundle",
                   "R2 live-fire bundle row", "R3 service_endpoint per receipt",
                   "R4 asm_vm_surface reconcile-or-append per IP",
-                  "R5 website_endpoint for HTTP(S) receipts"],
+                  "R5 website_endpoint for HTTP(S) receipts",
+                  "R6 lab-fixture receipts cannot flip has_live_fire and are not "
+                  "appended to service_endpoint, asm_vm_surface or "
+                  "website_endpoint unless --allow-lab-fixture-live-fire is set"],
         "added_rows": [], "patched_rows": [], "skipped": [],
         "bundle_flips": [],
     }
 
     # ---- R1: which vendor bundles did the live-fire leg actually re-observe?
-    receipt_ips = sorted({r["target_ip"] for r in receipts})
+    # R1 + R6: only an observation of an address the feeds describe can tie a
+    # receipt back to the bundle that described it.
+    receipt_ips = sorted({r["target_ip"] for r in live_receipts})
     ip_rows, _ = read_csv(os.path.join(base, "ext_telecom_asmvm_ip.csv"))
     src_files = {r["source_file"] for r in ip_rows if r["ip"] in set(receipt_ips)}
     bundles, bundle_fields = read_csv(
         os.path.join(base, "ext_telecom_asmvm_evidence_bundle.csv"))
     reproduced = {b["bundle_id"]: sorted(
-        {r["target_ip"] for r in receipts}) for b in bundles
+        {r["target_ip"] for r in live_receipts}) for b in bundles
         if b["source_file"] in src_files}
     for b in bundles:
         if b["bundle_id"] in reproduced:
@@ -223,7 +334,10 @@ def main():
         "bundle_id": "livefire-%s" % args.livefire_run_id,
         "project_id": args.engagement_id,
         "source_lane": "reachability",
-        "has_report": "true", "has_receipt": "true", "has_live_fire": "true",
+        "has_report": "true", "has_receipt": "true",
+        # R2 + R6: receipts always exist; live fire is only true when one of
+        # them observed an address the feeds describe.
+        "has_live_fire": "true" if live_receipts else "false",
         "has_adversarial_reverify": "false", "is_sandboxed": "true",
         "audit_year": "2026", "source_system": RUN_ANNOTATION,
         "source_file": os.path.basename(args.receipts),
@@ -244,6 +358,14 @@ def main():
     se_rows, se_fields = read_csv(se_path)
     se_baseline_len = len(se_rows)
     for i, r in enumerate(receipts, start=1):
+        if (receipt_class[id(r)] == LAB_FIXTURE
+                and not args.allow_lab_fixture_live_fire):
+            manifest["skipped"].append({
+                "table": "service_endpoint", "rule": "R6", "key": "%s:%s/%s" % (
+                    r["target_ip"], r["proto"], r["port"]),
+                "endpoint_status": r["endpoint_status"],
+                "reason": LAB_FIXTURE_SKIP_REASON})
+            continue
         active = r["endpoint_status"] in ("open", "answered")
         row = {k: "" for k in se_fields}
         sid = md5("livefire", args.livefire_run_id, r["target_ip"],
@@ -269,13 +391,15 @@ def main():
             "source_file": os.path.basename(args.receipts),
             "source_row_id": str(i), "record_hash": sid,
             "lineage_batch_id": args.livefire_run_id,
-            "mapping_version": "asmvm-v1-livefire", "model_version": "livefire-1",
+            "mapping_version": "asmvm-v1-livefire-" + receipt_class[id(r)],
+            "model_version": "livefire-1",
         })
         se_rows.append(row)
         manifest["added_rows"].append({
             "table": "service_endpoint", "justification": "R3",
             "key": "%s:%s/%s" % (r["target_ip"], r["proto"], r["port"]),
-            "endpoint_status": r["endpoint_status"], "is_active": row["is_active"]})
+            "endpoint_status": r["endpoint_status"], "is_active": row["is_active"],
+            "observation_class": receipt_class[id(r)]})
     write_csv(os.path.join(out, "ext_telecom_asmvm_service_endpoint.csv"),
               se_rows, se_fields)
     manifest["service_endpoint_rows_added"] = len(se_rows) - se_baseline_len
@@ -291,6 +415,19 @@ def main():
         open_recs = [r for r in recs
                      if r["endpoint_status"] in ("open", "answered")]
         owned = inside_owned(nets, ip)
+        classes = {receipt_class[id(r)] for r in recs}
+        if classes == {LAB_FIXTURE} and not args.allow_lab_fixture_live_fire:
+            # R6: our own fixture is not an asset of the estate. Recording it in
+            # asm_vm_surface would give every per-prefix COUNT(*) a host that
+            # belongs to us, so it is skipped here and kept in the manifest. The
+            # reason string is shared with the R3/R5 skips so one grep finds all
+            # three and each one names the override.
+            manifest["skipped"].append({
+                "table": "asm_vm_surface", "key": ip, "rule": "R6",
+                "reason": LAB_FIXTURE_SKIP_REASON,
+                "receipts": ["%s/%s=%s" % (r["proto"], r["port"],
+                                           r["endpoint_status"]) for r in recs]})
+            continue
         # Only OBSERVATION columns are patched onto an existing spine row: the
         # vendor provenance columns (source_system / source_file / source_row_id
         # / lineage_batch_id) keep pointing at the export the spine row came
@@ -368,6 +505,14 @@ def main():
             continue
         if not (r["http_status"] or r["tls_protocol"]):
             continue
+        if (receipt_class[id(r)] == LAB_FIXTURE
+                and not args.allow_lab_fixture_live_fire):
+            manifest["skipped"].append({
+                "table": "website_endpoint", "rule": "R6", "key": "%s:%s/%s" % (
+                    r["target_ip"], r["proto"], r["port"]),
+                "endpoint_status": r["endpoint_status"],
+                "reason": LAB_FIXTURE_SKIP_REASON})
+            continue
         row = {k: "" for k in we_fields}
         wid = md5("livefire-web", args.livefire_run_id, r["target_ip"],
                   r["proto"], r["port"])
@@ -421,6 +566,13 @@ def main():
         "receipts": len(receipts),
         "bundle_flips": [f["bundle_id"] for f in manifest["bundle_flips"]],
         "bundles_total": len(bundles),
+        "receipts_dataset_endpoints": manifest["receipts_dataset_endpoints"],
+        "receipts_lab_fixtures": manifest["receipts_lab_fixtures"],
+        "has_live_fire": manifest["has_live_fire"],
+        "has_live_fire_reason": manifest["has_live_fire_reason"],
+        "asm_vm_surface_skipped_lab_fixtures": [
+            s["key"] for s in manifest["skipped"]
+            if s.get("table") == "asm_vm_surface"],
         "service_endpoint_rows_added": manifest["service_endpoint_rows_added"],
         "website_endpoint_rows_added": we_added,
         "asm_vm_surface_patched": [p["key"] for p in manifest["patched_rows"]
