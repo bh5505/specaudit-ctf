@@ -100,9 +100,11 @@ _INVOKE_TOOL_DEF: dict[str, Any] = {
         "read-only X2-PUB action registry is admitted; the result is an "
         "execution-result.v1 envelope identical to `python -m extension "
         "invoke` output (timestamps differ per run). isError mirrors the "
-        "CLI nonzero exit; the envelope status is the verdict."
+        "CLI nonzero exit; the envelope status is the verdict. Dispatches real "
+        "arm actions (network egress / subprocess) bounded by the per-arm "
+        "*_DISPATCH_SCOPE env gates; results are envelopes."
     ),
-    "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    "annotations": {"readOnlyHint": False, "openWorldHint": False},
     "inputSchema": {
         "type": "object",
         "properties": {
@@ -145,9 +147,11 @@ _RUN_RANGE_TOOL_DEF: dict[str, Any] = {
         "verdicts live in the envelope status, never in transport success. "
         "Omit arm_ids to auto-discover curated arms (skip/error is "
         "degraded). Empty arm_ids is lifecycle-only and may be complete. "
-        "Non-empty arm_ids are required (skip/error is failed)."
+        "Non-empty arm_ids are required (skip/error is failed). Executes local "
+        "synthetic range fixtures in subprocesses; no live cloud, no file writes "
+        "over MCP."
     ),
-    "annotations": {"readOnlyHint": True, "openWorldHint": False},
+    "annotations": {"readOnlyHint": False, "openWorldHint": False},
     "inputSchema": {
         "type": "object",
         "properties": {

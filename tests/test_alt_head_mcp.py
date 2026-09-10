@@ -434,17 +434,17 @@ def test_tool_defs_match_documented_surface_and_annotations() -> None:
 
     Annotations follow MCP spec (stable since 2025-11-25). They are
     untrusted hints for clients, not enforcement; the fail-closed checks
-    live in the tool handlers. X4-PUB: invoke is read-only (the X2-PUB
-    registry admits only in-process policy reads) and closed-world; the
-    envelope-producing tools declare the execution-result.v1 output schema.
+    live in the tool handlers. invoke and run_range can dispatch bounded
+    subprocess/network machinery and are closed-world; the envelope-producing
+    tools declare the execution-result.v1 output schema.
     """
     from extension.mcp_server import _TOOL_DEFS
 
     expected = {
         "list": {"readOnlyHint": True, "openWorldHint": False},
         "describe": {"readOnlyHint": True, "openWorldHint": False},
-        "invoke": {"readOnlyHint": True, "openWorldHint": False},
-        "run_range": {"readOnlyHint": True, "openWorldHint": False},
+        "invoke": {"readOnlyHint": False, "openWorldHint": False},
+        "run_range": {"readOnlyHint": False, "openWorldHint": False},
     }
     assert {tool["name"]: tool["annotations"] for tool in _TOOL_DEFS} == expected
     assert tuple(expected) == TOOLS
