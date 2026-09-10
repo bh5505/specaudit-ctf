@@ -535,10 +535,9 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 149 since the caldera read admission (2026-09-06,
     # emulation-listing packet): the eight v2 GET views as
     # endpoint-armed reads (caldera had no profiles before).
-    # 153 since the rpz-decoder admission (2026-09-08, arm packet):
-    # list_tools + decode (local read with caller-named outdir write)
-    # + fetch/status scope-gated dig dispatches.
-    assert len(INVOKE_PROFILES) == 153
+    # 154 with the http-probe scope-gated dispatch profile, after the
+    # rpz-decoder admission brought the registry to 153.
+    assert len(INVOKE_PROFILES) == 154
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.

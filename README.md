@@ -4,7 +4,7 @@ Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
 
 ## Overview
 
-- **Arms**: 28 specialized adapters. No row is held (the HTTP-MCP
+- **Arms**: 30 specialized adapters. No row is held (the HTTP-MCP
   held set closed 2026-09-04; the tier remains enforced for any
   future held row); the burp-mcp, google-mcp-security, semgrep-mcp,
   prowler-mcp, and metasploit-mcp rows are research integrations on
@@ -24,11 +24,11 @@ Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
   other agent CLIs.
 - **Range**: synthetic fixtures (`live_aws: false`). No live cloud.
 
-`extension/coverage.yaml` classifies the landscape survey (47 ids,
+`extension/coverage.yaml` classifies the landscape survey (49 ids,
 frozen order). It is a **survey map**, not a ship list: a row is not
 a promise that an adapter exists. Every row has a support tier
 (`research` | `experimental` | `maintained` | `held`). In this cut
-every arm row is curated (28 handlers) and every methodology-only
+every arm row is curated (30 handlers) and every methodology-only
 row stays uncurated (19). `curated` is not `maintained`.
 
 Per-arm caveats (composite egress, exploitation, LLM spend, source
@@ -146,10 +146,10 @@ authoritative per-action safety, scope, side-effect, budget, cleanup, and
 tool-version metadata.
 
 Dispatch-class admission (2026-09-01, continued through 2026-09-05) adds
-exactly sixteen scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
+scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
 `zaproxy.spider_scan`, `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`,
 `pyrit.scan`, `routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`,
-`commix.scan`, `semgrep-mcp.semgrep_scan`, `vuls.scan`, and the
+`http-probe.probe`, `commix.scan`, `semgrep-mcp.semgrep_scan`, `vuls.scan`, and the
 `stratus-red-team` technique-lifecycle set (`warmup`, `detonate`,
 `revert`) —
 carrying honest manifest truth: safety class **R1**, declared side
@@ -633,7 +633,7 @@ prefixes.
   repo path in the scope env** — `parse_scope` refuses it as not a
   CIDR, IP, hostname, or URI.
 
-Safe default is unarmed: shipping 28 handlers does not fire a packet
+Safe default is unarmed: shipping 30 handlers does not fire a packet
 until `*_BIN` (or endpoint) **and** (for dispatch) `*_DISPATCH_SCOPE`
 are set.
 
@@ -659,6 +659,7 @@ Shared gate: `extension/arms/dispatch.py`. Caveats:
 | `OSMEDEUS_BIN` / `OSMEDEUS_DISPATCH_SCOPE` | osmedeus | binary; host-scoped dispatch |
 | `ZDNS_BIN` / `ZDNS_DISPATCH_SCOPE` | zdns | binary; host-scoped lookup |
 | `PAGE_FETCH_BIN` / `PAGE_FETCH_DISPATCH_SCOPE` | page-fetch | binary; URI-scoped fetch |
+| `HTTP_PROBE_BIN` / `HTTP_PROBE_DISPATCH_SCOPE` | http-probe | curl binary (or PATH); URI-scoped probe with bounded caller headers; redirects are not followed |
 | `CALDERA_ENDPOINT` / `CALDERA_API_KEY` / `CALDERA_DISPATCH_SCOPE` | caldera | REST base URL; API key; operation dispatch |
 | `GTI_MCP_ENDPOINT` | google-mcp-security | GTI MCP URL (read-only lookups; no dispatch tier) |
 | `METASPLOIT_MCP_ENDPOINT` / `METASPLOIT_DISPATCH_SCOPE` | metasploit-mcp | SSE MCP URL; host/session-scoped execution |

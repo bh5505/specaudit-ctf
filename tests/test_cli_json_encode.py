@@ -376,6 +376,7 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
         "routersploit.run",
         "osmedeus.scan",
         "page-fetch.fetch",
+        "http-probe.probe",
         "commix.scan",
         "semgrep-mcp.semgrep_scan",
         "vuls.scan",
@@ -588,8 +589,8 @@ def test_range_encoder_spends_one_step_under_freeze_budget(
     no_curated_tools: None,
 ) -> None:
     inner = run_range()
-    # 29 since the rpz-decoder arm admission (2026-09-08).
-    assert len(inner["coverage"]["attempted"]) == 29
+    # 30 with the dispatch-scoped http-probe arm.
+    assert len(inner["coverage"]["attempted"]) == 30
     payload = encode_range_document(
         inner,
         started_at="2026-08-25T12:00:00Z",

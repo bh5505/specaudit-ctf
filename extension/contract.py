@@ -459,6 +459,8 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.osmedeus import OsmedeusArm
     from .arms.pagefetch import ARM_ID as PAGE_FETCH_ARM_ID
     from .arms.pagefetch import PageFetchArm
+    from .arms.httpprobe import ARM_ID as HTTP_PROBE_ARM_ID
+    from .arms.httpprobe import HttpProbeArm
     from .arms.stratus import ARM_ID as STRATUS_ARM_ID
     from .arms.stratus import StratusArm
     from .arms.zdns import ARM_ID as ZDNS_ARM_ID
@@ -523,6 +525,7 @@ def _default_arms() -> dict[str, Transport]:
         OSMEDEUS_ARM_ID: OsmedeusArm(),
         ZDNS_ARM_ID: ZdnsArm(),
         PAGE_FETCH_ARM_ID: PageFetchArm(),
+        HTTP_PROBE_ARM_ID: HttpProbeArm(),
         CALDERA_ARM_ID: CalderaArm(),
         GTI_ARM_ID: GtiArm(),
         METASPLOIT_ARM_ID: MetasploitArm(),

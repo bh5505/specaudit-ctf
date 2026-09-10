@@ -7,7 +7,7 @@ This tree is the public attach surface:
 
 - `coverage.yaml` — classified survey map (not a ship list)
 - `contract.py` — fail-closed `list` / `describe` / `invoke`
-- `arms/` — 28 specialized handlers (families below)
+- `arms/` — 30 specialized handlers (families below)
 - `heads/` — Claude Code CLI, Codex CLI, and other-agent-CLI profiles
 - `range/` — synthetic fixtures only
 - `mcp_server.py` — stdio MCP for four tools (`list`, `describe`,
@@ -27,7 +27,7 @@ A validation client may attach the same CLI or MCP surface later.
 Every row has a support `tier`: `research` | `experimental` |
 `maintained` | `held`. `curated: true` is a **deprecated**
 compatibility flag meaning a specialized handler exists in this cut;
-it is **not** `tier: maintained`. **28 arms are curated; zero rows
+it is **not** `tier: maintained`. **30 arms are curated; zero rows
 are held (the HTTP-MCP held set closed 2026-09-04); exactly one
 capability is maintained — the agent-wiz
 read tier `agent-wiz.list_tools` (X5-PROMOTE, doc 13 evidence gate).**
@@ -119,6 +119,8 @@ session per arm, not a generic transport):
 - `commix` — `COMMIX_DISPATCH_SCOPE`
 - `zdns` — `ZDNS_DISPATCH_SCOPE`
 - `page-fetch` — `PAGE_FETCH_DISPATCH_SCOPE`
+- `http-probe` — `HTTP_PROBE_DISPATCH_SCOPE`; bounded curl probe with a
+  closed caller-header schema; redirects surface as data and are never followed
 
 **CLI / native two-tier** (reads unarmed; dispatch scope-gated):
 
@@ -188,7 +190,7 @@ the 2026-09-01/02/03/05 dispatch-class admissions — the scope-gated R1
 profiles (`nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan`,
 `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`, `pyrit.scan`,
 `routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`,
-`commix.scan`, `semgrep-mcp.semgrep_scan`, `vuls.scan`,
+`http-probe.probe`, `commix.scan`, `semgrep-mcp.semgrep_scan`, `vuls.scan`,
 `stratus-red-team.warmup/detonate/revert`) with honest
 manifest truth: default-off behind the arm's arming gate
 (`*_DISPATCH_SCOPE`, or `SEMGREP_SCAN_ROOT` containment for the local
@@ -265,7 +267,8 @@ its Result with scope and target.
 (`ZAP_DISPATCH_SCOPE`), `wapiti` (`WAPITI_DISPATCH_SCOPE`), `commix`
 (`COMMIX_DISPATCH_SCOPE`), `osmedeus` (`OSMEDEUS_DISPATCH_SCOPE`),
 `zdns` (`ZDNS_DISPATCH_SCOPE`), `page-fetch`
-(`PAGE_FETCH_DISPATCH_SCOPE`), `routersploit`
+(`PAGE_FETCH_DISPATCH_SCOPE`), `http-probe`
+(`HTTP_PROBE_DISPATCH_SCOPE`), `routersploit`
 (`ROUTERSPLOIT_DISPATCH_SCOPE`), `sniper` (`SNIPER_DISPATCH_SCOPE`),
 `zgrab2` (`ZGRAB2_DISPATCH_SCOPE`), `dark-moon`
 (`DARK_MOON_DISPATCH_SCOPE`), `pyrit` (`PYRIT_DISPATCH_SCOPE`).
@@ -324,6 +327,9 @@ One-liners. Full notes live on the catalog row (`describe <id>`).
   are not re-checked (treat the scope as reachable from anything its
   hosts redirect or reference to, including metadata IPs), and the
   fetcher may write browser state in its default location.
+- `http-probe` — uses curl (shipped on Kali lab images and modern Windows)
+  to send at most eight validated caller headers; secret-like values are masked
+  in audit results, and redirects return as 3xx data without being followed.
 - `caldera` — v2 GET reads unarmed (per-operation chain for
   post-run inspection); scheduling an operation is dispatch (path
   provisional upstream).

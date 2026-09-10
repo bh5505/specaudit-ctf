@@ -381,6 +381,9 @@ _DISPATCH_PROFILES = (
     # the named scope, including metadata IPs reachable via redirect) and
     # may write browser state in its default location.
     ("page-fetch", "fetch", ("subprocess", "network-egress"), 60_000, "PAGE_FETCH_DISPATCH_SCOPE"),
+    # http-probe: bounded curl request with a closed caller-header schema;
+    # redirects are returned as 3xx data and never followed.
+    ("http-probe", "probe", ("subprocess", "network-egress"), 30_000, "HTTP_PROBE_DISPATCH_SCOPE"),
     # commix (doc-20 standing disposition now exercised via the normal
     # recipe): active command-injection prober — no read-only mode
     # upstream, probe is the whole surface.
