@@ -232,7 +232,7 @@ entries:
     protocols: [cli]
     curated: true
     tier: research
-    notes: Canonical ATT&CK corpus as STIX 2.1 collection bundles. Curated first-party read arm; exact lookups (technique by ATT&CK id or name, software/group by name or alias, bounded relationship reads with a closed type allowlist) over an operator-supplied local STIX bundle. A small verbatim demo sample ships as data under the arm (see its NOTICE; not maintained here). Pure in-process stdlib reader with no subprocess, no endpoint, no network on any tier, and no dispatch tier.
+    notes: Canonical ATT&CK corpus as STIX 2.1 collection bundles. Curated first-party read arm; exact lookups (technique by ATT&CK id or name, software/group by name or alias, bounded relationship reads with a closed type allowlist, and CVE-keyed object mappings with per-invocation custody receipts) over a local STIX bundle. The CVE action defaults to the bundled deterministic demo sample; other actions require an operator-supplied bundle. A small demo sample ships as data under the arm (see its NOTICE; not maintained here). Pure in-process stdlib reader with no subprocess, no endpoint, no network on any tier, and no dispatch tier.
 
   - id: mitreattack-python
     kind: arm

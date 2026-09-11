@@ -9,7 +9,9 @@ ARM_ID = "attack-stix-data"
 # Read tier: exact lookups over a local STIX bundle. There is no
 # dispatch tier: the arm is an in-process stdlib reader with no
 # subprocess, no endpoint, and no network on any tier.
-ALLOWED_ACTIONS = frozenset({"technique", "software", "group", "relationships"})
+ALLOWED_ACTIONS = frozenset(
+    {"technique", "software", "group", "relationships", "cvelookup"}
+)
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 
 MAX_BUNDLE_BYTES = 64 * 1024 * 1024
@@ -25,13 +27,15 @@ ARG_KEYS: dict[str, frozenset[str]] = {
     "software": frozenset({"bundle", "name"}),
     "group": frozenset({"bundle", "name"}),
     "relationships": frozenset({"bundle", "id", "name", "type"}),
+    "cvelookup": frozenset({"bundle_path", "cve_ids"}),
 }
 
 CAVEATS = (
     "offline read tier over an operator-supplied local STIX bundle",
     "exact lookups only, no enumeration",
-    "the shipped demo bundle is a small verbatim ATT&CK sample, "
-    "not a current corpus (see NOTICE.md)",
+    "CVE lookup writes a JSON custody receipt to stderr on every outcome",
+    "the shipped demo bundle is a small ATT&CK sample with two declared "
+    "fake CVE references, not a current corpus (see NOTICE.md)",
 )
 
 ARMING = (
@@ -89,6 +93,10 @@ def args_refusal(action: str, payload: dict) -> str | None:
             + ", args.".join(sorted(allowed))
             + f" (unexpected: {', '.join(extra)})"
         )
+    if action == "cvelookup":
+        if "cve_ids" not in payload:
+            return "cvelookup requires args.cve_ids"
+        return None
     if not {"bundle"} <= set(payload):
         return "this action requires a local STIX bundle path in args.bundle"
     if action in ("technique", "relationships"):

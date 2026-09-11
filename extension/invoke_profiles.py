@@ -584,12 +584,15 @@ INVOKE_PROFILES = {
         ),
         # attack-stix-data read admission (2026-09-04, P4): the offline
         # ATT&CK knowledge reads over an operator-supplied local STIX
-        # bundle - exact technique/software/group lookups and bounded
-        # relationship reads. R0 local-read with no dispatch tier; the
-        # bundle path is caller data validated by the arm's egress gate.
+        # bundle - exact technique/software/group lookups, bounded
+        # relationship reads, and CVE-keyed object lookup with a custody
+        # receipt. R0 local-read with no dispatch tier; the bundle path is
+        # caller data validated by the arm's egress gate.
         *(
             _local_read_profile("attack-stix-data", action)
-            for action in ("technique", "software", "group", "relationships")
+            for action in (
+                "technique", "software", "group", "relationships", "cvelookup"
+            )
         ),
         # rpz-decoder decode admission (2026-09-08): in-process AXFR
         # decode of the caller-named dump into raw IP/CIDR + domain

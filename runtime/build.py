@@ -97,6 +97,9 @@ EXTRA_PRODUCER_FILES = (
     "extension/__main__.py",
     "extension/mcp_server.py",
     "extension/coverage.yaml",
+    # attack-stix-data.cvelookup defaults to this deterministic local corpus;
+    # data files are not import-traceable, so keep it as an explicit root.
+    "extension/arms/attackstix/data/demo-enterprise-sample.json",
     "extension/schema/execution-result.v1.schema.json",
 )
 _ATTEMPT_ID = "attempt-" + ("0" * 64)

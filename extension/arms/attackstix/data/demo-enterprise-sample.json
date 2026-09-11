@@ -155,6 +155,11 @@
      "url": "https://attack.mitre.org/software/S1091"
     },
     {
+     "external_id": "CVE-2099-0001",
+     "source_name": "cve",
+     "url": "https://example.invalid/cve/CVE-2099-0001"
+    },
+    {
      "description": "Rhino Security Labs. (2019, August 22). Pacu. Retrieved October 17, 2019.",
      "source_name": "GitHub Pacu",
      "url": "https://github.com/RhinoSecurityLabs/pacu"
@@ -314,6 +319,11 @@
      "external_id": "T1552.005",
      "source_name": "mitre-attack",
      "url": "https://attack.mitre.org/techniques/T1552/005"
+    },
+    {
+     "external_id": "CVE-2099-0001",
+     "source_name": "CVE-reference",
+     "url": "https://example.invalid/cve/CVE-2099-0001"
     },
     {
      "description": "AWS. (n.d.). Instance Metadata and User Data. Retrieved July 18, 2019.",

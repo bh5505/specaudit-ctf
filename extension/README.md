@@ -112,6 +112,10 @@ session per arm, not a generic transport):
   target-bound install; open-ended probe dispatch blocked
 - `mitreattack-python` — local STIX-to-Excel; network downloader on
   no tier
+- `attack-stix-data` — in-process exact local STIX reads; `cvelookup`
+  maps CVE ids to ATT&CK objects and writes a JSON custody receipt on every
+  outcome (defaults to the bundled deterministic demo; see
+  [arm usage](arms/attackstix/README.md))
 
 **CLI dispatch-only** (no meaningful read surface):
 
@@ -185,7 +189,8 @@ Omit both flags for portable Mode B.
 The X2-PUB CLI manifest admits the in-process `list_tools` policy reads
 for `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `nmap`,
 `pyrit`, `routersploit`, `sniper`, `vvah`, `zgrab2`, and
-`semgrep-mcp`, plus — since
+`semgrep-mcp`, plus the five admitted `attack-stix-data` lookups (`technique`, `software`,
+`group`, `relationships`, `cvelookup`) and — since
 the 2026-09-01/02/03/05 dispatch-class admissions — the scope-gated R1
 profiles (`nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan`,
 `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`, `pyrit.scan`,

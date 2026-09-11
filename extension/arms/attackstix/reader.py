@@ -27,6 +27,7 @@ MITRE_ATTACK_ID_SOURCE_NAMES = frozenset(
 ALLOWED_RELATIONSHIP_TYPES = frozenset({"uses", "subtechnique-of", "mitigates"})
 
 _SOFTWARE_TYPES = ("tool", "malware")
+_CVE_SOURCE_NAMES = frozenset({"cve", "cve-reference"})
 
 
 class BundleError(ValueError):
@@ -47,14 +48,23 @@ class Subject:
 def load_bundle(path: Any) -> dict[str, Any]:
     """Parse and index a local STIX 2.1 bundle file."""
     try:
-        # Strict decode: a bundle with invalid UTF-8 is corrupted data,
-        # not content to silently U+FFFD-replace (sweep 9, bot finding).
-        with open(path, encoding="utf-8", errors="strict") as handle:
-            data = json.load(handle)
+        with open(path, "rb") as handle:
+            raw = handle.read()
     except OSError as exc:
         raise BundleError(f"bundle could not be read: {exc}") from exc
+    return load_bundle_bytes(raw)
+
+
+def load_bundle_bytes(raw: bytes) -> dict[str, Any]:
+    """Parse and index one immutable bundle byte snapshot."""
+    try:
+        # Strict decode: a bundle with invalid UTF-8 is corrupted data,
+        # not content to silently U+FFFD-replace (sweep 9, bot finding).
+        text = raw.decode("utf-8", errors="strict")
     except UnicodeDecodeError as exc:
         raise BundleError(f"bundle is not valid UTF-8: {exc}") from exc
+    try:
+        data = json.loads(text)
     except json.JSONDecodeError as exc:
         raise BundleError(f"bundle is not valid JSON: {exc}") from exc
     if not isinstance(data, dict) or data.get("type") != "bundle":
@@ -154,6 +164,38 @@ def _external_id_of(row: dict[str, Any], source: Any) -> str | None:
         ):
             return ref["external_id"]
     return None
+
+
+def find_cve_objects(index: dict[str, Any], cve_id: str) -> list[dict[str, Any]]:
+    """Return stable projections of objects that reference an exact CVE id."""
+    wanted = cve_id.upper()
+    matches: list[dict[str, Any]] = []
+    for row in index["by_id"].values():
+        refs = row.get("external_references")
+        if not isinstance(refs, list):
+            continue
+        if not any(
+            isinstance(ref, dict)
+            and isinstance(ref.get("source_name"), str)
+            and ref["source_name"].casefold() in _CVE_SOURCE_NAMES
+            and isinstance(ref.get("external_id"), str)
+            and ref["external_id"].upper() == wanted
+            for ref in refs
+        ):
+            continue
+        projected: dict[str, Any] = {
+            "stix_id": row["id"],
+            "type": str(row.get("type") or ""),
+            "name": str(row.get("name") or ""),
+            "description": _truncate(row.get("description")),
+            "external_references": [dict(ref) for ref in refs if isinstance(ref, dict)],
+        }
+        projected.update(
+            (key, value) for key, value in row.items() if key.startswith("x_mitre_")
+        )
+        matches.append(projected)
+    matches.sort(key=lambda row: (row["type"], row["stix_id"]))
+    return matches
 
 
 def find_technique(

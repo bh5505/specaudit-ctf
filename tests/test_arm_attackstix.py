@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -366,9 +367,111 @@ def test_extras_are_sorted_and_deterministic() -> None:
     assert document["extras"] == ["a-extra", "m-extra", "z-extra"]
 
 
+def _receipt(capsys: pytest.CaptureFixture[str]) -> dict:
+    lines = [line for line in capsys.readouterr().err.splitlines() if line.strip()]
+    assert len(lines) == 1
+    return json.loads(lines[0])
+
+
+def test_cvelookup_demo_hit_miss_and_malformed_leave_receipt(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = _ext().invoke(
+        ARM_ID,
+        "cvelookup",
+        {"cve_ids": ["cve-2099-0001", "CVE-2099-9999", "not-a-cve"]},
+    )
+    assert result.ok is True
+    hit, miss, malformed = result.output["results"]
+    assert hit["cve_id"] == "CVE-2099-0001"
+    assert hit["status"] == "matched" and hit["count_matched"] == 2
+    assert {row["type"] for row in hit["matched_objects"]} == {"attack-pattern", "tool"}
+    assert all(row["external_references"] for row in hit["matched_objects"])
+    assert all("x_mitre_version" in row for row in hit["matched_objects"])
+    assert miss["reason"] == "unknown_cve" and miss["matched_objects"] == []
+    assert malformed["reason"] == "malformed_id"
+    assert malformed["cve_id"] is None and "query_sha256" in malformed
+
+    receipt = _receipt(capsys)
+    assert receipt["arm"] == ARM_ID and receipt["action"] == "cvelookup"
+    assert receipt["bundle_sha256"] == hashlib.sha256(DEMO.read_bytes()).hexdigest()
+    assert receipt["count_matched"] == 2
+    assert len(receipt["normalized_args_sha256"]) == 64
+    assert len(receipt["output_sha256"]) == 64
+    assert [row["reason"] for row in receipt["queries"]] == [
+        None,
+        "unknown_cve",
+        "malformed_id",
+    ]
+    assert "not-a-cve" not in json.dumps(receipt)
+
+
+@pytest.mark.parametrize(
+    "payload,setup,reason",
+    [
+        ({"bundle_path": "missing.json", "cve_ids": ["CVE-2099-0001"]}, None, "bundle_missing"),
+        ({"bundle_path": "bad.json", "cve_ids": ["CVE-2099-0001"]}, "invalid", "bundle_invalid_json"),
+        ({"cve_ids": "CVE-2099-0001"}, None, "cve_ids_not_a_list"),
+    ],
+)
+def test_cvelookup_invocation_failures_leave_receipts(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    payload: dict,
+    setup: str | None,
+    reason: str,
+) -> None:
+    invocation = dict(payload)
+    if "bundle_path" in invocation:
+        path = tmp_path / invocation["bundle_path"]
+        if setup == "invalid":
+            path.write_text("{not-json", encoding="utf-8")
+        invocation["bundle_path"] = str(path)
+    result = _ext().invoke(ARM_ID, "cvelookup", invocation)
+    assert result.ok is False
+    assert result.output["reason"] == reason
+    receipt = _receipt(capsys)
+    assert receipt["status"] == "failed" and receipt["reason"] == reason
+    assert len(receipt["output_sha256"]) == 64
+    if reason == "bundle_invalid_json":
+        assert len(receipt["bundle_sha256"]) == 64
+    else:
+        assert receipt["bundle_sha256"] is None
+
+
+def test_cvelookup_lone_surrogate_still_leaves_receipt(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    result = _ext().invoke(
+        ARM_ID,
+        "cvelookup",
+        {"cve_ids": ["\ud800", "CVE-٢٠٢٤-1234", "CVE-2024-١٢٣٤"]},
+    )
+    assert result.ok is True
+    assert [row["reason"] for row in result.output["results"]] == [
+        "malformed_id",
+        "malformed_id",
+        "malformed_id",
+    ]
+    receipt = _receipt(capsys)
+    assert all(row["reason"] == "malformed_id" for row in receipt["queries"])
+    assert all(len(row["query_sha256"]) == 64 for row in receipt["queries"])
+
+
+def test_cvelookup_is_registered() -> None:
+    from extension.invoke_profiles import invoke_profile
+
+    profile = invoke_profile(ARM_ID, "cvelookup")
+    assert profile is not None
+    assert profile.side_effects == ("local-read",)
+    assert "cvelookup" in _ext().invoke(ARM_ID, "list_tools", {}).output["read_actions"]
+
+
 def test_args_refusal_contract() -> None:
     assert args_refusal("technique", {}) is not None
     assert args_refusal("technique", {"bundle": "b"}) is not None
     assert args_refusal("technique", {"bundle": "b", "id": "T1"}) is None
     assert args_refusal("software", {"bundle": "b"}) is not None
     assert args_refusal("software", {"bundle": "b", "name": "Pacu"}) is None
+    assert args_refusal("cvelookup", {"cve_ids": []}) is None
+    assert args_refusal("cvelookup", {}) is not None

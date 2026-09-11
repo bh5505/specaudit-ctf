@@ -137,9 +137,11 @@ X2-PUB admits the explicit in-process `list_tools` profiles for
 `pyrit`, `routersploit`, `sniper`, `vvah`, `zgrab2`, `nmap`, and
 `semgrep-mcp`. These profiles
 read static policy metadata and do not spawn the upstream binary. The
-`attack-stix-data` row additionally admits four R0 local-read lookups
-(`technique`, `software`, `group`, `relationships`) over an
-operator-supplied local STIX bundle — exact matches only, no
+`attack-stix-data` row additionally admits five R0 local-read lookups
+(`technique`, `software`, `group`, `relationships`, `cvelookup`) over a
+local STIX bundle. `cvelookup` defaults to the bundled demo and emits a JSON
+custody-receipt line for every outcome; the other lookups require an
+operator-supplied bundle. All are exact matches only, with no
 enumeration, no network on any tier. Every
 other CLI invoke action is refused before `Extension.invoke` until it has
 authoritative per-action safety, scope, side-effect, budget, cleanup, and

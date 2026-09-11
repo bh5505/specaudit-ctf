@@ -78,8 +78,9 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
     # the attack-stix-data arm's +4 package files (__init__, arm, policy,
     # reader — the demo bundle is caller data, not part of the closure).
     # 111 with the http-probe policy, arm, and __init__ joining the
-    # producer source closure after rpz-decoder brought it to 108.
-    assert len(lock["producer_source_files"]) == 111
+    # producer source closure after rpz-decoder brought it to 108; 112
+    # when the cvelookup default demo became an explicit data root.
+    assert len(lock["producer_source_files"]) == 112
     # 107 at the 2026-08 nmap regen; +7 for the transport-gate imports
     # (base64, hashlib, http.server, secrets and their traced deps).
     assert len(lock["included_stdlib_files"]) == 114

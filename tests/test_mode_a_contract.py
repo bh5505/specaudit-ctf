@@ -496,9 +496,9 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 51 since the vuls.scan admission (2026-09-05, normal recipe).
     # 54 since the stratus warmup/detonate/revert admission
     # (2026-09-05, normal recipe — cloud-side technique lifecycle).
-    # 59 since the attack-stix-data read admission (2026-09-04): its
-    # list_tools plus four R0 local-read lookups over a local STIX
-    # bundle — no dispatch tier.
+    # 59 since the attack-stix-data read admission (2026-09-04), then
+    # 155 with its CVE-keyed custody lookup: list_tools plus five R0
+    # local-read lookups over a local STIX bundle — no dispatch tier.
     # 60 since the checkov.scan admission (2026-09-05, rehearsal-battery
     # packet): the contained-subprocess carve-out — offline scan pinned
     # inside the packaged synthetic range, no scope env, no operator
@@ -536,8 +536,9 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # emulation-listing packet): the eight v2 GET views as
     # endpoint-armed reads (caldera had no profiles before).
     # 154 with the http-probe scope-gated dispatch profile, after the
-    # rpz-decoder admission brought the registry to 153.
-    assert len(INVOKE_PROFILES) == 154
+    # rpz-decoder admission brought the registry to 153; 155 with
+    # attack-stix-data.cvelookup.
+    assert len(INVOKE_PROFILES) == 155
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.

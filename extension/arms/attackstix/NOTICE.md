@@ -3,9 +3,11 @@
 © 2026 The MITRE Corporation. This work is reproduced and distributed
 with the permission of The MITRE Corporation.
 
-This file is a small verbatim SAMPLE of the MITRE ATT&CK STIX 2.1
-corpus, shipped as offline demo data for the `attack-stix-data` read
-arm. It is data, not code, and it is not maintained here: the
+This file is a small SAMPLE of the MITRE ATT&CK STIX 2.1 corpus,
+shipped as offline demo data for the `attack-stix-data` read arm. Two
+objects carry deterministic `CVE-2099-0001` references under the reserved
+example.invalid domain solely to exercise CVE lookup; those references are
+not upstream ATT&CK claims. It is data, not code, and it is not maintained here: the
 authoritative corpus lives upstream.
 
 Provenance:
@@ -16,7 +18,7 @@ Provenance:
 - ATT&CK version sampled: 19.2 (collection modified 2026-08-05)
 - Sampled 2026-09-04
 
-Sampling criteria (55 objects, verbatim content):
+Sampling criteria (55 objects; upstream content except the two declared fake CVE references):
 
 - 18 `attack-pattern` objects: the cloud/identity technique families
   this suite rehearses (valid accounts, cloud account manipulation,
@@ -30,7 +32,7 @@ Sampling criteria (55 objects, verbatim content):
 
 The bundle id is a synthetic placeholder
 (`bundle--00000000-0000-4000-8000-000000000001`): the file is a subset,
-not the upstream bundle. Object contents and STIX ids are verbatim.
+not the upstream bundle. Object contents and STIX ids otherwise remain verbatim.
 
 To refresh the sample: re-download the upstream file, re-apply the
 sampling criteria above, and update this notice. Lookups against a
