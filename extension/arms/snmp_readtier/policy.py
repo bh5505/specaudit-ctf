@@ -12,7 +12,12 @@ from ..dispatch import load_scope, target_in_scope
 ARM_ID = "snmp-readtier"
 ALLOWED_ACTIONS = frozenset({"probe"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
-ARG_KEYS = frozenset({"host", "port", "community", "oids", "timeout_ms"})
+ARG_KEYS = frozenset({
+    "host", "port", "community", "oids", "timeout_ms", "user",
+    "auth_protocol", "auth_password", "priv_protocol", "priv_password",
+})
+AUTH_PROTOCOLS = frozenset({"none", "md5", "sha", "sha256"})
+PRIV_PROTOCOLS = frozenset({"none", "des", "aes128"})
 ENV_SCOPE = "SNMP_READTIER_SCOPE"
 DEFAULT_COMMUNITY = "public"
 DEFAULT_PORT = 161
@@ -25,6 +30,15 @@ OID_ALLOWLIST = {
     "sysName.0": ".1.3.6.1.2.1.1.5.0",
 }
 _HOST_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$")
+
+
+def _utf8_size(value: Any) -> int | None:
+    if not isinstance(value, str):
+        return None
+    try:
+        return len(value.encode("utf-8"))
+    except UnicodeEncodeError:
+        return None
 
 
 def normalize_oid(raw: Any) -> str | None:
@@ -41,7 +55,9 @@ def args_refusal(payload: dict[str, Any]) -> str | None:
     extra = sorted(set(payload) - ARG_KEYS)
     if extra:
         return f"probe rejects unexpected arguments: {', '.join(extra)}"
-    for required in ("host", "community", "oids", "timeout_ms"):
+    v3 = "user" in payload
+    required_args = ("host", "oids", "timeout_ms") if v3 else ("host", "community", "oids", "timeout_ms")
+    for required in required_args:
         if required not in payload:
             return f"probe requires explicit args.{required}"
     host = payload.get("host")
@@ -56,11 +72,32 @@ def args_refusal(payload: dict[str, Any]) -> str | None:
     port = payload.get("port", DEFAULT_PORT)
     if type(port) is not int or not 1 <= port <= 65_535:
         return "args.port must be an integer from 1 through 65535"
-    community = payload.get("community")
-    if not isinstance(community, str) or not 1 <= len(community.encode("utf-8")) <= 64:
-        return "args.community must be an explicit 1-64 byte UTF-8 string"
-    if any(ord(ch) < 0x20 or ord(ch) == 0x7f for ch in community):
-        return "args.community contains control characters"
+    if v3:
+        user = payload.get("user")
+        user_size = _utf8_size(user)
+        if user_size is None or not 1 <= user_size <= 64:
+            return "args.user must be a 1-64 byte UTF-8 string"
+        if any(ord(ch) < 0x20 or ord(ch) == 0x7f for ch in user):
+            return "args.user contains control characters"
+        auth = payload.get("auth_protocol", "none")
+        privacy = payload.get("priv_protocol", "none")
+        if not isinstance(auth, str) or auth.lower() not in AUTH_PROTOCOLS:
+            return "args.auth_protocol must be one of none, md5, sha, sha256"
+        if not isinstance(privacy, str) or privacy.lower() not in PRIV_PROTOCOLS:
+            return "args.priv_protocol must be one of none, des, aes128"
+        if auth.lower() != "none" and (_utf8_size(payload.get("auth_password")) in (None, 0)):
+            return "args.auth_password must be non-empty UTF-8 when authentication is enabled"
+        if privacy.lower() != "none" and (_utf8_size(payload.get("priv_password")) in (None, 0)):
+            return "args.priv_password must be non-empty UTF-8 when privacy is enabled"
+        if privacy.lower() != "none" and auth.lower() == "none":
+            return "SNMPv3 privacy requires authentication"
+    else:
+        community = payload.get("community")
+        community_size = _utf8_size(community)
+        if community_size is None or not 1 <= community_size <= 64:
+            return "args.community must be an explicit 1-64 byte UTF-8 string"
+        if any(ord(ch) < 0x20 or ord(ch) == 0x7f for ch in community):
+            return "args.community contains control characters"
     oids = payload.get("oids")
     if not isinstance(oids, list) or not 1 <= len(oids) <= len(OID_ALLOWLIST):
         return "args.oids must contain one to three allowed OIDs"

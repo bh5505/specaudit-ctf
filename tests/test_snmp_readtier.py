@@ -71,10 +71,12 @@ def test_probe_is_digest_bound_and_does_not_echo_community(monkeypatch, capsys) 
     result = _ext().invoke(ARM_ID, "probe", _args())
     thread.join(1)
     assert result.ok is True
+    assert result.output["version"] == "v2c"
     row = result.output["results"][0]
     assert row["status"] == "returned" and row["value"]["data"] == "demo"
     assert row["raw_response_sha256"] == hashlib.sha256(reply).hexdigest()
     receipt = _receipt(capsys)
+    assert receipt["version"] == "v2c"
     assert receipt["output_sha256"] and "public" not in json.dumps(receipt)
 
 
@@ -116,6 +118,8 @@ def test_policy_requires_explicit_community_and_scope(capsys) -> None:
 def test_oid_inventory_is_frozen(capsys) -> None:
     listed = _ext().invoke(ARM_ID, "list_tools", {})
     assert list(listed.output["oid_allowlist"]) == ["sysDescr.0", "sysUpTime.0", "sysName.0"]
+    assert listed.output["snmp_versions"] == ["v2c", "v3-usm"]
+    assert {"user", "auth_protocol", "auth_password", "priv_protocol", "priv_password"} <= set(listed.output["arg_keys"])
     bad = _args() | {"oids": [".1.3.6.1.2.1.1.6.0"]}
     assert _ext().invoke(ARM_ID, "probe", bad).ok is False
     _receipt(capsys)
