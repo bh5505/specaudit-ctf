@@ -309,6 +309,29 @@ def test_invoke_transport_ok_exit_zero_can_be_non_complete(
     assert "unowned-evidence" in parsed.reasons
 
 
+def test_encode_invoke_result_retains_only_categorical_failure_reason() -> None:
+    from extension.encode import encode_invoke_result
+    from extension.invoke_profiles import invoke_profile
+
+    profile = invoke_profile("vulnify", "lookup")
+    assert profile is not None
+    categorical = encode_invoke_result(
+        Result(False, "vulnify", "lookup", None, "reason:probe_connection_refused"),
+        profile=profile,
+        started_at="2026-09-11T00:00:00Z",
+        finished_at="2026-09-11T00:00:00Z",
+    )
+    hostile = encode_invoke_result(
+        Result(False, "vulnify", "lookup", None, "secret /operator/private"),
+        profile=profile,
+        started_at="2026-09-11T00:00:00Z",
+        finished_at="2026-09-11T00:00:00Z",
+    )
+    assert "failure reason: probe_connection_refused" in categorical["limitations"]
+    assert hostile["limitations"] == ["required arm failed"]
+    assert "/operator/private" not in json.dumps(hostile)
+
+
 def test_invoke_arm_error_emits_failed_envelope_exit_one(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -450,6 +473,17 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
             assert profile.approval_ref == (
                 f"operator://target-scope/{profile.arm_id.split('-')[0].upper()}_READTIER_SCOPE"
             )
+        elif profile.arm_id == "asset-recon":
+            if profile.action in ("list_tools", "plan", "parse"):
+                assert profile.safety_class == "R0"
+                assert profile.side_effects == ("local-read",)
+                assert profile.approval_ref is None
+            else:
+                assert profile.safety_class == "R1"
+                assert "network-egress" in profile.side_effects
+                assert profile.default_off is True
+                assert profile.synthetic_only is False
+                assert profile.approval_ref and profile.roe_ref
         elif profile.arm_id in ("attack-stix-data", "vulnify"):
             # In-process first-party lookups over caller-named local
             # snapshots; no endpoint, subprocess, mutation, or dispatch.
@@ -596,8 +630,8 @@ def test_range_encoder_spends_one_step_under_freeze_budget(
     no_curated_tools: None,
 ) -> None:
     inner = run_range()
-    # 33 after the two scope-armed UDP read arms.
-    assert len(inner["coverage"]["attempted"]) == 33
+    # 34 after the bounded asset-recon arm.
+    assert len(inner["coverage"]["attempted"]) == 34
     payload = encode_range_document(
         inner,
         started_at="2026-08-25T12:00:00Z",

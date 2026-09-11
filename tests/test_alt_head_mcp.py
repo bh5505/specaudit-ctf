@@ -443,7 +443,7 @@ def test_tool_defs_match_documented_surface_and_annotations() -> None:
     expected = {
         "list": {"readOnlyHint": True, "openWorldHint": False},
         "describe": {"readOnlyHint": True, "openWorldHint": False},
-        "invoke": {"readOnlyHint": False, "openWorldHint": False},
+        "invoke": {"readOnlyHint": False, "openWorldHint": True},
         "run_range": {"readOnlyHint": False, "openWorldHint": False},
     }
     assert {tool["name"]: tool["annotations"] for tool in _TOOL_DEFS} == expected

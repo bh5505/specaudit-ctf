@@ -14,6 +14,37 @@ from .model import Refusal
 from .sources import decode
 
 
+PROBE_REFUSAL_REASONS = frozenset(
+    {
+        "timeout",
+        "connection_refused",
+        "tls_refused",
+        "protocol_refused",
+        "transport_error",
+        "internal_error",
+    }
+)
+
+
+class WorkerRefusal(Refusal):
+    """A redaction-safe refusal category returned by an isolated worker."""
+
+    def __init__(self, reason):
+        self.reason = reason
+        super().__init__(f"probe refusal: {reason}")
+
+
+def _accept_result(result, operation):
+    if not isinstance(result, dict):
+        raise Refusal("provider or probe failed")
+    if result.get("ok") is True:
+        return result
+    reason = result.get("reason")
+    if operation == "probe" and reason in PROBE_REFUSAL_REASONS:
+        raise WorkerRefusal(reason)
+    raise Refusal("provider or probe failed")
+
+
 def run_worker(payload, timeout):
     if os.name != "posix":
         raise Refusal("bounded live workers require POSIX")
@@ -53,9 +84,7 @@ def run_worker(payload, timeout):
         if process.returncode != 0:
             raise Refusal("worker failed")
         result = decode(b"".join(chunks))
-        if not isinstance(result, dict) or result.get("ok") is not True:
-            raise Refusal("provider or probe failed")
-        return result
+        return _accept_result(result, payload.get("operation"))
     except (OSError, subprocess.SubprocessError):
         raise Refusal("worker failed") from None
     finally:

@@ -15,6 +15,7 @@ from typing import Any
 import pytest
 
 from extension.arms.httpprobe import ARM_ID, HttpProbeArm
+from extension.arms.httpprobe.arm import _run_bounded
 from extension.arms.httpprobe.policy import argv_for
 from extension.contract import ArmSpec, Extension, load_catalog
 from extension.invoke_profiles import invoke_profile
@@ -163,9 +164,11 @@ def test_closed_schema_and_malformed_url_refuse_before_dispatch(
     )
     malformed = arm.invoke(_spec(), "probe", {"url": "http://[broken/"})
     bad_port = arm.invoke(_spec(), "probe", {"url": "http://127.0.0.1:notaport/"})
+    userinfo = arm.invoke(_spec(), "probe", {"url": "http://user:secret@127.0.0.1/"})
     assert extra.ok is False and "surprise" in extra.error
     assert malformed.ok is False and "well-formed" in malformed.error
     assert bad_port.ok is False and "well-formed" in bad_port.error
+    assert userinfo.ok is False and "userinfo credentials" in userinfo.error
     assert "[dispatch]" not in capsys.readouterr().err
 
 
@@ -258,6 +261,32 @@ def test_timeout_is_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
         assert result.ok is False and "timed out" in result.error
     finally:
         server.shutdown(); server.server_close()
+
+
+def test_subprocess_capture_is_killed_at_combined_byte_cap() -> None:
+    proc, overflowed = _run_bounded(
+        [sys.executable, "-c", "import sys; sys.stdout.buffer.write(b'x'*500000)"],
+        timeout=10,
+        maximum=4096,
+    )
+    assert overflowed is True
+    assert len(proc.stdout) + len(proc.stderr) <= 4096
+
+
+@pytest.mark.skipif(os.name != "posix", reason="process-group cleanup is POSIX-specific")
+def test_capture_cap_kills_pipe_inheriting_descendants() -> None:
+    started = time.monotonic()
+    script = (
+        "import subprocess,sys; "
+        "subprocess.Popen([sys.executable,'-c','import time; time.sleep(10)'],"
+        "stdout=sys.stdout,stderr=sys.stderr); "
+        "sys.stdout.buffer.write(b'x'*500000); sys.stdout.flush()"
+    )
+    _proc, overflowed = _run_bounded(
+        [sys.executable, "-c", script], timeout=5, maximum=4096
+    )
+    assert overflowed is True
+    assert time.monotonic() - started < 2
 
 
 def test_argv_and_catalog_registration() -> None:

@@ -66,6 +66,7 @@ def test_availability_names_both_independent_grants() -> None:
     }) == ["ASSET_RECON_PROBE_SCOPE", "ASSET_RECON_PROVIDERS"]
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Mode A custody is Unix-only")
 @pytest.mark.parametrize("action", ACTIONS)
 @pytest.mark.parametrize("status", ("complete", "partial", "failed"))
 def test_every_action_admitted_with_noncomplete_custody(
@@ -226,6 +227,7 @@ def test_excluded_seed_and_downstream_evidence_do_not_leak(monkeypatch: pytest.M
     assert "198.51.100.25" in output  # sibling path remains useful
 
 
+@pytest.mark.skipif(os.name != "posix", reason="Mode A custody is Unix-only")
 def test_real_partial_packet_retains_mode_a_graph_and_fails_public_envelope(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import signal
 import subprocess
+import threading
 from typing import Any, Mapping
 
 from ...contract import TRANSPORT_CLI, ArmSpec, NotInstalledError, Result
@@ -83,14 +86,7 @@ class HttpProbeArm:
                 f"action {action!r} rejected by argv policy",
             )
         try:
-            proc = subprocess.run(
-                cmd,
-                capture_output=True,
-                timeout=self.timeout,
-                check=False,
-                stdin=subprocess.DEVNULL,
-                shell=False,
-            )
+            proc, overflowed = _run_bounded(cmd, self.timeout, MAX_OUTPUT_CHARS)
         except subprocess.TimeoutExpired:
             return Result(
                 False,
@@ -101,6 +97,8 @@ class HttpProbeArm:
             )
         except OSError as exc:
             return Result(False, spec.id, action, None, redact(str(exc)))
+        if overflowed:
+            return Result(False, spec.id, action, None, "curl output exceeded capture cap")
 
         stdout = _decode(proc.stdout)
         stderr = _decode(proc.stderr)
@@ -141,6 +139,85 @@ class HttpProbeArm:
             {"dispatch": stamp(scope, target), "output": report},
             None,
         )
+
+
+def _run_bounded(
+    cmd: list[str], timeout: float, maximum: int
+) -> tuple[subprocess.CompletedProcess[bytes], bool]:
+    """Drain both pipes concurrently, killing curl at a combined byte cap."""
+    process = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        stdin=subprocess.DEVNULL,
+        shell=False,
+        start_new_session=(os.name == "posix"),
+    )
+    buffers = [bytearray(), bytearray()]
+    overflow = threading.Event()
+    lock = threading.Lock()
+    total = 0
+
+    def drain(stream: Any, destination: bytearray) -> None:
+        nonlocal total
+        while True:
+            try:
+                chunk = stream.read(8192)
+            except (OSError, ValueError):
+                return
+            if not chunk:
+                return
+            with lock:
+                remaining = maximum - total
+                destination.extend(chunk[: max(0, remaining)])
+                total += min(len(chunk), max(0, remaining))
+                if len(chunk) > remaining:
+                    overflow.set()
+                    _kill_process_tree(process)
+                    return
+
+    threads = [
+        threading.Thread(target=drain, args=(stream, destination), daemon=True)
+        for stream, destination in zip((process.stdout, process.stderr), buffers)
+    ]
+    for thread in threads:
+        thread.start()
+    try:
+        returncode = process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        _kill_process_tree(process)
+        process.wait()
+        _finish_drains(process, threads)
+        raise
+    _finish_drains(process, threads)
+    return (
+        subprocess.CompletedProcess(cmd, returncode, bytes(buffers[0]), bytes(buffers[1])),
+        overflow.is_set(),
+    )
+
+
+def _kill_process_tree(process: subprocess.Popen[Any]) -> None:
+    try:
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGKILL)
+        else:
+            process.kill()
+    except (OSError, ProcessLookupError):
+        pass
+
+
+def _finish_drains(process: subprocess.Popen[Any], threads: list[threading.Thread]) -> None:
+    """Close inherited pipes and bound reader shutdown after curl exits."""
+    for thread in threads:
+        thread.join(timeout=0.25)
+    for stream in (process.stdout, process.stderr):
+        if stream is not None:
+            try:
+                stream.close()
+            except OSError:
+                pass
+    for thread in threads:
+        thread.join(timeout=0.25)
 
 
 def _decode(value: bytes | str | None) -> str:

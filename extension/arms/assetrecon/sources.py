@@ -20,7 +20,10 @@ def read_fixture(path):
         raise Refusal("fixture requires absolute regular file")
     fd = None
     try:
-        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+        if os.path.islink(path):
+            raise Refusal("fixture is not a bounded regular file")
+        flags = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_NOFOLLOW", 0)
+        fd = os.open(path, flags)
         info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE_BYTES:
             raise Refusal("fixture is not a bounded regular file")

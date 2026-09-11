@@ -538,8 +538,8 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 154 with the http-probe scope-gated dispatch profile, after the
     # rpz-decoder admission brought the registry to 153; 155 with
     # attack-stix-data.cvelookup.
-    # 161 after each UDP reader added policy discovery and one probe.
-    assert len(INVOKE_PROFILES) == 161
+    # 168 after asset-recon added seven bounded actions.
+    assert len(INVOKE_PROFILES) == 168
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -586,6 +586,16 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert profile.default_off is True
             assert profile.synthetic_only is False
             assert profile.tier == "experimental"
+        elif profile.arm_id == "asset-recon":
+            if profile.action in ("list_tools", "plan", "parse"):
+                assert profile.safety_class == "R0"
+                assert profile.side_effects == ("local-read",)
+                assert profile.synthetic_only is True
+            else:
+                assert profile.safety_class == "R1"
+                assert "network-egress" in profile.side_effects
+                assert profile.default_off is True
+                assert profile.synthetic_only is False
         elif profile.arm_id in ("attack-stix-data", "vulnify"):
             # In-process lookups over caller-named local snapshots; no
             # endpoint, subprocess, mutation, or dispatch.
@@ -658,6 +668,15 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["safety_class"] == "R1"
             assert payload["side_effects"] == ["network-egress"]
             assert payload["synthetic_only"] is False
+        elif profile.arm_id == "asset-recon":
+            if profile.action in ("list_tools", "plan", "parse"):
+                assert payload["safety_class"] == "R0"
+                assert payload["side_effects"] == ["local-read"]
+                assert payload["synthetic_only"] is True
+            else:
+                assert payload["safety_class"] == "R1"
+                assert "network-egress" in payload["side_effects"]
+                assert payload["synthetic_only"] is False
         elif profile.arm_id in ("attack-stix-data", "vulnify"):
             # Local-read manifests: R0 local-read, synthetic-only (the
             # in-process readers never leave the process).

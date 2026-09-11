@@ -4,7 +4,7 @@ Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
 
 ## Overview
 
-- **Arms**: 30 specialized adapters. No row is held (the HTTP-MCP
+- **Arms**: 34 specialized adapters. No row is held (the HTTP-MCP
   held set closed 2026-09-04; the tier remains enforced for any
   future held row); the burp-mcp, google-mcp-security, semgrep-mcp,
   prowler-mcp, and metasploit-mcp rows are research integrations on
@@ -24,11 +24,11 @@ Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
   other agent CLIs.
 - **Range**: synthetic fixtures (`live_aws: false`). No live cloud.
 
-`extension/coverage.yaml` classifies the landscape survey (49 ids,
+`extension/coverage.yaml` classifies the landscape survey (53 ids,
 frozen order). It is a **survey map**, not a ship list: a row is not
 a promise that an adapter exists. Every row has a support tier
 (`research` | `experimental` | `maintained` | `held`). In this cut
-every arm row is curated (30 handlers) and every methodology-only
+every arm row is curated (34 handlers) and every methodology-only
 row stays uncurated (19). `curated` is not `maintained`.
 
 Per-arm caveats (composite egress, exploitation, LLM spend, source
@@ -641,7 +641,7 @@ prefixes.
   repo path in the scope env** — `parse_scope` refuses it as not a
   CIDR, IP, hostname, or URI.
 
-Safe default is unarmed: shipping 30 handlers does not fire a packet
+Safe default is unarmed: shipping 34 handlers does not fire a packet
 until `*_BIN` (or endpoint) **and** (for dispatch) `*_DISPATCH_SCOPE`
 are set.
 

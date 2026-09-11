@@ -10,7 +10,7 @@ from ...contract import Result
 from ..dispatch import log_dispatch
 from .graph import Graph
 from .model import Budget, CEILINGS, DEFAULTS, Exclusions, Observation, Refusal, bounded_list, closed, live_value, normalize, pattern_covers, seeds
-from .runner import run_worker
+from .runner import WorkerRefusal, run_worker
 from .probe_policy import validate_target
 from .sources import ADAPTERS, read_fixture
 
@@ -301,6 +301,10 @@ class AssetReconArm:
                 if response.get("complete") is False:
                     output["status"] = "partial"
                     output["limitations"].append("explicit probe capture incomplete")
+            except WorkerRefusal as exc:
+                output["status"] = "partial"
+                output["limitations"].append(f"explicit probe refused: {exc.reason}")
+                break
             except Refusal:
                 output["status"] = "partial"
                 output["limitations"].append("explicit probe failed or budget exhausted")
@@ -313,4 +317,12 @@ class AssetReconArm:
             if "probe output budget reached" not in output["limitations"]:
                 output["limitations"].append("probe output budget reached")
         output["counts"]["probes"] = len(output["probes"])
-        return Result(output["status"] == "complete", ARM_ID, action, output, None if output["status"] == "complete" else "partial probe results")
+        error = None
+        if output["status"] != "complete":
+            refusal = next(
+                (item.rpartition(": ")[2] for item in output["limitations"]
+                 if item.startswith("explicit probe refused: ")),
+                None,
+            )
+            error = f"reason:probe_{refusal}" if refusal else "partial probe results"
+        return Result(output["status"] == "complete", ARM_ID, action, output, error)

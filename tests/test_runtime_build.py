@@ -82,10 +82,10 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
     # when the cvelookup default demo became an explicit data root; 117
     # after vulnify added four reader modules and its deterministic fixture;
     # 127 after the two UDP readers added four modules and one fixture each.
-    assert len(lock["producer_source_files"]) == 127
+    assert len(lock["producer_source_files"]) == 141
     # 107 at the 2026-08 nmap regen; +7 for the transport-gate imports
     # (base64, hashlib, http.server, secrets and their traced deps).
-    assert len(lock["included_stdlib_files"]) == 114
+    assert len(lock["included_stdlib_files"]) == 118
     assert len(lock["included_yaml_files"]) == 18
     assert lock["capability_manifest"] == {
         "path": "tests/goldens/capability-manifest/agent-wiz.list_tools.json",
@@ -298,6 +298,7 @@ def test_smoke_rejects_claimed_observed_custody_digest_mismatch(
         build.smoke(bundle)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="tree mode vector requires POSIX chmod")
 def test_tree_v1_vector_matches_cross_language_contract(tmp_path: Path) -> None:
     vector = json.loads(VECTOR.read_text())
     root = tmp_path / "bundle"

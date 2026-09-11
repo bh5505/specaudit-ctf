@@ -91,14 +91,14 @@ def test_every_catalog_row_has_tier(entries: list[dict]) -> None:
 
 def test_kind_counts_preserved(entries: list[dict]) -> None:
     kinds = [row["kind"] for row in entries]
-    # 33 after the two scope-armed UDP read arms joined vulnify.
-    assert kinds.count("arm") == 33
+    # 34 after the bounded asset-recon arm.
+    assert kinds.count("arm") == 34
     # 19 since the edge-device-posture methodology row (2026-09-06
     # IoT packet: plane model + reconciliation, instantiated by the
     # lab-edge-01 live challenge).
     assert kinds.count("methodology-only") == 19
-    # 52 after the two scope-armed UDP read arms.
-    assert len(entries) == 52
+    # 53 after the bounded asset-recon arm.
+    assert len(entries) == 53
 
 
 def test_schema_rejects_missing_tier() -> None:

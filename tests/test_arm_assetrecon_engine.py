@@ -17,7 +17,7 @@ from extension.arms.assetrecon import arm, worker
 from extension.arms.assetrecon.graph import Graph
 from extension.arms.assetrecon.model import Budget, Exclusions, Observation, Refusal, live_value, normalize, pattern_covers, seeds
 from extension.arms.assetrecon.probe_policy import validate_target
-from extension.arms.assetrecon.runner import run_worker
+from extension.arms.assetrecon.runner import WorkerRefusal, _accept_result, run_worker
 from extension.arms.assetrecon.sanitize import safe_text
 from extension.arms.assetrecon.sources import ADAPTERS, decode, read_fixture, shodan
 from extension.contract import ArmSpec
@@ -217,8 +217,11 @@ def test_fixture_reader_refuses_symlink_fifo_directory_and_deep_json(tmp_path):
     link = tmp_path / "link.json"
     link.symlink_to(file)
     fifo = tmp_path / "fifo"
-    os.mkfifo(fifo)
-    for path in (link, fifo, tmp_path):
+    paths = [link, tmp_path]
+    if hasattr(os, "mkfifo"):
+        os.mkfifo(fifo)
+        paths.append(fifo)
+    for path in paths:
         with pytest.raises(Refusal):
             read_fixture(str(path))
     with pytest.raises(Refusal):
@@ -464,6 +467,7 @@ def test_worker_refusal_is_hermetic_subprocess():
         run_worker({"operation": "runtime-refusal-check"}, 2)
 
 
+@pytest.mark.skipif(os.name != "posix", reason="live worker is POSIX-only")
 def test_worker_deadline_reaps_blocking_child(monkeypatch):
     from extension.arms.assetrecon import runner
     original = subprocess.Popen
@@ -521,6 +525,7 @@ def test_certspotter_cursor_is_bounded_opaque_and_url_encoded(monkeypatch):
     assert "after=page%3A2%2Fnext%3F" in captured[0]
 
 
+@pytest.mark.skipif(os.name != "posix", reason="live worker is POSIX-only")
 def test_real_worker_success_contract_with_hermetic_boundary(monkeypatch):
     from extension.arms.assetrecon import runner
     original = subprocess.Popen
@@ -628,6 +633,29 @@ def test_registry_overview_projects_bound_holder(monkeypatch):
     assert response["data"] == [{"asn": 65552, "organization": "Example Holder"}]
 
 
+def test_registry_normalizes_real_ripestat_string_asn_fixture(monkeypatch):
+    captured = json.loads(
+        (FIXTURES / "ripe-stat-network-info-8.8.8.8.json").read_text(encoding="utf-8")
+    )
+    assert captured["data"]["asns"] == ["15169"]  # Provider's actual wire shape.
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (captured, HASH))
+    response = worker.collect("registry", "ip", "8.8.8.8")
+    assert response["data"] == [
+        {"ip": "8.8.8.8", "prefix": "8.8.8.0/24", "asn": 15169}
+    ]
+
+
+@pytest.mark.parametrize("asn", ["", "AS15169", "15.169", "-1", "4294967296"])
+def test_registry_rejects_non_wire_asn_strings(monkeypatch, asn):
+    captured = {
+        "status": "ok",
+        "data": {"asns": [asn], "prefix": "8.8.8.0/24"},
+    }
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (captured, HASH))
+    with pytest.raises(Refusal, match="ASN"):
+        worker.collect("registry", "ip", "8.8.8.8")
+
+
 def test_registry_network_info_must_bind_queried_ip(monkeypatch):
     response = {"status": "ok", "data": {"prefix": "1.1.1.0/24", "asns": [13335]}}
     monkeypatch.setattr(worker, "fetch", lambda *a, **k: (response, HASH))
@@ -673,6 +701,41 @@ def test_zgrab_composition_retains_only_bounded_redacted_summary(monkeypatch):
     assert observation["status"] == "responded"
     assert "secret" not in observation["result_preview"]
     assert len(observation["result_preview"]) <= 512
+
+
+def test_probe_refusal_category_survives_worker_redaction(monkeypatch):
+    failure = {
+        "ok": False,
+        "reason": "connection_refused",
+        "error": "operation failed [REDACTED]",
+    }
+    with pytest.raises(WorkerRefusal) as exc:
+        _accept_result(failure, "probe")
+    assert exc.value.reason == "connection_refused"
+    with pytest.raises(Refusal) as untrusted:
+        _accept_result({**failure, "reason": "secret-target"}, "probe")
+    assert type(untrusted.value) is Refusal
+
+    monkeypatch.setenv("ASSET_RECON_PROBE_SCOPE", "8.8.8.8")
+    monkeypatch.setattr(
+        arm, "run_worker", lambda *_args: (_ for _ in ()).throw(exc.value)
+    )
+    result = invoke(
+        "probe",
+        {"live": True, "targets": [{"ip": "8.8.8.8", "port": 80, "method": "tcp"}]},
+    )
+    assert result.ok is False
+    assert result.error == "reason:probe_connection_refused"
+    assert result.output["limitations"] == [
+        "explicit probe refused: connection_refused"
+    ]
+    assert "[REDACTED]" not in result.error
+
+
+def test_worker_failure_categories_never_include_exception_text():
+    hostile = ConnectionRefusedError("secret target /operator/private")
+    assert worker._failure_reason("probe", hostile) == "connection_refused"
+    assert worker._failure_reason("collect", hostile) is None
 
 
 def test_probe_partial_capture_stays_partial(monkeypatch):

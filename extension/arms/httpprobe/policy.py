@@ -57,6 +57,8 @@ def target_refusal(payload: dict) -> str | None:
         return "probe target must be a well-formed http(s) URL"
     if parsed.scheme not in ("http", "https") or not hostname:
         return "probe target must be an http(s) URL"
+    if parsed.username is not None or parsed.password is not None:
+        return "probe target URL must not contain userinfo credentials"
 
     headers = payload.get("headers", {})
     if not isinstance(headers, dict):

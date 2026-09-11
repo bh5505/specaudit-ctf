@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import stat
 from datetime import datetime, timezone
 from typing import Any, Mapping, Sequence
@@ -343,6 +344,16 @@ def encode_capability_manifests() -> dict[str, dict[str, Any]]:
     }
 
 
+_CATEGORICAL_FAILURE_RE = re.compile(r"reason:[a-z][a-z0-9_]{0,63}\Z")
+
+
+def _categorical_failure_reason(error: str | None) -> str | None:
+    """Retain an explicit safe reason code, never free-form arm error text."""
+    if isinstance(error, str) and _CATEGORICAL_FAILURE_RE.fullmatch(error):
+        return error.removeprefix("reason:")
+    return None
+
+
 def encode_invoke_result(
     result: Result,
     *,
@@ -373,7 +384,11 @@ def encode_invoke_result(
     else:
         claimed = STATUS_FAILED
         coverage = _coverage(attempted=(cap,), failed=(cap,), required=(cap,))
-        limitations = ("required arm failed",)
+        reason = _categorical_failure_reason(result.error)
+        limitations = (
+            "required arm failed",
+            *((f"failure reason: {reason}",) if reason else ()),
+        )
     candidate = _envelope(
         capability_id=cap,
         tool={"name": profile.tool_name, "version": profile.tool_version},

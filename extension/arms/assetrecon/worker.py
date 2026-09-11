@@ -9,7 +9,11 @@ import hashlib
 import ipaddress
 import json
 import os
-import resource
+import re
+try:
+    import resource
+except ModuleNotFoundError:  # pragma: no cover - exercised by Windows imports
+    resource = None
 import socket
 import ssl
 import sys
@@ -135,6 +139,12 @@ def collect(source, kind, value, variant=None):
                     raise Refusal("registry prefix does not bind query")
                 normalized_asns = []
                 for asn in asns:
+                    # RIPEstat network-info serializes ASNs as bare decimal
+                    # strings (unlike our caller contract, which uses ints or
+                    # AS-prefixed strings). Normalize that provider shape at
+                    # the trust boundary, without widening seed inputs.
+                    if isinstance(asn, str) and re.fullmatch(r"[0-9]{1,10}", asn):
+                        asn = int(asn)
                     if type(asn) is not int:
                         raise Refusal("invalid registry ASN")
                     normalized_asns.append(int(normalize("asn", asn)))
@@ -359,10 +369,31 @@ def execute(request):
     return probe(request["target"], request.get("timeout", 8))
 
 
+def _failure_reason(operation, exc):
+    """Return a bounded category; never serialize exception text."""
+    if operation != "probe":
+        return None
+    if isinstance(exc, (TimeoutError, socket.timeout)):
+        return "timeout"
+    if isinstance(exc, ConnectionRefusedError):
+        return "connection_refused"
+    if isinstance(exc, ssl.SSLError):
+        return "tls_refused"
+    if isinstance(exc, Refusal):
+        return "protocol_refused"
+    if isinstance(exc, OSError):
+        return "transport_error"
+    return "internal_error"
+
+
 def main():
+    operation = None
     try:
         request = decode(sys.stdin.buffer.read(16385))
+        operation = request.get("operation") if isinstance(request, dict) else None
         request = validate_request(request)
+        if resource is None:
+            raise Refusal("bounded live workers require POSIX")
         resource.setrlimit(resource.RLIMIT_AS, (268435456, 268435456))
         resource.setrlimit(resource.RLIMIT_CPU, (12, 12))
         resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0))
@@ -372,9 +403,14 @@ def main():
         if len(encoded) > 1048576:
             raise Refusal("worker output budget reached")
         sys.stdout.buffer.write(encoded)
-    except Exception:
-        # Provider errors may contain URLs with API credentials. Constant only.
-        sys.stdout.write('{"ok":false,"error":"operation failed [REDACTED]"}')
+    except Exception as exc:
+        # Provider errors may contain URLs with API credentials. Only a closed
+        # probe category crosses the worker boundary; details remain redacted.
+        reason = _failure_reason(operation, exc)
+        failure = {"ok": False, "error": "operation failed [REDACTED]"}
+        if reason is not None:
+            failure["reason"] = reason
+        sys.stdout.write(json.dumps(failure, separators=(",", ":")))
 
 
 if __name__ == "__main__":

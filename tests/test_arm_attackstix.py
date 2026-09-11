@@ -386,6 +386,8 @@ def test_cvelookup_demo_hit_miss_and_malformed_leave_receipt(
     assert hit["cve_id"] == "CVE-2099-0001"
     assert hit["status"] == "matched" and hit["count_matched"] == 2
     assert {row["type"] for row in hit["matched_objects"]} == {"attack-pattern", "tool"}
+    assert all(row["cve_id"] == "CVE-2099-0001" for row in hit["matched_objects"])
+    assert all(row["description"] for row in hit["matched_objects"])
     assert all(row["external_references"] for row in hit["matched_objects"])
     assert all("x_mitre_version" in row for row in hit["matched_objects"])
     assert miss["reason"] == "unknown_cve" and miss["matched_objects"] == []

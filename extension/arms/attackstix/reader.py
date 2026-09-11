@@ -184,6 +184,7 @@ def find_cve_objects(index: dict[str, Any], cve_id: str) -> list[dict[str, Any]]
         ):
             continue
         projected: dict[str, Any] = {
+            "cve_id": wanted,
             "stix_id": row["id"],
             "type": str(row.get("type") or ""),
             "name": str(row.get("name") or ""),
