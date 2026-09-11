@@ -1,0 +1,5 @@
+principal_id,principal_type,account_id,arn,permissions_boundary,tags
+AROAEXAMPLE1,Role,123456789012,arn:aws:iam::123456789012:role/ExampleRole,,Environment=Test;Project=rehearsal
+AROAEXAMPLE2,Role,123456789012,arn:aws:iam::123456789012:role/CrossAccountRole,arn:aws:iam::123456789012:policy/BoundaryPolicy,Environment=Test;Project=rehearsal
+AIDAEXAMPLE1,User,123456789012,arn:aws:iam::123456789012:user/TestUser,,Environment=Test;Project=rehearsal
+AROAEXAMPLE3,Role,999999999999,arn:aws:iam::999999999999:role/ExternalRole,,Environment=Prod;Project=External

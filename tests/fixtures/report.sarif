@@ -1,0 +1,80 @@
+{
+  "version": "2.1.0",
+  "$schema": "https://json.schemastore.org/sarif-2.1.0-json-schema.json",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "specaudit-ctf",
+          "rules": [
+            {
+              "id": "ext_telecom_t1_trust_boundary",
+              "name": "Trust Boundary Violation",
+              "shortDescription": {"text": "Detects trust boundary violations"},
+              "defaultConfiguration": {"level": "error"}
+            },
+            {
+              "id": "ext_telecom_t2_adversarial_validation",
+              "name": "Adversarial Validation Bypass",
+              "shortDescription": {"text": "Detects bypasses of adversarial validation checks"},
+              "defaultConfiguration": {"level": "warning"}
+            },
+            {
+              "id": "ext_telecom_t3_evidence_gate",
+              "name": "Deterministic Gate Failure",
+              "shortDescription": {"text": "Detects failures in deterministic evidence generation gates"},
+              "defaultConfiguration": {"level": "error"}
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "ext_telecom_t1_trust_boundary",
+          "level": "error",
+          "message": {"text": "Trust boundary violation in IAM role assumption"},
+          "partialFingerprints": {
+            "finding_alias": "ext_telecom_cyber:ext_telecom_t1_trust_boundary:FG-001"
+          },
+          "properties": {
+            "technique": "T1",
+            "severity": "high",
+            "risk_score": 85,
+            "exposure_estimate": 85
+          },
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "evidence/finding_candidate.csv:1"}}}]
+        },
+        {
+          "ruleId": "ext_telecom_t2_adversarial_validation",
+          "level": "warning",
+          "message": {"text": "Adversarial validation bypass detected"},
+          "partialFingerprints": {
+            "finding_alias": "ext_telecom_cyber:ext_telecom_t2_adversarial_validation:FG-002"
+          },
+          "properties": {
+            "technique": "T2",
+            "severity": "medium",
+            "risk_score": 65,
+            "exposure_estimate": 65
+          },
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "evidence/finding_candidate.csv:2"}}}]
+        },
+        {
+          "ruleId": "ext_telecom_t3_evidence_gate",
+          "level": "error",
+          "message": {"text": "Deterministic gate failure in evidence generation"},
+          "partialFingerprints": {
+            "finding_alias": "ext_telecom_cyber:ext_telecom_t3_evidence_gate:FG-003"
+          },
+          "properties": {
+            "technique": "T3",
+            "severity": "high",
+            "risk_score": 90,
+            "exposure_estimate": 90
+          },
+          "locations": [{"physicalLocation": {"artifactLocation": {"uri": "evidence/finding_candidate.csv:3"}}}]
+        }
+      ]
+    }
+  ]
+}

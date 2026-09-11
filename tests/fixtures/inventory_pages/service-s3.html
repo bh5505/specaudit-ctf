@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SpecAudit CTF - S3 Service Findings</title>
+</head>
+<body>
+    <header>
+        <h1>S3 Service Findings</h1>
+        <p>rehearsal-2026 Project</p>
+    </header>
+    <main>
+        <table>
+            <thead>
+                <tr><th>Finding ID</th><th>Technique</th><th>Severity</th><th>Risk Score</th><th>Description</th></tr>
+            </thead>
+            <tbody>
+                <tr><td>FG-S3-001</td><td>T1</td><td>HIGH</td><td>92</td><td>S3 bucket policy allows public read access</td></tr>
+                <tr><td>FG-S3-002</td><td>T1</td><td>HIGH</td><td>87</td><td>S3 bucket ACL grants write access to authenticated users</td></tr>
+                <tr><td>FG-S3-003</td><td>T2</td><td>MEDIUM</td><td>65</td><td>S3 object validation bypass via metadata injection</td></tr>
+                <tr><td>FG-S3-004</td><td>T4</td><td>LOW</td><td>35</td><td>Duplicate candidate detection in S3 rule corpus</td></tr>
+            </tbody>
+        </table>
+    </main>
+</body>
+</html>

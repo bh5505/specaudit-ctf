@@ -1,0 +1,6 @@
+run_id,check_id,technique,status,started_at,completed_at,findings_count,exit_code,details
+ctf-20260101-120000-abcdef,t1_trust_boundary,T1,PASS,2026-01-01T12:00:00Z,2026-01-01T12:00:05Z,1,0,"Trust boundary check completed successfully"
+ctf-20260101-120000-abcdef,t2_adversarial_validation,T2,PASS,2026-01-01T12:00:05Z,2026-01-01T12:00:10Z,1,0,"Adversarial validation check completed successfully"
+ctf-20260101-120000-abcdef,t3_deterministic_gate,T3,PASS,2026-01-01T12:00:10Z,2026-01-01T12:00:15Z,1,0,"Deterministic gate check completed successfully"
+ctf-20260101-120000-abcdef,t4_duplicate_candidates,T4,PASS,2026-01-01T12:00:15Z,2026-01-01T12:00:20Z,1,0,"Duplicate candidates check completed successfully"
+ctf-20260101-120000-abcdef,t5_sandbox_compliance,T5,PASS,2026-01-01T12:00:20Z,2026-01-01T12:00:25Z,1,0,"Sandbox compliance check completed successfully"

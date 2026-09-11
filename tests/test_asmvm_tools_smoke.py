@@ -249,11 +249,10 @@ def test_runner_agrees_across_engines(mini_pack, mini_evidence, tmp_path):
 def test_fast_csv_rejects_headers_the_migrations_do_not_declare(mini_pack,
                                                                 mini_evidence,
                                                                 tmp_path):
-    """--fast-csv creates the table from the CSV itself, so a header the pack
-    migrations never declared would silently widen the table; the runner refuses
-    it and names the table and column. The row-by-row path accepts the same file
-    (mapping aliases and value maps are allowed to rename columns), which is why
-    the guard exists only on the fast path - and why csv_type_preflight exists."""
+    """Neither loader may widen the migration-declared schema from CSV input.
+
+    The native path rejects the header before loading; the row-by-row path fails
+    its explicit-column insert. Both name the table and unexpected column."""
     bad = mini_evidence / "smoke_service.csv"
     rows = list(csv.reader(bad.open(encoding="utf-8")))
     rows[0].append("surprise_column")
@@ -270,10 +269,13 @@ def test_fast_csv_rejects_headers_the_migrations_do_not_declare(mini_pack,
     assert "smoke_service" in (proc.stderr + proc.stdout)
     assert "surprise_column" in (proc.stderr + proc.stdout)
 
-    _run([RUNNER, "--pack", str(mini_pack),
-          "--evidence-dir", str(mini_evidence),
-          "--out-dir", str(tmp_path / "out_row_ok"),
-          "--db", "sqlite", "--run-id", RUN_ID, "--limit", "100"])
+    row_proc = _run([RUNNER, "--pack", str(mini_pack),
+                     "--evidence-dir", str(mini_evidence),
+                     "--out-dir", str(tmp_path / "out_row_bad"),
+                     "--db", "sqlite", "--run-id", RUN_ID, "--limit", "100"],
+                    expect_ok=False)
+    assert "smoke_service" in (row_proc.stderr + row_proc.stdout)
+    assert "surprise_column" in (row_proc.stderr + row_proc.stdout)
 
 
 def test_duckdb_loads_the_same_way_with_and_without_fast_csv(mini_pack, mini_evidence,

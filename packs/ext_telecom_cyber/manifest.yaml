@@ -1,0 +1,89 @@
+pack_id: ext_telecom_cyber
+pack_name: "Telecom Cyber Audit Starter Kit"
+pack_version: "0.1.0-dev"
+category: deterministic
+domain: ext_telecom_cyber
+description: "Telecom cyber audit declarative starter kit for the Project rehearsal rehearsal. Ships source-ingest mappings for AWS cyber-posture evidence (S3 bucket, IAM principal, security-group) and method T1-T7 technique-shaped deterministic checks over evidence bundles, finding candidates, rule-corpus generalization, and the resumable check-run ledger."
+owner: audit-data-analytics-po
+status: draft
+check:
+  cost_class: deterministic
+contributes:
+  ingest:
+    mapping_spec_path: synthetic/mapping_spec.yaml
+    classifier_hints_path: classifier_hints.yaml
+    engagement_configs_dir: engagement_configs
+
+input_contract:
+  required_tables:
+    - gw_silver_ext_telecom_s3_bucket
+    - gw_silver_ext_telecom_iam_principal
+    - gw_silver_ext_telecom_security_group
+    - gw_silver_ext_telecom_evidence_bundle
+    - gw_silver_ext_telecom_finding_candidate
+    - gw_silver_ext_telecom_rule
+    - gw_silver_ext_telecom_check_run
+  required_event_types: []
+  required_fields: {}
+  minimum_rows: {}
+
+thresholds: {}
+eval_cases: []
+workpaper_template: templates/workpaper_telecom_cyber.md.tera
+explain_doc: README.md
+checks:
+  - id: ext_telecom_t1_trust_boundary
+    name: "Ext Telecom T1 trust-boundary completeness"
+    check_type: deterministic_sql
+    file: checks/ext_telecom_t1_trust_boundary.sql
+    depends_on_tables: [gw_silver_ext_telecom_s3_bucket, gw_silver_ext_telecom_iam_principal, gw_silver_ext_telecom_security_group]
+    severity: high
+    explanation: "Flags S3 buckets whose public-access block is disabled or whose bucket policy allows anonymous principals, IAM principals that allow an external principal, and ingress security-group rules that are public or use 0.0.0.0/0, operationalizing the threat-model-first trust-boundary map (method T1) over the AWS posture surface."
+
+  - id: ext_telecom_t2_adversarial_validation
+    name: "Ext Telecom T2 adversarial validation coverage"
+    check_type: deterministic_sql
+    file: checks/ext_telecom_t2_adversarial_validation.sql
+    depends_on_tables: [gw_silver_ext_telecom_evidence_bundle]
+    severity: medium
+    explanation: "Flags evidence bundles that were never adversarially re-verified by a second reviewer, enforcing the finder-never-validates rule (method T2) before findings ship."
+
+  - id: ext_telecom_t3_evidence_gate
+    name: "Ext Telecom T3 deterministic evidence gate"
+    check_type: deterministic_sql
+    file: checks/ext_telecom_t3_evidence_gate.sql
+    depends_on_tables: [gw_silver_ext_telecom_finding_candidate]
+    severity: high
+    explanation: "Flags finding candidates that entered the LLM lane without passing the deterministic evidence gate, enforcing evidence-gates-before-LLM-spend (method T3) cost tiers."
+
+  - id: ext_telecom_t4_duplicate_candidates
+    name: "Ext Telecom T4 duplicate candidate clusters"
+    check_type: deterministic_sql
+    file: checks/ext_telecom_t4_duplicate_candidates.sql
+    depends_on_tables: [gw_silver_ext_telecom_finding_candidate]
+    severity: medium
+    explanation: "Flags duplicate-verdict candidates inside dedupe-hash clusters, surfacing overlaps that must collapse before multi-step chaining (method T4)."
+
+  - id: ext_telecom_t5_sandboxed_reproduction
+    name: "Ext Telecom T5 sandboxed reproduction compliance"
+    check_type: deterministic_sql
+    file: checks/ext_telecom_t5_sandboxed_reproduction.sql
+    depends_on_tables: [gw_silver_ext_telecom_evidence_bundle]
+    severity: critical
+    explanation: "Flags live-fire evidence bundles that were not reproduced in isolated compute, enforcing sandboxed-reproduction with a read-only verifier (method T5)."
+
+  - id: ext_telecom_t6_rule_corpus
+    name: "Ext Telecom T6 rule-corpus generalization gaps"
+    check_type: deterministic_sql
+    file: checks/ext_telecom_t6_rule_corpus.sql
+    depends_on_tables: [gw_silver_ext_telecom_finding_candidate, gw_silver_ext_telecom_rule]
+    severity: medium
+    explanation: "Flags candidates not covered by an active generalized rule, surfacing exploratory gaps that must compound into the rule corpus (method T6)."
+
+  - id: ext_telecom_t7_resumable_runs
+    name: "Ext Telecom T7 resumable run ledger"
+    check_type: deterministic_sql
+    file: checks/ext_telecom_t7_resumable_runs.sql
+    depends_on_tables: [gw_silver_ext_telecom_check_run]
+    severity: low
+    explanation: "Flags interrupted or non-resumable check runs in the ledger, keeping coverage additive, checkpointed, and diff-able across runs (method T7)."

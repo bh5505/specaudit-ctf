@@ -1,0 +1,132 @@
+# ext_telecom_cyber mapping_spec.yaml - source -> silver contract.
+# Mirror of the external-pack mapping convention: per-column alias lists plus
+# value_map where the target domain is enumerable. All seven silver tables are
+# required ingest sources. Classifier hints cover the same seven.
+version: 1
+generator: ext_telecom_w1_declarative
+silver_schema: schema/migrations/001_ext_telecom_silver.sql
+
+ingest_defaults:
+  banner_regex:
+    - "Confidential"
+    - "Telecom Cyber"
+    - "rehearsal"
+
+mappings:
+  - silver_table: gw_silver_ext_telecom_s3_bucket
+    source_pattern: "*s3_bucket.{csv,xlsx}"
+    sheet_selection: auto
+    required: true
+    columns:
+      - { target: bucket_name, aliases: [bucket_name, "bucket", "s3 bucket", name], required: true }
+      - { target: account_id, aliases: [account_id, "account id", "aws account", account] }
+      - { target: region, aliases: [region, "aws region", "region name"] }
+      - { target: public_access_block_enabled, aliases: [public_access_block_enabled, "public access block enabled", "pab enabled", "sab enabled"] }
+      - { target: public_read_acl, aliases: [public_read_acl, "public read acl", "read acl", "acl public read"] }
+      - { target: public_write_acl, aliases: [public_write_acl, "public write acl", "write acl", "acl public write"] }
+      - { target: has_bucket_policy, aliases: [has_bucket_policy, "bucket policy present", "has policy"] }
+      - { target: policy_allows_anonymous, aliases: [policy_allows_anonymous, "policy allows anonymous", "anonymous access", "anonymous principal"] }
+      - { target: encryption_enabled, aliases: [encryption_enabled, "encryption enabled", "server side encryption", "sse enabled"] }
+      - { target: tls_required, aliases: [tls_required, "tls required", "tls enforcement", "minimum tls"] }
+      - { target: audit_year, aliases: [audit_year, "_audit_year", year] }
+
+  - silver_table: gw_silver_ext_telecom_iam_principal
+    source_pattern: "*iam_principal.{csv,xlsx}"
+    sheet_selection: auto
+    required: true
+    columns:
+      - { target: principal_arn, aliases: [principal_arn, "principal arn", arn, "user arn", "role arn"], required: true }
+      - target: principal_type
+        aliases: [principal_type, "principal type", type]
+        value_map: { user: user, role: role, group: group, service: service, federated: federated, unknown: unknown }
+      - { target: allows_external_principal, aliases: [allows_external_principal, "allows external principal", "external access", "cross account"] }
+      - { target: mfa_required, aliases: [mfa_required, "mfa required", "requires mfa", "mfa enforced"] }
+      - { target: last_used_dt, aliases: [last_used_dt, "last used date", "last used", "last activity"] }
+      - { target: audit_year, aliases: [audit_year, "_audit_year", year] }
+
+  - silver_table: gw_silver_ext_telecom_security_group
+    source_pattern: "*security_group.{csv,xlsx}"
+    sheet_selection: auto
+    required: true
+    columns:
+      - { target: sg_id, aliases: [sg_id, "sg id", "security group id", "group id"], required: true }
+      - { target: vpc_id, aliases: [vpc_id, "vpc id", vpc] }
+      - target: direction
+        aliases: [direction, rule_direction]
+        value_map: { ingress: ingress, egress: egress }
+        required: true
+      - target: ip_protocol
+        aliases: [ip_protocol, protocol]
+        value_map: { tcp: tcp, udp: udp, icmp: icmp, all: all }
+        required: true
+      - { target: from_port, aliases: [from_port, "from port", "source port", "port from"], required: true }
+      - { target: to_port, aliases: [to_port, "to port", "destination port", "port to"], required: true }
+      - { target: cidr, aliases: [cidr, "cidr block", "source cidr", "ip range"], required: true }
+      - { target: is_public, aliases: [is_public, public, "open to internet", "public cidr"] }
+      - { target: audit_year, aliases: [audit_year, "_audit_year", year] }
+
+  - silver_table: gw_silver_ext_telecom_evidence_bundle
+    source_pattern: "*evidence_bundle.{csv,xlsx}"
+    sheet_selection: auto
+    required: true
+    columns:
+      - { target: bundle_id, aliases: [bundle_id, "bundle id", "evidence bundle", bundle], required: true }
+      - { target: project_id, aliases: [project_id, "project id", project, "rehearsal project"] }
+      - target: source_lane
+        aliases: [source_lane, "source lane", lane]
+        value_map: { config_scan: config_scan, reachability: reachability, iam_review: iam_review, rule_corpus: rule_corpus, other: other }
+      - { target: has_report, aliases: [has_report, "has report", "report present", report] }
+      - { target: has_receipt, aliases: [has_receipt, "has receipt", "receipt present", "execution receipt"] }
+      - { target: has_live_fire, aliases: [has_live_fire, "has live fire", "live fire", "live execution"] }
+      - { target: has_adversarial_reverify, aliases: [has_adversarial_reverify, "has adversarial reverify", "adversarial reverify", "second opinion"] }
+      - { target: is_sandboxed, aliases: [is_sandboxed, "is sandboxed", sandboxed, "isolated compute"] }
+      - { target: audit_year, aliases: [audit_year, "_audit_year", year] }
+
+  - silver_table: gw_silver_ext_telecom_check_run
+    source_pattern: "*check_run.{csv,xlsx}"
+    sheet_selection: auto
+    required: true
+    columns:
+      - { target: source_run_id, aliases: [source_run_id, run_id, "run id", "check run id", "batch id"], required: true }
+      - { target: started_at, aliases: [started_at, "started at", "start time", "run start"] }
+      - { target: finished_at, aliases: [finished_at, "finished at", "end time", "run end", "completed at"] }
+      - target: status
+        aliases: [status, "run status"]
+        value_map: { running: running, completed: completed, interrupted: interrupted, failed: failed }
+      - { target: population_size, aliases: [population_size, "population size", population, "row count"] }
+      - { target: pages_completed, aliases: [pages_completed, "pages completed", "pages done", "batches completed"] }
+      - { target: checkpoint_ts, aliases: [checkpoint_ts, "checkpoint timestamp", checkpoint, "last checkpoint"] }
+      - { target: audit_year, aliases: [audit_year, "_audit_year", year] }
+
+  - silver_table: gw_silver_ext_telecom_finding_candidate
+    source_pattern: "*finding_candidate.{csv,xlsx}"
+    sheet_selection: auto
+    required: true
+    columns:
+      - { target: candidate_id, aliases: [candidate_id, "candidate id", "finding candidate", candidate], required: true }
+      - { target: check_id, aliases: [check_id, "check id", check, "rule check"] }
+      - { target: finding_key, aliases: [finding_key, "finding key", key] }
+      - { target: dedupe_hash, aliases: [dedupe_hash, "dedupe hash", "dedup hash", fingerprint] }
+      - { target: passed_deterministic_gate, aliases: [passed_deterministic_gate, "passed deterministic gate", "deterministic gate", "gate passed"] }
+      - { target: llm_lane_entered, aliases: [llm_lane_entered, "llm lane entered", "llm lane", "critic lane"] }
+      - target: llm_verdict
+        aliases: [llm_verdict, verdict]
+        value_map: { duplicate: duplicate, confirmed: confirmed, dismissed: dismissed, pending: pending }
+      - { target: rule_id, aliases: [rule_id, "rule id", rule, "generalized rule"] }
+      - { target: audit_year, aliases: [audit_year, "_audit_year", year] }
+
+  - silver_table: gw_silver_ext_telecom_rule
+    source_pattern: "*rule.{csv,xlsx}"
+    sheet_selection: auto
+    required: true
+    columns:
+      - { target: rule_id, aliases: [rule_id, "rule id", rule], required: true }
+      - { target: rule_name, aliases: [rule_name, "rule name", name, "rule title"] }
+      - target: source_technique
+        aliases: [source_technique, "source technique", technique]
+        value_map: { threat_model_first: threat_model_first, adversarial_validation: adversarial_validation, evidence_gate: evidence_gate, deduplicate_chain: deduplicate_chain, sandboxed_reproduction: sandboxed_reproduction, rule_corpus: rule_corpus, resumable_runs: resumable_runs, unknown: unknown }
+      - target: rule_kind
+        aliases: [rule_kind, "rule kind", kind]
+        value_map: { detection: detection, prevention: prevention, enrichment: enrichment, normalization: normalization }
+      - { target: active, aliases: [active, "is active", enabled, deployed] }
+      - { target: audit_year, aliases: [audit_year, "_audit_year", year] }

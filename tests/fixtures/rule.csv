@@ -1,0 +1,8 @@
+rule_id,rule_name,source_technique,rule_kind,active,audit_year
+r-glw-001,S3 public access block enforcement,threat_model_first,detection,true,2026
+r-glw-002,Evidence bundle adversarial re-verify gate,adversarial_validation,prevention,true,2026
+r-glw-003,Deterministic gate before LLM lane,evidence_gate,prevention,true,2026
+r-glw-004,Dedupe hash canonicalization,deduplicate_chain,detection,true,2026
+r-glw-005,Live-fire sandbox containment,sandboxed_reproduction,prevention,true,2026
+r-glw-006,Checkpoint before interrupt,resumable_runs,prevention,true,2026
+r-glw-007,Exploratory gap (unclassified),unknown,enrichment,false,2026

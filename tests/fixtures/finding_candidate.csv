@@ -1,0 +1,6 @@
+candidate_id,check_id,finding_key,dedupe_hash,passed_deterministic_gate,llm_lane_entered,llm_verdict,rule_id,audit_year
+fc-2026-001,t1_trust_boundary,t1:glw-finding-001,hash-001,true,false,,r-glw-001,2026
+fc-2026-002,t2_adversarial_validation,t2:glw-finding-002,hash-002,true,false,,r-glw-002,2026
+fc-2026-003,t3_evidence_gate,t3:glw-finding-003,hash-003,false,true,dismissed,r-glw-003,2026
+fc-2026-004,t4_duplicate_candidates,t4:glw-finding-004,hash-004,true,false,,r-glw-004,2026
+fc-2026-005,t5_sandboxed_reproduction,t5:glw-finding-005,hash-005,true,false,,r-glw-005,2026

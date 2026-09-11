@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """ctf_run_checks.py - loopback check runner for the specaudit-ctf telecom
-pack (an ASM/VM rehearsal).
+pack (Project rehearsal rehearsal).
 
 Materializes the seven evidence CSVs produced by gen_evidence.py into a
 chosen engine (DuckDB when importable, SQLite fallback), creates a
 ``fusion_runs`` shim binding the ambient run, executes every ``checks[].file``
 SQL from the pack's manifest.yaml, and writes:
 
-    <out-dir>/report.json   - {pack_id, run_id, generated_at, engine, findings[]}
+    <out-dir>/report.json   - {pack_id, run_id, generated_at, engine, findings[],
+                               checks_status[]}
     <out-dir>/report.sarif  - SARIF 2.1.0
 
-With --export-bin <the pack export binary>, the run's complete artifact set
+With --export-bin <export-tool>, the run's complete artifact set
 (report.json + report.sarif + the auto-rendered two-sided-declared workpaper
 + export_manifest.json) is then promoted into one directory via the engine's
 `pack export` subcommand (tracker #7). The export re-validates the pack's
@@ -22,7 +23,10 @@ pack explicitly when requesting workpaper export (see tools/README.md).
 
 Check SQL contract (portable across DuckDB + SQLite):
   - SELECT finding_key, title, affected_count, exposure_estimate,
-          record_locator, details, ?1 AS run_id, risk_score ... LIMIT ?2
+          record_locator, details, ?1 AS run_id, risk_score
+          [, safety_json] ... LIMIT ?2
+  - safety_json is an optional positional ninth column containing a JSON object
+    no larger than 4 KiB; absent/NULL values are omitted from the finding.
   - the ambient run reaches the checks through the stamped ``run_id``
     column; the ``fusion_runs`` shim records the ambient run. The current
     product T7 filters the stamped engine scope directly
@@ -87,7 +91,7 @@ try:
 except ImportError:
     duckdb = None
 
-ENGAGEMENT_ID = "asmvm-rehearsal-2026"
+ENGAGEMENT_ID = "rehearsal-2026"
 ZERO_ACCEPT_EVENT_ID = "00000000-0000-0000-0000-000000000000"
 
 SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "informational": 0}
@@ -239,7 +243,8 @@ def apply_mapping_value_maps(mapping_value_maps, table, headers, rows):
     return normalized
 
 
-def apply_mapping_column_aliases(mapping_columns, table, headers):
+def apply_mapping_column_aliases(mapping_columns, table, headers,
+                                 declared_table_columns=None):
     """Mirror the product ingest's alias resolution on the CSV headers.
 
     Since migration 002_ext_telecom_source_run_identity, the check-run
@@ -257,6 +262,12 @@ def apply_mapping_column_aliases(mapping_columns, table, headers):
     for column in column_specs:
         target = column.get("target")
         if not target or target in renamed:
+            continue
+        # A pre-normalized CSV may use a real migration column that an older
+        # mapping also lists as an alias for a now-absent target. Real table
+        # shape wins; never rename a declared column to an undeclared one.
+        if (declared_table_columns is not None
+                and target not in declared_table_columns):
             continue
         alias_hits = [i for i, header in enumerate(renamed) if header in (column.get("aliases") or [])]
         for i in alias_hits:
@@ -340,7 +351,7 @@ def _convert_value(value, coltype, mismatch=None):
     DuckDB rejects the comparison outright without --fast-csv.
 
     A value that does not fit its declared type is loaded as text and counted in
-    `mismatch` so create_table can report it - the alternative is failing a whole
+    `mismatch` so the evidence loader can report it - the alternative is failing a whole
     evidence load over one cell.
     """
     if value == "" or value is None:
@@ -392,7 +403,7 @@ def _convert_value(value, coltype, mismatch=None):
 def open_engine(db_choice):
     if db_choice == "sqlite":
         conn = sqlite3.connect(":memory:")
-        conn.execute("PRAGMA foreign_keys = OFF")
+        conn.execute("PRAGMA foreign_keys = ON")
         return conn, "sqlite"
     if db_choice == "duckdb":
         if duckdb is None:
@@ -429,39 +440,59 @@ def declared_columns(ddl_types, table, headers):
     return [(header, types.get(header, "VARCHAR")) for header in headers]
 
 
-def create_table(conn, engine, table, rows, headers, ddl_types=None):
+def insert_evidence_rows(conn, engine, table, rows, headers, ddl_types=None):
+    """Insert a CSV column subset into a table created by the pack migrations."""
     cols = declared_columns(ddl_types, table, headers) or _infer_columns(rows, headers)
     mismatch = {}
     for name, ctype in cols:
         if _type_base(ctype) not in _INT_TYPES | _FLOAT_TYPES | {"BOOLEAN", "TIMESTAMP",
                                                                 "DECIMAL", "NUMERIC"}:
             continue
-        # Only report a mismatch rate for columns that declare a non-text type;
-        # a text column accepting anything is not a defect.
         mismatch.setdefault("_declared_" + name, _type_base(ctype))
-    coldefs = ", ".join("%s %s" % (_quote_identifier(name), ctype) for name, ctype in cols)
     quoted_table = _quote_identifier(table)
-    conn.execute(
-        "CREATE TABLE %s (%s)" % (quoted_table, coldefs)
-    )
     placeholders = ", ".join(["?"] * len(cols))
-    insert = "INSERT INTO %s VALUES (%s)" % (quoted_table, placeholders)
+    insert = "INSERT INTO %s (%s) VALUES (%s)" % (
+        quoted_table, ", ".join(_quote_identifier(name) for name, _ in cols),
+        placeholders)
     if not rows:
         return
-    if engine == "sqlite":
-        # Per-statement autocommit costs one journal sync per row; one
-        # transaction per table turns N syncs into one. `with conn` (not an
-        # explicit BEGIN) because the sqlite3 module opens its own implicit
-        # transaction before an INSERT, and "BEGIN" inside it is an error.
-        with conn:
+    try:
+        if engine == "sqlite":
+            with conn:
+                for start in range(0, len(rows), _INSERT_CHUNK):
+                    conn.executemany(
+                        insert,
+                        _insert_chunk(insert, rows[start:start + _INSERT_CHUNK], cols, mismatch),
+                    )
+                    _progress(table, start + _INSERT_CHUNK, len(rows))
+        else:
             for start in range(0, len(rows), _INSERT_CHUNK):
-                conn.executemany(insert, _insert_chunk(insert, rows[start:start + _INSERT_CHUNK], cols, mismatch))
+                conn.executemany(
+                    insert,
+                    _insert_chunk(insert, rows[start:start + _INSERT_CHUNK], cols, mismatch),
+                )
                 _progress(table, start + _INSERT_CHUNK, len(rows))
-    else:
-        for start in range(0, len(rows), _INSERT_CHUNK):
-            conn.executemany(insert, _insert_chunk(insert, rows[start:start + _INSERT_CHUNK], cols, mismatch))
-            _progress(table, start + _INSERT_CHUNK, len(rows))
+    except Exception as exc:
+        raise RunnerError(
+            "evidence load failed for table %s (constraint/type error: %s)"
+            % (table, exc)
+        ) from exc
     report_type_mismatches(table, mismatch)
+
+
+def create_table(conn, engine, table, rows, headers, ddl_types=None):
+    """Create and load a synthetic table for focused compatibility callers.
+
+    Production runs create the migration schema first and call
+    :func:`insert_evidence_rows`; the public smoke tests intentionally build
+    tiny ad-hoc tables through this older helper.
+    """
+    cols = declared_columns(ddl_types, table, headers) or _infer_columns(rows, headers)
+    coldefs = ", ".join(
+        "%s %s" % (_quote_identifier(name), ctype) for name, ctype in cols
+    )
+    conn.execute("CREATE TABLE %s (%s)" % (_quote_identifier(table), coldefs))
+    insert_evidence_rows(conn, engine, table, rows, headers, ddl_types=ddl_types)
 
 
 def report_type_mismatches(table, mismatch):
@@ -510,7 +541,36 @@ def mapping_declares_run_id_source(mapping_columns, table):
     return False
 
 
-def stamp_accept_lineage(conn, table, headers, run_id, *, preserve_run_id=False):
+def prepare_accept_lineage(headers, rows, run_id, *, preserve_run_id=False,
+                           table="evidence", declared_table_columns=None):
+    """Stamp required lineage before inserting into migration-constrained tables."""
+    headers = list(headers)
+    rows = [list(row) for row in rows]
+    if preserve_run_id and "run_id" not in headers:
+        raise RunnerError("%s is missing its mapped source run_id column" % table)
+    values = {
+        "engagement_id": ENGAGEMENT_ID,
+        "accept_event_id": ZERO_ACCEPT_EVENT_ID,
+    }
+    if not preserve_run_id:
+        values["run_id"] = run_id
+    for column, value in values.items():
+        if (declared_table_columns is not None
+                and column not in declared_table_columns):
+            continue
+        if column in headers:
+            index = headers.index(column)
+            for row in rows:
+                row[index] = value
+        else:
+            headers.append(column)
+            for row in rows:
+                row.append(value)
+    return headers, rows
+
+
+def stamp_accept_lineage(conn, table, headers, run_id, *, preserve_run_id=False,
+                         engine=None):
     """Stamp ambient lineage, with an explicit legacy source-ID exception.
 
     By default, overwrite run_id/engagement_id/accept_event_id even when
@@ -522,27 +582,38 @@ def stamp_accept_lineage(conn, table, headers, run_id, *, preserve_run_id=False)
     fusion_runs for ambient scope, so preserve it while stamping the other
     two fields. A missing mapped source ID fails before changing the table.
     """
-    existing = set(headers)
-    if preserve_run_id and "run_id" not in existing:
+    imported = set(headers)
+    if preserve_run_id and "run_id" not in imported:
         raise RunnerError("%s is missing its mapped source run_id column" % table)
     quoted_table = _quote_identifier(table)
-    for col in ("run_id", "engagement_id", "accept_event_id"):
-        if col not in existing:
-            conn.execute(
-                "ALTER TABLE %s ADD COLUMN %s VARCHAR"
-                % (quoted_table, _quote_identifier(col))
-            )
-    if preserve_run_id:
+    if engine == "duckdb":
+        existing = {r[0] for r in conn.execute("DESCRIBE %s" % quoted_table).fetchall()}
+    elif engine == "sqlite":
+        existing = {r[1] for r in conn.execute(
+            "PRAGMA table_info(%s)" % quoted_table).fetchall()}
+    else:  # compatibility for focused callers that use synthesized test tables
+        existing = set(headers)
+    if engine is None:
+        for col in ("run_id", "engagement_id", "accept_event_id"):
+            if col not in existing:
+                conn.execute(
+                    "ALTER TABLE %s ADD COLUMN %s VARCHAR"
+                    % (quoted_table, _quote_identifier(col))
+                )
+                existing.add(col)
+    values = [("engagement_id", ENGAGEMENT_ID),
+              ("accept_event_id", ZERO_ACCEPT_EVENT_ID)]
+    if not preserve_run_id:
+        values.insert(0, ("run_id", run_id))
+    values = [(column, value) for column, value in values if column in existing]
+    if values:
         conn.execute(
-            "UPDATE %s SET \"engagement_id\" = ?, "
-            "\"accept_event_id\" = ?" % quoted_table,
-            (ENGAGEMENT_ID, ZERO_ACCEPT_EVENT_ID),
-        )
-    else:
-        conn.execute(
-            "UPDATE %s SET \"run_id\" = ?, \"engagement_id\" = ?, "
-            "\"accept_event_id\" = ?" % quoted_table,
-            (run_id, ENGAGEMENT_ID, ZERO_ACCEPT_EVENT_ID),
+            "UPDATE %s SET %s" % (
+                quoted_table,
+                ", ".join("%s = ?" % _quote_identifier(column)
+                          for column, _ in values),
+            ),
+            tuple(value for _, value in values),
         )
 
 
@@ -612,6 +683,10 @@ def sqlite_join_indexes(conn, engine, check_sqls, loaded_tables):
         created.append(name)
     if created:
         conn.commit()
+        # The real evidence tables are large enough that SQLite's default
+        # estimates choose hour-scale correlated-loop plans. Statistics keep
+        # this parity engine practical without changing query results.
+        conn.execute("ANALYZE")
         print("sqlite join indexes (%d): %s" % (len(created), ", ".join(created)),
               flush=True)
     return created
@@ -647,6 +722,41 @@ def _as_scalar(value):
     if isinstance(value, (int, float)):
         return value
     return str(value)
+
+
+def _reject_json_constant(_value):
+    raise ValueError("non-standard JSON constant")
+
+
+def _parse_safety_json(value, check_id, finding_key):
+    """Validate and decode the optional ninth check-result column."""
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise RunnerError(
+            "check %s finding %s has invalid safety_json (expected a JSON object)"
+            % (check_id, finding_key))
+    try:
+        raw = value.encode("utf-8")
+    except UnicodeEncodeError:
+        raise RunnerError(
+            "check %s finding %s has invalid safety_json (malformed JSON)"
+            % (check_id, finding_key)) from None
+    if len(raw) > 4096:
+        raise RunnerError(
+            "check %s finding %s has invalid safety_json (maximum size is 4 KiB)"
+            % (check_id, finding_key))
+    try:
+        parsed = json.loads(value, parse_constant=_reject_json_constant)
+    except (ValueError, UnicodeDecodeError, TypeError, RecursionError):
+        raise RunnerError(
+            "check %s finding %s has invalid safety_json (malformed JSON)"
+            % (check_id, finding_key)) from None
+    if not isinstance(parsed, dict):
+        raise RunnerError(
+            "check %s finding %s has invalid safety_json (expected a JSON object)"
+            % (check_id, finding_key))
+    return parsed
 
 
 def verify_export_artifacts(export_dir, reports_dir, report, engagement_id):
@@ -717,6 +827,25 @@ def report_export_recovery_paths(export_dir):
 def _read_csv_header(csv_path):
     with open(csv_path, "r", encoding="utf-8", newline="") as fh:
         return next(csv.reader(fh), None) or []
+
+
+def _create_schema_from_migrations(conn, engine, pack_root):
+    """Execute every pack migration statement verbatim, in filename order."""
+    migration_dir = Path(pack_root) / "schema" / "migrations"
+    for sql_path in sorted(migration_dir.glob("*.sql")):
+        text = re.sub(r"--[^\n]*", "", sql_path.read_text(encoding="utf-8"))
+        # Accept both conventional semicolon-separated migrations and the
+        # public smoke fixture's adjacent ``CREATE TABLE`` declarations.
+        parts = re.split(r";|(?<=\))\s*(?=CREATE\s+TABLE)", text, flags=re.I)
+        for statement_index, statement in enumerate(
+                (part.strip() for part in parts if part.strip()), 1):
+            try:
+                conn.execute(statement)
+            except Exception as exc:
+                raise RunnerError(
+                    "migration schema creation failed on %s statement %d (%s): %s"
+                    % (sql_path.name, statement_index, engine, exc)
+                ) from exc
 
 
 def _parse_migration_tables(pack_root):
@@ -824,23 +953,31 @@ def _read_csv_type_arg(ddl_types, table, headers):
 
 
 def load_evidence_native_csv(conn, evidence_dir, mapping, ddl_columns, ddl_types=None):
-    """DuckDB-native CSV load (vectorised, no Python row loop).
+    """DuckDB-native insertion into the real migration-created tables.
 
     Only for evidence whose headers already name real pack columns - mapping
     aliases and value maps are NOT applied here, which is verified per table by
-    _require_declared_headers. Column types come from the pack's migrations when
-    they declare the table (so DuckDB and SQLite see the same schema), and from
-    read_csv's own inference only for columns the migrations leave open.
+    _require_declared_headers. The explicit target column list preserves the
+    declared column-subset contract while leaving constraints intact.
     """
     loaded = []
     for csv_path in sorted(evidence_dir.glob("*.csv")):
         table = _table_for(mapping, csv_path.name)
         headers = _read_csv_header(csv_path)
         _require_declared_headers(ddl_columns, table, headers, csv_path.name)
-        conn.execute(
-            "CREATE TABLE %s AS SELECT * FROM read_csv('%s', header=true%s)"
-            % (_quote_identifier(table), csv_path.as_posix().replace("'", "''"),
-               _read_csv_type_arg(ddl_types, table, headers)))
+        try:
+            conn.execute(
+                "INSERT INTO %s (%s) SELECT %s FROM read_csv('%s', header=true%s)"
+                % (_quote_identifier(table),
+                   ", ".join(_quote_identifier(header) for header in headers),
+                   ", ".join(_quote_identifier(header) for header in headers),
+                   csv_path.as_posix().replace("'", "''"),
+                   _read_csv_type_arg(ddl_types, table, headers)))
+        except Exception as exc:
+            raise RunnerError(
+                "evidence load failed for table %s (constraint/type error: %s)"
+                % (table, exc)
+            ) from exc
         loaded.append(table)
         n = conn.execute("SELECT count(*) FROM %s" % _quote_identifier(table)).fetchone()[0]
         print("loaded %s -> table %s (%d rows, duckdb native read_csv)"
@@ -871,6 +1008,7 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
     if run_id == "auto":
         run_id = "ctf-%s-%s" % (datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S"),
                                 uuid.uuid4().hex[:6])
+    _create_schema_from_migrations(conn, engine, pack_root)
     create_fusion_runs_shim(conn, run_id)
 
     csv_files = sorted(evidence_dir.glob("*.csv"))
@@ -881,9 +1019,10 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
     # cells to them, and --fast-csv hands them to read_csv. Value-sniffed types
     # made the two engines disagree about what a check means.
     ddl_types = load_ddl_column_types(pack_root)
+    ddl_columns = load_ddl_columns(pack_root)
     if fast_csv:
         loaded_tables = load_evidence_native_csv(conn, evidence_dir, mapping,
-                                                load_ddl_columns(pack_root), ddl_types)
+                                                ddl_columns, ddl_types)
         for table in loaded_tables:
             headers = [r[0] for r in conn.execute(
                 "DESCRIBE %s" % _quote_identifier(table)).fetchall()]
@@ -891,6 +1030,7 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
                 conn, table, headers, run_id,
                 preserve_run_id=mapping_declares_run_id_source(
                     mapping_columns, table),
+                engine=engine,
             )
 
     for csv_path in ([] if fast_csv else csv_files):
@@ -902,13 +1042,18 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
             rows = [r for r in reader]
             _progress(csv_path.name, 0, len(rows))
         table = _table_for(mapping, csv_path.name)
-        headers = apply_mapping_column_aliases(mapping_columns, table, headers)
+        headers = apply_mapping_column_aliases(
+            mapping_columns, table, headers, ddl_columns.get(table))
         rows = apply_mapping_value_maps(mapping_value_maps, table, headers, rows)
-        create_table(conn, engine, table, rows, headers, ddl_types=ddl_types)
+        preserve_run_id = mapping_declares_run_id_source(mapping_columns, table)
+        headers, rows = prepare_accept_lineage(
+            headers, rows, run_id, preserve_run_id=preserve_run_id, table=table,
+            declared_table_columns=ddl_columns.get(table))
+        insert_evidence_rows(conn, engine, table, rows, headers, ddl_types=ddl_types)
         stamp_accept_lineage(
             conn, table, headers, run_id,
-            preserve_run_id=mapping_declares_run_id_source(
-                mapping_columns, table),
+            preserve_run_id=preserve_run_id,
+            engine=engine,
         )
         loaded_tables.append(table)
         print("loaded %s -> table %s (%d rows)" % (csv_path.name, table, len(rows)))
@@ -923,19 +1068,30 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
     sqlite_join_indexes(conn, engine, check_sqls, loaded_tables)
 
     findings = []
+    checks_status = []
     for check, sql in zip(manifest["checks"], check_sqls):
         check_id = str(check["id"])
+        check_started = time.monotonic()
         rows = execute_check(conn, engine, sql, run_id, limit)
+        checks_status.append({
+            "check_id": check_id,
+            "file": str(check.get("file")),
+            "row_count": len(rows),
+            "elapsed_ms": int((time.monotonic() - check_started) * 1000),
+        })
         severity = str(check.get("severity") or "medium").lower()
         technique = check.get("technique")
         for row in rows:
-            if len(row) < 8:
+            if len(row) not in (8, 9):
                 raise RunnerError(
                     "check %s returned %d columns; the row contract requires 8 "
                     "(finding_key, title, affected_count, exposure_estimate, "
-                    "record_locator, details, run_id, risk_score)" % (check_id, len(row)))
+                    "record_locator, details, run_id, risk_score), with optional "
+                    "positional ninth safety_json" % (check_id, len(row)))
             finding_key = str(row[0])
-            findings.append({
+            safety = (_parse_safety_json(row[8], check_id, finding_key)
+                      if len(row) == 9 else None)
+            finding = {
                 "finding_alias": "%s:%s:%s" % (pack_id, check_id, finding_key),
                 "check_id": check_id,
                 "technique": technique,
@@ -946,9 +1102,14 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
                 "record_locator": str(row[4]) if row[4] is not None else "",
                 "affected_count": _as_scalar(row[2]),
                 "exposure_estimate": _as_scalar(row[3]),
-            })
+            }
+            if safety is not None:
+                finding["safety"] = safety
+            findings.append(finding)
         if rows:
             print("check %s: %d finding(s)" % (check_id, len(rows)))
+        else:
+            print("check %s: 0 findings" % check_id)
 
     export_dir = Path(export_dir) if export_dir else out_dir
     in_place_export = bool(export_bin) and export_dir.resolve() == out_dir.resolve()
@@ -974,6 +1135,7 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
         "generated_at": generated_at,
         "engine": engine,
         "findings": findings,
+        "checks_status": checks_status,
     }
     # Provenance: stamp the evidence seed when the generator recorded it.
     seed_file = Path(evidence_dir) / "seed.json"
@@ -1114,7 +1276,7 @@ def main(argv=None):
                              "mapping aliases and value maps are NOT applied, and the "
                              "runner verifies that per table.")
     parser.add_argument("--export-bin", default=None,
-                        help="Path to a built pack export binary; when given, the "
+                        help="Path to a built export-tool binary; when given, the "
                              "run's artifact set (report.json + report.sarif + auto-rendered "
                              "workpaper + export manifest) is exported via `pack export` "
                              "after the checks.")

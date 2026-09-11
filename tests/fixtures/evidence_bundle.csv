@@ -1,0 +1,6 @@
+evidence_id,finding_id,check_id,technique,description,source,confidence,timestamp
+EV-001,FG-001,t1_trust_boundary,T1,"IAM role trust policy allows cross-account assumption",cloudtrail,0.95,2026-01-01T12:00:00Z
+EV-002,FG-001,t1_trust_boundary,T1,"AssumeRole API call from external account",cloudtrail,0.90,2026-01-01T12:01:00Z
+EV-003,FG-002,t2_adversarial_validation,T2,"Validation logic bypassed via crafted input",application_logs,0.85,2026-01-01T12:02:00Z
+EV-004,FG-003,t3_deterministic_gate,T3,"Gate check failed: seed mismatch in evidence generation",generator_logs,0.98,2026-01-01T12:03:00Z
+EV-005,FG-003,t3_deterministic_gate,T3,"Gate check failed: run_id format validation failed",generator_logs,0.92,2026-01-01T12:04:00Z

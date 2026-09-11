@@ -1,0 +1,45 @@
+{
+  "pack_id": "ext_telecom_cyber",
+  "run_id": "ctf-20260101-120000-abcdef",
+  "generated_at": "2026-01-01T12:00:00Z",
+  "engine": "sqlite",
+  "seed": 42,
+  "findings": [
+    {
+      "finding_alias": "ext_telecom_cyber:ext_telecom_t1_trust_boundary:FG-001",
+      "check_id": "ext_telecom_t1_trust_boundary",
+      "technique": "T1",
+      "severity": "high",
+      "risk_score": 85,
+      "title": "Trust boundary violation in IAM role assumption",
+      "details": "public_access_block_enabled=false",
+      "record_locator": "evidence/finding_candidate.csv:1",
+      "affected_count": 1,
+      "exposure_estimate": 85
+    },
+    {
+      "finding_alias": "ext_telecom_cyber:ext_telecom_t2_adversarial_validation:FG-002",
+      "check_id": "ext_telecom_t2_adversarial_validation",
+      "technique": "T2",
+      "severity": "medium",
+      "risk_score": 65,
+      "title": "Adversarial validation bypass detected",
+      "details": "has_adversarial_reverify=false",
+      "record_locator": "evidence/finding_candidate.csv:2",
+      "affected_count": 1,
+      "exposure_estimate": 65
+    },
+    {
+      "finding_alias": "ext_telecom_cyber:ext_telecom_t3_evidence_gate:FG-003",
+      "check_id": "ext_telecom_t3_evidence_gate",
+      "technique": "T3",
+      "severity": "high",
+      "risk_score": 90,
+      "title": "Deterministic gate failure in evidence generation",
+      "details": "passed_deterministic_gate=false; llm_lane_entered=true",
+      "record_locator": "evidence/finding_candidate.csv:3",
+      "affected_count": 1,
+      "exposure_estimate": 90
+    }
+  ]
+}

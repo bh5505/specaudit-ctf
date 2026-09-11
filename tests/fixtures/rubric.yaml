@@ -1,0 +1,25 @@
+# Sample scoring rubric for specaudit-ctf tests (scorer contract).
+# Scored by score.scorer.score_run against tests/fixtures/report.json + report.sarif.
+name: test-rubric
+version: 1
+seed: 42
+total: 3
+
+# Alias pattern for finding aliases produced by ctf_run_checks:
+#   finding_alias = "<pack_id>:<check_id>:<finding_key>"
+alias_regex: "^ext_telecom_cyber:ext_telecom_t[1-7]_[a-z_]+:"
+
+# Expected per-technique finding counts
+expected_counts:
+  T1: 1
+  T2: 1
+  T3: 1
+  T4: 0
+  T5: 0
+  T6: 0
+  T7: 0
+
+sarif_version: 2.1.0
+containment_roots:
+  - evidence
+  - challenges
