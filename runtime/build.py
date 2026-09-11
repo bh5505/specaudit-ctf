@@ -68,7 +68,11 @@ from runtime import _tracer, tree_hash  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 RUNTIME_DIR = Path(__file__).resolve().parent
-CACHE_DIR = RUNTIME_DIR / ".cache"
+# Staging extracts a CPython tarball that ships POSIX-only terminfo symlink
+# chains; on DrvFS mounts those loops fail with ELOOP/EINVAL. An operator may
+# point the cache at a native-FS directory without affecting any digest: every
+# recorded value is content-derived.
+CACHE_DIR = Path(os.environ.get("RUNTIME_BUILD_CACHE", str(RUNTIME_DIR / ".cache")))
 LOCK_PATH = RUNTIME_DIR / "lock.json"
 TRACER_PATH = RUNTIME_DIR / "_tracer.py"
 CAPABILITY_MANIFEST_PATH = (
