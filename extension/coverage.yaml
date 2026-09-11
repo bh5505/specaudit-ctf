@@ -241,6 +241,20 @@ entries:
     tier: experimental
     notes: Bounded in-process exact CVE lookup over a frozen operator-supplied local JSON snapshot. Every lookup emits a custody receipt binding normalized arguments, the snapshot digest when loaded, per-id status and reason, and the output digest. Unknown enrichment remains unknown. No search, enumeration, subprocess, endpoint, network, database mutation, or dispatch tier.
 
+  - id: snmp-readtier
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: experimental
+    notes: Scope-armed stdlib-only SNMPv2c GET identity read limited to sysDescr.0, sysUpTime.0, and sysName.0. One bounded UDP request, no walk or set; timeout remains an unknown observation. Digest-bound custody receipts cover normalized arguments, request bytes, raw responses, and per-OID outcomes.
+
+  - id: ike-readtier
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: experimental
+    notes: Scope-armed stdlib-only IKEv1 responder-presence read using one fixed AES256-SHA1-PSK-MODP2048 phase-1 SA proposal on UDP 500 and optional NAT-T 4500. No KE payload or key establishment. Digest-bound custody receipts cover normalized arguments and per-port request/reply outcomes.
+
   - id: mitreattack-python
     kind: arm
     protocols: [cli]

@@ -509,6 +509,10 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.attackstix import AttackStixArm
     from .arms.vulnify import ARM_ID as VULNIFY_ARM_ID
     from .arms.vulnify import VulnifyArm
+    from .arms.snmp_readtier import ARM_ID as SNMP_READTIER_ARM_ID
+    from .arms.snmp_readtier import SnmpReadtierArm
+    from .arms.ike_readtier import ARM_ID as IKE_READTIER_ARM_ID
+    from .arms.ike_readtier import IkeReadtierArm
     from .arms.rpzdecoder import ARM_ID as RPZ_DECODER_ARM_ID
     from .arms.rpzdecoder import RpzDecoderArm
 
@@ -543,6 +547,8 @@ def _default_arms() -> dict[str, Transport]:
         AGENT_WIZ_ARM_ID: AgentWizArm(),
         ATTACK_STIX_ARM_ID: AttackStixArm(),
         VULNIFY_ARM_ID: VulnifyArm(),
+        SNMP_READTIER_ARM_ID: SnmpReadtierArm(),
+        IKE_READTIER_ARM_ID: IkeReadtierArm(),
         RPZ_DECODER_ARM_ID: RpzDecoderArm(),
     }
 

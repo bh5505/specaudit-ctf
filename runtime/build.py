@@ -101,6 +101,8 @@ EXTRA_PRODUCER_FILES = (
     # data files are not import-traceable, so keep it as an explicit root.
     "extension/arms/attackstix/data/demo-enterprise-sample.json",
     "extension/arms/vulnify/data/demo-vulnerability-snapshot.json",
+    "extension/arms/snmp_readtier/data/demo-response.hex",
+    "extension/arms/ike_readtier/data/demo-reply.hex",
     "extension/schema/execution-result.v1.schema.json",
 )
 _ATTEMPT_ID = "attempt-" + ("0" * 64)

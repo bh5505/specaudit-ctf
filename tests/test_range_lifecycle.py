@@ -418,19 +418,21 @@ def test_uninstalled_curated_arm_is_skipped_held_is_error(
         if entry.kind == CATALOG_KIND_ARM and entry.curated and entry.tier == "held"
     ]
     skipped_ids = [arm_id for arm_id in curated_ids if arm_id not in held_ids]
-    # 31 with the experimental local vulnify arm.
-    assert len(curated_ids) == 31
+    # 33 after the two scope-armed UDP read arms joined vulnify.
+    assert len(curated_ids) == 33
     assert CURATED_ARM_ID in curated_ids
     # Research tier since the doc-21 dossier (2026-09-03): no endpoint
     # configured, so the arm is skipped as not-installed like other
     # uninstalled curated arms - not a held error row.
     assert CURATED_ARM_ID in skipped_ids
     assert CURATED_ARM_ID not in held_ids
-    # attack-stix-data, vulnify, and rpz-decoder are pure in-process arms:
-    # their handlers are always installed, so the range's observe probe is
-    # an evaluated refusal (error row), not a skip. Every other curated arm
-    # stays skipped.
-    always_installed = ("attack-stix-data", "vulnify", "rpz-decoder")
+    # These first-party handlers need no external executable, so the range's
+    # observe probe is an evaluated refusal (error row), not a skip. The two
+    # UDP readers remain fail-closed because their target scopes are unarmed.
+    always_installed = (
+        "attack-stix-data", "vulnify", "snmp-readtier", "ike-readtier",
+        "rpz-decoder",
+    )
     skipped_ids = [arm_id for arm_id in skipped_ids if arm_id not in always_installed]
     error_ids = held_ids + list(always_installed)
     # RED lock: matching lifecycle plus one unavailable auto-discovered

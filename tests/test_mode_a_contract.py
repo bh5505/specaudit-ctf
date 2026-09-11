@@ -538,8 +538,8 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 154 with the http-probe scope-gated dispatch profile, after the
     # rpz-decoder admission brought the registry to 153; 155 with
     # attack-stix-data.cvelookup.
-    # 157 with vulnify list discovery and exact local lookup.
-    assert len(INVOKE_PROFILES) == 157
+    # 161 after each UDP reader added policy discovery and one probe.
+    assert len(INVOKE_PROFILES) == 161
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -580,6 +580,12 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert profile.safety_class == "R1"
             assert profile.side_effects == ("network-egress",)
             assert profile.synthetic_only is False
+        elif profile.arm_id in ("snmp-readtier", "ike-readtier") and profile.action == "probe":
+            assert profile.safety_class == "R1"
+            assert profile.side_effects == ("network-egress",)
+            assert profile.default_off is True
+            assert profile.synthetic_only is False
+            assert profile.tier == "experimental"
         elif profile.arm_id in ("attack-stix-data", "vulnify"):
             # In-process lookups over caller-named local snapshots; no
             # endpoint, subprocess, mutation, or dispatch.
@@ -645,6 +651,10 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
         elif profile.arm_id in ("google-mcp-security", "prowler-mcp"):
             # Remote-read manifests: R1 network-egress lookups (including
             # its list_tools, which dials the endpoint).
+            assert payload["safety_class"] == "R1"
+            assert payload["side_effects"] == ["network-egress"]
+            assert payload["synthetic_only"] is False
+        elif profile.arm_id in ("snmp-readtier", "ike-readtier") and profile.action == "probe":
             assert payload["safety_class"] == "R1"
             assert payload["side_effects"] == ["network-egress"]
             assert payload["synthetic_only"] is False

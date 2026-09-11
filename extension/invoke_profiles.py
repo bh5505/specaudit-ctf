@@ -57,6 +57,8 @@ _STATIC_POLICY_ARMS = (
     "ai-deep-sast",
     "attack-stix-data",
     "vulnify",
+    "snmp-readtier",
+    "ike-readtier",
     "rpz-decoder",
     "dark-moon",
     "deepsec",
@@ -132,6 +134,34 @@ def _local_read_profile(arm_id: str, action: str, tier: str = "research") -> Inv
 _POLICY_ARM_TIERS = {arm_id: "research" for arm_id in _STATIC_POLICY_ARMS}
 _POLICY_ARM_TIERS["agent-wiz"] = "maintained"
 _POLICY_ARM_TIERS["vulnify"] = "experimental"
+_POLICY_ARM_TIERS["snmp-readtier"] = "experimental"
+_POLICY_ARM_TIERS["ike-readtier"] = "experimental"
+
+
+def _udp_read_profile(arm_id: str, scope_env: str) -> InvokeProfile:
+    """R1 admission for one scope-armed, bounded UDP identity read."""
+    scope = (f"policy://extension/arms/{arm_id}",)
+    return InvokeProfile(
+        arm_id=arm_id,
+        action="probe",
+        capability_id=f"{arm_id}.probe",
+        tool_name=PACKAGE_NAME,
+        tool_version=PACKAGE_VERSION,
+        authorized_scope=scope,
+        touched_scope=scope,
+        safety_class="R1",
+        side_effects=("network-egress",),
+        timeout_ms=5_000,
+        max_output_bytes=1_048_576,
+        max_tool_steps=1,
+        max_spend=None,
+        cleanup_required=False,
+        approval_ref=f"operator://target-scope/{scope_env}",
+        roe_ref="operator://authorization/QA2-D",
+        tier="experimental",
+        default_off=True,
+        synthetic_only=False,
+    )
 
 
 def _mcp_read_profile(arm_id: str, action: str, tier: str = "research") -> InvokeProfile:
@@ -601,6 +631,10 @@ INVOKE_PROFILES = {
         # metadata but performs no file write, subprocess, database access,
         # or network access.
         _local_read_profile("vulnify", "lookup", tier="experimental"),
+        # Scope-armed bounded UDP identity reads. Each emits one datagram per
+        # selected endpoint, never retries, and records timeout as unknown.
+        _udp_read_profile("snmp-readtier", "SNMP_READTIER_SCOPE"),
+        _udp_read_profile("ike-readtier", "IKE_READTIER_SCOPE"),
         # rpz-decoder decode admission (2026-09-08): in-process AXFR
         # decode of the caller-named dump into raw IP/CIDR + domain
         # indicator lists. Honest truth: real local files are touched

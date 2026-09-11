@@ -442,6 +442,14 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
                 else "operator://endpoint/GTI_MCP_ENDPOINT"
             )
             assert profile.approval_ref == expected_approval
+        elif profile.arm_id in ("snmp-readtier", "ike-readtier") and profile.action == "probe":
+            assert profile.safety_class == "R1"
+            assert profile.side_effects == ("network-egress",)
+            assert profile.default_off is True
+            assert profile.synthetic_only is False
+            assert profile.approval_ref == (
+                f"operator://target-scope/{profile.arm_id.split('-')[0].upper()}_READTIER_SCOPE"
+            )
         elif profile.arm_id in ("attack-stix-data", "vulnify"):
             # In-process first-party lookups over caller-named local
             # snapshots; no endpoint, subprocess, mutation, or dispatch.
@@ -588,8 +596,8 @@ def test_range_encoder_spends_one_step_under_freeze_budget(
     no_curated_tools: None,
 ) -> None:
     inner = run_range()
-    # 30 with the dispatch-scoped http-probe arm.
-    assert len(inner["coverage"]["attempted"]) == 31
+    # 33 after the two scope-armed UDP read arms.
+    assert len(inner["coverage"]["attempted"]) == 33
     payload = encode_range_document(
         inner,
         started_at="2026-08-25T12:00:00Z",

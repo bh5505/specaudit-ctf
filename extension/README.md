@@ -120,6 +120,11 @@ session per arm, not a generic transport):
   operator-supplied frozen JSON snapshot; digest-bound results and custody
   receipts, with unknown enrichment preserved as null (see
   [arm usage](arms/vulnify/README.md))
+- `snmp-readtier` — experimental, scope-armed SNMPv2c identity GET limited
+  to three system OIDs (see [arm usage](arms/snmp_readtier/README.md))
+- `ike-readtier` — experimental, scope-armed IKEv1 responder-presence and
+  proposal-echo read with no key establishment (see
+  [arm usage](arms/ike_readtier/README.md))
 
 **CLI dispatch-only** (no meaningful read surface):
 
@@ -194,8 +199,9 @@ The X2-PUB CLI manifest admits the in-process `list_tools` policy reads
 for `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `nmap`,
 `pyrit`, `routersploit`, `sniper`, `vvah`, `zgrab2`, and
 `semgrep-mcp`, plus the five admitted `attack-stix-data` lookups (`technique`, `software`,
-`group`, `relationships`, `cvelookup`), and `vulnify.lookup` over a frozen local
-snapshot, and — since
+`group`, `relationships`, `cvelookup`), `vulnify.lookup` over a frozen local
+snapshot, and the scope-armed `snmp-readtier.probe` and `ike-readtier.probe`
+UDP identity reads, and — since
 the 2026-09-01/02/03/05 dispatch-class admissions — the scope-gated R1
 profiles (`nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan`,
 `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`, `pyrit.scan`,
