@@ -234,6 +234,13 @@ entries:
     tier: research
     notes: Canonical ATT&CK corpus as STIX 2.1 collection bundles. Curated first-party read arm; exact lookups (technique by ATT&CK id or name, software/group by name or alias, bounded relationship reads with a closed type allowlist, and CVE-keyed object mappings with per-invocation custody receipts) over a local STIX bundle. The CVE action defaults to the bundled deterministic demo sample; other actions require an operator-supplied bundle. A small demo sample ships as data under the arm (see its NOTICE; not maintained here). Pure in-process stdlib reader with no subprocess, no endpoint, no network on any tier, and no dispatch tier.
 
+  - id: vulnify
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: experimental
+    notes: Bounded in-process exact CVE lookup over a frozen operator-supplied local JSON snapshot. Every lookup emits a custody receipt binding normalized arguments, the snapshot digest when loaded, per-id status and reason, and the output digest. Unknown enrichment remains unknown. No search, enumeration, subprocess, endpoint, network, database mutation, or dispatch tier.
+
   - id: mitreattack-python
     kind: arm
     protocols: [cli]

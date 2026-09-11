@@ -52,6 +52,7 @@ EXPECTED_IDS = (
     "attackforge-testsuites",
     "attackforge-writeups",
     "attack-stix-data",
+    "vulnify",
     "mitreattack-python",
     "mitre-cti",
     "vuls",
@@ -174,6 +175,7 @@ def test_curated_arms_are_exactly_the_curated_set(entries: list[dict]) -> None:
         "ai-deep-sast",
         "agent-wiz",
         "attack-stix-data",
+        "vulnify",
         "rpz-decoder",
     }
     for arm in curated:

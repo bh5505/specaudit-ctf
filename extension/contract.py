@@ -507,6 +507,8 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.agentwiz import AgentWizArm
     from .arms.attackstix import ARM_ID as ATTACK_STIX_ARM_ID
     from .arms.attackstix import AttackStixArm
+    from .arms.vulnify import ARM_ID as VULNIFY_ARM_ID
+    from .arms.vulnify import VulnifyArm
     from .arms.rpzdecoder import ARM_ID as RPZ_DECODER_ARM_ID
     from .arms.rpzdecoder import RpzDecoderArm
 
@@ -540,6 +542,7 @@ def _default_arms() -> dict[str, Transport]:
         AI_DEEP_SAST_ARM_ID: AiDeepSastArm(),
         AGENT_WIZ_ARM_ID: AgentWizArm(),
         ATTACK_STIX_ARM_ID: AttackStixArm(),
+        VULNIFY_ARM_ID: VulnifyArm(),
         RPZ_DECODER_ARM_ID: RpzDecoderArm(),
     }
 

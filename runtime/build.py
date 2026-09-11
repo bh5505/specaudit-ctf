@@ -100,6 +100,7 @@ EXTRA_PRODUCER_FILES = (
     # attack-stix-data.cvelookup defaults to this deterministic local corpus;
     # data files are not import-traceable, so keep it as an explicit root.
     "extension/arms/attackstix/data/demo-enterprise-sample.json",
+    "extension/arms/vulnify/data/demo-vulnerability-snapshot.json",
     "extension/schema/execution-result.v1.schema.json",
 )
 _ATTEMPT_ID = "attempt-" + ("0" * 64)

@@ -538,7 +538,8 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # 154 with the http-probe scope-gated dispatch profile, after the
     # rpz-decoder admission brought the registry to 153; 155 with
     # attack-stix-data.cvelookup.
-    assert len(INVOKE_PROFILES) == 155
+    # 157 with vulnify list discovery and exact local lookup.
+    assert len(INVOKE_PROFILES) == 157
     # Defense-in-depth for X5-PROMOTE: among the static policy profiles only
     # agent-wiz may be maintained; any second promotion is a reviewed,
     # deliberate change to this assertion, never a quiet drift.
@@ -579,9 +580,9 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert profile.safety_class == "R1"
             assert profile.side_effects == ("network-egress",)
             assert profile.synthetic_only is False
-        elif profile.arm_id == "attack-stix-data":
-            # Local-read admission (2026-09-04): in-process lookups over
-            # a caller-named local bundle; no endpoint, no dispatch.
+        elif profile.arm_id in ("attack-stix-data", "vulnify"):
+            # In-process lookups over caller-named local snapshots; no
+            # endpoint, subprocess, mutation, or dispatch.
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.synthetic_only is True
@@ -647,9 +648,9 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["safety_class"] == "R1"
             assert payload["side_effects"] == ["network-egress"]
             assert payload["synthetic_only"] is False
-        elif profile.arm_id == "attack-stix-data":
+        elif profile.arm_id in ("attack-stix-data", "vulnify"):
             # Local-read manifests: R0 local-read, synthetic-only (the
-            # in-process reader never leaves the process).
+            # in-process readers never leave the process).
             assert payload["safety_class"] == "R0"
             assert payload["side_effects"] == ["local-read"]
             assert payload["synthetic_only"] is True

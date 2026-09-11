@@ -52,6 +52,7 @@ extension = [
     "heads/*.md",
     "heads/*/launch_mcp.py",
     "heads/*/skills/*/SKILL.md",
+    "arms/*/data/*.json",
 ]
 "extension.range" = [
     "manifest.json",

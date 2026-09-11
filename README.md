@@ -133,8 +133,8 @@ python -m extension invoke agent-wiz list_tools
   `attempt_id`, no artifact files).
 
 X2-PUB admits the explicit in-process `list_tools` profiles for
-`agent-wiz`, `ai-deep-sast`, `attack-stix-data`, `dark-moon`, `deepsec`,
-`pyrit`, `routersploit`, `sniper`, `vvah`, `zgrab2`, `nmap`, and
+`agent-wiz`, `ai-deep-sast`, `attack-stix-data`, `vulnify`, `dark-moon`,
+`deepsec`, `pyrit`, `routersploit`, `sniper`, `vvah`, `zgrab2`, `nmap`, and
 `semgrep-mcp`. These profiles
 read static policy metadata and do not spawn the upstream binary. The
 `attack-stix-data` row additionally admits five R0 local-read lookups
@@ -142,7 +142,10 @@ read static policy metadata and do not spawn the upstream binary. The
 local STIX bundle. `cvelookup` defaults to the bundled demo and emits a JSON
 custody-receipt line for every outcome; the other lookups require an
 operator-supplied bundle. All are exact matches only, with no
-enumeration, no network on any tier. Every
+enumeration, no network on any tier. `vulnify.lookup` is likewise an R0
+local read: it requires a frozen operator-supplied JSON snapshot and exact CVE
+IDs, preserves unknown enrichment as null, includes the snapshot digest in
+results, and emits a digest-bound custody receipt on every lookup outcome. Every
 other CLI invoke action is refused before `Extension.invoke` until it has
 authoritative per-action safety, scope, side-effect, budget, cleanup, and
 tool-version metadata.

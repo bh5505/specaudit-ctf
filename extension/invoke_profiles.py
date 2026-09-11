@@ -56,6 +56,7 @@ _STATIC_POLICY_ARMS = (
     "agent-wiz",
     "ai-deep-sast",
     "attack-stix-data",
+    "vulnify",
     "rpz-decoder",
     "dark-moon",
     "deepsec",
@@ -130,6 +131,7 @@ def _local_read_profile(arm_id: str, action: str, tier: str = "research") -> Inv
 # evidence gate; dossier on AuditPack issue #5). No adjacent row moves.
 _POLICY_ARM_TIERS = {arm_id: "research" for arm_id in _STATIC_POLICY_ARMS}
 _POLICY_ARM_TIERS["agent-wiz"] = "maintained"
+_POLICY_ARM_TIERS["vulnify"] = "experimental"
 
 
 def _mcp_read_profile(arm_id: str, action: str, tier: str = "research") -> InvokeProfile:
@@ -594,6 +596,11 @@ INVOKE_PROFILES = {
                 "technique", "software", "group", "relationships", "cvelookup"
             )
         ),
+        # vulnify read admission: one exact, in-process CVE lookup over a
+        # caller-named frozen local JSON snapshot. The lookup emits custody
+        # metadata but performs no file write, subprocess, database access,
+        # or network access.
+        _local_read_profile("vulnify", "lookup", tier="experimental"),
         # rpz-decoder decode admission (2026-09-08): in-process AXFR
         # decode of the caller-named dump into raw IP/CIDR + domain
         # indicator lists. Honest truth: real local files are touched

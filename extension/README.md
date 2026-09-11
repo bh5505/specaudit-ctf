@@ -27,7 +27,7 @@ A validation client may attach the same CLI or MCP surface later.
 Every row has a support `tier`: `research` | `experimental` |
 `maintained` | `held`. `curated: true` is a **deprecated**
 compatibility flag meaning a specialized handler exists in this cut;
-it is **not** `tier: maintained`. **30 arms are curated; zero rows
+it is **not** `tier: maintained`. **31 arms are curated; zero rows
 are held (the HTTP-MCP held set closed 2026-09-04); exactly one
 capability is maintained — the agent-wiz
 read tier `agent-wiz.list_tools` (X5-PROMOTE, doc 13 evidence gate).**
@@ -116,6 +116,10 @@ session per arm, not a generic transport):
   maps CVE ids to ATT&CK objects and writes a JSON custody receipt on every
   outcome (defaults to the bundled deterministic demo; see
   [arm usage](arms/attackstix/README.md))
+- `vulnify` — experimental in-process exact CVE reads over an
+  operator-supplied frozen JSON snapshot; digest-bound results and custody
+  receipts, with unknown enrichment preserved as null (see
+  [arm usage](arms/vulnify/README.md))
 
 **CLI dispatch-only** (no meaningful read surface):
 
@@ -190,7 +194,8 @@ The X2-PUB CLI manifest admits the in-process `list_tools` policy reads
 for `agent-wiz`, `ai-deep-sast`, `dark-moon`, `deepsec`, `nmap`,
 `pyrit`, `routersploit`, `sniper`, `vvah`, `zgrab2`, and
 `semgrep-mcp`, plus the five admitted `attack-stix-data` lookups (`technique`, `software`,
-`group`, `relationships`, `cvelookup`) and — since
+`group`, `relationships`, `cvelookup`), and `vulnify.lookup` over a frozen local
+snapshot, and — since
 the 2026-09-01/02/03/05 dispatch-class admissions — the scope-gated R1
 profiles (`nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan`,
 `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`, `pyrit.scan`,
