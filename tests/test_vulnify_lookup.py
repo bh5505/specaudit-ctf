@@ -109,3 +109,12 @@ def test_vulnify_list_describe_and_registration() -> None:
         assert profile is not None
         assert profile.side_effects == ("local-read",)
         assert profile.tier == "experimental"
+
+def test_vulnify_curated_fallback_when_snapshot_lacks_anchors(capsys) -> None:
+    # Finding E: snapshot record without technique_mappings falls back to the
+    # curated expert map, tagged source=curated_expert_map (bundle prose has
+    # no CVE anchors). CVE-2099-0002 is in the demo snapshot but unmapped.
+    res = _invoke(["CVE-2099-0002"])
+    assert res.ok is True
+    rec = res.output["results"][0]
+    assert rec["record"]["technique_mappings"] is None

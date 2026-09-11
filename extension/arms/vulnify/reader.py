@@ -3,7 +3,35 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
+
+# Finding E: when the frozen snapshot carries no technique anchors for a CVE
+# (bundle prose has zero CVE references), fall back to the operator-curated
+# expert map. Tagged `source: curated_expert_map` to stay distinct from any
+# snapshot/bundle-derived or alert-asserted provenance.
+_CURATED_PATH = Path(__file__).with_name("data") / "curated_cve_technique_map.json"
+_curated_cache: dict[str, dict[str, Any]] | None = None
+
+
+def _curated_index() -> dict[str, dict[str, Any]]:
+    global _curated_cache
+    if _curated_cache is None:
+        try:
+            _curated_cache = json.loads(_CURATED_PATH.read_text(encoding="utf-8"))["entries"]
+        except FileNotFoundError:
+            _curated_cache = {}
+    return _curated_cache
+
+
+def curated_technique_mappings(cve_id: str) -> list[dict[str, Any]] | None:
+    """Expert-curated technique mappings for a CVE, or None when unknown."""
+    entry = _curated_index().get(cve_id.upper())
+    if entry is None:
+        return None
+    return [{"technique": entry["technique"], "tactic": entry.get("tactic"),
+             "kind": entry.get("kind"), "confidence": entry.get("confidence"),
+             "source": "curated_expert_map"}]
 
 
 class BundleError(ValueError):
@@ -109,10 +137,13 @@ def lookup(index: dict[str, dict[str, Any]], cve_id: str, snapshot_sha256: str) 
     raw_descriptions = record.get("descriptions")
     if raw_descriptions is None and "description" in record:
         raw_descriptions = [record["description"]]
+    mappings = record.get("technique_mappings")
+    if not mappings:
+        mappings = curated_technique_mappings(cve_id)
     return {
         "cve_id": cve_id,
         "descriptions": raw_descriptions,
         "references": record["references"],
-        "technique_mappings": record.get("technique_mappings"),
+        "technique_mappings": mappings,
         "snapshot_sha256": snapshot_sha256,
     }

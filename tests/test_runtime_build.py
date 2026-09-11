@@ -82,7 +82,7 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
     # when the cvelookup default demo became an explicit data root; 117
     # after vulnify added four reader modules and its deterministic fixture;
     # 127 after the two UDP readers added four modules and one fixture each.
-    assert len(lock["producer_source_files"]) == 141
+    assert len(lock["producer_source_files"]) == 142  # +1 Finding E curated map data asset
     # 107 at the 2026-08 nmap regen; +7 for the transport-gate imports
     # (base64, hashlib, http.server, secrets and their traced deps).
     assert len(lock["included_stdlib_files"]) == 118

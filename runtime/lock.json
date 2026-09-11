@@ -1670,7 +1670,7 @@
     "extension/arms/vulnify/arm.py": "43e41aa3731ad2a7a308887d58acca178170552040f89ba24326559c0b039241",
     "extension/arms/vulnify/data/demo-vulnerability-snapshot.json": "a9a42f040c4a3c6fb761f9019736107e96ff6948c3f291f26ddb749026bcf62b",
     "extension/arms/vulnify/policy.py": "a601321089cd7d6239c6ae6a5621fea7009bcc5f16b390537324bfcca4e9c859",
-    "extension/arms/vulnify/reader.py": "57270c9df411ab403c2dbe65e2bd43ca90d4e2a57937e796b58d7fa4f79fd011",
+    "extension/arms/vulnify/reader.py": "31d188abdc6959117cf8b11d3d704a486799400c7eab63b6e93086d7a6c9bcf0",
     "extension/arms/vuls/__init__.py": "223de37585440038b05544757d67de332613503344b8887c4968d95c25b5d391",
     "extension/arms/vuls/arm.py": "2cb12d25c4e7d98462d64c0ea8e61c090919bbeb351b7a193264665e728d8138",
     "extension/arms/vuls/policy.py": "9f0e84b7cbe9cff569b4e2bd6e73e15862d5d89ee989b56bb66007f4dfc31399",
@@ -1700,7 +1700,8 @@
     "extension/trace.py": "283dbe47c8feb3e673e309a882423124f6233609c9c85c66140908d26c226efb",
     "extension/transports/__init__.py": "c5afd05b12fd804b399e5e8ba2f3e874288e3d30ac1ccc1633d7bb3ffe150722",
     "extension/transports/cli.py": "5401fca3f35701127f4091b803b05259f6c399278b0e0dc2d16c087d7c6cd536",
-    "extension/transports/mcp.py": "fbf1ea760edf63c5e6a2b6f5447debf231ff8a26b4b79824e06cbcf8059969e2"
+    "extension/transports/mcp.py": "fbf1ea760edf63c5e6a2b6f5447debf231ff8a26b4b79824e06cbcf8059969e2",
+    "extension/arms/vulnify/data/curated_cve_technique_map.json": "f6d74718f4f436077f59d2cd91ce2894caf105cdea8b45b2c7facbb8dd2c71f4"
   },
   "pyyaml": {
     "sha256": "b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d",
