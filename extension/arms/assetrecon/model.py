@@ -186,6 +186,14 @@ def live_value(kind, value):
     if kind == "asn":
         number = int(value)
         return not (number == 23456 or 64496 <= number <= 65551 or 4200000000 <= number <= 4294967295)
+    if kind == "network":
+        # A live query is worthwhile only for a public (non-private/reserved)
+        # announced prefix; private RFC1918 ranges are not globally routable.
+        try:
+            network = ipaddress.ip_network(value)
+            return network.is_global
+        except ValueError:
+            return False
     return kind == "certificate"
 
 
