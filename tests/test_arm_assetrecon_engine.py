@@ -677,6 +677,53 @@ def test_shodan_live_results_must_bind_query(monkeypatch):
         worker.collect("shodan", "certificate", FP)
 
 
+def test_live_network_value_is_public_global_only():
+    # P2: a network (CIDR) is worth a live query only when it is a globally
+    # routable announced prefix; private/reserved ranges are skipped.
+    assert live_value("network", "104.16.0.0/12") is True
+    assert live_value("network", "104.16.0.0/12".replace("12", "20")) is True
+    assert live_value("network", "10.0.0.0/8") is False
+    assert live_value("network", "192.0.2.0/24") is False
+
+
+def test_shodan_network_query_expands_to_hosts(monkeypatch):
+    # P2: an ASN-seed discover expands announced-prefix network nodes down to
+    # observed origin hosts via a shodan net: search instead of stalling.
+    monkeypatch.setenv("SHODAN_API_KEY", "fixture-key")
+    seen = {}
+
+    def fake_fetch(url, token=None, dns=False):
+        seen["url"] = url
+        assert "net%3A104.16.0.0%2F12" in url
+        return ({"total": 1, "matches": [{"ip_str": "104.18.14.73", "ssl": {"cert": {"fingerprint": {"sha256": FP}}}}]}, HASH)
+
+    monkeypatch.setattr(worker, "fetch", fake_fetch)
+    assert "network" in ADAPTERS["shodan"].query_kinds
+    result = worker.collect("shodan", "network", "104.16.0.0/12")
+    assert result["ok"] is True
+    assert result["data"]["matches"][0]["ip_str"] == "104.18.14.73"
+    assert "net%3A" in seen["url"]
+
+
+def test_crtsh_retries_transient_502_with_backoff(monkeypatch):
+    # P3: crt.sh intermittently 502s; the adapter retries with backoff so a
+    # transient failure is absorbed in-process instead of failing the governed
+    # path on the first attempt.
+    calls = {"n": 0}
+
+    def flaky(url, token=None, dns=False):
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise Refusal("invalid provider response")
+        return ([{"name_value": "www.public.com"}, {"name_value": "public.com"}], HASH)
+
+    monkeypatch.setattr(worker, "fetch", flaky)
+    monkeypatch.setattr(worker.time, "sleep", lambda s: None)
+    result = worker.collect("crtsh", "domain", "public.com", "exact")
+    assert result["ok"] is True
+    assert calls["n"] == 3
+
+
 def test_provider_credentials_are_bounded_before_transport(monkeypatch):
     monkeypatch.setenv("SHODAN_API_KEY", "line\nbreak")
     monkeypatch.setattr(worker, "fetch", lambda *a, **k: pytest.fail("invalid credential reached transport"))

@@ -357,6 +357,50 @@ def test_invoke_arm_error_emits_failed_envelope_exit_one(
     assert "capability-profile-mismatch" not in parsed.reasons
 
 
+def test_partial_recon_with_delivered_evidence_claims_degraded() -> None:
+    """P1: an arm that reports failure (ok=False) but still delivers evidence
+    surfaces status=degraded with the evidence owned, not a bare failed
+    envelope that would over-claim coverage.failed."""
+    from extension.encode import encode_invoke_result
+    from extension.invoke_profiles import invoke_profile
+
+    profile = invoke_profile("vulnify", "lookup")
+    envelope = encode_invoke_result(
+        Result(False, "vulnify", "lookup", {"status": "partial", "nodes": 1, "evidence": [{"id": "e1"}]}, "partial reconnaissance"),
+        profile=profile,
+        started_at="2026-09-11T00:00:00Z",
+        finished_at="2026-09-11T00:00:00Z",
+    )
+    assert envelope["status"] == "degraded"
+    # An owned-but-failed diagnostic stub (status=failed, no evidence) stays failed.
+    failed = encode_invoke_result(
+        Result(False, "vulnify", "lookup", {"status": "failed", "nodes": [], "evidence": []}, "operation refused"),
+        profile=profile,
+        started_at="2026-09-11T00:00:00Z",
+        finished_at="2026-09-11T00:00:00Z",
+    )
+    assert failed["status"] == "failed"
+    # A partial-status stub with empty evidence is still a hard failure (this is
+    # exactly the unarmed ct/ptr/probe case: operational refusal reaching a
+    # partial-status graph with no evidence delivered).
+    stub = encode_invoke_result(
+        Result(False, "vulnify", "lookup", {"status": "partial", "nodes": [], "evidence": []}, "no live true"),
+        profile=profile,
+        started_at="2026-09-11T00:00:00Z",
+        finished_at="2026-09-11T00:00:00Z",
+    )
+    assert stub["status"] == "failed"
+    assert "coverage" in envelope
+    assert envelope["coverage"]["complete"] == [profile.capability_id]
+    assert envelope["coverage"]["failed"] == []
+    assert any("partial result" in lim for lim in envelope["limitations"])
+    # The delivered evidence stays owned (artifact + inline output), so
+    # parsing retains a result object rather than failing the invocation.
+    parsed = parse_execution_result(envelope)
+    assert parsed.status == "degraded"
+    assert parsed.result is not None
+
+
 def test_unmanifested_dispatch_is_refused_before_extension_invoke(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:

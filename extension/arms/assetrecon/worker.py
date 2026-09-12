@@ -68,7 +68,19 @@ def fetch(url, token=None, dns=False):
 def collect(source, kind, value, variant=None):
     if source == "crtsh":
         query = value if variant == "exact" else "%." + value
-        data, digest = fetch("https://crt.sh/?" + urllib.parse.urlencode({"q": query, "output": "json"}))
+        # crt.sh intermittently returns 502 / drops large responses. Retry with
+        # linear backoff so a transient failure is absorbed in-process (P3);
+        # bounded by the parent wall deadline, and sleep is wall-clock not CPU.
+        attempts = 0
+        while True:
+            attempts += 1
+            try:
+                data, digest = fetch("https://crt.sh/?" + urllib.parse.urlencode({"q": query, "output": "json"}))
+                break
+            except (Refusal, TimeoutError, OSError):
+                if attempts >= 3:
+                    raise
+                time.sleep(1.0 * attempts)
         for row in bounded_list(data, 4000):
             if not isinstance(row, dict) or not isinstance(row.get("name_value"), str) or len(row["name_value"]) > 16384:
                 raise Refusal("invalid CT record")
@@ -173,7 +185,11 @@ def collect(source, kind, value, variant=None):
         if kind == "ip":
             url = "https://api.shodan.io/shodan/host/" + value + "?" + urllib.parse.urlencode({"key": key})
         else:
-            url = "https://api.shodan.io/shodan/host/search?" + urllib.parse.urlencode({"key": key, "query": "ssl.cert.fingerprint.sha256:" + value, "page": 1})
+            # certificate -> ssl.cert fingerprint search; network -> net: CIDR
+            # search (lets an announced-prefix node expand to observed origin
+            # hosts instead of stalling at the network tier).
+            query = ("net:" if kind == "network" else "ssl.cert.fingerprint.sha256:") + value
+            url = "https://api.shodan.io/shodan/host/search?" + urllib.parse.urlencode({"key": key, "query": query, "page": 1})
         data, digest = fetch(url)
         if not isinstance(data, dict):
             raise Refusal("invalid Shodan response")
@@ -188,12 +204,13 @@ def collect(source, kind, value, variant=None):
             for match in matches:
                 if not isinstance(match, dict):
                     raise Refusal("invalid Shodan search match")
-                certificate = match.get("ssl", {}).get("cert", {}) if isinstance(match.get("ssl", {}), dict) else {}
-                fingerprint = certificate.get("fingerprint", {}) if isinstance(certificate, dict) else {}
-                if not isinstance(fingerprint, dict) or normalize("certificate", fingerprint.get("sha256")) != value:
-                    raise Refusal("Shodan search result does not bind certificate query")
+                if kind == "certificate":
+                    certificate = match.get("ssl", {}).get("cert", {}) if isinstance(match.get("ssl", {}), dict) else {}
+                    fingerprint = certificate.get("fingerprint", {}) if isinstance(certificate, dict) else {}
+                    if not isinstance(fingerprint, dict) or normalize("certificate", fingerprint.get("sha256")) != value:
+                        raise Refusal("Shodan search result does not bind certificate query")
         limitations = ["Shodan snapshot is not proof of current service state"]
-        if kind == "certificate" and isinstance(data, dict) and data.get("total", 0) > len(data.get("matches", [])):
+        if kind in ("certificate", "network") and isinstance(data, dict) and data.get("total", 0) > len(data.get("matches", [])):
             limitations.append("Shodan pagination not exhausted")
         return dict(ok=True, data=data, digest=digest, limitations=limitations)
     raise Refusal("unknown provider")

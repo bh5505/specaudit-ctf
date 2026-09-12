@@ -239,5 +239,8 @@ ADAPTERS = {
     "cloudflare": Adapter(dns, ("domain", "ip"), "https://cloudflare-dns.com/dns-query"),
     "certspotter": Adapter(certspotter, ("domain",), "https://api.certspotter.com/v1/issuances"),
     "registry": Adapter(registry, ("ip", "asn"), "https://stat.ripe.net/data/"),
-    "shodan": Adapter(shodan, ("ip", "certificate"), "https://api.shodan.io/"),
+    # shodan can also query a network (CIDR) via host/search net: filter; this
+    # lets an ASN-seed discover expand announced-prefix network nodes down to
+    # observed origin hosts instead of stalling at the network tier (P2).
+    "shodan": Adapter(shodan, ("ip", "certificate", "network"), "https://api.shodan.io/"),
 }

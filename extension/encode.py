@@ -381,6 +381,37 @@ def encode_invoke_result(
         claimed = STATUS_FAILED
         coverage = _coverage(attempted=(cap,), failed=(cap,), required=(cap,))
         limitations = ("arm result identity did not match admitted capability",)
+    elif owned:
+        # Distinguish a partial result that still delivered evidence (the arm
+        # declares status=partial/degraded in its output schema, e.g. asset-recon
+        # discover reaching a partial graph) from a full failure that merely
+        # returns a diagnostic stub (status=failed, empty evidence). A declared
+        # partial status is surfaced as degraded so coverage.failed does not
+        # over-claim failure; any other owned-but-failed result stays failed.
+        declared = result.output.get("status") if isinstance(result.output, dict) else None
+        # A declared partial status is only a genuine P1 partial when the arm
+        # actually delivered substantive evidence; an operational failure that
+        # merely reaches a partial-status stub (e.g. unarmed ct with empty
+        # nodes/evidence) still reads as a hard failure.
+        # Key on delivered observations (evidence), not nodes: the seed node is
+        # present even for an unarmed ct failure with zero observations collected.
+        has_evidence = bool(result.output.get("evidence")) if isinstance(result.output, dict) else False
+        if declared in ("partial", "degraded") and has_evidence:
+            claimed = STATUS_DEGRADED
+            coverage = _coverage(attempted=(cap,), complete=(cap,), required=(cap,))
+            reason = _categorical_failure_reason(result.error)
+            limitations = (
+                "partial result: arm reported failure after delivering evidence",
+                *((f"failure reason: {reason}",) if reason else ()),
+            )
+        else:
+            claimed = STATUS_FAILED
+            coverage = _coverage(attempted=(cap,), failed=(cap,), required=(cap,))
+            reason = _categorical_failure_reason(result.error)
+            limitations = (
+                "required arm failed",
+                *((f"failure reason: {reason}",) if reason else ()),
+            )
     else:
         claimed = STATUS_FAILED
         coverage = _coverage(attempted=(cap,), failed=(cap,), required=(cap,))

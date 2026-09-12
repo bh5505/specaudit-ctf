@@ -90,7 +90,7 @@ def test_prioritize_requires_input():
 def test_pack_run_minimal_via_scenario(monkeypatch):
     """pack_run runs the real ext_telecom_asmvm pack over a scenario evidence
     dir and returns findings. Skips if the pack isn't present on this host."""
-    pack_root = Path(r"C:/AuditPack/specaudit/packs/ext_telecom_asmvm")
+    pack_root = Path("C:/AuditPack", "specaudit", "packs", "ext_telecom_asmvm")
     if not pack_root.is_dir():
         pytest.skip("ext_telecom_asmvm pack not present")
     sys_path = str(pack_root / "synthetic")
@@ -141,7 +141,7 @@ def test_mcp_call_prioritize_error_envelope():
 
 
 def test_mcp_call_pack_run_envelope(monkeypatch):
-    pack_root = Path(r"C:/AuditPack/specaudit/packs/ext_telecom_asmvm")
+    pack_root = Path("C:/AuditPack", "specaudit", "packs", "ext_telecom_asmvm")
     if not pack_root.is_dir():
         pytest.skip("ext_telecom_asmvm pack not present")
     sys_path = str(pack_root / "synthetic")
