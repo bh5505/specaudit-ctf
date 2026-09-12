@@ -7,11 +7,14 @@ This tree is the public attach surface:
 
 - `coverage.yaml` — classified survey map (not a ship list)
 - `contract.py` — fail-closed `list` / `describe` / `invoke`
-- `arms/` — 34 specialized handlers (families below)
+- `arms/` — 35 specialized handlers (families below)
 - `heads/` — Claude Code CLI, Codex CLI, and other-agent-CLI profiles
 - `range/` — synthetic fixtures only
-- `mcp_server.py` — stdio MCP for four tools (`list`, `describe`,
-  `invoke`, `run_range`)
+- `mcp_server.py` — stdio MCP for six tools (`list`, `describe`,
+  `invoke`, `run_range`, `pack_run`, `prioritize_targets`)
+- `pipeline.py` — governed MCP-surface end-to-end chain (`pack_run` →
+  `prioritize_targets`): evidence → pack report → prioritized targets with
+  threat models and a human-validation gate
 - `arms/dispatch.py` — two-tier scope gate
 
 A validation client may attach the same CLI or MCP surface later.
@@ -27,7 +30,7 @@ A validation client may attach the same CLI or MCP surface later.
 Every row has a support `tier`: `research` | `experimental` |
 `maintained` | `held`. `curated: true` is a **deprecated**
 compatibility flag meaning a specialized handler exists in this cut;
-it is **not** `tier: maintained`. **34 arms are curated; zero rows
+it is **not** `tier: maintained`. **35 arms are curated; zero rows
 are held (the HTTP-MCP held set closed 2026-09-04); exactly one
 capability is maintained — the agent-wiz
 read tier `agent-wiz.list_tools` (X5-PROMOTE, doc 13 evidence gate).**

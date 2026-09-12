@@ -85,6 +85,11 @@ def classify(name: str) -> str | None:
         return "yaml"
     if top == "extension":
         return "extension"
+    # First-party durable producer logic (tools/demo_* cores, the pack runner)
+    # is imported by extension/pipeline.py as the MCP-surface backend, so the
+    # sealed mcp_server invocation now genuinely requires it in the bundle.
+    if top == "tools":
+        return "extension"
     if top in sys.stdlib_module_names:
         return "stdlib"
     return "unexpected"

@@ -517,6 +517,8 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.rpzdecoder import RpzDecoderArm
     from .arms.assetrecon import ARM_ID as ASSET_RECON_ARM_ID
     from .arms.assetrecon import AssetReconArm
+    from .arms.ivanti import ARM_ID as IVANTI_ARM_ID
+    from .arms.ivanti import IvantiArm
 
     return {
         BURP_ARM_ID: BurpArm(),
@@ -553,6 +555,7 @@ def _default_arms() -> dict[str, Transport]:
         IKE_READTIER_ARM_ID: IkeReadtierArm(),
         RPZ_DECODER_ARM_ID: RpzDecoderArm(),
         ASSET_RECON_ARM_ID: AssetReconArm(),
+        IVANTI_ARM_ID: IvantiArm(),
     }
 
 

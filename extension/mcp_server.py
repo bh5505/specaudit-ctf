@@ -67,8 +67,9 @@ from .contract import Extension, ExtensionError  # noqa: E402
 
 from .dispatch import DispatchOutcome, dispatch_invoke, dispatch_range  # noqa: E402
 from . import trace as trace_module  # noqa: E402
+from . import pipeline as pipeline_module  # noqa: E402
 
-TOOLS = ("list", "describe", "invoke", "run_range")
+TOOLS = ("list", "describe", "invoke", "run_range", "pack_run", "prioritize_targets")
 # Legacy-era initialize handshake, newest first. 2025-11-25 is the revision
 # the campaign guardrails cite; the 2026+ per-request-metadata era is out of
 # scope for X4.
@@ -211,6 +212,53 @@ _TOOL_DEFS: tuple[dict[str, Any], ...] = (
     },
     _INVOKE_TOOL_DEF,
     _RUN_RANGE_TOOL_DEF,
+    {
+        "name": "pack_run",
+        "description": (
+            "Governed step 2: run an ext_telecom_asmvm pack over an evidence "
+            "dir and return the report.json findings + path. Backed by "
+            "tools/ctf_run_checks.run(). Default engine is sqlite (stdlib) so "
+            "the surface needs no duckdb."
+        ),
+        "annotations": {"readOnlyHint": False, "openWorldHint": False},
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "pack_root": {"type": "string", "description": "Pack root (workbench.toml/manifest.yaml)"},
+                "evidence_dir": {"type": "string", "description": "Evidence dir of pack-schema CSVs"},
+                "out_dir": {"type": "string", "description": "Where report.json/report.sarif go (default: temp)"},
+                "db": {"type": "string", "enum": ["duckdb", "sqlite"], "default": "sqlite"},
+                "limit": {"type": "integer", "default": 100},
+                "run_id": {"type": "string"},
+                "fast_csv": {"type": "boolean", "default": False},
+            },
+            "required": ["pack_root", "evidence_dir"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "prioritize_targets",
+        "description": (
+            "Governed step 3: pack report -> prioritized target list with "
+            "per-target threat models and grounded multi-step ATT&CK attack "
+            "chains, plus the human-validation-ready markdown report. Backed "
+            "by the tools/demo_* durable cores."
+        ),
+        "annotations": {"readOnlyHint": True, "openWorldHint": False},
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "report": {"type": "object", "description": "Inline pack report dict (findings list)"},
+                "report_path": {"type": "string", "description": "Path to a pack report.json (e.g. from pack_run out_dir)"},
+                "evidence_dir": {"type": "string", "description": "Evidence dir for CVE cross-reference (optional)"},
+                "map_path": {"type": "string", "description": "Curated CVE->technique map json (default: vulnify arm map)"},
+                "with_report": {"type": "boolean", "default": True, "description": "Include the markdown validation report"},
+                "out_path": {"type": "string", "description": "Optional path to write the markdown report to"},
+            },
+            "required": [],
+            "additionalProperties": False,
+        },
+    },
 )
 
 
@@ -411,6 +459,10 @@ class McpServer:
                 return self._invoke_tool(arguments)
             if name == "run_range":
                 return self._run_range_tool(arguments)
+            if name == "pack_run":
+                return self._pack_run_tool(arguments)
+            if name == "prioritize_targets":
+                return self._prioritize_tool(arguments)
             payload = self._run_tool(name, arguments)
         except ExtensionError as exc:
             return _tool_content(str(exc), is_error=True)
@@ -423,6 +475,51 @@ class McpServer:
             entry_id = _require_id(arguments)
             return self.extension.describe(entry_id).to_dict()
         raise _InvalidParams(f"unknown tool: {name}")
+
+    def _pack_run_tool(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Governed step 2: run ext_telecom_asmvm over evidence (report.json)."""
+        pack_root = arguments.get("pack_root")
+        evidence_dir = arguments.get("evidence_dir")
+        if not isinstance(pack_root, str) or not pack_root.strip():
+            raise _InvalidParams("pack_root is required")
+        if not isinstance(evidence_dir, str) or not evidence_dir.strip():
+            raise _InvalidParams("evidence_dir is required")
+        db = _optional_str(arguments, "db") or "sqlite"
+        limit = arguments.get("limit")
+        fast_csv = bool(arguments.get("fast_csv"))
+        try:
+            payload = pipeline_module.pack_run(
+            pack_root=pack_root,
+            evidence_dir=evidence_dir,
+            out_dir=_optional_str(arguments, "out_dir"),
+            db=db,
+            limit=int(limit) if limit is not None else 100,
+                run_id=_optional_str(arguments, "run_id"),
+                fast_csv=fast_csv,
+            )
+        except (ValueError, RuntimeError) as exc:
+            return _tool_content(str(exc), is_error=True)
+        return _tool_content(payload, is_error=False)
+
+    def _prioritize_tool(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        """Governed step 3: report -> prioritized targets + threat models +
+        attack chains + human-validation-ready markdown report."""
+        report = arguments.get("report")
+        report_path = _optional_str(arguments, "report_path")
+        if report is None and report_path is None:
+            raise _InvalidParams("prioritize_targets needs 'report' or 'report_path'")
+        try:
+            payload = pipeline_module.prioritize_targets(
+            report=report,
+            report_path=report_path,
+            evidence_dir=_optional_str(arguments, "evidence_dir"),
+            map_path=_optional_str(arguments, "map_path"),
+            with_report=bool(arguments.get("with_report", True)),
+                out_path=_optional_str(arguments, "out_path"),
+            )
+        except (ValueError, RuntimeError) as exc:
+            return _tool_content(str(exc), is_error=True)
+        return _tool_content(payload, is_error=False)
 
     def _invoke_tool(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         """Run one bounded invoke through the shared dispatch.

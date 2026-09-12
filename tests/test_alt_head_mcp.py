@@ -68,7 +68,7 @@ def test_tools_list_is_only_list_describe_invoke() -> None:
     assert response is not None
     names = [tool["name"] for tool in response["result"]["tools"]]
     assert names == list(TOOLS)
-    assert names == ["list", "describe", "invoke", "run_range"]
+    assert names == ["list", "describe", "invoke", "run_range", "pack_run", "prioritize_targets"]
 
 
 def test_mcp_list_and_describe_use_fixture_catalog() -> None:
@@ -281,7 +281,7 @@ def test_module_mcp_list() -> None:
     line = next(item for item in proc.stdout.splitlines() if item.strip().startswith("{"))
     body = json.loads(line)
     names = [tool["name"] for tool in body["result"]["tools"]]
-    assert names == ["list", "describe", "invoke", "run_range"]
+    assert names == ["list", "describe", "invoke", "run_range", "pack_run", "prioritize_targets"]
 
 
 def test_module_mcp_invoke_live_catalog_unconfigured() -> None:
@@ -354,7 +354,7 @@ def test_head_launcher_does_not_import_cwd_extension(tmp_path: Path) -> None:
     line = next(item for item in proc.stdout.splitlines() if item.strip().startswith("{"))
     body = json.loads(line)
     names = [tool["name"] for tool in body["result"]["tools"]]
-    assert names == ["list", "describe", "invoke", "run_range"]
+    assert names == ["list", "describe", "invoke", "run_range", "pack_run", "prioritize_targets"]
 
 
 def test_main_help() -> None:
@@ -445,6 +445,8 @@ def test_tool_defs_match_documented_surface_and_annotations() -> None:
         "describe": {"readOnlyHint": True, "openWorldHint": False},
         "invoke": {"readOnlyHint": False, "openWorldHint": True},
         "run_range": {"readOnlyHint": False, "openWorldHint": False},
+        "pack_run": {"readOnlyHint": False, "openWorldHint": False},
+        "prioritize_targets": {"readOnlyHint": True, "openWorldHint": False},
     }
     assert {tool["name"]: tool["annotations"] for tool in _TOOL_DEFS} == expected
     assert tuple(expected) == TOOLS

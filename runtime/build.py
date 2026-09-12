@@ -211,16 +211,38 @@ def _verify_locked_cache(lock: dict) -> None:
 
 def _safe_extract_tar(tar: tarfile.TarFile, dest: Path) -> None:
     dest = dest.resolve()
-    try:
-        tar.extractall(dest, filter="data")  # PEP 706, Python >= 3.12
-        return
-    except TypeError:
-        pass  # older interpreter: fall through to manual traversal guard
     for member in tar.getmembers():
         target = (dest / member.name).resolve()
         if target != dest and dest not in target.parents:
             raise BuildError(f"refusing to extract outside destination: {member.name}")
-    tar.extractall(dest)  # noqa: S202 - traversal already checked above
+    try:
+        tar.extractall(dest, filter="data")  # PEP 706, Python >= 3.12
+        return
+    except (TypeError, OSError):
+        pass  # older interpreter / Windows terminfo collision: manual fallback
+    # Windows NTFS is case-insensitive, so the CPython terminfo bundle's
+    # ``N/NCR260VT300WPP -> ../n/ncr260vt300wpp`` symlink collides with the
+    # regular file ``n/ncr260vt300wpp`` (both resolve to the same name on
+    # disk), leaving a circular broken symlink that makes the later file write
+    # fail with Errno 22. Manual member-by-member extraction clears any
+    # colliding lexisting path before writing each regular file.
+    for member in tar.getmembers():
+        target = dest / member.name
+        if member.isdir():
+            target.mkdir(parents=True, exist_ok=True)
+            continue
+        if target.parent != dest:
+            target.parent.mkdir(parents=True, exist_ok=True)
+        if member.issym():
+            if os.path.lexists(target):
+                os.unlink(target)
+            os.symlink(member.linkname, target)
+            continue
+        # regular file (or hardlink): clear any colliding symlink first
+        if os.path.lexists(target):
+            os.unlink(target)
+        with tar.extractfile(member) as srcf, target.open("wb") as fh:
+            shutil.copyfileobj(srcf, fh)
 
 
 def _safe_extract_zip(zf: zipfile.ZipFile, dest: Path) -> None:

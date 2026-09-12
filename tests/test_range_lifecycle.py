@@ -418,8 +418,8 @@ def test_uninstalled_curated_arm_is_skipped_held_is_error(
         if entry.kind == CATALOG_KIND_ARM and entry.curated and entry.tier == "held"
     ]
     skipped_ids = [arm_id for arm_id in curated_ids if arm_id not in held_ids]
-    # 34 after the bounded asset-recon arm.
-    assert len(curated_ids) == 34
+    # 35 after the bounded asset-recon arm and the ivanti VM extractor.
+    assert len(curated_ids) == 35
     assert CURATED_ARM_ID in curated_ids
     # Research tier since the doc-21 dossier (2026-09-03): no endpoint
     # configured, so the arm is skipped as not-installed like other

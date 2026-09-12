@@ -379,3 +379,10 @@ entries:
     curated: true
     tier: research
     notes: First-party bounded asset reconnaissance. Offline plan/parse and explicit CT, PTR, registry and passive-provider discovery share one evidence graph. Live provider reads require live=true and exact ASSET_RECON_PROVIDERS grants; probe requires live=true and ASSET_RECON_PROBE_SCOPE, plus the existing tool scope for delegated scanners. Discovered names and graph edges never grant probe authority. Partial results retain evidence but are not complete. No background enumeration or automatic probing.
+
+  - id: ivanti
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: experimental
+    notes: First-party stdlib-only Ivanti (RiskSense) VM API extractor. search pulls host (assets), hostFinding (findings), vulnerability, or tag records from the platform /client/{id}/{subject}/search endpoint with x-api-key auth; export creates a server-side UI-identical CSV and polls for the download. Output is the flattened JSON-safe shape the ext_telecom_asmvm pack consumes as Ivanti bronze. filters/fields are offline discovery of the API's valid filter and exportable-field names. No scope grant is required for discovery; live pulls need IVANTI_URL/IVANTI_API_VER/IVANTI_CLIENT_ID/IVANTI_API_KEY (or an Ivanti_config.ini).

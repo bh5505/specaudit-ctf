@@ -69,7 +69,7 @@ def test_head_tools_are_only_list_describe_invoke(
     assert response is not None
     names = [tool["name"] for tool in response["result"]["tools"]]
     assert names == list(TOOLS)
-    assert names == ["list", "describe", "invoke", "run_range"]
+    assert names == ["list", "describe", "invoke", "run_range", "pack_run", "prioritize_targets"]
     assert state.http_hits == 0
     assert state.calls == []
 
