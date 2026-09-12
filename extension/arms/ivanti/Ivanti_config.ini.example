@@ -1,0 +1,17 @@
+# Ivanti VM API arm config (copy to Ivanti_config.ini or point IVANTI_CONFIG
+# at this file and fill in the values; or set the IVANTI_URL/IVANTI_API_VER/
+# IVANTI_CLIENT_ID/IVANTI_API_KEY env vars instead).
+[platform]
+url = https://platform4.risksense.com
+api_ver = /api/v1
+client_id = 1550
+
+[secrets]
+# x-api-key credential for the Ivanti VM platform.
+api_key =
+
+[pull]
+# Defaults used by the upstream extractor; the arm reads projection/size from
+# per-invoke arguments and does not depend on these.
+projection = detail
+size = 750

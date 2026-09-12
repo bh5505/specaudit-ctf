@@ -630,8 +630,8 @@ def test_range_encoder_spends_one_step_under_freeze_budget(
     no_curated_tools: None,
 ) -> None:
     inner = run_range()
-    # 34 after the bounded asset-recon arm.
-    assert len(inner["coverage"]["attempted"]) == 34
+    # 35 after the bounded asset-recon arm and the ivanti VM extractor.
+    assert len(inner["coverage"]["attempted"]) == 35
     payload = encode_range_document(
         inner,
         started_at="2026-08-25T12:00:00Z",

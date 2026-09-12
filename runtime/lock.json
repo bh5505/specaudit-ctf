@@ -112,6 +112,11 @@
       "sha256": "9cb4208f99128a0489b6c8e6c61637617dd7d4250c59e065491957eda084dd10"
     },
     {
+      "name": "configparser",
+      "path": "configparser.py",
+      "sha256": "05594b61a7c9a803c17775b8fcba6da6f8388e1f20669e13430fa59da0bc660d"
+    },
+    {
       "name": "contextlib",
       "path": "contextlib.py",
       "sha256": "d732c045bc7450997f97b2f79cfdb1546b68d2655e89ab3170f3b19b3930d83c"
@@ -125,6 +130,11 @@
       "name": "copyreg",
       "path": "copyreg.py",
       "sha256": "5499e1be7ba52d4715a911ae65ef2d703db9379d21fff2a07fad8877c318e070"
+    },
+    {
+      "name": "csv",
+      "path": "csv.py",
+      "sha256": "05c688620a98076289b09943788f840175cac8d299956e33fe9b4502a6526525"
     },
     {
       "name": "dataclasses",
@@ -417,6 +427,11 @@
       "sha256": "3b21ac188fd9ac20bacc8ccd976fabd5d8ccf5000f8e157d3dfff005b228fb3d"
     },
     {
+      "name": "platform",
+      "path": "platform.py",
+      "sha256": "4a3cc68ba7354f8d5cc28c55315a7d77b77dcdbbaa3a092572a636b5fb5b6938"
+    },
+    {
       "name": "posixpath",
       "path": "posixpath.py",
       "sha256": "aa5c97446b9d11a3b6d5a5f949a814243bbda8f2862d70bd9f18ad6961bb001c"
@@ -502,6 +517,16 @@
       "sha256": "a1402df8627949d0b72591e742795fcd48f911172610d4e3c2f16bd7dcae8128"
     },
     {
+      "name": "sqlite3",
+      "path": "sqlite3/__init__.py",
+      "sha256": "29878411a7bcefcd56a3751fe689dea2c99bda75a13a485d78898834a323f0c0"
+    },
+    {
+      "name": "sqlite3.dbapi2",
+      "path": "sqlite3/dbapi2.py",
+      "sha256": "e49882f895bbbdad7e5af6a9079edffaae9b82bba3fd664281acb607db56c346"
+    },
+    {
       "name": "ssl",
       "path": "ssl.py",
       "sha256": "8806125ae5b1967e220ab3c73ce939736eb9251e3a431bd19d7cb9035f097cdc"
@@ -582,6 +607,11 @@
       "sha256": "7e6c3b6d7a95f0d74f5968f51a87adae8a51bf42390cdfec98c7a99203e7bb76"
     },
     {
+      "name": "uuid",
+      "path": "uuid.py",
+      "sha256": "e936b632e7b14cbdad7da077edf59d1de77f5a4c8507a5e7d0028b1d336d9883"
+    },
+    {
       "name": "warnings",
       "path": "warnings.py",
       "sha256": "47328418f0365f0897a2d3789f684dbaba1d5b9c492871f1b72a35b8e2e92021"
@@ -635,9 +665,11 @@
     "codecs",
     "collections",
     "collections.abc",
+    "configparser",
     "contextlib",
     "copy",
     "copyreg",
+    "csv",
     "dataclasses",
     "datetime",
     "dis",
@@ -696,6 +728,7 @@
     "os",
     "os.path",
     "pathlib",
+    "platform",
     "posixpath",
     "queue",
     "quopri",
@@ -713,6 +746,8 @@
     "signal",
     "socket",
     "socketserver",
+    "sqlite3",
+    "sqlite3.dbapi2",
     "ssl",
     "stat",
     "string",
@@ -729,6 +764,7 @@
     "urllib.parse",
     "urllib.request",
     "urllib.response",
+    "uuid",
     "warnings",
     "weakref",
     "xml",
@@ -1065,6 +1101,10 @@
         "extension/arms/ike_readtier/arm.py",
         "extension/arms/ike_readtier/codec.py",
         "extension/arms/ike_readtier/policy.py",
+        "extension/arms/ivanti/__init__.py",
+        "extension/arms/ivanti/arm.py",
+        "extension/arms/ivanti/client.py",
+        "extension/arms/ivanti/policy.py",
         "extension/arms/mcp_client.py",
         "extension/arms/metasploit/__init__.py",
         "extension/arms/metasploit/arm.py",
@@ -1157,9 +1197,11 @@
         "codecs",
         "collections",
         "collections.abc",
+        "configparser",
         "contextlib",
         "copy",
         "copyreg",
+        "csv",
         "dataclasses",
         "datetime",
         "dis",
@@ -1331,6 +1373,10 @@
         "extension/arms/ike_readtier/arm.py",
         "extension/arms/ike_readtier/codec.py",
         "extension/arms/ike_readtier/policy.py",
+        "extension/arms/ivanti/__init__.py",
+        "extension/arms/ivanti/arm.py",
+        "extension/arms/ivanti/client.py",
+        "extension/arms/ivanti/policy.py",
         "extension/arms/mcp_client.py",
         "extension/arms/metasploit/__init__.py",
         "extension/arms/metasploit/arm.py",
@@ -1401,10 +1447,16 @@
         "extension/encode.py",
         "extension/envelopes.py",
         "extension/invoke_profiles.py",
+        "extension/pipeline.py",
         "extension/trace.py",
         "extension/transports/__init__.py",
         "extension/transports/cli.py",
-        "extension/transports/mcp.py"
+        "extension/transports/mcp.py",
+        "tools/ctf_run_checks.py",
+        "tools/demo_rank_hosts.py",
+        "tools/demo_rollup_hosts.py",
+        "tools/demo_target_analysis.py",
+        "tools/render_provenance_header.py"
       ],
       "stdlib_module_names": [
         "__future__",
@@ -1414,6 +1466,7 @@
         "_frozen_importlib_external",
         "_weakrefset",
         "abc",
+        "argparse",
         "ast",
         "base64",
         "bisect",
@@ -1422,9 +1475,11 @@
         "codecs",
         "collections",
         "collections.abc",
+        "configparser",
         "contextlib",
         "copy",
         "copyreg",
+        "csv",
         "dataclasses",
         "datetime",
         "dis",
@@ -1450,6 +1505,7 @@
         "fnmatch",
         "functools",
         "genericpath",
+        "gettext",
         "hashlib",
         "heapq",
         "hmac",
@@ -1482,6 +1538,7 @@
         "os",
         "os.path",
         "pathlib",
+        "platform",
         "posixpath",
         "queue",
         "quopri",
@@ -1499,6 +1556,8 @@
         "signal",
         "socket",
         "socketserver",
+        "sqlite3",
+        "sqlite3.dbapi2",
         "ssl",
         "stat",
         "string",
@@ -1515,6 +1574,7 @@
         "urllib.parse",
         "urllib.request",
         "urllib.response",
+        "uuid",
         "warnings",
         "weakref",
         "zipimport"
@@ -1622,6 +1682,10 @@
     "extension/arms/ike_readtier/codec.py": "f05dd4388b726068342b22ac77e27e2ff1e37cd9b92c77f2c33fe3f14a182dee",
     "extension/arms/ike_readtier/data/demo-reply.hex": "4be6f5da42fbb278e824fa62c7770fcafc54055b504dc011890c72c3c77f8bec",
     "extension/arms/ike_readtier/policy.py": "b0366d254b9efd78141e4ccf13b2918d10b928ac26b2f8ff9d318f4e354bb896",
+    "extension/arms/ivanti/__init__.py": "e9e0688a163366af52586b69309d713bd13382d5fdb70239dba80acf20a7e8f5",
+    "extension/arms/ivanti/arm.py": "79a4156d8714391a3dfa285585c6c9dcee8311362de628b887cc3102f1641d2c",
+    "extension/arms/ivanti/client.py": "f574db1917223f3a352d3f8d92640e6b0bc36e138b1a4d2525d870c4536465bd",
+    "extension/arms/ivanti/policy.py": "ad6a4dac8ff50c82e6e1ebb9568de3e2ca9a469c8bd0596cf88f3f9625cb8d3f",
     "extension/arms/mcp_client.py": "0db4b795f70c55789558f5cd4f8beb230b6439e0a9ecabd6282055deaaeca8cd",
     "extension/arms/metasploit/__init__.py": "a1410b88a1b5d7a5ee3b5ed4f27f39a55a4f1a3883e6bd1a5789e6ac6e394102",
     "extension/arms/metasploit/arm.py": "da89d04c32e914c73249f3914831d118500a511a67233b9e463d126172a14044",
@@ -1689,19 +1753,24 @@
     "extension/arms/zgrab2/__init__.py": "f2b6d0a7dbdc0c957982ae7a6c1633e61b74da2aa3dc265ae637aba126270451",
     "extension/arms/zgrab2/arm.py": "1f03abec0d2c36dac9440f7220211e9370f0d0867773a95b46a143947d147e2e",
     "extension/arms/zgrab2/policy.py": "0bee264c5fbefa59a0da6b2a0056d4a864528eb8078283a20e993066114abb15",
-    "extension/contract.py": "422257866c514f72cd0d410a463c1997e9f2aa9ae671048414d11b5afd87e491",
-    "extension/coverage.yaml": "38dd2101c0922d6d796a48edeb3132cece921e68a486c7fa7bc7e6dc57f1acb0",
+    "extension/contract.py": "006440c1d2887fb9492270b679aa9383051084888af1d5ebb52acb040f0379d9",
+    "extension/coverage.yaml": "67d1d806bfd07d1f79a8dc5a78102a760ae315fca5904721cd7cbe1616a53266",
     "extension/dispatch.py": "4f6b56e2d63efbe33b6b4995a2554d2ef0b5c2ab01ad9fad53742e840a4dd5b3",
     "extension/encode.py": "ed81ada2566a001f70928e75d5ae7a636e181d6af36d558f6fdc1cded000ac50",
     "extension/envelopes.py": "e35fc42d6a18140f275d060447dfff3f8c6054a706b49d3c9d9798233c4d3fcd",
     "extension/invoke_profiles.py": "96bdeb1833a7d346de5021058d3514ce86d196890912dc1272bbf0703a4507f5",
-    "extension/mcp_server.py": "503d275cc31256f2f06aebd1f15543627efac76b69d83b2d6c9f1b86f580a93c",
+    "extension/mcp_server.py": "ce838cb6344d1a2a6670ab2a044e2b98c0585682232ce3e8fb78a318fecf1cc2",
+    "extension/pipeline.py": "17967c59a1ac801e638fe0e4721edc169404148ec28983accbfdc32857e199c4",
     "extension/schema/execution-result.v1.schema.json": "b5a928b2481944cd3040057934208dcb913077f31e9b0fc2ed6ab83d48b245cc",
     "extension/trace.py": "283dbe47c8feb3e673e309a882423124f6233609c9c85c66140908d26c226efb",
     "extension/transports/__init__.py": "c5afd05b12fd804b399e5e8ba2f3e874288e3d30ac1ccc1633d7bb3ffe150722",
     "extension/transports/cli.py": "5401fca3f35701127f4091b803b05259f6c399278b0e0dc2d16c087d7c6cd536",
     "extension/transports/mcp.py": "fbf1ea760edf63c5e6a2b6f5447debf231ff8a26b4b79824e06cbcf8059969e2",
-    "extension/arms/vulnify/data/curated_cve_technique_map.json": "f6d74718f4f436077f59d2cd91ce2894caf105cdea8b45b2c7facbb8dd2c71f4"
+    "tools/ctf_run_checks.py": "a8c467756150a7f07be8799b8e56bad6af01378d2dbcbe3a69f4cfb5ba57983d",
+    "tools/demo_rank_hosts.py": "6c13e419115c833cb17c69a44cb87d7406d723fc2b20e51c65008155f4e5b5d2",
+    "tools/demo_rollup_hosts.py": "8617120e22591bd0d846204683e1eb5f8cff352b110ac0451b918e145a03a793",
+    "tools/demo_target_analysis.py": "6ee5cf745523e7458789f9b5baa1ef278cdb6f752a80b0009efc0318ccad361a",
+    "tools/render_provenance_header.py": "e3375a23baf4ac55bfdbcd6d83c5810efd84e6555b00382ad9ef246da309955b"
   },
   "pyyaml": {
     "sha256": "b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d",

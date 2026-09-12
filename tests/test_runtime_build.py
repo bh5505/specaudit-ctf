@@ -81,11 +81,16 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
     # producer source closure after rpz-decoder brought it to 108; 112
     # when the cvelookup default demo became an explicit data root; 117
     # after vulnify added four reader modules and its deterministic fixture;
-    # 127 after the two UDP readers added four modules and one fixture each.
-    assert len(lock["producer_source_files"]) == 142  # +1 Finding E curated map data asset
+    # 127 after the two UDP readers added four modules and one fixture each;
+    # 147 after the governed pipeline (extension/pipeline.py + five tools/*.py
+    # durable cores); 151 after the ivanti VM extractor arm added its four
+    # modules (arm, policy, client, __init__) to the sealed closure.
+    assert len(lock["producer_source_files"]) == 151  # +1 ivanti arm (4 modules)
     # 107 at the 2026-08 nmap regen; +7 for the transport-gate imports
-    # (base64, hashlib, http.server, secrets and their traced deps).
-    assert len(lock["included_stdlib_files"]) == 118
+    # (base64, hashlib, http.server, secrets and their traced deps); 123 after
+    # the pipeline pulled csv/sqlite3/uuid into the closure; 124 when the ivanti
+    # arm added configparser (urllib/http/ssl/ipaddress were already traced).
+    assert len(lock["included_stdlib_files"]) == 124
     assert len(lock["included_yaml_files"]) == 18
     assert lock["capability_manifest"] == {
         "path": "tests/goldens/capability-manifest/agent-wiz.list_tools.json",
@@ -202,7 +207,8 @@ def test_validate_mcp_exchange_rejects_contract_violations() -> None:
         '"capabilities":{},"serverInfo":{"name":"x","version":"0"}}}\n'
         '{"jsonrpc":"2.0","id":2,"result":{"tools":['
         '{"name":"list"},{"name":"describe"},{"name":"invoke"},'
-        '{"name":"run_range"}]}}\n'
+        '{"name":"run_range"},{"name":"pack_run"},'
+        '{"name":"prioritize_targets"}]}}\n'
     )
     _tracer.validate_mcp_exchange(good)
     bad_exchanges = [
@@ -250,7 +256,8 @@ def test_smoke_mcp_fail_closed_on_bad_child_behavior(
         '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25"}}\n'
         '{"jsonrpc":"2.0","id":2,"result":{"tools":['
         '{"name":"list"},{"name":"describe"},{"name":"invoke"},'
-        '{"name":"run_range"}]}}\n'
+        '{"name":"run_range"},{"name":"pack_run"},'
+        '{"name":"prioritize_targets"}]}}\n'
     )
     monkeypatch.setattr(
         build.subprocess,

@@ -91,14 +91,14 @@ def test_every_catalog_row_has_tier(entries: list[dict]) -> None:
 
 def test_kind_counts_preserved(entries: list[dict]) -> None:
     kinds = [row["kind"] for row in entries]
-    # 34 after the bounded asset-recon arm.
-    assert kinds.count("arm") == 34
+    # 35 after the bounded asset-recon arm and the ivanti VM extractor.
+    assert kinds.count("arm") == 35
     # 19 since the edge-device-posture methodology row (2026-09-06
     # IoT packet: plane model + reconciliation, instantiated by the
     # lab-edge-01 live challenge).
     assert kinds.count("methodology-only") == 19
-    # 53 after the bounded asset-recon arm.
-    assert len(entries) == 53
+    # 54 after the bounded asset-recon arm and the ivanti VM extractor.
+    assert len(entries) == 54
 
 
 def test_schema_rejects_missing_tier() -> None:
