@@ -23,7 +23,7 @@ import urllib.request
 import xml.etree.ElementTree as ET
 
 from .model import Refusal, bounded_list, closed, live_value, normalize, pattern_covers
-from .sources import ADAPTERS, decode
+from .sources import ADAPTERS, MAX_FILE_BYTES, decode
 from .probe_policy import validate_target
 from .sanitize import safe_text
 
@@ -55,10 +55,13 @@ def fetch(url, token=None, dns=False):
     if token:
         headers["Authorization"] = "Bearer " + credential(token)
     request = urllib.request.Request(url, headers=headers)
-    with opener.open(request, timeout=8) as response:
+    # Live CT responses for large telecom domains are multi-MiB and crt.sh is
+    # slow/rate-limited; 8s socket timeout was too tight and made the governed
+    # footprinting path fail on reads. 30s accommodates slow large responses.
+    with opener.open(request, timeout=30) as response:
         if response.status != 200 or response.headers.get("Content-Encoding", "identity") != "identity":
             raise Refusal("invalid provider response")
-        raw = response.read(1048577)
+        raw = response.read(MAX_FILE_BYTES + 1)
     return decode(raw), hashlib.sha256(raw).hexdigest()
 
 
@@ -329,7 +332,8 @@ def validate_request(request):
     if request.get("live") is not True:
         raise Refusal("explicit live true required")
     timeout = request.get("timeout", 8)
-    if type(timeout) not in (int, float) or not 0 < timeout <= 12:
+    # collect workers may need up to 30s for slow multi-MiB telecom CT reads.
+    if type(timeout) not in (int, float) or not 0 < timeout <= 30:
         raise Refusal("invalid worker deadline")
     if request["operation"] == "collect":
         closed(request, ("operation", "live", "source", "kind", "value", "variant", "timeout"))

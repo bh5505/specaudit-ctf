@@ -230,7 +230,8 @@ class AssetReconArm:
                         for retry in range(budget.values["retries"] + 1):
                             try:
                                 budget.request()
-                                response = run_worker(dict(operation="collect", live=True, source=source, kind=kind, value=value, variant=variant), min(12, budget.remaining()))
+                                # Large telecom CT responses are slow (crt.sh exact for a major ISP can take 20-30s); a 12s cap made the governed footprinting path fail closed. 30s accommodates multi-MiB/slow reads within wall_seconds.
+                                response = run_worker(dict(operation="collect", live=True, source=source, kind=kind, value=value, variant=variant), min(30, budget.remaining()))
                                 break
                             except Refusal:
                                 if retry == budget.values["retries"]:

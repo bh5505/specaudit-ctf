@@ -12,7 +12,13 @@ from datetime import datetime
 
 from .model import Observation, Refusal, bounded_list, closed, normalize
 
-MAX_FILE_BYTES = 1048576
+# Live certificate-transparency responses for large telecom domains regularly
+# exceed 1 MiB (optimum.com ~1.2 MiB, wowway.com ~1.4 MiB exact+wildcard). The
+# 1 MiB cap made the governed `asset-recon ct/discover` path fail closed on such
+# footprints, so the decode/fixture byte bound is raised to 16 MiB. The output
+# budget (max_output_bytes=1 MiB) independently prunes what is echoed; this is
+# only the read/parse admission bound.
+MAX_FILE_BYTES = 16 * 1024 * 1024
 
 
 def read_fixture(path):
