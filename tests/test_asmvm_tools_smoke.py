@@ -840,6 +840,48 @@ def test_no_dataset_observation_means_no_live_fire_claim(tmp_path, monkeypatch):
     assert livefire["has_receipt"] == "true", "receipts exist either way"
 
 
+def test_refused_dataset_receipt_is_negative_not_live_fire(tmp_path, monkeypatch):
+    """R1/R6: a dataset receipt whose endpoint_status is 'refused' was attempted
+    but observed nothing. An absent result must not become a positive flag, so
+    it cannot flip has_live_fire/has_receipt and must not be counted as a
+    reproduction - while still being recorded as a negative receipt (R3)."""
+    import csv as _csv
+    dataset = tmp_path / "dataset_ips.csv"
+    dataset.write_text("ip\n198.51.100.7\n", encoding="utf-8")
+    base, receipts = _livefire_fixture(tmp_path)
+    _write_csv(receipts,
+               "target_ip,proto,port,endpoint_status,banner,tls_protocol,"
+               "http_status,dns_rcode",
+               [["198.51.100.7", "tcp", "22", "refused", "", "", "", ""]])
+    out = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "livefire_overlay.py", "--baseline", str(base), "--out", str(out),
+        "--receipts", str(receipts), "--dataset-ips", str(dataset)])
+    assert overlay.main() == 0
+    manifest = json.loads((out / "livefire_overlay_manifest.json")
+                          .read_text(encoding="utf-8"))
+
+    assert manifest["receipts_dataset_endpoints"] == 1        # attempted
+    assert manifest["receipts_dataset_endpoints_observed"] == 0
+    assert manifest["has_live_fire"] == "false"
+    assert manifest["bundle_flips"] == []
+    assert "refused/unreachable/no-answer" in manifest["has_live_fire_reason"]
+
+    bundles = list(_csv.DictReader(
+        (out / "ext_telecom_asmvm_evidence_bundle.csv").open(encoding="utf-8")))
+    vendor = [b for b in bundles if b["bundle_id"] == "bundle-vendor"][0]
+    assert vendor["has_live_fire"] == "false"
+    assert vendor["has_receipt"] == "false"
+
+    endpoints = list(_csv.DictReader(
+        (out / "ext_telecom_asmvm_service_endpoint.csv").open(encoding="utf-8")))
+    added = [r for r in endpoints
+             if r["mapping_version"].startswith("asmvm-v1-livefire")]
+    assert [r["ip"] for r in added] == ["198.51.100.7"], \
+        "a negative receipt is still recorded, just not as live fire"
+    assert added[0]["is_active"] == "false"
+
+
 def test_indirect_recon_label_comparison_is_conservative():
     """A wrong 'disagreement' sends an auditor to a port that is fine, so prose
     and unknown ports must not be called contradictions."""

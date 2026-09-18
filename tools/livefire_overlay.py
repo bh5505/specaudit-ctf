@@ -83,6 +83,11 @@ BANNER_SERVICE_TYPE = [
 
 DATASET_ENDPOINT = "dataset_endpoint"
 LAB_FIXTURE = "lab_fixture"
+# Only these endpoint_status values are an observation. "refused",
+# "unreachable" and "no_answer" are negative receipts: the attempt happened but
+# nothing was observed, so they may not flip a bundle's has_live_fire/has_receipt
+# (R1) or be counted as a reproduction.
+OBSERVED_ENDPOINT_STATUSES = ("open", "answered")
 
 # Rule R6, applied to every estate silver table, not just asm_vm_surface. A lab
 # fixture is something we observed; it is not something the feeds describe. If it
@@ -251,11 +256,20 @@ def main():
     receipts, _ = read_csv(args.receipts)
     dataset_ips = load_dataset_ips(args.dataset_ips)
     receipt_class = {id(r): observation_class(r, dataset_ips) for r in receipts}
-    live_receipts = [r for r in receipts
-                     if receipt_class[id(r)] == DATASET_ENDPOINT
-                     or args.allow_lab_fixture_live_fire]
+    attempted_live = [r for r in receipts
+                      if receipt_class[id(r)] == DATASET_ENDPOINT
+                      or args.allow_lab_fixture_live_fire]
+    # R1/R6: only a receipt that actually observed something (open/answered) may
+    # count as live fire. A refused/unreachable/no-answer dataset receipt is a
+    # negative result - an absent observation must not become a positive flag.
+    live_receipts = [r for r in attempted_live
+                     if r["endpoint_status"] in OBSERVED_ENDPOINT_STATUSES]
     dataset_receipt_count = sum(1 for c in receipt_class.values()
                                 if c == DATASET_ENDPOINT)
+    dataset_observed_count = sum(
+        1 for r in receipts
+        if receipt_class[id(r)] == DATASET_ENDPOINT
+        and r["endpoint_status"] in OBSERVED_ENDPOINT_STATUSES)
     lab_receipt_count = sum(1 for c in receipt_class.values()
                             if c == LAB_FIXTURE)
     nets = load_owned_ranges(base)
@@ -270,8 +284,12 @@ def main():
         "dataset_ips_file": os.path.abspath(args.dataset_ips)
         if args.dataset_ips else None,
         "dataset_ips_loaded": len(dataset_ips),
-        "receipts_dataset_endpoints": sum(
-            1 for c in receipt_class.values() if c == DATASET_ENDPOINT),
+        # Attempted = the receipt named an address the feeds describe (or the
+        # override admitted a lab fixture); observed = one of those attempts
+        # actually got an answer. Only observed receipts can flip a live-fire
+        # flag, so the two counts must not be conflated.
+        "receipts_dataset_endpoints": dataset_receipt_count,
+        "receipts_dataset_endpoints_observed": dataset_observed_count,
         "receipts_lab_fixtures": sum(1 for c in receipt_class.values()
                                      if c == LAB_FIXTURE),
         "lab_fixture_live_fire_override": bool(args.allow_lab_fixture_live_fire),
@@ -280,16 +298,24 @@ def main():
         # one receipt re-observed an address the feeds describe" while
         # receipts_dataset_endpoints == 0 makes the manifest assert something the
         # run did not do, and a reader cannot tell estate live fire from a wiring
-        # test without also reading the override flag.
+        # test without also reading the override flag. A refused/unreachable/
+        # no-answer receipt is a negative result, not a reproduction.
         "has_live_fire_reason": (
             "at least one receipt re-observed an address the feeds describe"
-            if dataset_receipt_count else (
+            if dataset_observed_count else (
                 "no receipt re-observed an address the feeds describe "
-                "(dataset receipts=%d, lab fixtures=%d); has_live_fire=true "
-                "only because --allow-lab-fixture-live-fire was passed, which "
-                "records a lab fixture as reproduction - a wiring test, not "
-                "estate evidence" % (dataset_receipt_count, lab_receipt_count)
+                "(dataset receipts=%d, observed=%d, lab fixtures=%d); "
+                "has_live_fire=true only because --allow-lab-fixture-live-fire "
+                "was passed, which records a lab fixture as reproduction - a "
+                "wiring test, not estate evidence"
+                % (dataset_receipt_count, dataset_observed_count, lab_receipt_count)
                 if args.allow_lab_fixture_live_fire else
+                "no receipt observed an address the feeds describe "
+                "(dataset receipts=%d, observed=%d, lab fixtures=%d); a "
+                "refused/unreachable/no-answer receipt is a negative result and "
+                "does not flip has_live_fire (rule R6)"
+                % (dataset_receipt_count, dataset_observed_count, lab_receipt_count)
+                if dataset_receipt_count else
                 "every receipt was a lab fixture: it exercises the capture "
                 "path, it does not reproduce a claim about the estate "
                 "(rule R6)")),
