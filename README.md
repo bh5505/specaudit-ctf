@@ -283,8 +283,9 @@ root.
 The shipped cap is four tools, including `run_range`. `run_range` is
 the named exception to the original three-tool / "no new tools"
 doctrine: synthetic, seed-stable fixtures, no path arguments,
-curated `arm_ids` only, no file writes over MCP (`--out` stays
-CLI-only). Cite it as a boundary, not a precedent.
+curated `arm_ids` only, no `--out` report writes over MCP (`--out`
+stays CLI-only; an explicitly supplied `artifact_dir` writes
+digest-named custody artifacts). Cite it as a boundary, not a precedent.
 
 X4-PUB transport contract:
 

@@ -37,3 +37,15 @@ def test_invoke_annotations_cannot_contradict_any_admitted_arm() -> None:
 def test_range_subprocess_descriptor_is_not_read_only_or_open_world() -> None:
     annotations = mcp_server._RUN_RANGE_TOOL_DEF["annotations"]
     assert annotations == {"readOnlyHint": False, "openWorldHint": False}
+
+
+def test_run_range_description_matches_its_artifact_dir_schema() -> None:
+    """The description must not claim "no file writes over MCP" while the same
+    schema accepts artifact_dir, which writes digest-named custody artifacts
+    (dispatch_range -> bind_artifact_dir -> ArtifactSink.write)."""
+    tool = mcp_server._RUN_RANGE_TOOL_DEF
+    assert "artifact_dir" in tool["inputSchema"]["properties"]
+    description = tool["description"]
+    assert "no file writes over MCP" not in description
+    assert "artifact_dir writes digest-named custody artifacts" in description
+    assert "--out" in description and "CLI-only" in description
