@@ -71,6 +71,13 @@ FULL_SCOPE_ID = "full"
 REQUIREMENTS = ("integrity", "current", "complete")
 PR97_IMPLEMENTATION_REVISION = "9c6819c4709397d1d91f68cbb4ae13901d6d85f1"
 PR97_LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
+# Landed discovery extras: the vulnify snapshot/batch layer advertises the
+# bundled demo snapshot in its zero-argument discovery metadata.  A frozen
+# per-arm record keeps the shape exact instead of admitting arbitrary extra
+# keys; every listed key must be a nonempty built-in string.
+PR97_DISCOVERY_EXTRA_KEYS: Mapping[str, tuple[str, ...]] = {
+    "vulnify": ("demo_bundle",),
+}
 PR97_CATALOG_ROW_KEYS = frozenset(
     {"id", "kind", "protocols", "curated", "tier", "notes"}
 )
@@ -163,7 +170,7 @@ PR97_ACTION_ARGUMENTS: Mapping[str, Mapping[str, tuple[str, ...]]] = {
     },
     "vulnify": {
         "list_tools": (),
-        "lookup": ("cve_id", "feed", "name"),
+        "lookup": ("bundle_path", "cve_id", "cve_ids", "feed", "name"),
         "list_vulns": ("feed", "limit"),
     },
     "leonidas": {
@@ -1534,13 +1541,19 @@ def _check_pr97_handler_list_actions(
                 )
                 continue
             output = result.output
+            extra_keys = PR97_DISCOVERY_EXTRA_KEYS.get(arm_id, ())
             valid_output_shape = set(output) == {
                 "read_actions",
                 "dispatch_actions",
                 "arg_keys",
                 "caveats",
                 "arming",
+                *extra_keys,
             }
+            valid_extra_keys = all(
+                type(output[key]) is str and bool(output[key].strip())
+                for key in extra_keys
+            )
             valid_read_actions = (
                 type(output.get("read_actions")) is list
                 and all(
@@ -1585,6 +1598,7 @@ def _check_pr97_handler_list_actions(
             if not all(
                 (
                     valid_output_shape,
+                    valid_extra_keys,
                     valid_read_actions,
                     valid_dispatch_actions,
                     valid_arg_keys,

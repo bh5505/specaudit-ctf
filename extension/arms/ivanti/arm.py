@@ -18,17 +18,18 @@ import sys
 from typing import Any, Mapping
 
 from ...contract import TRANSPORT_CLI, ArmSpec, NotInstalledError, Result
+from ..dispatch import Scope, log_dispatch, stamp
 from ..mcp_client import redact
 from .client import DEFAULT_SIZE, IvantiClient, IvantiError
 from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
-    DEFAULT_CONFIG_NAMES,
     ENDPOINTS,
     ENV_SCOPE,
     LIST_ACTIONS,
     IvantiConfigError,
     args_refusal,
+    authorize_platform,
     connection_config,
     parse_filters,
     resolve_config_path,
@@ -94,52 +95,81 @@ class IvantiArm:
             }),
             "default_size": DEFAULT_SIZE,
             "armed": self._armed(),
-            "arming": f"set IVANTI_CONFIG (or IVANTI_URL/IVANTI_API_VER/IVANTI_CLIENT_ID/IVANTI_API_KEY) to arm; optional {ENV_SCOPE} for IP/CIDR scope",
+            "arming": f"set IVANTI_CONFIG (or IVANTI_URL/IVANTI_API_VER/IVANTI_CLIENT_ID/IVANTI_API_KEY) and {ENV_SCOPE} (explicit IP/CIDR/host of the platform) to arm; live pulls are refused without both",
         }, None)
 
     def _armed(self) -> bool:
-        try:
-            connection_config(resolve_config_path(self._config_path))
-            return True
-        except IvantiConfigError:
+        target = self._platform_target()
+        if not target.strip():
             return False
+        _scope, refusal = authorize_platform(target)
+        return refusal is None
 
-    def _client(self, payload: dict[str, Any]) -> IvantiClient:
+    def _platform_target(self) -> str:
+        """The configured platform URL, or "" when config is incomplete."""
+        try:
+            return str(connection_config(resolve_config_path(self._config_path))["url"])
+        except IvantiConfigError:
+            return ""
+
+    def _effective_conf(self, payload: dict[str, Any]) -> dict[str, str]:
+        """The config the client will actually dial (payload, env, or default)."""
         explicit = payload.get("config") or self._config_path
-        path = resolve_config_path(explicit)
-        if path is None:
-            path = explicit or DEFAULT_CONFIG_NAMES[0]
-        conf = connection_config(path)
+        return connection_config(resolve_config_path(explicit))
+
+    def _client(self, payload: dict[str, Any], conf: dict[str, str]) -> IvantiClient:
         verify_ssl = bool(payload.get("verify_ssl", True))
         return IvantiClient(conf["url"], conf["api_ver"], conf["client_id"],
                             conf["api_key"], verify_ssl=verify_ssl)
+
+    def _stamped(self, result: Result, scope: Scope, target: str) -> Result:
+        if result.ok and isinstance(result.output, dict):
+            result.output["dispatch"] = stamp(scope, target)
+        return result
 
     def _dispatch(self, spec: ArmSpec, action: str, payload: dict[str, Any]) -> Result:
         refusal = args_refusal(payload)
         if refusal:
             return Result(False, spec.id, action, None, refusal)
+        # Resolve the effective config once, and authorize the same URL the
+        # client will dial: an explicit payload "config" must not be able to
+        # move traffic while the gate validates a different (default) target.
+        # connection_config raises IvantiConfigError when the effective URL (or
+        # any credential) is missing, so an unconfigured target fails closed.
+        conf = self._effective_conf(payload)
+        target = conf["url"]
+        scope, refusal = authorize_platform(target)
+        if refusal:
+            return Result(False, spec.id, action, None, refusal)
+        log_dispatch(ARM_ID, action, scope, target)
         endp = payload["endp"]
-        client = self._client(payload)
+        client = self._client(payload, conf)
 
         if action == "filters":
             try:
                 data = client.filters(endp)
             except IvantiError as exc:
                 return Result(False, spec.id, action, None, redact(str(exc)))
-            return Result(True, spec.id, action, {"endp": endp, "filters": data[:200]}, None)
+            return self._stamped(Result(
+                True, spec.id, action, {"endp": endp, "filters": data[:200]}, None),
+                scope, target)
 
         if action == "fields":
             try:
                 data = client.fields(endp)
             except IvantiError as exc:
                 return Result(False, spec.id, action, None, redact(str(exc)))
-            return Result(True, spec.id, action, {"endp": endp, "fields": data[:500]}, None)
+            return self._stamped(Result(
+                True, spec.id, action, {"endp": endp, "fields": data[:500]}, None),
+                scope, target)
 
         if action == "search":
-            return self._search(spec, action, payload, client, endp)
+            return self._stamped(self._search(spec, action, payload, client, endp),
+                                 scope, target)
 
         if action == "export":
-            return self._export(spec, action, payload, client, endp)
+            return self._stamped(self._export(spec, action, payload, client, endp),
+                                 scope, target)
 
         return Result(False, spec.id, action, None, f"unknown action {action!r}")
 

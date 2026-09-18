@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from extension import mcp_server as mcp
-from extension.pipeline import pack_run, prioritize_targets
+from extension.pipeline import pack_run, prioritize_targets, validation_report
 
 T1 = "ext_telecom_asmvm_t1_critical_vuln_on_exposed"
 T3 = "ext_telecom_asmvm_t3_asmvm_technique_context_bridge_gap"
@@ -85,6 +85,100 @@ def test_prioritize_requires_input():
         prioritize_targets()
     with pytest.raises(ValueError):
         prioritize_targets(report={})  # dict without findings list
+
+
+def test_validation_report_injects_provenance_header():
+    """The renderer takes repo_heads, not repo; every prior call raised
+    TypeError. The end-to-end call must render a header and not raise."""
+    res = validation_report(report=_converged_findings(), run_id="gate-run-7")
+    md = res["markdown"]
+    assert "<!-- PROVENANCE-BEGIN -->" in md
+    assert "<!-- PROVENANCE-END -->" in md
+    assert "run-id pinned: `gate-run-7`" in md
+    assert "specaudit-ctf HEAD:" in md
+
+
+def test_validation_report_binds_real_receipt_paths(tmp_path):
+    """When the run context provides a report path, the provenance block cites
+    that file with a real digest instead of an empty receipt list."""
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps({"findings": _converged_findings()}),
+                      encoding="utf-8")
+    res = validation_report(report_path=str(report), run_id="gate-run-8")
+    md = res["markdown"]
+    assert str(report) in md
+    assert "MISSING" not in md, "a supplied report file is a bound receipt"
+
+
+def _pairing_evidence(tmp_path):
+    d = tmp_path / "pairing_ev"
+    d.mkdir()
+    (d / "ext_telecom_asmvm_alert.csv").write_text(
+        "vendor_alert_id,alert_id,mitre_tactic,mitre_technique,asr_rule,"
+        "ipv4_list,is_active_state,run_id,engagement_id\n"
+        "VA-1,al-1,Initial Access,T1190,Rule-A,203.0.113.10,true,r1,e1\n",
+        encoding="utf-8")
+    (d / "ext_telecom_asmvm_alert_endpoint.csv").write_text(
+        "alert_id,ip,is_active_state,run_id,engagement_id\n"
+        "al-1,203.0.113.10,true,r1,e1\n", encoding="utf-8")
+    (d / "ext_telecom_asmvm_service_endpoint.csv").write_text(
+        "service_endpoint_id,ip,port,is_active,run_id,engagement_id\n"
+        "svc-1,203.0.113.10,443,true,r1,e1\n", encoding="utf-8")
+    return d
+
+
+def test_prioritize_consumes_g3_pairing_when_available(tmp_path):
+    pytest.importorskip("duckdb")
+    ev = _pairing_evidence(tmp_path)
+    res = prioritize_targets(
+        report=[_t3("203.0.113.10", 443, "T1190 - X")], evidence_dir=str(ev))
+    assert res["pairing"]["available"] is True
+    assert res["pairing"]["pair_count"] == 1
+    target = res["targets"][0]
+    assert target["pairing_evidence"][0]["vendor_alert_id"] == "VA-1"
+    assert target["pairing_evidence"][0]["mitre_technique"] == "T1190"
+    assert res["summary"]["pairing_available"] is True
+    assert res["summary"]["pairing_incomplete_reason"] is None
+
+
+def test_prioritize_degrades_when_pairing_extract_fails(tmp_path):
+    """A malformed base table makes duckdb raise inside extract_pairings. The
+    stage must degrade to an explicit incomplete marker, not crash
+    prioritize_targets (the MCP surface only translates ValueError/RuntimeError,
+    so an escaping duckdb error would abort the whole tool call)."""
+    pytest.importorskip("duckdb")
+    ev = _pairing_evidence(tmp_path)
+    # Drop the is_active column the G3 join references: CREATE TABLE succeeds,
+    # the JOIN then fails with a duckdb binder error.
+    (ev / "ext_telecom_asmvm_service_endpoint.csv").write_text(
+        "service_endpoint_id,ip,port,run_id,engagement_id\n"
+        "svc-1,203.0.113.10,443,r1,e1\n", encoding="utf-8")
+    res = prioritize_targets(
+        report=[_t3("203.0.113.10", 443, "T1190 - X")], evidence_dir=str(ev))
+    assert res["pairing"]["available"] is False
+    assert "G3 pairing failed" in res["pairing"]["reason"]
+    assert res["summary"]["pairing_available"] is False
+    assert res["summary"]["pairing_incomplete_reason"] == res["pairing"]["reason"]
+    assert res["targets"], "targets must still be produced when pairing degrades"
+    assert all(t["pairing_evidence"] == [] for t in res["targets"])
+
+
+def test_prioritize_marks_pairing_incomplete_without_evidence(tmp_path):
+    """No pairing evidence must be an explicit incomplete marker, not a silent
+    fall back to report-text matching."""
+    res = prioritize_targets(report=_converged_findings())
+    assert res["pairing"]["available"] is False
+    assert res["summary"]["pairing_available"] is False
+    assert res["summary"]["pairing_incomplete_reason"]
+    assert all(t["pairing_evidence"] == [] for t in res["targets"])
+    assert res["targets"], "targets are still produced from the pack report"
+
+    empty = tmp_path / "empty_ev"
+    empty.mkdir()
+    res2 = prioritize_targets(
+        report=[_t3("203.0.113.10", 443, "T1190 - X")], evidence_dir=str(empty))
+    assert res2["pairing"]["available"] is False
+    assert "absent" in res2["pairing"]["reason"]
 
 
 def test_pack_run_minimal_via_scenario(monkeypatch):

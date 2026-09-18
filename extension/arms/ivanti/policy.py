@@ -6,10 +6,14 @@ Config is read from an Ivanti config INI (same shape as the operator's
 environment overrides for the live secrets so an agent can arm it without a
 checked-in credential file:
 
-  IVANTI_URL          e.g. https://platform4.risksense.com
+  IVANTI_URL          e.g. https://platform.example.com
   IVANTI_API_VER      e.g. /api/v1
   IVANTI_CLIENT_ID    e.g. 1550
   IVANTI_API_KEY      live credential (overrides [secrets] api_key)
+  IVANTI_SCOPE        required: comma-separated authorized platform targets
+                      (IP/CIDR/host). Every action that reaches the platform is
+                      refused unless the configured platform URL host is inside
+                      this scope.
 """
 
 from __future__ import annotations
@@ -19,6 +23,8 @@ import json
 import os
 from pathlib import Path
 from typing import Any
+
+from ..dispatch import Scope, load_scope, target_in_scope
 
 ARM_ID = "ivanti"
 # subject endpoints this arm pulls (host = assets, hostFinding = findings).
@@ -92,6 +98,38 @@ def connection_config(config_path: str | None) -> dict[str, str]:
         )
     return {"url": str(url), "api_ver": str(api_ver),
             "client_id": str(client_id), "api_key": str(api_key)}
+
+
+def authorize_platform(target: str | None) -> tuple[Scope | None, str | None]:
+    """Authorize one platform target, returning the armed scope with it.
+
+    Mirrors the bounded SNMP read arm: the arm's only network target is the
+    configured platform URL, so live pulls (including offline-looking
+    ``filters``/``fields`` discovery, which still calls the platform API) are
+    refused by default until ``IVANTI_SCOPE`` names the authorized platform
+    addresses. A blank or absent scope is a refusal, never a pass.
+
+    The caller must pass the *effective* platform URL (the one the client will
+    dial), and must reuse the returned scope for the audit line/stamp so the
+    scope gate and the client can never diverge.
+    """
+    scope, refusal = load_scope(ENV_SCOPE)
+    if refusal:
+        return None, refusal
+    if scope is None:
+        return None, (f"ivanti pulls are blocked by default; set {ENV_SCOPE} to "
+                      "explicit authorized platform targets")
+    if not target or not target.strip():
+        return None, f"ivanti has no platform target to check against {ENV_SCOPE}"
+    if not target_in_scope(target, scope):
+        return None, f"platform target is outside {ENV_SCOPE}"
+    return scope, None
+
+
+def authorize_target(target: str | None) -> str | None:
+    """Refuse unless an explicit scope is armed and *target* is inside it."""
+    _scope, refusal = authorize_platform(target)
+    return refusal
 
 
 def parse_filters(raw: Any) -> list[dict[str, Any]] | None:

@@ -102,13 +102,13 @@ def test_vulnify_list_describe_and_registration() -> None:
     assert listed.ok is True and listed.output["dispatch_actions"] == []
     assert set(listed.output["read_actions"]) == {"lookup", "list_vulns", "list_tools", "tools/list"}
     row = describe(ARM_ID)
-    assert row.tier == "experimental" and row.curated is True
+    assert row.tier == "research" and row.curated is True
     from extension.invoke_profiles import invoke_profile
     for action in ("list_tools", "lookup"):
         profile = invoke_profile(ARM_ID, action)
         assert profile is not None
         assert profile.side_effects == ("local-read",)
-        assert profile.tier == "experimental"
+        assert profile.tier == "research"
 
 def test_vulnify_curated_fallback_when_snapshot_lacks_anchors(capsys) -> None:
     # Finding E: snapshot record without technique_mappings falls back to the

@@ -381,6 +381,28 @@ def test_a_value_that_does_not_fit_its_declared_type_is_kept_and_reported(tmp_pa
     assert "smoke_vm_finding" in out and "severity" in out and "not-a-number" in out
 
 
+def test_decimal_in_integer_column_is_text_and_counted():
+    """The documented contract: a cell that does not fit its declared type is
+    loaded as text and counted. A decimal in an INTEGER-declared column used to
+    be silently int()-truncated (9.5 -> 9) with no mismatch record."""
+    runner = pytest.importorskip("ctf_run_checks")
+
+    assert runner._convert_value("9", "INTEGER") == 9
+    assert runner._convert_value("true", "INTEGER") == 1
+    assert runner._convert_value("", "INTEGER") is None
+
+    mismatch = {}
+    loaded = runner._convert_value("9.5", "INTEGER", mismatch)
+    assert loaded == "9.5", "must not be truncated to 9"
+    assert mismatch["INTEGER"] == 1
+    assert mismatch["_sample_INTEGER"] == "9.5"
+
+    # A DECIMAL/NUMERIC declaration still binds the decimal as a number.
+    assert runner._convert_value("9.5", "DECIMAL") == 9.5
+    # FLOAT columns are unchanged.
+    assert runner._convert_value("9.5", "DOUBLE") == 9.5
+
+
 def test_sqlite_join_indexes_come_from_the_pack_checks(tmp_path):
     """SQLite needs join indexes the hash-joining engine does not: without them
     an aggregate-per-candidate check over 400k-row evidence does not finish
@@ -840,6 +862,89 @@ def test_no_dataset_observation_means_no_live_fire_claim(tmp_path, monkeypatch):
     assert livefire["has_receipt"] == "true", "receipts exist either way"
 
 
+def test_refused_dataset_receipt_is_negative_not_live_fire(tmp_path, monkeypatch):
+    """R1/R6: a dataset receipt whose endpoint_status is 'refused' was attempted
+    but observed nothing. An absent result must not become a positive flag, so
+    it cannot flip has_live_fire/has_receipt and must not be counted as a
+    reproduction - while still being recorded as a negative receipt (R3)."""
+    import csv as _csv
+    dataset = tmp_path / "dataset_ips.csv"
+    dataset.write_text("ip\n198.51.100.7\n", encoding="utf-8")
+    base, receipts = _livefire_fixture(tmp_path)
+    _write_csv(receipts,
+               "target_ip,proto,port,endpoint_status,banner,tls_protocol,"
+               "http_status,dns_rcode",
+               [["198.51.100.7", "tcp", "22", "refused", "", "", "", ""]])
+    out = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "livefire_overlay.py", "--baseline", str(base), "--out", str(out),
+        "--receipts", str(receipts), "--dataset-ips", str(dataset)])
+    assert overlay.main() == 0
+    manifest = json.loads((out / "livefire_overlay_manifest.json")
+                          .read_text(encoding="utf-8"))
+
+    assert manifest["receipts_dataset_endpoints"] == 1        # attempted
+    assert manifest["receipts_dataset_endpoints_observed"] == 0
+    assert manifest["has_live_fire"] == "false"
+    assert manifest["bundle_flips"] == []
+    assert "refused/unreachable/no-answer" in manifest["has_live_fire_reason"]
+
+    bundles = list(_csv.DictReader(
+        (out / "ext_telecom_asmvm_evidence_bundle.csv").open(encoding="utf-8")))
+    vendor = [b for b in bundles if b["bundle_id"] == "bundle-vendor"][0]
+    assert vendor["has_live_fire"] == "false"
+    assert vendor["has_receipt"] == "false"
+
+    endpoints = list(_csv.DictReader(
+        (out / "ext_telecom_asmvm_service_endpoint.csv").open(encoding="utf-8")))
+    added = [r for r in endpoints
+             if r["mapping_version"].startswith("asmvm-v1-livefire")]
+    assert [r["ip"] for r in added] == ["198.51.100.7"], \
+        "a negative receipt is still recorded, just not as live fire"
+    assert added[0]["is_active"] == "false"
+
+    # R4 reconcile: a probe that observed nothing must label the spine row as a
+    # probe, not append the live_fire channel (the local patch already said
+    # live_fire_probe_only; the row write used to ignore it).
+    spine = list(_csv.DictReader(
+        (out / "ext_telecom_asmvm_asm_vm_surface.csv").open(encoding="utf-8")))
+    row = next(r for r in spine if r["ip"] == "198.51.100.7")
+    assert row["seen_via"].endswith("+live_fire_probe_only"), row["seen_via"]
+    assert not row["seen_via"].endswith("+live_fire"), \
+        "a refused receipt must not append the live_fire observation channel"
+
+
+def test_override_with_only_refused_receipts_does_not_claim_live_fire(tmp_path,
+                                                                      monkeypatch):
+    """The override flag is not itself an observation. With every receipt
+    refused the flag stays false, so the reason must not assert
+    has_live_fire=true for a run that flipped nothing."""
+    dataset = tmp_path / "dataset_ips.csv"
+    dataset.write_text("ip\n198.51.100.7\n", encoding="utf-8")
+    base, receipts = _livefire_fixture(tmp_path)
+    _write_csv(receipts,
+               "target_ip,proto,port,endpoint_status,banner,tls_protocol,"
+               "http_status,dns_rcode",
+               [["198.51.100.7", "tcp", "22", "refused", "", "", "", ""],
+                ["127.0.0.1", "tcp", "14443", "unreachable", "", "", "", ""]])
+    out = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "livefire_overlay.py", "--baseline", str(base), "--out", str(out),
+        "--receipts", str(receipts), "--dataset-ips", str(dataset),
+        "--allow-lab-fixture-live-fire"])
+    assert overlay.main() == 0
+    manifest = json.loads((out / "livefire_overlay_manifest.json")
+                          .read_text(encoding="utf-8"))
+
+    assert manifest["lab_fixture_live_fire_override"] is True
+    assert manifest["receipts_dataset_endpoints"] == 1
+    assert manifest["receipts_dataset_endpoints_observed"] == 0
+    assert manifest["has_live_fire"] == "false"
+    reason = manifest["has_live_fire_reason"]
+    assert "has_live_fire=true" not in reason, reason
+    assert "refused/unreachable/no-answer" in reason
+
+
 def test_indirect_recon_label_comparison_is_conservative():
     """A wrong 'disagreement' sends an auditor to a port that is fine, so prose
     and unknown ports must not be called contradictions."""
@@ -862,3 +967,23 @@ def test_indirect_recon_label_comparison_is_conservative():
     assert recon.classify(2152) == "gtp_core"
     assert recon.classify(7680) == "management_port"
     assert recon.classify(443) == "other"
+
+
+def test_indirect_recon_smoke_over_tiny_synthetic_evidence(tmp_path):
+    """The module imports cleanly (no orphaned statements after
+    load_local_services' return, which would NameError) and runs end to end over
+    a tiny synthetic evidence dir with zero packets."""
+    recon = _recon_module()
+    evidence = tmp_path / "ev"
+    evidence.mkdir()
+    _write_csv(evidence / "ext_telecom_asmvm_service_endpoint.csv",
+               "run_id,ip,port,protocol,service_name,service_type,source_system",
+               [["smoke", "10.0.0.1", 443, "tcp", "https", "web", "asm"]])
+    _write_csv(evidence / "ext_telecom_asmvm_vm_finding.csv",
+               "run_id,ip,port,is_open,status",
+               [["smoke", "10.0.0.1", 443, "true", "open"]])
+    summary = recon.run(str(evidence), str(tmp_path / "out"), run_id="smoke")
+    assert summary["endpoints_examined"] == 1
+    assert summary["packets_sent"] == 0
+    assert summary["evidence_class"] == recon.EVIDENCE_CLASS
+    assert recon.load_local_services() is not None

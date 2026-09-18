@@ -41,6 +41,7 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from tools import ctf_run_checks  # noqa: E402  (lazy duckdb; sqlite is stdlib)
+from tools import demo_alert_pairings as dap  # noqa: E402  (G3, lazy duckdb)
 from tools import demo_target_analysis as dta  # noqa: E402
 from tools import demo_rollup_hosts as drh  # noqa: E402
 from tools import demo_rank_hosts as drk  # noqa: E402
@@ -182,6 +183,45 @@ def _load_findings(report, report_path) -> list[dict]:
     raise ValueError("prioritize_targets needs a pack report (findings list) or a report_path")
 
 
+def _pairing_stage(evidence_dir: str | None, focus_ips: list[str]) -> dict:
+    """Explicit G3 pairing stage: per-alert technique pairs for the focus IPs.
+
+    Parsing report strings (``demo_target_analysis.parse_report``) is a fuzzy
+    fallback, not the durable G3 pairing the pipeline advertises. When the
+    canonical silver pairing tables are present, consume
+    ``demo_alert_pairings.extract_pairings`` and report the result as available;
+    otherwise mark the result explicitly incomplete instead of pretending the
+    report-text derivation covered pairing.
+    """
+    if not evidence_dir:
+        return {"available": False,
+                "reason": "no evidence_dir supplied; G3 pairing evidence unavailable"}
+    evidence = Path(evidence_dir)
+    missing = [table for table in dap.BASE_TABLES
+               if not (evidence / f"{table}.csv").is_file()]
+    if missing:
+        return {"available": False,
+                "reason": "G3 pairing base table(s) absent: " + ", ".join(missing)}
+    if not focus_ips:
+        return {"available": True, "pair_count": 0, "by_ip": {}, "pairs": []}
+    try:
+        pairs = dap.extract_pairings(evidence, focus_ips)
+    except ImportError:
+        return {"available": False,
+                "reason": "duckdb is not importable; G3 pairing skipped"}
+    except Exception as exc:  # noqa: BLE001 - any pairing failure degrades, never crashes
+        # A malformed base table, a DuckDB type/cast error, or any other core
+        # failure must degrade to an explicit incomplete marker: crashing here
+        # would take prioritize_targets down with it, and the MCP surface only
+        # translates ValueError/RuntimeError into a tool error.
+        return {"available": False, "reason": f"G3 pairing failed: {exc}"}
+    by_ip: dict[str, list[dict]] = {}
+    for pair in pairs:
+        by_ip.setdefault(pair["ip"], []).append(pair)
+    return {"available": True, "pair_count": len(pairs), "by_ip": by_ip,
+            "pairs": pairs}
+
+
 def prioritize_targets(
     report: dict | list | None = None,
     report_path: str | None = None,
@@ -205,6 +245,8 @@ def prioritize_targets(
         raise ValueError("prioritize_targets needs report (dict/list) or report_path")
     findings = _load_findings(report, report_path)
     per_ip = dta.parse_report(findings)
+    pairing = _pairing_stage(evidence_dir, sorted(per_ip))
+    pairing_by_ip = pairing.get("by_ip") or {}
 
     cves = {}
     if evidence_dir:
@@ -231,16 +273,20 @@ def prioritize_targets(
             "score": p.get("score"),
             "ports": p.get("ports"),
             "convergence": p.get("convergence"),
+            "pairing_evidence": pairing_by_ip.get(ip, []),
             "threat_model": tm,
             "attack_chain": p.get("steps"),
         })
 
     result = {
         "targets": targets,
+        "pairing": pairing,
         "summary": {
             "total_targets": len(targets),
             "converged_initial_access": sum(1 for t in targets if t["convergence"]),
             "by_asset_role": _count_by(targets, lambda t: t["threat_model"]["asset_role"]),
+            "pairing_available": pairing["available"],
+            "pairing_incomplete_reason": None if pairing["available"] else pairing["reason"],
             "human_validation_gate": "REQUIRED before any agentic exploitability validation",
         },
     }
@@ -297,6 +343,24 @@ def _validation_report_markdown(targets: list[dict], findings: list[dict]) -> st
     return "\n".join(lines) + "\n"
 
 
+def _provenance_receipts(report_path: str | None, evidence_dir: str | None) -> list[Path]:
+    """Receipt paths the run context actually provides, for the provenance block.
+
+    The block binds real receipt paths/digests, so an empty list is only correct
+    when the caller supplied neither a report path nor an evidence directory.
+    """
+    receipts: list[Path] = []
+    if report_path:
+        report = Path(report_path)
+        if report.is_file():
+            receipts.append(report)
+    if evidence_dir:
+        evidence = Path(evidence_dir)
+        if evidence.is_dir():
+            receipts.extend(sorted(evidence.glob("*.csv")))
+    return receipts
+
+
 def validation_report(
     report: dict | list | None = None,
     report_path: str | None = None,
@@ -320,7 +384,11 @@ def validation_report(
         if result.get("report_path") else ""
     )
     if md:
-        block = rph.render_provenance_block([], run_id=run_id, repo=_ROOT)
+        block = rph.render_provenance_block(
+            _provenance_receipts(report_path, evidence_dir),
+            run_id=run_id,
+            repo_heads=[("specaudit-ctf", str(_ROOT))],
+        )
         md = rph.inject_block(md, block)
         if out_path:
             Path(out_path).write_text(md, encoding="utf-8")

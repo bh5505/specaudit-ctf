@@ -144,14 +144,17 @@ _RUN_RANGE_TOOL_DEF: dict[str, Any] = {
         "Run the synthetic range fixtures and return an execution-result.v1 "
         "envelope wrapping the seed-stable range.lifecycle.v3 document, "
         "identical to `python -m extension.range` output (timestamps differ "
-        "per run). No live cloud, no file writes over MCP (--out stays "
-        "CLI-only). isError mirrors the CLI nonzero exit; degraded/failed "
+        "per run). No live cloud; no `--out` report writes over MCP (`--out` "
+        "stays CLI-only), while an explicitly supplied artifact_dir writes "
+        "digest-named custody artifacts. isError mirrors the CLI nonzero exit; "
+        "degraded/failed "
         "verdicts live in the envelope status, never in transport success. "
         "Omit arm_ids to auto-discover curated arms (skip/error is "
         "degraded). Empty arm_ids is lifecycle-only and may be complete. "
         "Non-empty arm_ids are required (skip/error is failed). Executes local "
-        "synthetic range fixtures in subprocesses; no live cloud, no file writes "
-        "over MCP."
+        "synthetic range fixtures in subprocesses; no live cloud. Report writes "
+        "are CLI-only (`--out`); an explicitly supplied artifact_dir writes "
+        "digest-named custody artifacts."
     ),
     "annotations": {"readOnlyHint": False, "openWorldHint": False},
     "inputSchema": {
@@ -556,8 +559,9 @@ class McpServer:
         map to -32602 like other param-shape concerns; everything else is
         an evaluated result inside the execution-result.v1 envelope.
         Fixtures resolve from the package root only - no path arguments
-        exist on this tool - and the response never writes files (`--out`
-        stays CLI-only).
+        exist on this tool - and no `--out` report is written (`--out` stays
+        CLI-only); an explicitly supplied artifact_dir does write digest-named
+        custody artifacts.
         """
         seed = arguments.get("seed")
         if seed is not None:

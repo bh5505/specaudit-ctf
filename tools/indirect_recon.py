@@ -121,14 +121,6 @@ def load_local_services():
     return by_port
 
 
-
-    if port in TELECOM_PORT_CLASS:
-        return TELECOM_PORT_CLASS[port]
-    if port in MANAGEMENT_PORTS:
-        return "management_port"
-    return "other"
-
-
 def classify(port):
     if port in TELECOM_PORT_CLASS:
         return TELECOM_PORT_CLASS[port]
