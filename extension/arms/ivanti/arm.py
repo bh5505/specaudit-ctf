@@ -18,6 +18,7 @@ import sys
 from typing import Any, Mapping
 
 from ...contract import TRANSPORT_CLI, ArmSpec, NotInstalledError, Result
+from ..dispatch import Scope, log_dispatch, stamp
 from ..mcp_client import redact
 from .client import DEFAULT_SIZE, IvantiClient, IvantiError
 from .policy import (
@@ -121,6 +122,11 @@ class IvantiArm:
         return IvantiClient(conf["url"], conf["api_ver"], conf["client_id"],
                             conf["api_key"], verify_ssl=verify_ssl)
 
+    def _stamped(self, result: Result, scope: Scope, target: str) -> Result:
+        if result.ok and isinstance(result.output, dict):
+            result.output["dispatch"] = stamp(scope, target)
+        return result
+
     def _dispatch(self, spec: ArmSpec, action: str, payload: dict[str, Any]) -> Result:
         refusal = args_refusal(payload)
         if refusal:
@@ -132,9 +138,10 @@ class IvantiArm:
         # any credential) is missing, so an unconfigured target fails closed.
         conf = self._effective_conf(payload)
         target = conf["url"]
-        _scope, refusal = authorize_platform(target)
+        scope, refusal = authorize_platform(target)
         if refusal:
             return Result(False, spec.id, action, None, refusal)
+        log_dispatch(ARM_ID, action, scope, target)
         endp = payload["endp"]
         client = self._client(payload, conf)
 
@@ -143,20 +150,26 @@ class IvantiArm:
                 data = client.filters(endp)
             except IvantiError as exc:
                 return Result(False, spec.id, action, None, redact(str(exc)))
-            return Result(True, spec.id, action, {"endp": endp, "filters": data[:200]}, None)
+            return self._stamped(Result(
+                True, spec.id, action, {"endp": endp, "filters": data[:200]}, None),
+                scope, target)
 
         if action == "fields":
             try:
                 data = client.fields(endp)
             except IvantiError as exc:
                 return Result(False, spec.id, action, None, redact(str(exc)))
-            return Result(True, spec.id, action, {"endp": endp, "fields": data[:500]}, None)
+            return self._stamped(Result(
+                True, spec.id, action, {"endp": endp, "fields": data[:500]}, None),
+                scope, target)
 
         if action == "search":
-            return self._search(spec, action, payload, client, endp)
+            return self._stamped(self._search(spec, action, payload, client, endp),
+                                 scope, target)
 
         if action == "export":
-            return self._export(spec, action, payload, client, endp)
+            return self._stamped(self._export(spec, action, payload, client, endp),
+                                 scope, target)
 
         return Result(False, spec.id, action, None, f"unknown action {action!r}")
 

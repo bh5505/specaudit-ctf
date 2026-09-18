@@ -313,3 +313,20 @@ def test_explicit_config_in_scope_proceeds_on_same_target(ivanti_server,
     res = arm.invoke(_spec(), "search", {"endp": "host", "config": ini})
     assert res.ok, res.error
     assert res.output["count"] == 4
+    assert res.output["dispatch"]["target"] == f"http://127.0.0.1:{ivanti_server}"
+
+
+def test_success_result_carries_dispatch_audit_and_stamp(ivanti_server, capsys):
+    """A gated successful pull leaves the same audit trail the other
+    scope-gated arms do: a [dispatch] stderr line and a provenance stamp."""
+    arm = IvantiArm()
+    res = arm.invoke(_spec(), "filters", {"endp": "host"})
+    assert res.ok, res.error
+    assert res.output["dispatch"] == {
+        "dispatch": "true", "scope": "127.0.0.1",
+        "target": f"http://127.0.0.1:{ivanti_server}",
+    }
+    err = capsys.readouterr().err
+    assert "[dispatch]" in err
+    assert "arm=ivanti" in err
+    assert f"target=http://127.0.0.1:{ivanti_server}" in err
