@@ -23,13 +23,12 @@ from .client import DEFAULT_SIZE, IvantiClient, IvantiError
 from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
-    DEFAULT_CONFIG_NAMES,
     ENDPOINTS,
     ENV_SCOPE,
     LIST_ACTIONS,
     IvantiConfigError,
     args_refusal,
-    authorize_target,
+    authorize_platform,
     connection_config,
     parse_filters,
     resolve_config_path,
@@ -100,7 +99,10 @@ class IvantiArm:
 
     def _armed(self) -> bool:
         target = self._platform_target()
-        return bool(target.strip()) and authorize_target(target) is None
+        if not target.strip():
+            return False
+        _scope, refusal = authorize_platform(target)
+        return refusal is None
 
     def _platform_target(self) -> str:
         """The configured platform URL, or "" when config is incomplete."""
@@ -109,12 +111,12 @@ class IvantiArm:
         except IvantiConfigError:
             return ""
 
-    def _client(self, payload: dict[str, Any]) -> IvantiClient:
+    def _effective_conf(self, payload: dict[str, Any]) -> dict[str, str]:
+        """The config the client will actually dial (payload, env, or default)."""
         explicit = payload.get("config") or self._config_path
-        path = resolve_config_path(explicit)
-        if path is None:
-            path = explicit or DEFAULT_CONFIG_NAMES[0]
-        conf = connection_config(path)
+        return connection_config(resolve_config_path(explicit))
+
+    def _client(self, payload: dict[str, Any], conf: dict[str, str]) -> IvantiClient:
         verify_ssl = bool(payload.get("verify_ssl", True))
         return IvantiClient(conf["url"], conf["api_ver"], conf["client_id"],
                             conf["api_key"], verify_ssl=verify_ssl)
@@ -123,13 +125,18 @@ class IvantiArm:
         refusal = args_refusal(payload)
         if refusal:
             return Result(False, spec.id, action, None, refusal)
-        target = self._platform_target()
-        if target:
-            refusal = authorize_target(target)
-            if refusal:
-                return Result(False, spec.id, action, None, refusal)
+        # Resolve the effective config once, and authorize the same URL the
+        # client will dial: an explicit payload "config" must not be able to
+        # move traffic while the gate validates a different (default) target.
+        # connection_config raises IvantiConfigError when the effective URL (or
+        # any credential) is missing, so an unconfigured target fails closed.
+        conf = self._effective_conf(payload)
+        target = conf["url"]
+        _scope, refusal = authorize_platform(target)
+        if refusal:
+            return Result(False, spec.id, action, None, refusal)
         endp = payload["endp"]
-        client = self._client(payload)
+        client = self._client(payload, conf)
 
         if action == "filters":
             try:
