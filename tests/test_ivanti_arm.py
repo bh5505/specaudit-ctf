@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 import pytest
 
 from extension.arms.ivanti import ARM_ID, IvantiArm
-from extension.arms.ivanti.policy import resolve_config_path
+from extension.arms.ivanti.policy import ENV_SCOPE, resolve_config_path
 from extension.contract import ArmSpec
 
 # --------------------------------------------------------------------------
@@ -104,11 +104,15 @@ def ivanti_server():
     thread.start()
     port = server.server_address[1]
     old = {k: os.environ.get(k) for k in
-           ("IVANTI_API_KEY", "IVANTI_URL", "IVANTI_API_VER", "IVANTI_CLIENT_ID")}
+           ("IVANTI_API_KEY", "IVANTI_URL", "IVANTI_API_VER", "IVANTI_CLIENT_ID",
+            ENV_SCOPE)}
     os.environ["IVANTI_API_KEY"] = "test-key"
     os.environ["IVANTI_URL"] = f"http://127.0.0.1:{port}"
     os.environ["IVANTI_API_VER"] = "/api/v1"
     os.environ["IVANTI_CLIENT_ID"] = "1550"
+    # Every live action is scope-gated now: the armed platform must be inside
+    # IVANTI_SCOPE, so the happy-path fixture names the loopback platform.
+    os.environ[ENV_SCOPE] = "127.0.0.1"
     try:
         yield port
     finally:
@@ -200,6 +204,39 @@ def test_unarmed_reports_error():
     res = arm.invoke(_spec(), "search", {"endp": "host"})
     assert not res.ok
     assert "unarmed" in (res.error or "")
+
+
+def test_scope_required_refuses_without_reaching_platform(ivanti_server,
+                                                          monkeypatch):
+    """Scope is not optional: a configured platform with no IVANTI_SCOPE must be
+    refused, and the refusal must come before any HTTP request."""
+    monkeypatch.delenv(ENV_SCOPE, raising=False)
+    arm = IvantiArm()
+    listed = arm.invoke(_spec(), "list_tools", {})
+    assert listed.output["armed"] is False
+    before = _Handler.search_hits
+    res = arm.invoke(_spec(), "search", {"endp": "host"})
+    assert not res.ok
+    assert ENV_SCOPE in (res.error or "")
+    assert _Handler.search_hits == before, "no request may reach the platform unarmed"
+
+
+def test_scope_outside_refuses_platform(ivanti_server, monkeypatch):
+    """A scope that does not contain the configured platform is a refusal."""
+    monkeypatch.setenv(ENV_SCOPE, "10.99.0.0/16")
+    arm = IvantiArm()
+    before = _Handler.search_hits
+    res = arm.invoke(_spec(), "search", {"endp": "host"})
+    assert not res.ok
+    assert "outside" in (res.error or "")
+    assert _Handler.search_hits == before
+
+
+def test_scope_inside_proceeds(ivanti_server):
+    """The happy path: platform inside the armed scope runs (mock transport)."""
+    arm = IvantiArm()
+    res = arm.invoke(_spec(), "filters", {"endp": "host"})
+    assert res.ok, res.error
 
 
 def test_unknown_endpoint_refused(ivanti_server):

@@ -19,8 +19,8 @@ The upstream platform is the RiskSense/Neurons Ivanti VM API:
 | --- | --- |
 | `search` | Paged pull of `host`/`hostFinding`/`vulnerability`/`tag` records, flattened to a JSON-safe shape; `save` writes a CSV. `extract_host` lifts `host.hostId`/`host.ipAddress` to `host_id`/`host_ip` for findings. |
 | `export` | Create a server-side UI-identical CSV and poll until the download is ready (`save` persists it). |
-| `filters` | Offline discovery of the API's valid filter names for an endpoint. |
-| `fields` | Offline discovery of the API's exportable field names for an endpoint. |
+| `filters` | Platform discovery of the API's valid filter names for an endpoint (calls the platform API; scope-gated). |
+| `fields` | Platform discovery of the API's exportable field names for an endpoint (calls the platform API; scope-gated). |
 | `list_tools` | Arm summary: allowed actions, endpoints, arming state, arg keys. |
 
 ## Arming
@@ -30,13 +30,19 @@ see `Ivanti_config.ini.example`) at `$IVANTI_CONFIG` or beside the arm, with
 live-secret env overrides so no credential file is needed:
 
 ```text
-IVANTI_URL        e.g. https://platform4.risksense.com
+IVANTI_URL        e.g. https://platform.example.com
 IVANTI_API_VER    e.g. /api/v1
 IVANTI_CLIENT_ID  e.g. 1550
 IVANTI_API_KEY    live credential (overrides [secrets] api_key)
+IVANTI_SCOPE      required: comma-separated authorized platform targets (IP/CIDR/host)
 ```
 
-Live pulls need these set; `filters`/`fields` discovery are offline and need no
-scope grant. Output is the flattened JSON-safe shape the `ext_telecom_asmvm`
-pack consumes as its Ivanti bronze (`assets`/`findings` rows), so a downstream
-`pack_run` can fold the pulled assets/findings into the pack's evidence model.
+Live pulls need **both** the credentials above and `IVANTI_SCOPE`. The scope is
+not optional: every action that reaches the platform — including `filters` and
+`fields` discovery, which call the platform API — is refused before any request
+unless the configured platform URL host is inside the armed scope. Blanket
+scopes (`*`, `0.0.0.0/0`, `::/0`) are refused at parse, exactly like the other
+scope-gated arms. Output is the flattened JSON-safe shape the
+`ext_telecom_asmvm` pack consumes as its Ivanti bronze (`assets`/`findings`
+rows), so a downstream `pack_run` can fold the pulled assets/findings into the
+pack's evidence model.

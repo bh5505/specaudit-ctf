@@ -29,6 +29,7 @@ from .policy import (
     LIST_ACTIONS,
     IvantiConfigError,
     args_refusal,
+    authorize_target,
     connection_config,
     parse_filters,
     resolve_config_path,
@@ -94,15 +95,19 @@ class IvantiArm:
             }),
             "default_size": DEFAULT_SIZE,
             "armed": self._armed(),
-            "arming": f"set IVANTI_CONFIG (or IVANTI_URL/IVANTI_API_VER/IVANTI_CLIENT_ID/IVANTI_API_KEY) to arm; optional {ENV_SCOPE} for IP/CIDR scope",
+            "arming": f"set IVANTI_CONFIG (or IVANTI_URL/IVANTI_API_VER/IVANTI_CLIENT_ID/IVANTI_API_KEY) and {ENV_SCOPE} (explicit IP/CIDR/host of the platform) to arm; live pulls are refused without both",
         }, None)
 
     def _armed(self) -> bool:
+        target = self._platform_target()
+        return bool(target.strip()) and authorize_target(target) is None
+
+    def _platform_target(self) -> str:
+        """The configured platform URL, or "" when config is incomplete."""
         try:
-            connection_config(resolve_config_path(self._config_path))
-            return True
+            return str(connection_config(resolve_config_path(self._config_path))["url"])
         except IvantiConfigError:
-            return False
+            return ""
 
     def _client(self, payload: dict[str, Any]) -> IvantiClient:
         explicit = payload.get("config") or self._config_path
@@ -118,6 +123,11 @@ class IvantiArm:
         refusal = args_refusal(payload)
         if refusal:
             return Result(False, spec.id, action, None, refusal)
+        target = self._platform_target()
+        if target:
+            refusal = authorize_target(target)
+            if refusal:
+                return Result(False, spec.id, action, None, refusal)
         endp = payload["endp"]
         client = self._client(payload)
 
