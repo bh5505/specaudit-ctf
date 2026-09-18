@@ -22,7 +22,7 @@ its ``sys.modules`` classification stays per-invocation truth:
   ``initialize`` request, the ``notifications/initialized`` notice, and
   a ``tools/list`` request, then EOF. The server must answer both
   requests with valid JSON-RPC results — initialize echoing a supported
-  protocol revision and tools/list naming exactly the four advertised
+  protocol revision and tools/list naming exactly the six advertised
   tools — and exit 0 on EOF. Anything else is a tracer failure.
 
 - ``asset-recon-worker`` exercises the isolated worker entrypoint with
@@ -204,7 +204,7 @@ def validate_mcp_exchange(stdout_text: str) -> list[dict]:
     Shared by the in-process trace and the subprocess smoke test so both
     enforce the identical contract: exactly two JSON-RPC result responses
     (ids 1 and 2), ``initialize`` echoing a supported protocol revision,
-    and ``tools/list`` naming exactly the four advertised tools.
+    and ``tools/list`` naming exactly the six advertised tools.
     """
     responses = _parse_ndjson_responses(stdout_text)
     if len(responses) != 2 or [r.get("id") for r in responses] != [1, 2]:
