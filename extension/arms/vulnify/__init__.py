@@ -1,6 +1,10 @@
-"""Public exports for the vulnify local lookup arm."""
+"""Merged vulnify arm: bounded local vulnerability reads (feed + snapshot)."""
 
 from .arm import VulnifyArm
 from .policy import ALLOWED_ACTIONS, ARM_ID
 
-__all__ = ["ALLOWED_ACTIONS", "ARM_ID", "VulnifyArm"]
+__all__ = [
+    "ALLOWED_ACTIONS",
+    "ARM_ID",
+    "VulnifyArm",
+]

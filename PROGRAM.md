@@ -329,6 +329,20 @@ accepting agent-supplied file paths, or granting every claimed finding
 credit because one invocation succeeded are all explicitly out of
 scope.
 
+**Initial mechanisms, not bridge completion.** The opt-in
+`extension.observations` sidecar implements pre-grading singleton slices for an
+exact `vulnify.lookup` CVE record, `security-detections-mcp.get_rule` rule,
+`rubeus.telemetry` event, or `gpohound.policy` record. It binds
+validator-supplied source admission,
+execution envelope, Mode-A policy-report bytes and raw source bytes while
+leaving the fixture lane and every invocation surface unchanged. Each record
+remains source-`declared`, freshness/applicability remain `not-assessed`,
+custody is validator-attested, and no finding or grading credit follows.
+EVID-01 remains open for authenticated/durable custody,
+workpaper/adjudication integration and the complete refusal/evaluation
+boundary; DATA-01 and DATA-02 remain open for admitted source revisions,
+rights decisions and empirical containment.
+
 ## First proposed vertical slice
 
 One useful slice, proven end to end, beats breadth across the register.
@@ -347,10 +361,11 @@ The slice needs no new live scanner and no cloud credentials.
 6. **A source-linked workpaper** — every conclusion tracing to an
    observation, with explicit uncertainty.
 
-Rule intelligence and recorded telemetry follow as the second slice.
-Live identity, cloud, and hypervisor mutation remain a separate,
-explicitly approved decision — never carried along by a data or
-curriculum change.
+Rule intelligence and recorded telemetry now have the same narrow
+source-declared byte-binding mechanism, but not source-governance admission,
+authenticity, effectiveness, finding or grading authority. Live identity,
+cloud, and hypervisor mutation remain a separate, explicitly approved
+decision — never carried along by a data or curriculum change.
 
 ## Proposed T01–T08 release-wave seed map
 
@@ -496,11 +511,28 @@ the right to redistribute or execute it.
 
 ## Proposed roadmap
 
-All eleven items are **proposed**. None has been implemented, and no
-branch, change request, runtime configuration, or catalog edit exists
-for any of them. Sequence by the dependency order below rather than by
-dates; start with one vertical slice rather than many candidates at
-once.
+The eleven exit intents remain open. Ten items are entirely **proposed**.
+`GOV-01` now has an additive, checkout-only [partial
+foundation](governance/README.md) for the PR 97 reader slice: it binds the
+accepted capability inventory and records deliberately incomplete module,
+source, runtime, relationship, currentness, and promotion state. It does not
+satisfy the full `GOV-01` exit intent, establish currentness or promotion
+evidence, change runtime admission, or edit the catalog. Sequence further work
+by the dependency order below rather than by dates; continue one vertical
+slice at a time.
+
+`SAFE-01` also has a checkout-only [reader-safety requirements
+inventory](safety/README.md) for the named PR97 caller-file reader surfaces.
+Its integrity check proves only correspondence to those named PR97 checkout
+surfaces. It provisions no approved input root, stable nofollow snapshot,
+trusted custody/classification, egress denial, ambient-credential
+isolation, independent hard kill/monitoring, untrusted-content boundary, or
+grader-plane separation. It grants no authority and does not satisfy `SAFE-01`.
+
+The safety inventory does not collapse the roadmap boundaries: `EVID-01` still
+owns trusted observation, custody, and grading; `GOV-01` owns source/runtime
+promotion and currentness; and `DATA-01` / `DATA-02` own admitted source
+revisions, rights, snapshots, and their empirical denied-egress behavior.
 
 Four program workstreams travel through this dependency graph rather than
 creating a second roadmap: `GOV-01` owns the module/source/currentness

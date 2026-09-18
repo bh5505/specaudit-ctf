@@ -56,6 +56,23 @@ actual deployment. The tier label describes the environment; it does not claim
 that this repository provisions all controls or that an action is safe because
 it is called “read-only.”
 
+### Checkout reader-safety inventory
+
+The checkout-only [reader-safety register](safety/README.md) inventories
+requirements that remain permanently unverified by the checkout for the named
+PR97 caller-file reader surfaces. An integrity pass proves only correspondence
+to those named PR97 checkout surfaces. It provisions no approved input root,
+stable nofollow snapshot, trusted custody/classification, egress denial,
+ambient-credential isolation, independent hard kill/monitoring,
+untrusted-content boundary, or grader-plane separation. It grants no authority
+and does not satisfy `SAFE-01`; the operator must supply and verify those
+controls outside the reader process.
+
+Do not substitute this inventory for `EVID-01` trusted observation, custody, or
+grading; `GOV-01` source/runtime promotion or currentness; or `DATA-01` /
+`DATA-02` source admission, rights, snapshots, and empirical denied-egress
+evidence. Those gates remain independent.
+
 ## Authorization and rules of engagement
 
 Before E2–E4, preserve an approved rules-of-engagement record containing:
@@ -219,6 +236,54 @@ in [README.md](README.md). Their HMAC-chained traces and validator-owned artifac
 channels must not be generalized into proof for evidence types they do not
 cover.
 
+### Opt-in source-declared observation slices
+
+The EVID-01 sidecar covers exactly one declared record returned by
+`vulnify.lookup`, `security-detections-mcp.get_rule`, `rubeus.telemetry`, or
+`gpohound.policy`.
+It is not enabled merely by invoking an arm. A trusted validator must, before
+dispatch:
+
+1. hold and classify the exact raw source bytes;
+2. supply its own issuer identity, authority reference, source id/revision,
+   source time (or explicit unknown), logical and custody locators, the exact
+   profile subject, producer revision and a validity window no longer than 24
+   hours;
+3. mint one source admission bound to the validator-created attempt id; and
+4. invoke through Mode A using that attempt id and a fresh validator-owned
+   artifact directory.
+
+Use `issue_source_admission` for the byte-compatible v1 vulnify contract, or
+`issue_profile_source_admission` with the exact capability and subject for the
+profile-aware API. The latter still routes vulnify to v1; only the rule and
+telemetry profiles mint v2 documents, while GPOHound policy mints v3.
+
+After dispatch, the validator reads the one policy-report artifact through its
+own retained Mode-A channel and passes those immutable bytes, the execution
+envelope, admission and original raw bytes to
+`derive_trusted_observation`. Retain the admission, raw bytes, envelope,
+artifact bytes and observation separately. On retry, call
+`verify_trusted_observation` with the durable set of already-seen observation
+ids; the pure library stores no replay state.
+
+Do not mint an admission from the repository's R01, R08, R36 or R43 research
+mapping alone. Those rows currently have no selected revision or
+license/data-rights clearance. A per-attempt admission is also not a governance
+promotion or an upstream-equivalence decision. Every derived record stays
+`declared`, with freshness and applicability `not-assessed`; a rule does not
+establish deployment or operating effectiveness, and sanitized telemetry does
+not establish event authenticity, event time or compromise. A declared GPO
+record does not establish policy application, effective access, filter
+applicability, item-level targeting, or conflict resolution. No profile
+supplies finding, grading, workpaper or lifecycle authority.
+
+The observation says `validator-attested-mode-a`, not “custody verified.”
+Execution-result v1 cannot distinguish `--attempt-id` alone from an invocation
+that also used `--artifact-dir`, and the pure sidecar does not open a descriptor
+or receipt. The evidence custodian must verify that channel outside the
+library. Content hashes detect later mismatch but do not authenticate the
+issuer or prove that the admission existed before execution.
+
 ## Close, reset and retain
 
 1. Stop new learner actions and close the attempt/evidence channel.
@@ -266,6 +331,8 @@ For this checkout:
 - installing or discovering a research candidate never adds it to the catalog,
   admits its actions, provides support or authorizes execution.
 
-The [program roadmap](PROGRAM.md#proposed-roadmap) includes hard-containment and
-trusted-observation work that does not ship today. Do not operate a proposed
-environment or evidence lane as though its documentation were implementation.
+The [program roadmap](PROGRAM.md#proposed-roadmap) includes remaining
+hard-containment and trusted-observation/grading work that does not ship today.
+The opt-in source-declared observation sidecar above is only a partial binding
+mechanism; do not operate a proposed environment or evidence lane as though
+its documentation were implementation.

@@ -1,0 +1,733 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/bh5505/specaudit-ctf/governance/schema/register.v1.schema.json",
+  "title": "specaudit.ctf.governance.register.v1",
+  "description": "Repository governance metadata. It grants no catalog, action, runtime, or support promotion.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "register_revision",
+    "scope",
+    "runtime_inventory",
+    "contract_templates",
+    "modules",
+    "sources",
+    "runtime",
+    "relationships",
+    "promotion_events"
+  ],
+  "properties": {
+    "schema": {
+      "const": "specaudit.ctf.governance.register.v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "register_revision": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "scope": {
+      "$ref": "#/definitions/scope"
+    },
+    "runtime_inventory": {
+      "$ref": "#/definitions/runtime_inventory"
+    },
+    "contract_templates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/contract_template"
+      }
+    },
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/module"
+      }
+    },
+    "sources": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/source"
+      }
+    },
+    "runtime": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/runtime"
+      }
+    },
+    "relationships": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/definitions/relationship"
+      }
+    },
+    "promotion_events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/promotion_event"
+      }
+    }
+  },
+  "definitions": {
+    "nonempty_string": {
+      "type": "string",
+      "minLength": 1,
+      "pattern": ".*\\S.*"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "capability_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*(\\.[a-z][a-z0-9_]*(-[a-z0-9_]+)*)+$"
+    },
+    "arm_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+    },
+    "action": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "record_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9-]*$"
+    },
+    "entity_ref": {
+      "type": "string",
+      "pattern": "^(module|source|runtime):[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "string_set": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "$ref": "#/definitions/nonempty_string"
+      }
+    },
+    "nullable_date": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      ]
+    },
+    "currentness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "reviewed_on",
+        "review_due_on",
+        "triggers"
+      ],
+      "properties": {
+        "reviewed_on": {
+          "$ref": "#/definitions/nullable_date"
+        },
+        "review_due_on": {
+          "$ref": "#/definitions/nullable_date"
+        },
+        "triggers": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "description",
+        "repository_complete"
+      ],
+      "properties": {
+        "id": {
+          "const": "pr97-readers"
+        },
+        "description": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "repository_complete": {
+          "const": false
+        }
+      }
+    },
+    "runtime_inventory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority",
+        "expected_count",
+        "capability_ids",
+        "contract_sha256"
+      ],
+      "properties": {
+        "authority": {
+          "const": "extension.invoke_profiles.INVOKE_PROFILES"
+        },
+        "expected_count": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "capability_ids": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/capability_id"
+          }
+        },
+        "contract_sha256": {
+          "$ref": "#/definitions/digest"
+        }
+      }
+    },
+    "contract_template": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "safety_class",
+        "side_effects",
+        "egress",
+        "cleanup_required",
+        "default_off",
+        "synthetic_only",
+        "timeout_ms",
+        "max_output_bytes",
+        "max_tool_steps",
+        "max_spend",
+        "scope_mode",
+        "input_binding",
+        "approval_required",
+        "limitations"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*-v[1-9][0-9]*$"
+        },
+        "safety_class": {
+          "enum": ["R0", "R1", "R2", "R3"]
+        },
+        "side_effects": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        },
+        "egress": {
+          "enum": ["none", "declared"]
+        },
+        "cleanup_required": {
+          "type": "boolean"
+        },
+        "default_off": {
+          "type": "boolean"
+        },
+        "synthetic_only": {
+          "type": "boolean"
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_output_bytes": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_tool_steps": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_spend": {
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "scope_mode": {
+          "const": "static-policy-uri"
+        },
+        "input_binding": {
+          "enum": [
+            "not-applicable",
+            "caller-selected-unbound",
+            "governed-source-pin"
+          ]
+        },
+        "approval_required": {
+          "type": "boolean"
+        },
+        "limitations": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    },
+    "module": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "record_version",
+        "title",
+        "status",
+        "owner",
+        "audiences",
+        "level",
+        "outcomes",
+        "dependencies",
+        "deliverables",
+        "validation_evidence",
+        "currentness",
+        "promotion_evidence",
+        "limitations"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^(FND|AUD|CYB|TEL)-[0-9]{2}$|^CAP-(IA|TEL)$"
+        },
+        "record_version": {
+          "const": 1
+        },
+        "title": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "status": {
+          "enum": ["shipped", "design-ready", "research", "proposed"]
+        },
+        "owner": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "audiences": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        },
+        "level": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "outcomes": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        },
+        "dependencies": {
+          "$ref": "#/definitions/string_set"
+        },
+        "deliverables": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        },
+        "validation_evidence": {
+          "$ref": "#/definitions/string_set"
+        },
+        "currentness": {
+          "$ref": "#/definitions/currentness"
+        },
+        "promotion_evidence": {
+          "$ref": "#/definitions/string_set"
+        },
+        "limitations": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    },
+    "rights": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "license_review",
+        "data_rights_review",
+        "permitted_uses"
+      ],
+      "properties": {
+        "license_review": {
+          "enum": ["unreviewed", "reviewed", "denied"]
+        },
+        "data_rights_review": {
+          "enum": ["unreviewed", "reviewed", "denied"]
+        },
+        "permitted_uses": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "record_version",
+        "name",
+        "url",
+        "status",
+        "owner",
+        "selected_revision",
+        "content_digests",
+        "rights",
+        "currentness",
+        "replacement",
+        "promotion_evidence",
+        "limitations"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^R(0[1-9]|[1-3][0-9]|4[0-3])$",
+          "not": {
+            "const": "R10"
+          }
+        },
+        "record_version": {
+          "const": 1
+        },
+        "name": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "pattern": "^https://[A-Za-z0-9.-]+(?::[0-9]+)?(?:[/?#].*)?$"
+        },
+        "status": {
+          "enum": ["research", "selected", "admitted", "retired"]
+        },
+        "owner": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "selected_revision": {
+          "type": ["string", "null"],
+          "minLength": 1,
+          "pattern": ".*\\S.*"
+        },
+        "content_digests": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/digest"
+          }
+        },
+        "rights": {
+          "$ref": "#/definitions/rights"
+        },
+        "currentness": {
+          "$ref": "#/definitions/currentness"
+        },
+        "replacement": {
+          "type": ["string", "null"],
+          "pattern": "^R(0[1-9]|[1-3][0-9]|4[0-3])$",
+          "not": {
+            "const": "R10"
+          }
+        },
+        "promotion_evidence": {
+          "$ref": "#/definitions/string_set"
+        },
+        "limitations": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    },
+    "runtime": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "capability_id",
+        "record_version",
+        "arm_id",
+        "action",
+        "presence",
+        "support_tier",
+        "owner",
+        "tool_version",
+        "implementation_revision",
+        "contract_ref",
+        "input_keys",
+        "result_schema",
+        "supported_versions",
+        "regression_cases",
+        "currentness",
+        "promotion_evidence",
+        "known_limitations"
+      ],
+      "properties": {
+        "capability_id": {
+          "$ref": "#/definitions/capability_id"
+        },
+        "record_version": {
+          "const": 1
+        },
+        "arm_id": {
+          "$ref": "#/definitions/arm_id"
+        },
+        "action": {
+          "$ref": "#/definitions/action"
+        },
+        "presence": {
+          "const": "admitted"
+        },
+        "support_tier": {
+          "enum": ["research", "experimental", "maintained", "held"]
+        },
+        "owner": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "tool_version": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "implementation_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "contract_ref": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]*-v[1-9][0-9]*$"
+        },
+        "input_keys": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]*$"
+          }
+        },
+        "result_schema": {
+          "const": "specaudit.ctf.execution-result.v1"
+        },
+        "supported_versions": {
+          "$ref": "#/definitions/string_set"
+        },
+        "regression_cases": {
+          "$ref": "#/definitions/string_set"
+        },
+        "currentness": {
+          "$ref": "#/definitions/currentness"
+        },
+        "promotion_evidence": {
+          "$ref": "#/definitions/string_set"
+        },
+        "known_limitations": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    },
+    "relationship": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "record_version",
+        "kind",
+        "from",
+        "to",
+        "evidence_refs",
+        "limitations"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9._-]*$"
+        },
+        "record_version": {
+          "const": 1
+        },
+        "kind": {
+          "enum": [
+            "research-mapping",
+            "proposed-source",
+            "proposed-use",
+            "depends-on",
+            "replaces",
+            "consumes"
+          ]
+        },
+        "from": {
+          "$ref": "#/definitions/entity_ref"
+        },
+        "to": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/definitions/entity_ref"
+          }
+        },
+        "evidence_refs": {
+          "$ref": "#/definitions/string_set"
+        },
+        "limitations": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    },
+    "promotion_event": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "subject",
+        "from_status",
+        "to_status",
+        "decided_on",
+        "reviewer",
+        "implementation_revision",
+        "subject_digest",
+        "contract_digest",
+        "regression_case",
+        "verification_result",
+        "exercised_path",
+        "supported_versions",
+        "source_revisions",
+        "limitations_accepted"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^promotion-[a-z0-9][a-z0-9._-]*$"
+        },
+        "subject": {
+          "$ref": "#/definitions/entity_ref"
+        },
+        "from_status": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "to_status": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "decided_on": {
+          "type": "string",
+          "format": "date",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "reviewer": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "implementation_revision": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}$"
+        },
+        "subject_digest": {
+          "$ref": "#/definitions/digest"
+        },
+        "contract_digest": {
+          "$ref": "#/definitions/digest"
+        },
+        "regression_case": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "verification_result": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "exercised_path": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "supported_versions": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        },
+        "source_revisions": {
+          "$ref": "#/definitions/string_set"
+        },
+        "limitations_accepted": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/string_set"
+            },
+            {
+              "minItems": 1
+            }
+          ]
+        }
+      }
+    }
+  }
+}

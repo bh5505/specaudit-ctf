@@ -100,7 +100,7 @@ def test_vulnify_receipt_integrity(capsys) -> None:
 def test_vulnify_list_describe_and_registration() -> None:
     listed = _ext().invoke(ARM_ID, "list_tools", {})
     assert listed.ok is True and listed.output["dispatch_actions"] == []
-    assert set(listed.output["read_actions"]) == {"lookup", "list_tools", "tools/list"}
+    assert set(listed.output["read_actions"]) == {"lookup", "list_vulns", "list_tools", "tools/list"}
     row = describe(ARM_ID)
     assert row.tier == "experimental" and row.curated is True
     from extension.invoke_profiles import invoke_profile

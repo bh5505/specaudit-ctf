@@ -21,6 +21,7 @@ from .contract import (
     ExtensionError,
     NotCuratedError,
     NotHeldError,
+    NotInstalledError,
     UnmanifestedCapabilityError,
 )
 from .encode import (
@@ -38,6 +39,7 @@ from .encode import (
 from .invoke_profiles import invoke_profile
 
 STATUS_COMPLETE = "complete"
+_DISPATCH_SCOPE_APPROVAL_PREFIX = "operator://dispatch-scope/"
 
 
 class RangeRunnerUnavailable(Exception):
@@ -91,6 +93,7 @@ def dispatch_invoke(
             return DispatchOutcome(None, 2, str(exc), exc)
         started = utc_now()
         profile = None
+        invoked = False
         try:
             spec = extension.arm_spec(arm_id)
             if spec.tier == TIER_HELD:
@@ -103,8 +106,10 @@ def dispatch_invoke(
             if args_error is not None:
                 raise args_error
             payload = dict(args) if args is not None else {}
+            invoked = True
             result = extension.invoke(arm_id, action, payload)
         except ExtensionError as exc:
+            effects_possible = invoked and not isinstance(exc, NotInstalledError)
             envelope = encode_invoke_failure(
                 exc,
                 arm_id=arm_id,
@@ -112,10 +117,33 @@ def dispatch_invoke(
                 profile=profile,
                 started_at=started,
                 finished_at=utc_now(),
+                tool_steps=1 if effects_possible else 0,
+                effects_possible=effects_possible,
+                invalid_args=exc is args_error and not invoked,
                 attempt_id=parsed_attempt,
                 artifact_dir=sink,
             )
+            if invoked and not isinstance(exc, NotInstalledError):
+                return DispatchOutcome(envelope, 1, "invoke failed")
             return DispatchOutcome(envelope, 2, str(exc))
+        except Exception as exc:
+            # An arm consumes operator-controlled data.  A missed parser edge
+            # must therefore become an evaluated failure, never a traceback or
+            # a dropped MCP response.  Keep the concrete exception out of the
+            # wire/stderr surface: it may contain a local path or input text.
+            envelope = encode_invoke_failure(
+                exc,
+                arm_id=arm_id,
+                action=action,
+                profile=profile,
+                started_at=started,
+                finished_at=utc_now(),
+                tool_steps=1 if invoked else 0,
+                effects_possible=invoked,
+                attempt_id=parsed_attempt,
+                artifact_dir=sink,
+            )
+            return DispatchOutcome(envelope, 1, "invoke failed")
         try:
             envelope = encode_invoke_result(
                 result,
@@ -127,13 +155,56 @@ def dispatch_invoke(
             )
         except ArtifactHandoffError as exc:
             return DispatchOutcome(exc.envelope, 2, str(exc))
-        stderr_line = None
-        if not result.ok and result.error:
-            stderr_line = f"Invoke failed for {arm_id}.{action}: {result.error}"
-        return DispatchOutcome(envelope, 0 if result.ok else 1, stderr_line)
+        except Exception as exc:
+            # A malformed Result or an encoder edge is still part of the
+            # transport boundary.  Convert it to the same admitted failure
+            # envelope without exposing the exception or caller data.
+            try:
+                envelope = encode_invoke_failure(
+                    exc,
+                    arm_id=arm_id,
+                    action=action,
+                    profile=profile,
+                    started_at=started,
+                    finished_at=utc_now(),
+                    tool_steps=1,
+                    effects_possible=True,
+                    attempt_id=parsed_attempt,
+                    artifact_dir=sink,
+                )
+            except ArtifactHandoffError as handoff_exc:
+                return DispatchOutcome(
+                    handoff_exc.envelope, 2, str(handoff_exc)
+                )
+            return DispatchOutcome(envelope, 1, "invoke failed")
+        status = envelope.get("status")
+        if status == STATUS_COMPLETE:
+            return DispatchOutcome(envelope, 0, None)
+        # The admitted envelope, not a child-controlled Result field, owns the
+        # process/MCP success signal. Keep child error text out of stderr: an
+        # arm may accidentally include caller paths, evidence, or secrets.
+        return DispatchOutcome(envelope, 1, _safe_result_failure_line(profile))
     finally:
         if sink is not None:
             sink.close()
+
+
+def _safe_result_failure_line(profile: Any) -> str:
+    """Return actionable producer-owned guidance without child error text."""
+    approval_ref = getattr(profile, "approval_ref", None)
+    if isinstance(approval_ref, str) and approval_ref.startswith(
+        _DISPATCH_SCOPE_APPROVAL_PREFIX
+    ):
+        scope_env = approval_ref.removeprefix(_DISPATCH_SCOPE_APPROVAL_PREFIX)
+        capability_id = getattr(profile, "capability_id", "admitted capability")
+        if scope_env and all(
+            ch.isupper() or ch.isdigit() or ch == "_" for ch in scope_env
+        ):
+            return (
+                f"invoke failed for {capability_id}; verify {scope_env} arming "
+                "and whether the request is outside the armed dispatch scope"
+            )
+    return "invoke failed"
 
 
 def _load_range_runner() -> tuple[type[Exception], Any]:

@@ -4,7 +4,7 @@ Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
 
 ## Overview
 
-- **Arms**: 34 specialized adapters. No row is held (the HTTP-MCP
+- **Arms**: 48 specialized adapters. No row is held (the HTTP-MCP
   held set closed 2026-09-04; the tier remains enforced for any
   future held row); the burp-mcp, google-mcp-security, semgrep-mcp,
   prowler-mcp, and metasploit-mcp rows are research integrations on
@@ -24,11 +24,11 @@ Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
   other agent CLIs.
 - **Range**: synthetic fixtures (`live_aws: false`). No live cloud.
 
-`extension/coverage.yaml` classifies the landscape survey (53 ids,
-frozen order). It is a **survey map**, not a ship list: a row is not
+`extension/coverage.yaml` classifies the landscape survey (67 ids). It is a
+**survey map**, not a ship list: a row is not
 a promise that an adapter exists. Every row has a support tier
 (`research` | `experimental` | `maintained` | `held`). In this cut
-every arm row is curated (34 handlers) and every methodology-only
+every arm row is curated (48 handlers) and every methodology-only
 row stays uncurated (19). `curated` is not `maintained`.
 
 Per-arm caveats (composite egress, exploitation, LLM spend, source
@@ -51,6 +51,8 @@ the corresponding labs or integrations ship.
 | Instructor or challenge author: delivery, grading, calibration and maintenance | [Instructor guide](INSTRUCTOR_GUIDE.md) |
 | Operator: authorization, environment tiers, containment, custody and cleanup | [Operations](OPERATIONS.md) |
 | Challenge user or author: shipped inventory, exact grading and authoring contract | [Challenges](challenges/README.md) |
+| Reconnaissance operator or learner: association evidence, exclusions and bounded observations | [Asset reconnaissance](docs/scope-recon.md) |
+| Repository maintainer: partial PR 97 governance register and fail-closed integrity checker | [Governance register](governance/README.md) |
 
 The [program research register](PROGRAM.md#candidate-register-42-unique-candidates)
 contains 42 unique candidates and 12 supplemental methodology/corpus families.
@@ -85,16 +87,6 @@ smoke are offline. Generated runtimes are not committed. See
 [runtime/README.md](runtime/README.md) for the lock, reproducibility,
 installation, rotation, and rollback contract.
 
-## Evidence tooling (ASM/VM)
-
-`tools/` also holds the ASM/VM evidence tooling: evidence builders, a read-only
-live-fire capture of the exposure claims the checks make, the SEIF round trip, and
-two instruments used to decide whether a run can be trusted -
-`csv_type_preflight.py` (does this evidence corpus load the way the checks assume,
-column by column, including what `read_csv`'s sample window infers) and
-`check_probe.py` (does this SQL rewrite return the same rows, under a wall-clock
-budget). See [tools/README.md](tools/README.md).
-
 ## CLI
 
 From the repository root:
@@ -119,7 +111,12 @@ python -m extension invoke agent-wiz list_tools
   Stdout is `specaudit.ctf.execution-result.v1`. Process exit 0 is not
   `complete`. `transport_ok` is informational: it means the tool
   invocation/response transport succeeded, not that artifact custody
-  succeeded. Optional `--attempt-id attempt-<64 lowercase hex>` is echoed
+  succeeded. A zero-step pre-invocation refusal reports no touched scope and
+  `none` effects. If an entered arm throws, the failed envelope instead
+  reports the admitted profile's touched scope and side effects as conservative
+  bounds, with an explicit partial-or-unknown-effects limitation; those fields
+  are not proof that every declared effect occurred.
+  Optional `--attempt-id attempt-<64 lowercase hex>` is echoed
   on every structurally valid result for that attempt. Optional
   `--artifact-dir ABSOLUTE_DIR` is a validator-owned response channel
   (not profile `local-write`): it requires a valid attempt id and a
@@ -132,32 +129,73 @@ python -m extension invoke agent-wiz list_tools
   (no result envelope). Omit both flags for Mode B (portable; no
   `attempt_id`, no artifact files).
 
-X2-PUB admits the explicit in-process `list_tools` profiles for
-`agent-wiz`, `ai-deep-sast`, `attack-stix-data`, `vulnify`, `snmp-readtier`,
-`ike-readtier`, `dark-moon`, `deepsec`, `pyrit`, `routersploit`, `sniper`,
-`vvah`, `zgrab2`, `nmap`, and
-`semgrep-mcp`. These profiles
-read static policy metadata and do not spawn the upstream binary. The
-`attack-stix-data` row additionally admits five R0 local-read lookups
-(`technique`, `software`, `group`, `relationships`, `cvelookup`) over a
-local STIX bundle. `cvelookup` defaults to the bundled demo and emits a JSON
-custody-receipt line for every outcome; the other lookups require an
-operator-supplied bundle. All are exact matches only, with no
-enumeration, no network on any tier. `vulnify.lookup` is likewise an R0
-local read: it requires a frozen operator-supplied JSON snapshot and exact CVE
-IDs, preserves unknown enrichment as null, includes the snapshot digest in
-results, and emits a digest-bound custody receipt on every lookup outcome.
-`snmp-readtier.probe` and `ike-readtier.probe` are scope-armed R1 UDP identity
-reads with bounded packets and digest-bound receipts; timeouts remain unknown,
-and the IKE arm sends no key-exchange payload. Every other CLI invoke action is refused before `Extension.invoke` until it has
-authoritative per-action safety, scope, side-effect, budget, cleanup, and
-tool-version metadata.
+X2-PUB admits explicit in-process `list_tools` profiles for the static-policy
+arms registered in `extension/invoke_profiles.py`. Those profiles read
+repository-owned policy metadata, do not spawn an upstream binary, and remain
+`synthetic_only: true`. Separate R0 action profiles cover the four
+`attack-stix-data` lookups and the 38 actions supplied by the 14
+research-candidate readers. Those actions read operator-supplied local files or
+directories without a subprocess or network call; their manifests are
+`synthetic_only: false` because read-only local data can still be real data.
+Their exact actions and candidate-specific limitations are in
+[extension/README.md](extension/README.md). Every other CLI invoke action is
+refused before `Extension.invoke` until it has authoritative per-action safety,
+scope, side-effect, budget, cleanup, and tool-version metadata.
+
+The current v1 profiles carry a static policy URI in `touched_scope`; they do
+not dynamically bind the caller-selected path. That is a known manifest and
+governance limitation, so the scope field is not evidence of which file was
+read. The arm's bounded input checks and returned content digest remain
+necessary. An opt-in observation sidecar now binds four exact singleton
+reader slices to their raw and result bytes without weakening or changing the
+static admission registry.
+
+### Opt-in trusted-observation slice
+
+`extension.observations` implements deliberately narrow EVID-01 mechanisms. A
+trusted validator can create the byte-compatible v1 admission/observation pair
+for one `vulnify.lookup` CVE record, or the closed v2 pair for exactly one
+`security-detections-mcp.get_rule` rule or `rubeus.telemetry` event, or the
+closed v3 pair for one `gpohound.policy` record. Derivation requires a
+reason-free semantic-`complete` envelope with a matching non-null
+attempt id, one matching `policy-report` artifact, its exact canonical Mode-A
+bytes, and the exact raw source bytes. The verifier re-parses those bytes with
+the selected arm's normalization contract and binds the admission, envelope,
+policy report, source digest/length, record-set digest, source revision/time,
+subject, scope, producer revision, and validity window.
+
+This is a pure API, not a CLI or MCP tool, and `extension` does not import it by
+default. It changes no manifest, action, trace, challenge, grading, finding, or
+governance state. The registry contains exactly those four singleton
+profiles. All records are classified `declared` and applicability is always
+`not-assessed`; rule deployment/effectiveness, event authenticity/time, and
+compromise remain explicitly unestablished. A GPO policy record does not prove
+policy application, effective access, filter applicability, item-level
+targeting, or conflict resolution. There is no default source or revision: the
+current R01, R08, R36 and R43 research mappings have no selected
+source revision or rights clearance and cannot mint an admission by themselves.
+
+The trusted caller must already hold the source bytes, attest that the result
+artifact came from the validator-owned Mode-A channel, and retain observation
+ids for replay rejection. Execution-result v1 also permits an attempt id
+without an artifact directory, so the sidecar records
+`validator-attested-mode-a`; it cannot independently prove the filesystem
+channel, admission authorship, or pre-existence. JSON hashes provide binding,
+not signatures. See [the extension contract](extension/README.md#opt-in-trusted-observations),
+[operator procedure](OPERATIONS.md#opt-in-source-declared-observation-slices),
+the closed v1 [source-admission](extension/schema/source-admission.v1.schema.json)
+and [trusted-observation](extension/schema/trusted-observation.v1.schema.json),
+and the separate v2 [source-admission](extension/schema/source-admission.v2.schema.json)
+and [trusted-observation](extension/schema/trusted-observation.v2.schema.json),
+and the v3 [source-admission](extension/schema/source-admission.v3.schema.json)
+and [trusted-observation](extension/schema/trusted-observation.v3.schema.json)
+schemas.
 
 Dispatch-class admission (2026-09-01, continued through 2026-09-05) adds
-scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
+exactly sixteen scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
 `zaproxy.spider_scan`, `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`,
 `pyrit.scan`, `routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`,
-`http-probe.probe`, `commix.scan`, `semgrep-mcp.semgrep_scan`, `vuls.scan`, and the
+`commix.scan`, `semgrep-mcp.semgrep_scan`, `vuls.scan`, and the
 `stratus-red-team` technique-lifecycle set (`warmup`, `detonate`,
 `revert`) —
 carrying honest manifest truth: safety class **R1**, declared side
@@ -202,7 +240,7 @@ non-curated arms, and uninstalled curated arms are hard errors. Do not invent
 a fallback. `list` / `describe` include `tier`.
 
 `invoke <id> list_tools` returns static JSON (no binary spawn) on
-surfaces that implement it (the eleven lifted CLIs). No row is currently
+policy surfaces that implement it. No row is currently
 held; a future held row would be refused at catalog `invoke` even if
 a binary or endpoint is configured. `burp-mcp` (loopback reads),
 `google-mcp-security` (lookups), `semgrep-mcp` (CLI scans + reads),
@@ -641,9 +679,10 @@ prefixes.
   repo path in the scope env** — `parse_scope` refuses it as not a
   CIDR, IP, hostname, or URI.
 
-Safe default is unarmed: shipping 34 handlers does not fire a packet
-until `*_BIN` (or endpoint) **and** (for dispatch) `*_DISPATCH_SCOPE`
-are set.
+Dispatch remains unarmed by default. Executable arms need their documented
+binary/endpoint configuration and action gate. The in-process `asset-recon`
+arm needs no binary for offline work; provider collection and target probing
+have separate explicit grants described in the [capability guide](docs/scope-recon.md).
 
 Shared gate: `extension/arms/dispatch.py`. Caveats:
 [extension/README.md](extension/README.md).
@@ -653,6 +692,9 @@ Shared gate: `extension/arms/dispatch.py`. Caveats:
 | Env | Arm | Role |
 | --- | --- | --- |
 | `SPECAUDIT_CTF_ROOT` | launchers | clone root when a head launcher is relocated |
+| `ASSET_RECON_PROVIDERS` | asset-recon | explicit provider grants for live evidence collection; not target-probe authority |
+| `ASSET_RECON_PROBE_SCOPE` | asset-recon | independently armed explicit-target probe scope; delegated scanner methods also require their existing arm scopes |
+| `CERTSPOTTER_TOKEN` / `SHODAN_API_KEY` | asset-recon | optional Cert Spotter authentication / required Shodan credential; neither substitutes for provider grants |
 | `BURP_MCP_ENDPOINT` | burp-mcp | HTTP+SSE MCP URL |
 | `SEMGREP_MCP_ENDPOINT` | semgrep-mcp | streamable-HTTP MCP URL |
 | `CHECKOV_BIN` / `CHECKOV_SCAN_ROOT` | checkov | binary (or PATH); scan root **inside** the packaged range |
@@ -667,7 +709,6 @@ Shared gate: `extension/arms/dispatch.py`. Caveats:
 | `OSMEDEUS_BIN` / `OSMEDEUS_DISPATCH_SCOPE` | osmedeus | binary; host-scoped dispatch |
 | `ZDNS_BIN` / `ZDNS_DISPATCH_SCOPE` | zdns | binary; host-scoped lookup |
 | `PAGE_FETCH_BIN` / `PAGE_FETCH_DISPATCH_SCOPE` | page-fetch | binary; URI-scoped fetch |
-| `HTTP_PROBE_BIN` / `HTTP_PROBE_DISPATCH_SCOPE` | http-probe | curl binary (or PATH); URI-scoped probe with bounded caller headers; redirects are not followed |
 | `CALDERA_ENDPOINT` / `CALDERA_API_KEY` / `CALDERA_DISPATCH_SCOPE` | caldera | REST base URL; API key; operation dispatch |
 | `GTI_MCP_ENDPOINT` | google-mcp-security | GTI MCP URL (read-only lookups; no dispatch tier) |
 | `METASPLOIT_MCP_ENDPOINT` / `METASPLOIT_DISPATCH_SCOPE` | metasploit-mcp | SSE MCP URL; host/session-scoped execution |
