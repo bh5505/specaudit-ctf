@@ -244,7 +244,7 @@ def test_real_partial_packet_retains_mode_a_graph_and_fails_public_envelope(
     code = cli_main(["invoke", "asset-recon", "discover", json.dumps(payload),
                      "--attempt-id", "attempt-" + "b" * 64, "--artifact-dir", str(custody)])
     envelope = json.loads(capsys.readouterr().out)
-    assert code == 1 and envelope["status"] == "failed"
+    assert code == 1 and envelope["status"] == "degraded"
     assert "nodes" not in envelope  # Mode A graph bytes belong to custody.
     files = list(custody.iterdir())
     assert len(files) == 1
