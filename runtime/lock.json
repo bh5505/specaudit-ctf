@@ -1875,7 +1875,7 @@
     "extension/arms/zgrab2/arm.py": "1f03abec0d2c36dac9440f7220211e9370f0d0867773a95b46a143947d147e2e",
     "extension/arms/zgrab2/policy.py": "0bee264c5fbefa59a0da6b2a0056d4a864528eb8078283a20e993066114abb15",
     "extension/contract.py": "65863833c6787e8ba04e5e1c3ecdf6dbe52306d090149214b12411df8d27d571",
-    "extension/coverage.yaml": "0bf7b6667c748987d7740c6af83093cf3de1a1e13eac434f57fb5cc52adc53ba",
+    "extension/coverage.yaml": "519849057264b27309eb9ef75868226a6029fa4ff507e2a2e15cc554fbb1bef8",
     "extension/dispatch.py": "e4db3d8981211818f2e699a36409adca1757de6b2efdf2af3b18301da37f25ef",
     "extension/encode.py": "c918eb79dff09cc091ec5904ae6e82e1bd30ff69ff0d94385970a5f39a9d5389",
     "extension/envelopes.py": "4e6b38d057491a7b93b783807dc87efac1170a56b2a8a57f0439b9732e06bf2b",
