@@ -7,6 +7,7 @@ client. Env overrides arm the arm without an INI file.
 
 from __future__ import annotations
 
+import contextlib
 import http.server
 import json
 import os
@@ -264,56 +265,92 @@ def _write_ini(path, url, api_ver="/api/v1", client_id="1550", api_key="test-key
     return str(path)
 
 
-def _clear_ivanti_env(monkeypatch):
-    for key in ("IVANTI_CONFIG", "IVANTI_URL", "IVANTI_API_VER",
-                "IVANTI_CLIENT_ID", "IVANTI_API_KEY"):
-        monkeypatch.delenv(key, raising=False)
+@pytest.fixture
+def ivanti_platform():
+    """A mock platform that does NOT touch the environment.
+
+    The shared ``ivanti_server`` fixture arms the arm through IVANTI_* env vars;
+    the explicit-config tests must clear those instead, so they use this bare
+    server (monkeypatch's teardown would otherwise re-set the credentials after
+    the fixture restored them, leaking state into later modules).
+    """
+    server = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield server.server_address[1]
+    finally:
+        server.shutdown()
+        thread.join()
 
 
-def test_explicit_config_out_of_scope_refused_before_contact(ivanti_server,
-                                                              monkeypatch, tmp_path):
+_CREDENTIAL_KEYS = ("IVANTI_CONFIG", "IVANTI_URL", "IVANTI_API_VER",
+                    "IVANTI_CLIENT_ID", "IVANTI_API_KEY")
+
+
+@contextlib.contextmanager
+def _clean_env(scope):
+    """Clear the credential env and set IVANTI_SCOPE, restoring exactly."""
+    saved = {k: os.environ.get(k) for k in (*_CREDENTIAL_KEYS, ENV_SCOPE)}
+    try:
+        for key in _CREDENTIAL_KEYS:
+            os.environ.pop(key, None)
+        if scope is None:
+            os.environ.pop(ENV_SCOPE, None)
+        else:
+            os.environ[ENV_SCOPE] = scope
+        yield
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
+
+def test_explicit_config_out_of_scope_refused_before_contact(ivanti_platform,
+                                                              tmp_path):
     """The gate must check the *effective* config (payload "config"), not the
     default one. With the default config unconfigured the old gate returned ""
     and skipped authorization entirely while the client dialed the explicit
     config - a live request with no scope check."""
-    _clear_ivanti_env(monkeypatch)
-    monkeypatch.setenv(ENV_SCOPE, "10.99.0.0/16")
-    ini = _write_ini(tmp_path / "explicit.ini", f"http://127.0.0.1:{ivanti_server}")
+    ini = _write_ini(tmp_path / "explicit.ini",
+                     f"http://127.0.0.1:{ivanti_platform}")
     arm = IvantiArm()
     before = _Handler.search_hits
-    res = arm.invoke(_spec(), "search", {"endp": "host", "config": ini})
+    with _clean_env("10.99.0.0/16"):
+        res = arm.invoke(_spec(), "search", {"endp": "host", "config": ini})
     assert not res.ok
     assert "outside" in (res.error or "")
     assert _Handler.search_hits == before, \
         "no request may reach the out-of-scope explicit platform"
 
 
-def test_explicit_config_requires_scope(ivanti_server, monkeypatch, tmp_path):
+def test_explicit_config_requires_scope(ivanti_platform, tmp_path):
     """A missing IVANTI_SCOPE still refuses an explicit-config dispatch: the fix
     must not turn an unconfigured default target into a silent allow."""
-    _clear_ivanti_env(monkeypatch)
-    monkeypatch.delenv(ENV_SCOPE, raising=False)
-    ini = _write_ini(tmp_path / "noscope.ini", f"http://127.0.0.1:{ivanti_server}")
+    ini = _write_ini(tmp_path / "noscope.ini",
+                     f"http://127.0.0.1:{ivanti_platform}")
     arm = IvantiArm()
     before = _Handler.search_hits
-    res = arm.invoke(_spec(), "search", {"endp": "host", "config": ini})
+    with _clean_env(None):
+        res = arm.invoke(_spec(), "search", {"endp": "host", "config": ini})
     assert not res.ok
     assert ENV_SCOPE in (res.error or "")
     assert _Handler.search_hits == before
 
 
-def test_explicit_config_in_scope_proceeds_on_same_target(ivanti_server,
-                                                          monkeypatch, tmp_path):
+def test_explicit_config_in_scope_proceeds_on_same_target(ivanti_platform,
+                                                          tmp_path):
     """Gate and dial agree: an in-scope explicit config proceeds, and the
     dispatch stamp names that same target."""
-    _clear_ivanti_env(monkeypatch)
-    monkeypatch.setenv(ENV_SCOPE, "127.0.0.1")
-    ini = _write_ini(tmp_path / "ok.ini", f"http://127.0.0.1:{ivanti_server}")
+    ini = _write_ini(tmp_path / "ok.ini", f"http://127.0.0.1:{ivanti_platform}")
     arm = IvantiArm()
-    res = arm.invoke(_spec(), "search", {"endp": "host", "config": ini})
+    with _clean_env("127.0.0.1"):
+        res = arm.invoke(_spec(), "search", {"endp": "host", "config": ini})
     assert res.ok, res.error
     assert res.output["count"] == 4
-    assert res.output["dispatch"]["target"] == f"http://127.0.0.1:{ivanti_server}"
+    assert res.output["dispatch"]["target"] == f"http://127.0.0.1:{ivanti_platform}"
 
 
 def test_success_result_carries_dispatch_audit_and_stamp(ivanti_server, capsys):
