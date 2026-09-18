@@ -110,6 +110,55 @@ def test_validation_report_binds_real_receipt_paths(tmp_path):
     assert "MISSING" not in md, "a supplied report file is a bound receipt"
 
 
+def _pairing_evidence(tmp_path):
+    d = tmp_path / "pairing_ev"
+    d.mkdir()
+    (d / "ext_telecom_asmvm_alert.csv").write_text(
+        "vendor_alert_id,alert_id,mitre_tactic,mitre_technique,asr_rule,"
+        "ipv4_list,is_active_state,run_id,engagement_id\n"
+        "VA-1,al-1,Initial Access,T1190,Rule-A,203.0.113.10,true,r1,e1\n",
+        encoding="utf-8")
+    (d / "ext_telecom_asmvm_alert_endpoint.csv").write_text(
+        "alert_id,ip,is_active_state,run_id,engagement_id\n"
+        "al-1,203.0.113.10,true,r1,e1\n", encoding="utf-8")
+    (d / "ext_telecom_asmvm_service_endpoint.csv").write_text(
+        "service_endpoint_id,ip,port,is_active,run_id,engagement_id\n"
+        "svc-1,203.0.113.10,443,true,r1,e1\n", encoding="utf-8")
+    return d
+
+
+def test_prioritize_consumes_g3_pairing_when_available(tmp_path):
+    pytest.importorskip("duckdb")
+    ev = _pairing_evidence(tmp_path)
+    res = prioritize_targets(
+        report=[_t3("203.0.113.10", 443, "T1190 - X")], evidence_dir=str(ev))
+    assert res["pairing"]["available"] is True
+    assert res["pairing"]["pair_count"] == 1
+    target = res["targets"][0]
+    assert target["pairing_evidence"][0]["vendor_alert_id"] == "VA-1"
+    assert target["pairing_evidence"][0]["mitre_technique"] == "T1190"
+    assert res["summary"]["pairing_available"] is True
+    assert res["summary"]["pairing_incomplete_reason"] is None
+
+
+def test_prioritize_marks_pairing_incomplete_without_evidence(tmp_path):
+    """No pairing evidence must be an explicit incomplete marker, not a silent
+    fall back to report-text matching."""
+    res = prioritize_targets(report=_converged_findings())
+    assert res["pairing"]["available"] is False
+    assert res["summary"]["pairing_available"] is False
+    assert res["summary"]["pairing_incomplete_reason"]
+    assert all(t["pairing_evidence"] == [] for t in res["targets"])
+    assert res["targets"], "targets are still produced from the pack report"
+
+    empty = tmp_path / "empty_ev"
+    empty.mkdir()
+    res2 = prioritize_targets(
+        report=[_t3("203.0.113.10", 443, "T1190 - X")], evidence_dir=str(empty))
+    assert res2["pairing"]["available"] is False
+    assert "absent" in res2["pairing"]["reason"]
+
+
 def test_pack_run_minimal_via_scenario(monkeypatch):
     """pack_run runs the real ext_telecom_asmvm pack over a scenario evidence
     dir and returns findings. Skips if the pack isn't present on this host."""
