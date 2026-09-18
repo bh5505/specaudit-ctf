@@ -167,14 +167,16 @@ def test_locked_inputs_and_source_closure_are_exact() -> None:
         "b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d"
     )
     assert lock["pyyaml"]["size"] == 806638
-    # 104 after extension/trace.py joined the traced closure (the
-    # agent-head lane's server-side capture; 2026-09-05). Previously 103:
+    # 192 after the stdio-MCP pipeline gained a producer import for the G3
+    # pairing core (tools/demo_alert_pairings.py; no new stdlib/yaml module).
+    # Previously 191: 104 after extension/trace.py joined the traced closure
+    # (the agent-head lane's server-side capture; 2026-09-05). Earlier 103:
     # the attack-stix-data arm's +4 package files (__init__, arm, policy,
     # reader — the demo bundle is caller data, not part of the closure).
     # Asset recon established a 122-file producer closure; the 14 readers
     # add three imported Python modules apiece, plus their shared strict-data
     # decoder/structure guard.
-    assert len(lock["producer_source_files"]) == 191
+    assert len(lock["producer_source_files"]) == 192
     assert len(lock["included_stdlib_files"]) == 124
     assert len(lock["included_yaml_files"]) == 18
     expected_reader_sources = {"extension/arms/strict_data.py"}
