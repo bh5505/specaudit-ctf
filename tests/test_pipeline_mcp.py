@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from extension import mcp_server as mcp
-from extension.pipeline import pack_run, prioritize_targets
+from extension.pipeline import pack_run, prioritize_targets, validation_report
 
 T1 = "ext_telecom_asmvm_t1_critical_vuln_on_exposed"
 T3 = "ext_telecom_asmvm_t3_asmvm_technique_context_bridge_gap"
@@ -85,6 +85,29 @@ def test_prioritize_requires_input():
         prioritize_targets()
     with pytest.raises(ValueError):
         prioritize_targets(report={})  # dict without findings list
+
+
+def test_validation_report_injects_provenance_header():
+    """The renderer takes repo_heads, not repo; every prior call raised
+    TypeError. The end-to-end call must render a header and not raise."""
+    res = validation_report(report=_converged_findings(), run_id="gate-run-7")
+    md = res["markdown"]
+    assert "<!-- PROVENANCE-BEGIN -->" in md
+    assert "<!-- PROVENANCE-END -->" in md
+    assert "run-id pinned: `gate-run-7`" in md
+    assert "specaudit-ctf HEAD:" in md
+
+
+def test_validation_report_binds_real_receipt_paths(tmp_path):
+    """When the run context provides a report path, the provenance block cites
+    that file with a real digest instead of an empty receipt list."""
+    report = tmp_path / "report.json"
+    report.write_text(json.dumps({"findings": _converged_findings()}),
+                      encoding="utf-8")
+    res = validation_report(report_path=str(report), run_id="gate-run-8")
+    md = res["markdown"]
+    assert str(report) in md
+    assert "MISSING" not in md, "a supplied report file is a bound receipt"
 
 
 def test_pack_run_minimal_via_scenario(monkeypatch):

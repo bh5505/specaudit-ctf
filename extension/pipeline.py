@@ -297,6 +297,24 @@ def _validation_report_markdown(targets: list[dict], findings: list[dict]) -> st
     return "\n".join(lines) + "\n"
 
 
+def _provenance_receipts(report_path: str | None, evidence_dir: str | None) -> list[Path]:
+    """Receipt paths the run context actually provides, for the provenance block.
+
+    The block binds real receipt paths/digests, so an empty list is only correct
+    when the caller supplied neither a report path nor an evidence directory.
+    """
+    receipts: list[Path] = []
+    if report_path:
+        report = Path(report_path)
+        if report.is_file():
+            receipts.append(report)
+    if evidence_dir:
+        evidence = Path(evidence_dir)
+        if evidence.is_dir():
+            receipts.extend(sorted(evidence.glob("*.csv")))
+    return receipts
+
+
 def validation_report(
     report: dict | list | None = None,
     report_path: str | None = None,
@@ -320,7 +338,11 @@ def validation_report(
         if result.get("report_path") else ""
     )
     if md:
-        block = rph.render_provenance_block([], run_id=run_id, repo=_ROOT)
+        block = rph.render_provenance_block(
+            _provenance_receipts(report_path, evidence_dir),
+            run_id=run_id,
+            repo_heads=[("specaudit-ctf", str(_ROOT))],
+        )
         md = rph.inject_block(md, block)
         if out_path:
             Path(out_path).write_text(md, encoding="utf-8")
