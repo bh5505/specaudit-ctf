@@ -714,9 +714,9 @@ COMMON_ARM_LIMITATIONS = (
 # policy.  Result-envelope and transport behavior beyond this named boundary
 # remains outside the v1 claim.
 EXPECTED_READER_SOURCE_SHA256: Mapping[str, str] = {
-    "extension/contract.py": "sha256:7df80f67e2f5c6809dcfcf942db80cb6ae1a17a4c7d13a9780f3256684b5149a",
+    "extension/contract.py": "sha256:65863833c6787e8ba04e5e1c3ecdf6dbe52306d090149214b12411df8d27d571",
     "extension/dispatch.py": "sha256:e4db3d8981211818f2e699a36409adca1757de6b2efdf2af3b18301da37f25ef",
-    "extension/invoke_profiles.py": "sha256:a5283da492db316b42d5bebfedf06b15ce0955ddbb88f7bfa3e0d12d84547894",
+    "extension/invoke_profiles.py": "sha256:79672b897abc325b7a945508415a20347421544770cf5617bc1649c4c3a1b70a",
     "extension/arms/mcp_client.py": "sha256:0db4b795f70c55789558f5cd4f8beb230b6439e0a9ecabd6282055deaaeca8cd",
     "extension/arms/strict_data.py": "sha256:46f1a79ec954f3e4ee5e84811273314e997b11e9ff3b8237e17fb730e150f5a5",
     "extension/arms/ad_pathfinder/__init__.py": "sha256:c8c63a346c2b1b4e30b27ab4f13ea1238035e04490a9df6ea3b6946ba6526894",
@@ -758,9 +758,9 @@ EXPECTED_READER_SOURCE_SHA256: Mapping[str, str] = {
     "extension/arms/specterops_skills/__init__.py": "sha256:9909cbcb1f949a3d12e23c394f5afcd031361cfe73cd9e8bfd6e398cc15133ef",
     "extension/arms/specterops_skills/arm.py": "sha256:e0fae21ce1a70e578a201e316c381856b70b59dffbdab0cc2dd47180821c9dc0",
     "extension/arms/specterops_skills/policy.py": "sha256:e154547db65a29e347c490a9deb8a12126166681ffc806b55a6bb9e3f5a4b9de",
-    "extension/arms/vulnify/__init__.py": "sha256:b1d938106b64ce4c26275e1f3f99f4f2e95d5b92db9e1770fafac18c440db9d7",
-    "extension/arms/vulnify/arm.py": "sha256:67f61785c2c260de674e23daad8df6d629f150cc8a47abdb43f7b566871e8486",
-    "extension/arms/vulnify/policy.py": "sha256:70d52593eb9f79045a5114e7ec4c1c76dc793319e1475967d25bee69bac4a5e1",
+    "extension/arms/vulnify/__init__.py": "sha256:4b58b4da9e827dcb4ed7aaa1b89707e0517be49e04012c4aa2d8332bc7917802",
+    "extension/arms/vulnify/arm.py": "sha256:954941275da1ada65063819cb0d555b42d24bf91423290d4fa73209dd7487b2d",
+    "extension/arms/vulnify/policy.py": "sha256:79fc1a4aa8796a699506c4d3914acd02f50b638af707d45fe7ee03f244d89007",
 }
 
 HANDLER_CLASS_BY_ARM: Mapping[str, str] = {
@@ -787,11 +787,11 @@ HANDLER_CLASS_BY_ARM: Mapping[str, str] = {
 # Filled from the independently audited checkout snapshot after the projection
 # shape above is fixed.  A register co-edit cannot redefine these values.
 EXPECTED_SURFACE_SHA256: Mapping[str, str] = {
-    "governance": "sha256:69e26496efa65e78272cc1774a162383e45f7be17e796f2d27d728239a9b5bd2",
-    "coverage": "sha256:dc5304d5eee526f4c081a64090577b999ad75e230154b582b1a985a6e942494b",
-    "invoke_profiles": "sha256:0e4564f9de9a705bbcd3d5e65d71d3f2353d5336005b8eee295026460c90e16b",
-    "policies": "sha256:93e32e6028237e38ffa0132f5e269eb00c0fa1cf3b1edcf7f0a123697eacf987",
-    "reader_runtime": "sha256:662bd7f5b2a76775742b7597727e1c3dedf7a70a67a5c0ccc9fa15d3a60a3007",
+    "governance": "sha256:c53c18cc5be4241cd07c039ef9fe121e607a9e16e7ff3e470ac4fcec7e65d1a4",
+    "coverage": "sha256:56a026ac9348829cf2279a6ad89b547656b1e2ce7d69b1b43e334f694390a702",
+    "invoke_profiles": "sha256:94fc94aa492210544066d297b56565e97a83487ad827f65328355b3a9a2dd688",
+    "policies": "sha256:ba34bc23518f5481cbcfa2b2954ab25a20c800fe1415f4945fbeb008da8130ba",
+    "reader_runtime": "sha256:bb6427d7b374e86c524a1fe6cea758ad8a1ab0c0c51939b26855c9b9a35b4d84",
 }
 
 
