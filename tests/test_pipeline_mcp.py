@@ -141,6 +141,28 @@ def test_prioritize_consumes_g3_pairing_when_available(tmp_path):
     assert res["summary"]["pairing_incomplete_reason"] is None
 
 
+def test_prioritize_degrades_when_pairing_extract_fails(tmp_path):
+    """A malformed base table makes duckdb raise inside extract_pairings. The
+    stage must degrade to an explicit incomplete marker, not crash
+    prioritize_targets (the MCP surface only translates ValueError/RuntimeError,
+    so an escaping duckdb error would abort the whole tool call)."""
+    pytest.importorskip("duckdb")
+    ev = _pairing_evidence(tmp_path)
+    # Drop the is_active column the G3 join references: CREATE TABLE succeeds,
+    # the JOIN then fails with a duckdb binder error.
+    (ev / "ext_telecom_asmvm_service_endpoint.csv").write_text(
+        "service_endpoint_id,ip,port,run_id,engagement_id\n"
+        "svc-1,203.0.113.10,443,r1,e1\n", encoding="utf-8")
+    res = prioritize_targets(
+        report=[_t3("203.0.113.10", 443, "T1190 - X")], evidence_dir=str(ev))
+    assert res["pairing"]["available"] is False
+    assert "G3 pairing failed" in res["pairing"]["reason"]
+    assert res["summary"]["pairing_available"] is False
+    assert res["summary"]["pairing_incomplete_reason"] == res["pairing"]["reason"]
+    assert res["targets"], "targets must still be produced when pairing degrades"
+    assert all(t["pairing_evidence"] == [] for t in res["targets"])
+
+
 def test_prioritize_marks_pairing_incomplete_without_evidence(tmp_path):
     """No pairing evidence must be an explicit incomplete marker, not a silent
     fall back to report-text matching."""

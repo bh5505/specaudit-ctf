@@ -209,6 +209,12 @@ def _pairing_stage(evidence_dir: str | None, focus_ips: list[str]) -> dict:
     except ImportError:
         return {"available": False,
                 "reason": "duckdb is not importable; G3 pairing skipped"}
+    except Exception as exc:  # noqa: BLE001 - any pairing failure degrades, never crashes
+        # A malformed base table, a DuckDB type/cast error, or any other core
+        # failure must degrade to an explicit incomplete marker: crashing here
+        # would take prioritize_targets down with it, and the MCP surface only
+        # translates ValueError/RuntimeError into a tool error.
+        return {"available": False, "reason": f"G3 pairing failed: {exc}"}
     by_ip: dict[str, list[dict]] = {}
     for pair in pairs:
         by_ip.setdefault(pair["ip"], []).append(pair)
