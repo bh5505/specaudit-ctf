@@ -903,6 +903,47 @@ def test_refused_dataset_receipt_is_negative_not_live_fire(tmp_path, monkeypatch
         "a negative receipt is still recorded, just not as live fire"
     assert added[0]["is_active"] == "false"
 
+    # R4 reconcile: a probe that observed nothing must label the spine row as a
+    # probe, not append the live_fire channel (the local patch already said
+    # live_fire_probe_only; the row write used to ignore it).
+    spine = list(_csv.DictReader(
+        (out / "ext_telecom_asmvm_asm_vm_surface.csv").open(encoding="utf-8")))
+    row = next(r for r in spine if r["ip"] == "198.51.100.7")
+    assert row["seen_via"].endswith("+live_fire_probe_only"), row["seen_via"]
+    assert not row["seen_via"].endswith("+live_fire"), \
+        "a refused receipt must not append the live_fire observation channel"
+
+
+def test_override_with_only_refused_receipts_does_not_claim_live_fire(tmp_path,
+                                                                      monkeypatch):
+    """The override flag is not itself an observation. With every receipt
+    refused the flag stays false, so the reason must not assert
+    has_live_fire=true for a run that flipped nothing."""
+    dataset = tmp_path / "dataset_ips.csv"
+    dataset.write_text("ip\n198.51.100.7\n", encoding="utf-8")
+    base, receipts = _livefire_fixture(tmp_path)
+    _write_csv(receipts,
+               "target_ip,proto,port,endpoint_status,banner,tls_protocol,"
+               "http_status,dns_rcode",
+               [["198.51.100.7", "tcp", "22", "refused", "", "", "", ""],
+                ["127.0.0.1", "tcp", "14443", "unreachable", "", "", "", ""]])
+    out = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", [
+        "livefire_overlay.py", "--baseline", str(base), "--out", str(out),
+        "--receipts", str(receipts), "--dataset-ips", str(dataset),
+        "--allow-lab-fixture-live-fire"])
+    assert overlay.main() == 0
+    manifest = json.loads((out / "livefire_overlay_manifest.json")
+                          .read_text(encoding="utf-8"))
+
+    assert manifest["lab_fixture_live_fire_override"] is True
+    assert manifest["receipts_dataset_endpoints"] == 1
+    assert manifest["receipts_dataset_endpoints_observed"] == 0
+    assert manifest["has_live_fire"] == "false"
+    reason = manifest["has_live_fire_reason"]
+    assert "has_live_fire=true" not in reason, reason
+    assert "refused/unreachable/no-answer" in reason
+
 
 def test_indirect_recon_label_comparison_is_conservative():
     """A wrong 'disagreement' sends an auditor to a port that is fine, so prose

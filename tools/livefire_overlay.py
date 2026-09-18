@@ -294,12 +294,15 @@ def main():
                                      if c == LAB_FIXTURE),
         "lab_fixture_live_fire_override": bool(args.allow_lab_fixture_live_fire),
         "has_live_fire": "true" if live_receipts else "false",
-        # The reason has to stay true when the override is used. Saying "at least
-        # one receipt re-observed an address the feeds describe" while
-        # receipts_dataset_endpoints == 0 makes the manifest assert something the
-        # run did not do, and a reader cannot tell estate live fire from a wiring
-        # test without also reading the override flag. A refused/unreachable/
-        # no-answer receipt is a negative result, not a reproduction.
+        # The reason has to stay true when the override is used *and* when it is
+        # not. Saying "at least one receipt re-observed an address the feeds
+        # describe" while receipts_dataset_endpoints == 0 makes the manifest
+        # assert something the run did not do, and a reader cannot tell estate
+        # live fire from a wiring test without also reading the override flag. A
+        # refused/unreachable/no-answer receipt is a negative result, not a
+        # reproduction - and the override branch may only fire when it actually
+        # produced live_fire (live_receipts non-empty); otherwise it would claim
+        # "has_live_fire=true" on a run whose flag is false.
         "has_live_fire_reason": (
             "at least one receipt re-observed an address the feeds describe"
             if dataset_observed_count else (
@@ -309,7 +312,7 @@ def main():
                 "was passed, which records a lab fixture as reproduction - a "
                 "wiring test, not estate evidence"
                 % (dataset_receipt_count, dataset_observed_count, lab_receipt_count)
-                if args.allow_lab_fixture_live_fire else
+                if (live_receipts and args.allow_lab_fixture_live_fire) else
                 "no receipt observed an address the feeds describe "
                 "(dataset receipts=%d, observed=%d, lab fixtures=%d); a "
                 "refused/unreachable/no-answer receipt is a negative result and "
@@ -477,7 +480,12 @@ def main():
             row["asm_exposed_services"] = str(max(
                 int(row.get("asm_exposed_services") or 0), len(open_recs)))
             if "live_fire" not in (row.get("seen_via") or ""):
-                row["seen_via"] = (row.get("seen_via") or "") + "+live_fire"
+                # Only an observation may append the live_fire channel; a
+                # refused/unreachable receipt is a probe that saw nothing, and
+                # the row must say so (matching the local patch's
+                # live_fire_probe_only), not claim live fire.
+                suffix = "live_fire" if open_recs else "live_fire_probe_only"
+                row["seen_via"] = (row.get("seen_via") or "") + "+" + suffix
             manifest["patched_rows"].append({
                 "table": "asm_vm_surface", "key": ip, "before": before,
                 "after": {k: row.get(k) for k in patch},
