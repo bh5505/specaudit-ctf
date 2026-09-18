@@ -238,7 +238,7 @@ entries:
     kind: arm
     protocols: [cli]
     curated: true
-    tier: experimental
+    tier: research
     notes: Bounded in-process local vulnerability reads over an operator-supplied feed (json/jsonl/yaml; single cve_id/name lookup plus list_vulns) or a frozen local JSON snapshot (args.cve_ids batch; custody receipt; Finding-E curated-technique fallback). The feed interface is wired into the trusted-observation layer; the snapshot/batch layer is preserved. No search beyond list_vulns, subprocess, endpoint, network, database mutation, or dispatch tier.
 
   - id: snmp-readtier

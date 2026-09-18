@@ -151,11 +151,11 @@ def test_foundation_binds_exact_inventory_and_pr97_scope(registry, inventory) ->
     assert report.integrity_ok
     assert not report.current_ok
     assert not report.complete_ok
-    assert report.inventory_count == 212
+    assert report.inventory_count == 218
     assert report.governed_runtime_count == 52
     assert report.source_count == 14
     assert report.module_count == 1
-    assert registry.document["runtime_inventory"]["expected_count"] == 212
+    assert registry.document["runtime_inventory"]["expected_count"] == 218
     assert tuple(registry.document["runtime_inventory"]["capability_ids"]) == (
         inventory.capability_ids
     )

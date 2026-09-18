@@ -163,7 +163,6 @@ def _caller_file_read_profile(
 # evidence gate; dossier on AuditPack issue #5). No adjacent row moves.
 _POLICY_ARM_TIERS = {arm_id: "research" for arm_id in _STATIC_POLICY_ARMS}
 _POLICY_ARM_TIERS["agent-wiz"] = "maintained"
-_POLICY_ARM_TIERS["vulnify"] = "experimental"
 _POLICY_ARM_TIERS["snmp-readtier"] = "experimental"
 _POLICY_ARM_TIERS["ike-readtier"] = "experimental"
 
@@ -720,7 +719,7 @@ INVOKE_PROFILES = {
         # snapshot lookups, plus list_vulns). R0 local-read; the feed or bundle
         # path is caller data.
         *(
-            _caller_file_read_profile("vulnify", action, tier="experimental")
+            _caller_file_read_profile("vulnify", action)
             for action in ("lookup", "list_vulns")
         ),
         # leonidas read admission: declarative cloud attack corpus reads.

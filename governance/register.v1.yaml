@@ -7,7 +7,7 @@ scope:
   repository_complete: false
 runtime_inventory:
   authority: extension.invoke_profiles.INVOKE_PROFILES
-  expected_count: 212
+  expected_count: 218
   capability_ids:
   - ad-pathfinder.list_datasources
   - ad-pathfinder.list_paths
@@ -25,6 +25,7 @@ runtime_inventory:
   - asset-recon.plan
   - asset-recon.probe
   - asset-recon.ptr
+  - attack-stix-data.cvelookup
   - attack-stix-data.group
   - attack-stix-data.list_tools
   - attack-stix-data.relationships
@@ -109,6 +110,9 @@ runtime_inventory:
   - gpohound.list_policies
   - gpohound.list_tools
   - gpohound.policy
+  - http-probe.probe
+  - ike-readtier.list_tools
+  - ike-readtier.probe
   - leonidas.list_techniques
   - leonidas.list_tools
   - leonidas.technique
@@ -204,6 +208,8 @@ runtime_inventory:
   - semgrep-mcp.list_tools
   - semgrep-mcp.semgrep_scan
   - sniper.list_tools
+  - snmp-readtier.list_tools
+  - snmp-readtier.probe
   - specterops-skills.list_skills
   - specterops-skills.list_tools
   - specterops-skills.skill
@@ -221,7 +227,7 @@ runtime_inventory:
   - zdns.lookup
   - zgrab2.list_tools
   - zgrab2.scan
-  contract_sha256: sha256:ff3c363389fff45506fcc9f8649c9fa18e71669595256f1260aee8312af6514a
+  contract_sha256: sha256:b82b42e4cb6f9284c8774ab63a124a75af0a6a16f40474ea7aabc9684cb60413
 contract_templates:
 - id: policy-read-v1
   safety_class: R0
@@ -2035,7 +2041,9 @@ runtime:
   implementation_revision: 9c6819c4709397d1d91f68cbb4ae13901d6d85f1
   contract_ref: caller-file-read-v1
   input_keys:
+  - bundle_path
   - cve_id
+  - cve_ids
   - feed
   - name
   result_schema: specaudit.ctf.execution-result.v1
