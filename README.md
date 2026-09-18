@@ -712,6 +712,7 @@ Shared gate: `extension/arms/dispatch.py`. Caveats:
 | `PAGE_FETCH_BIN` / `PAGE_FETCH_DISPATCH_SCOPE` | page-fetch | binary; URI-scoped fetch |
 | `CALDERA_ENDPOINT` / `CALDERA_API_KEY` / `CALDERA_DISPATCH_SCOPE` | caldera | REST base URL; API key; operation dispatch |
 | `GTI_MCP_ENDPOINT` | google-mcp-security | GTI MCP URL (read-only lookups; no dispatch tier) |
+| `IVANTI_CONFIG` / `IVANTI_URL` / `IVANTI_API_VER` / `IVANTI_CLIENT_ID` / `IVANTI_API_KEY` / `IVANTI_SCOPE` | ivanti | platform INI path (or env: base URL, API version, client id, live key); `IVANTI_SCOPE` is **mandatory** host-scoped platform admission — every action that reaches the platform (`search`/`export`/`filters`/`fields`) is refused before any request unless the effective platform URL host is inside it |
 | `METASPLOIT_MCP_ENDPOINT` / `METASPLOIT_DISPATCH_SCOPE` | metasploit-mcp | SSE MCP URL; host/session-scoped execution |
 | `ROUTERSPLOIT_BIN` / `ROUTERSPLOIT_DISPATCH_SCOPE` | routersploit | binary; host-scoped `run` |
 | `SNIPER_BIN` / `SNIPER_DISPATCH_SCOPE` | sniper | binary; host-scoped `scan` |
