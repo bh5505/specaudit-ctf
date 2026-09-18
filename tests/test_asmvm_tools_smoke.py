@@ -904,3 +904,23 @@ def test_indirect_recon_label_comparison_is_conservative():
     assert recon.classify(2152) == "gtp_core"
     assert recon.classify(7680) == "management_port"
     assert recon.classify(443) == "other"
+
+
+def test_indirect_recon_smoke_over_tiny_synthetic_evidence(tmp_path):
+    """The module imports cleanly (no orphaned statements after
+    load_local_services' return, which would NameError) and runs end to end over
+    a tiny synthetic evidence dir with zero packets."""
+    recon = _recon_module()
+    evidence = tmp_path / "ev"
+    evidence.mkdir()
+    _write_csv(evidence / "ext_telecom_asmvm_service_endpoint.csv",
+               "run_id,ip,port,protocol,service_name,service_type,source_system",
+               [["smoke", "10.0.0.1", 443, "tcp", "https", "web", "asm"]])
+    _write_csv(evidence / "ext_telecom_asmvm_vm_finding.csv",
+               "run_id,ip,port,is_open,status",
+               [["smoke", "10.0.0.1", 443, "true", "open"]])
+    summary = recon.run(str(evidence), str(tmp_path / "out"), run_id="smoke")
+    assert summary["endpoints_examined"] == 1
+    assert summary["packets_sent"] == 0
+    assert summary["evidence_class"] == recon.EVIDENCE_CLASS
+    assert recon.load_local_services() is not None
