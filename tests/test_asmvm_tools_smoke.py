@@ -381,6 +381,28 @@ def test_a_value_that_does_not_fit_its_declared_type_is_kept_and_reported(tmp_pa
     assert "smoke_vm_finding" in out and "severity" in out and "not-a-number" in out
 
 
+def test_decimal_in_integer_column_is_text_and_counted():
+    """The documented contract: a cell that does not fit its declared type is
+    loaded as text and counted. A decimal in an INTEGER-declared column used to
+    be silently int()-truncated (9.5 -> 9) with no mismatch record."""
+    runner = pytest.importorskip("ctf_run_checks")
+
+    assert runner._convert_value("9", "INTEGER") == 9
+    assert runner._convert_value("true", "INTEGER") == 1
+    assert runner._convert_value("", "INTEGER") is None
+
+    mismatch = {}
+    loaded = runner._convert_value("9.5", "INTEGER", mismatch)
+    assert loaded == "9.5", "must not be truncated to 9"
+    assert mismatch["INTEGER"] == 1
+    assert mismatch["_sample_INTEGER"] == "9.5"
+
+    # A DECIMAL/NUMERIC declaration still binds the decimal as a number.
+    assert runner._convert_value("9.5", "DECIMAL") == 9.5
+    # FLOAT columns are unchanged.
+    assert runner._convert_value("9.5", "DOUBLE") == 9.5
+
+
 def test_sqlite_join_indexes_come_from_the_pack_checks(tmp_path):
     """SQLite needs join indexes the hash-joining engine does not: without them
     an aggregate-per-candidate check over 400k-row evidence does not finish

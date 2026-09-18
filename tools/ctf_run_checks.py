@@ -366,16 +366,15 @@ def _convert_value(value, coltype, mismatch=None):
             return int(stripped)
         except ValueError:
             pass
-        if base in _INT_TYPES:
-            try:
-                return int(float(stripped))  # '9.0' from a float-formatted export
-            except ValueError:
-                pass
-        else:
+        if base not in _INT_TYPES:
             try:
                 return float(stripped)
             except ValueError:
                 pass
+        # An INTEGER-declared column only accepts an integer literal. A decimal
+        # ('9.5') or float-formatted export ('9.0') must not be silently
+        # int()-truncated: it falls through to the mismatch record and is loaded
+        # as text, exactly as the docstring and tools/README.md promise.
     elif base in _FLOAT_TYPES:
         try:
             return float(str(value).strip())
