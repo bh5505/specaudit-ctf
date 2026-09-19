@@ -462,6 +462,86 @@ def test_round_robin_seed_before_expansion(monkeypatch):
     assert seed_sources == {"crtsh", "certspotter"}
 
 
+def test_slow_failing_provider_does_not_starve_others(monkeypatch):
+    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "crtsh,certspotter,google")
+    calls = []
+
+    def fake(request, timeout):
+        calls.append(dict(request))
+        if request["source"] == "crtsh":
+            raise Refusal("provider unavailable")
+        if request["source"] == "certspotter" and request["variant"] is None:
+            return {"ok": True, "digest": HASH, "data": [{"id": "first", "dns_names": ["public.com"], "cert_sha256": FP}], "cursor": "next"}
+        if request["source"] == "certspotter":
+            return {"ok": True, "digest": HASH, "data": [], "cursor": None}
+        return {"ok": True, "digest": HASH, "data": [], "dns_status": 0}
+
+    monkeypatch.setattr(arm, "run_worker", fake)
+    result = invoke("discover", {
+        "live": True,
+        "providers": ["crtsh", "certspotter", "google"],
+        "seeds": {"domains": ["public.com"]},
+        "limits": {"min_interval_ms": 50, "retries": 2},
+    })
+    dns_call = next(index for index, call in enumerate(calls) if call["source"] == "google")
+    failing_calls = [index for index, call in enumerate(calls) if call["source"] == "crtsh"]
+    assert dns_call < failing_calls[1]
+    assert len([count for count in result.output["counts"]["providers"].values() if count]) >= 2
+
+
+def test_pagination_is_interleaved_not_run_to_completion(monkeypatch):
+    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter,google")
+    calls = []
+
+    def fake(request, timeout):
+        calls.append(dict(request))
+        if request["source"] == "google":
+            return {"ok": True, "digest": HASH, "data": [], "dns_status": 0}
+        page = request["variant"]
+        number = {None: 1, "page-1": 2, "page-2": 3}.get(page)
+        if number is None:
+            return {"ok": True, "digest": HASH, "data": [], "cursor": None}
+        return {"ok": True, "digest": HASH, "data": [{"id": f"row-{number}", "dns_names": ["public.com"], "cert_sha256": FP}], "cursor": f"page-{number}"}
+
+    monkeypatch.setattr(arm, "run_worker", fake)
+    invoke("discover", {
+        "live": True,
+        "providers": ["certspotter", "google"],
+        "seeds": {"domains": ["public.com"]},
+        "limits": {"min_interval_ms": 50},
+    })
+    other = next(index for index, call in enumerate(calls) if call["source"] == "google")
+    later_page = next(index for index, call in enumerate(calls) if call["source"] == "certspotter" and call["variant"] == "page-1")
+    assert other < later_page
+
+
+def test_retries_yield_to_next_provider(monkeypatch):
+    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter,google")
+    calls = []
+    failed = False
+
+    def fake(request, timeout):
+        nonlocal failed
+        calls.append(dict(request))
+        if request["source"] == "certspotter" and not failed:
+            failed = True
+            raise Refusal("provider unavailable")
+        if request["source"] == "certspotter":
+            return {"ok": True, "digest": HASH, "data": [], "cursor": None}
+        return {"ok": True, "digest": HASH, "data": [], "dns_status": 0}
+
+    monkeypatch.setattr(arm, "run_worker", fake)
+    invoke("discover", {
+        "live": True,
+        "providers": ["certspotter", "google"],
+        "seeds": {"domains": ["public.com"]},
+        "limits": {"min_interval_ms": 50, "retries": 1},
+    })
+    provider_calls = [index for index, call in enumerate(calls) if call["source"] == "certspotter"]
+    assert len(provider_calls) == 2
+    assert any(calls[index]["source"] == "google" for index in range(provider_calls[0] + 1, provider_calls[1]))
+
+
 def test_large_isp_preset_raises_limits():
     result = invoke("plan", {"seeds": {"domains": ["example.test"]}, "limits": {"large_isp": True}})
     assert result.output["context"]["limits"]["max_requests"] == 32

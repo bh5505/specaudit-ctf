@@ -4,6 +4,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+from collections import deque
 from dataclasses import replace
 
 from ...contract import Result
@@ -221,64 +222,97 @@ class AssetReconArm:
                     for variant in variants:
                         key = (source, node["type"], node["value"], variant)
                         if key not in attempted:
-                            pending.append(key)
+                            pending.append((*key, None))
             if not pending:
                 break
-            pending.sort(key=lambda key: (
-                graph.nodes[ident(key[1], key[2])]["depth"],
-                provider_index[key[0]],
-                "" if key[3] is None else key[3],
+            pending.sort(key=lambda item: (
+                graph.nodes[ident(item[1], item[2])]["depth"],
+                provider_index[item[0]],
+                "" if item[3] is None else item[3],
             ))
-            for source, kind, value, variant in pending:
-                attempted.add((source, kind, value, variant))
+            queue = deque()
+            depths = sorted({graph.nodes[ident(item[1], item[2])]["depth"] for item in pending})
+            for depth in depths:
+                provider_queues = {
+                    source: deque(item for item in pending
+                                  if item[0] == source and graph.nodes[ident(item[1], item[2])]["depth"] == depth)
+                    for source in providers
+                }
+                while any(provider_queues.values()):
+                    for source in providers:
+                        if provider_queues[source]:
+                            queue.append(provider_queues[source].popleft())
+            retry_counts = {}
+            pagination_cursors = {}
+
+            def incomplete():
+                graph.limit("provider request or parsing incomplete")
+                # Preserve valid earlier records if a later row/page fails.
                 try:
-                    cursors = set()
-                    while True:
-                        response = None
-                        for retry in range(budget.values["retries"] + 1):
-                            try:
-                                if budget.provider_requests.get(source, 0) >= per_provider_request_cap:
-                                    raise Refusal("provider request budget reached")
-                                budget.request(source)
-                                # Large telecom CT responses are slow (crt.sh exact for a major ISP can take 20-30s); a 12s cap made the governed footprinting path fail closed. 30s accommodates multi-MiB/slow reads within wall_seconds.
-                                response = run_worker(dict(operation="collect", live=True, source=source, kind=kind, value=value, variant=variant), min(30, budget.remaining()))
-                                break
-                            except Refusal:
-                                if retry == budget.values["retries"]:
-                                    raise
-                        self._records(records, source, response["data"], response["digest"], budget, graph.roots, "provider")
-                        if source in ("google", "cloudflare"):
-                            status = response.get("dns_status")
-                            if type(status) is not int or status not in (0, 3):
-                                raise Refusal("invalid DNS outcome")
-                            result_key = (kind, value, variant)
-                            summary = (status, tuple(sorted((str(row.get("name", "")).lower().rstrip("."), row.get("type"), str(row.get("value", "")).lower().rstrip(".")) for row in response["data"])))
-                            previous = dns_results.get(result_key)
-                            if previous is not None and previous != summary:
-                                graph.limit("DNS providers disagree on answer or negative outcome")
-                            dns_results[result_key] = summary
-                        if not response["data"]:
-                            budget.record(source)
-                            relation = "dns_nxdomain" if response.get("dns_status") == 3 else "dns_nodata" if source in ("google", "cloudflare") else "pagination_exhausted" if source == "certspotter" and cursors else "no_result"
-                            records.append((Observation(source, kind, value, relation, kind, value, attributes={"origin": "provider"}), response["digest"]))
-                        if response.get("limitations"):
-                            graph.limit("provider coverage is bounded to returned snapshot")
-                        graph.expand(records)
-                        if source != "certspotter" or not response["data"]:
-                            break
+                    graph.expand(records)
+                except Refusal:
+                    graph.limit("graph budget reached")
+                return budget.requests >= budget.values["max_requests"]
+
+            while queue:
+                source, kind, value, variant, page = item = queue.popleft()
+                key = (source, kind, value, variant)
+                if page is None:
+                    if key in attempted and item not in retry_counts:
+                        continue
+                    attempted.add(key)
+                if budget.provider_requests.get(source, 0) >= per_provider_request_cap:
+                    if incomplete():
+                        return
+                    continue
+                try:
+                    budget.request(source)
+                    request_variant = page if page is not None else variant
+                    # Large telecom CT responses can be slow; retain the
+                    # per-request cap while yielding retries/pages to the queue.
+                    response = run_worker(dict(operation="collect", live=True, source=source, kind=kind, value=value, variant=request_variant), min(30, budget.remaining()))
+                except Refusal:
+                    retries = retry_counts.get(item, 0)
+                    if (retries < budget.values["retries"] and
+                            budget.provider_requests.get(source, 0) < per_provider_request_cap and
+                            budget.requests < budget.values["max_requests"]):
+                        retry_counts[item] = retries + 1
+                        queue.append(item)
+                        continue
+                    if incomplete():
+                        return
+                    continue
+                try:
+                    self._records(records, source, response["data"], response["digest"], budget, graph.roots, "provider")
+                    if source in ("google", "cloudflare"):
+                        status = response.get("dns_status")
+                        if type(status) is not int or status not in (0, 3):
+                            raise Refusal("invalid DNS outcome")
+                        result_key = (kind, value, variant)
+                        summary = (status, tuple(sorted((str(row.get("name", "")).lower().rstrip("."), row.get("type"), str(row.get("value", "")).lower().rstrip(".")) for row in response["data"])))
+                        previous = dns_results.get(result_key)
+                        if previous is not None and previous != summary:
+                            graph.limit("DNS providers disagree on answer or negative outcome")
+                        dns_results[result_key] = summary
+                    cursors = pagination_cursors.setdefault(key, set())
+                    if not response["data"]:
+                        budget.record(source)
+                        relation = "dns_nxdomain" if response.get("dns_status") == 3 else "dns_nodata" if source in ("google", "cloudflare") else "pagination_exhausted" if source == "certspotter" and cursors else "no_result"
+                        records.append((Observation(source, kind, value, relation, kind, value, attributes={"origin": "provider"}), response["digest"]))
+                    if response.get("limitations"):
+                        graph.limit("provider coverage is bounded to returned snapshot")
+                    graph.expand(records)
+                    if source == "certspotter" and response["data"]:
                         cursor = response.get("cursor")
                         if not isinstance(cursor, str) or cursor in cursors:
                             raise Refusal("pagination cycle or missing cursor")
                         cursors.add(cursor)
-                        variant = cursor
+                        if budget.provider_requests.get(source, 0) < per_provider_request_cap:
+                            queue.append((source, kind, value, variant, cursor))
+                        elif incomplete():
+                            return
                 except (Refusal, KeyError, TypeError, ValueError):
-                    graph.limit("provider request or parsing incomplete")
-                    # Preserve valid earlier records if a later row/page fails.
-                    try:
-                        graph.expand(records)
-                    except Refusal:
-                        graph.limit("graph budget reached")
-                    if budget.requests >= budget.values["max_requests"]:
+                    if incomplete():
                         return
             if action in ("ct", "ptr"):
                 break

@@ -1717,7 +1717,7 @@
     "extension/arms/aideepsast/arm.py": "9e1df29afa22ef7fb53297efcd3563d928bdcaaaaf8d0948dcb017581191f4ae",
     "extension/arms/aideepsast/policy.py": "6a4c6cd4803988ce254f109cb3474f5310f71d19a6139294d9b2fdd45c8f4e2f",
     "extension/arms/assetrecon/__init__.py": "56010b0eddf40bd7248eea346fc9b31e66cba99ec977c43288e25e0e4ced6a5e",
-    "extension/arms/assetrecon/arm.py": "7c5a525d0fe55efd7cbede878d36947b8f188b7e09803b920947913107b0f6e6",
+    "extension/arms/assetrecon/arm.py": "7221f7a845a926b5d4b37052e0e883423ab2a66ca63595d5cb1bbdaa0e0c426d",
     "extension/arms/assetrecon/fixtures/ct.json": "e856c5eea46c290c609e7a3f53cbcdf8720c1961118e1d5489eb3d03e2f1ffee",
     "extension/arms/assetrecon/fixtures/dns.json": "d2cb4a2ca54aa75df01ae26973a91d93edef72559f68f0c8469be6aed7a86782",
     "extension/arms/assetrecon/fixtures/registry.json": "3d07152b3d640ec8a7152e398c43d5298381145d8fc779dd5634edaf8c29f310",
