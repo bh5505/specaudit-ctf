@@ -459,6 +459,47 @@ def test_per_provider_request_cap_prevents_starvation(monkeypatch):
     assert sum(call["source"] == "certspotter" for call in calls) <= fair_share
 
 
+def test_per_provider_cap_binds_under_asymmetric_unbounded_pagination(monkeypatch):
+    """The fair-share cap must bind when one provider paginates after the other
+    provider runs out of items. multi_provider_discover cannot show this: with
+    symmetric providers, round-robin plus the global max_requests already split
+    requests evenly, so the per-provider cap sites are not load-bearing there.
+    Here certspotter returns data plus a unique cursor on every page (unbounded
+    pagination) while google returns empty dns_status 0 — with the cap sites
+    removed certspotter consumes the remaining global budget (14 of 16); with
+    them it stops at max_requests//2 and the leftover slots stay unused (the
+    fair share is static and is not redistributed)."""
+    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter,google")
+    calls = []
+
+    def fake(request, timeout):
+        calls.append(dict(request))
+        if request["source"] == "google":
+            return {"ok": True, "digest": HASH, "data": [], "dns_status": 0}
+        n = sum(1 for call in calls if call["source"] == "certspotter")
+        return {
+            "ok": True,
+            "digest": HASH,
+            "data": [{"id": "row-%d" % n, "dns_names": ["public.com"], "cert_sha256": FP}],
+            "cursor": "page-%d" % n,
+        }
+
+    monkeypatch.setattr(arm, "run_worker", fake)
+    max_requests = 16
+    result = invoke("discover", {
+        "live": True,
+        "providers": ["certspotter", "google"],
+        "seeds": {"domains": ["public.com"]},
+        "limits": {"min_interval_ms": 50, "retries": 0, "max_requests": max_requests},
+    })
+    certspotter_calls = sum(call["source"] == "certspotter" for call in calls)
+    google_calls = sum(call["source"] == "google" for call in calls)
+    assert google_calls == 2
+    assert certspotter_calls <= max_requests // 2
+    assert result.output["requests"] < max_requests
+    assert result.output["requests"] == certspotter_calls + google_calls
+
+
 def test_round_robin_seed_before_expansion(monkeypatch):
     _, calls = multi_provider_discover(monkeypatch)
     first_expansion = next(index for index, call in enumerate(calls) if call["value"] != "public.com")
@@ -864,6 +905,23 @@ def test_crtsh_retries_transient_502_with_backoff(monkeypatch):
     result = worker.collect("crtsh", "domain", "public.com", "exact")
     assert result["ok"] is True
     assert calls["n"] == 3
+
+
+def test_crtsh_mixed_san_row_binds_and_parses(monkeypatch):
+    """P5 follow-up: a CT row whose name_value mixes a binding name with a malformed
+    one (underscore label) binds at collect time (ct_names_bind skips the malformed
+    name); the parser must do the same instead of refusing the whole response, which
+    previously dropped the provider's result through the arm's incomplete() path."""
+    rows = [{"name_value": "public.com\ninvalid_name.public.com"}]
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
+
+    result = worker.collect("crtsh", "domain", "public.com", "subdomains")
+
+    assert result["ok"] is True
+    assert result["data"] == rows  # the row binds via the valid name
+    observations = list(ADAPTERS["crtsh"].parse(result["data"]))
+    assert [(obs.relation, obs.right) for obs in observations] == [
+        ("query_match", "public.com")]
 
 
 def test_crtsh_collect_filters_one_non_binding_row(monkeypatch):

@@ -117,6 +117,17 @@ def observation(source, lk, left, relation, rk, right, metadata=None):
     return Observation(source, lk, normalize(lk, left), relation, rk, normalize(rk, right), attributes=metadata or {})
 
 
+def name_parses(kind, name):
+    """A CT name that fails normalize (e.g. an underscore label some feeds emit)
+    is skipped rather than refusing the whole response — mirroring worker
+    ct_names_bind. The row still contributes its valid names."""
+    try:
+        normalize(kind, name)
+    except Refusal:
+        return False
+    return True
+
+
 def crtsh(data):
     for row in bounded_list(data, 4000):
         if not isinstance(row, dict):
@@ -127,6 +138,9 @@ def crtsh(data):
         names = list(dict.fromkeys(("dns_pattern" if v.startswith("*.") else "domain", v.lower().rstrip(".")) for v in names.splitlines()))
         if not names or len(names) > 128:
             raise Refusal("invalid CT names")
+        names = [pair for pair in names if name_parses(*pair)]
+        if not names:
+            continue
         fingerprint = row.get("sha256") or row.get("fingerprint_sha256")
         metadata = attributes(row)
         if fingerprint:
@@ -165,6 +179,8 @@ def certspotter(data):
             raise Refusal("invalid CertSpotter issuance")
         for name in bounded_list(row["dns_names"], 128):
             kind = "dns_pattern" if isinstance(name, str) and name.startswith("*.") else "domain"
+            if not name_parses(kind, name):
+                continue
             yield observation("certspotter", "certificate", row.get("cert_sha256"), "san", kind, name, attributes(row))
 
 

@@ -299,8 +299,11 @@ class AssetReconArm:
                         budget.record(source)
                         relation = "dns_nxdomain" if response.get("dns_status") == 3 else "dns_nodata" if source in ("google", "cloudflare") else "pagination_exhausted" if source == "certspotter" and cursors else "no_result"
                         records.append((Observation(source, kind, value, relation, kind, value, attributes={"origin": "provider"}), response["digest"]))
-                    if response.get("limitations"):
+                    limitations = response.get("limitations") or ()
+                    if limitations:
                         graph.limit("provider coverage is bounded to returned snapshot")
+                        for note in limitations:
+                            graph.limit(str(note))
                     graph.expand(records)
                     if source == "certspotter" and response["data"]:
                         cursor = response.get("cursor")
