@@ -8,7 +8,7 @@ from dataclasses import replace
 
 from ...contract import Result
 from ..dispatch import log_dispatch
-from .graph import Graph
+from .graph import Graph, ident
 from .model import Budget, CEILINGS, DEFAULTS, Exclusions, Observation, Refusal, bounded_list, closed, live_value, normalize, pattern_covers, seeds
 from .runner import WorkerRefusal, run_worker
 from .probe_policy import validate_target
@@ -174,14 +174,14 @@ class AssetReconArm:
     def _records(self, records, source, data, digest, budget, roots=(), origin="local-fixture"):
         digest = normalize("certificate", digest)
         for obs in ADAPTERS[source].parse(data):
-            budget.record()
+            budget.record(source)
             obs = replace(obs, source=source, attributes=dict(obs.attributes, origin=origin))
             records.append((obs, digest))
             if source in ("crtsh", "certspotter"):
                 for kind, value in ((obs.left_kind, obs.left), (obs.right_kind, obs.right)):
                     for root in roots:
                         if (kind == "domain" and value != root and value.endswith("." + root)) or (kind == "dns_pattern" and (pattern_covers(value, root) or value[2:] == root or value[2:].endswith("." + root))):
-                            budget.record()
+                            budget.record(source)
                             records.append((Observation(source, "domain", root, "discovered_under", kind, value, "inferred", dict(obs.attributes)), digest))
 
     def _grants(self, providers):
@@ -193,6 +193,8 @@ class AssetReconArm:
 
     def _collect(self, graph, records, providers, action):
         budget = graph.budget
+        per_provider_request_cap = max(1, budget.values["max_requests"] // max(1, len(providers)))
+        provider_index = {source: index for index, source in enumerate(providers)}
         attempted = set()
         dns_results = {}
         for node in graph.nodes.values():
@@ -212,7 +214,8 @@ class AssetReconArm:
                     graph.limit("non-global or reserved value omitted from live queries")
                     continue
                 for source in providers:
-                    if node["type"] not in ADAPTERS[source].query_kinds:
+                    if (budget.provider_requests.get(source, 0) >= per_provider_request_cap or
+                            node["type"] not in ADAPTERS[source].query_kinds):
                         continue
                     variants = ("A", "AAAA") if source in ("google", "cloudflare") and node["type"] == "domain" else ("prefixes", "overview") if source == "registry" and node["type"] == "asn" else ("exact", "subdomains") if source == "crtsh" else (None,)
                     for variant in variants:
@@ -221,6 +224,11 @@ class AssetReconArm:
                             pending.append(key)
             if not pending:
                 break
+            pending.sort(key=lambda key: (
+                graph.nodes[ident(key[1], key[2])]["depth"],
+                provider_index[key[0]],
+                "" if key[3] is None else key[3],
+            ))
             for source, kind, value, variant in pending:
                 attempted.add((source, kind, value, variant))
                 try:
@@ -229,7 +237,9 @@ class AssetReconArm:
                         response = None
                         for retry in range(budget.values["retries"] + 1):
                             try:
-                                budget.request()
+                                if budget.provider_requests.get(source, 0) >= per_provider_request_cap:
+                                    raise Refusal("provider request budget reached")
+                                budget.request(source)
                                 # Large telecom CT responses are slow (crt.sh exact for a major ISP can take 20-30s); a 12s cap made the governed footprinting path fail closed. 30s accommodates multi-MiB/slow reads within wall_seconds.
                                 response = run_worker(dict(operation="collect", live=True, source=source, kind=kind, value=value, variant=variant), min(30, budget.remaining()))
                                 break
@@ -248,7 +258,7 @@ class AssetReconArm:
                                 graph.limit("DNS providers disagree on answer or negative outcome")
                             dns_results[result_key] = summary
                         if not response["data"]:
-                            budget.record()
+                            budget.record(source)
                             relation = "dns_nxdomain" if response.get("dns_status") == 3 else "dns_nodata" if source in ("google", "cloudflare") else "pagination_exhausted" if source == "certspotter" and cursors else "no_result"
                             records.append((Observation(source, kind, value, relation, kind, value, attributes={"origin": "provider"}), response["digest"]))
                         if response.get("limitations"):

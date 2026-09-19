@@ -417,6 +417,64 @@ def test_certspotter_pagination_empty_page_closes(monkeypatch):
     assert calls[1]["variant"] == "opaque"
 
 
+def multi_provider_discover(monkeypatch):
+    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "crtsh,certspotter")
+    calls = []
+
+    def fake(request, timeout):
+        calls.append(dict(request))
+        if request["source"] == "crtsh":
+            name = f"crt-{len(calls)}.{request['value']}"
+            return {"ok": True, "digest": HASH, "data": [{"id": len(calls), "name_value": name}]}
+        if request["value"] == "public.com" and request["variant"] is None:
+            data = [
+                {"id": f"row-{index}", "dns_names": [f"cert-{index}.public.com"], "cert_sha256": f"{index:064x}"}
+                for index in range(20)
+            ]
+            return {"ok": True, "digest": HASH, "data": data, "cursor": "next-page"}
+        return {"ok": True, "digest": HASH, "data": [], "cursor": None}
+
+    monkeypatch.setattr(arm, "run_worker", fake)
+    result = invoke("discover", {
+        "live": True,
+        "providers": ["crtsh", "certspotter"],
+        "seeds": {"domains": ["public.com"]},
+        "limits": {"min_interval_ms": 50},
+    })
+    return result, calls
+
+
+def test_multi_provider_discover_yields_multiple_evidence_sources(monkeypatch):
+    result, _ = multi_provider_discover(monkeypatch)
+    assert len([count for count in result.output["counts"]["providers"].values() if count]) >= 2
+
+
+def test_per_provider_request_cap_prevents_starvation(monkeypatch):
+    result, calls = multi_provider_discover(monkeypatch)
+    fair_share = result.output["context"]["limits"]["max_requests"] // 2
+    assert sum(call["source"] == "certspotter" for call in calls) <= fair_share
+
+
+def test_round_robin_seed_before_expansion(monkeypatch):
+    _, calls = multi_provider_discover(monkeypatch)
+    first_expansion = next(index for index, call in enumerate(calls) if call["value"] != "public.com")
+    seed_sources = {call["source"] for call in calls[:first_expansion]}
+    assert seed_sources == {"crtsh", "certspotter"}
+
+
+def test_large_isp_preset_raises_limits():
+    result = invoke("plan", {"seeds": {"domains": ["example.test"]}, "limits": {"large_isp": True}})
+    assert result.output["context"]["limits"]["max_requests"] == 32
+    assert result.output["context"]["limits"]["wall_seconds"] == 60
+    assert not invoke("plan", {"seeds": {"domains": ["example.test"]}, "limits": {"large_isp": 1}}).ok
+
+
+def test_per_provider_counts_in_output():
+    result = invoke("discover", packet())
+    assert "providers" in result.output["counts"]
+    assert sum(result.output["counts"]["providers"].values()) == result.output["counts"]["evidence"]
+
+
 def test_dns_negative_disagreement_and_provenance(monkeypatch):
     monkeypatch.setenv("ASSET_RECON_PROVIDERS", "google,cloudflare")
     monkeypatch.setattr(arm, "run_worker", lambda request, timeout: {"ok": True, "digest": HASH, "data": [], "dns_status": 3 if request["source"] == "google" else 0})

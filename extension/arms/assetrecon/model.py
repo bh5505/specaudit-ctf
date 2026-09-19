@@ -92,23 +92,33 @@ def bounded_list(value, maximum=64):
 
 DEFAULTS = dict(max_depth=3, max_nodes=500, max_edges=1000, max_requests=16,
                 max_records=2000, max_output_bytes=262144, wall_seconds=30,
-                min_interval_ms=250, retries=0)
+                min_interval_ms=250, retries=0, large_isp=False)
 CEILINGS = dict(max_depth=5, max_nodes=1000, max_edges=2000, max_requests=32,
                 max_records=4000, max_output_bytes=1048576, wall_seconds=60,
-                min_interval_ms=2000, retries=2)
+                min_interval_ms=2000, retries=2, large_isp=True)
+LARGE_ISP = dict(max_depth=5, max_nodes=1000, max_edges=2000, max_requests=32,
+                 max_records=4000, max_output_bytes=1048576, wall_seconds=60,
+                 min_interval_ms=250, retries=2, large_isp=True)
 
 
 class Budget:
     def __init__(self, values=None):
         values = closed({} if values is None else values, DEFAULTS)
-        self.values = DEFAULTS | values
+        base = LARGE_ISP if values.get("large_isp") else DEFAULTS
+        self.values = base | values
         for key, value in self.values.items():
+            if key == "large_isp":
+                if type(value) is not bool:
+                    raise Refusal("invalid limit")
+                continue
             minimum = 0 if key in ("max_depth", "retries") else (4096 if key == "max_output_bytes" else 50 if key == "min_interval_ms" else 1)
             if type(value) is not int or not minimum <= value <= CEILINGS[key]:
                 raise Refusal("invalid limit")
         self.deadline = time.monotonic() + self.values["wall_seconds"]
         self.requests = 0
         self.records = 0
+        self.provider_requests = {}
+        self.provider_records = {}
         self.last_request = None
 
     def remaining(self):
@@ -117,7 +127,7 @@ class Budget:
             raise Refusal("deadline reached")
         return remaining
 
-    def request(self):
+    def request(self, source=None):
         self.remaining()
         if self.requests >= self.values["max_requests"]:
             raise Refusal("request budget reached")
@@ -128,13 +138,17 @@ class Budget:
                     raise Refusal("pacing exceeds deadline")
                 time.sleep(wait)
         self.requests += 1
+        if source is not None:
+            self.provider_requests[source] = self.provider_requests.get(source, 0) + 1
         self.last_request = time.monotonic()
 
-    def record(self):
+    def record(self, source=None):
         self.remaining()
         if self.records >= self.values["max_records"]:
             raise Refusal("record budget reached")
         self.records += 1
+        if source is not None:
+            self.provider_records[source] = self.provider_records.get(source, 0) + 1
 
 
 class Exclusions:
