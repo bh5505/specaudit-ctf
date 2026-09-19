@@ -18,6 +18,7 @@ import socket
 import ssl
 import sys
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -26,6 +27,9 @@ from .model import Refusal, bounded_list, closed, live_value, normalize, pattern
 from .sources import ADAPTERS, MAX_FILE_BYTES, decode
 from .probe_policy import validate_target
 from .sanitize import safe_text
+
+
+CT_ROW_CAP = 1000
 
 
 class NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -77,16 +81,30 @@ def collect(source, kind, value, variant=None):
             try:
                 data, digest = fetch("https://crt.sh/?" + urllib.parse.urlencode({"q": query, "output": "json"}))
                 break
-            except (Refusal, TimeoutError, OSError):
+            except (urllib.error.HTTPError, TimeoutError, OSError) as exc:
+                if isinstance(exc, urllib.error.HTTPError) and (
+                        type(exc.code) is not int or
+                        (exc.code != 429 and not 500 <= exc.code <= 599)):
+                    raise
                 if attempts >= 3:
                     raise
                 time.sleep(1.0 * attempts)
-        for row in bounded_list(data, 4000):
+        rows = bounded_list(data, 4000)
+        filtered = []
+        for row in rows:
             if not isinstance(row, dict) or not isinstance(row.get("name_value"), str) or len(row["name_value"]) > 16384:
                 raise Refusal("invalid CT record")
-            if not ct_names_bind(row["name_value"].splitlines(), value):
-                raise Refusal("CT record does not bind query")
-        return dict(ok=True, data=data, digest=digest, limitations=["CT index results are a snapshot; provider has no completeness guarantee"])
+            if ct_names_bind(row["name_value"].splitlines(), value):
+                filtered.append(row)
+        if not filtered:
+            raise Refusal("CT record does not bind query")
+        limitations = ["CT index results are a snapshot; provider has no completeness guarantee"]
+        if len(filtered) != len(rows):
+            limitations.append("CT rows not binding query filtered")
+        if len(filtered) > CT_ROW_CAP:
+            filtered = filtered[:CT_ROW_CAP]
+            limitations.append("CT rows truncated to fit worker output budget")
+        return dict(ok=True, data=filtered, digest=digest, limitations=limitations)
     if source == "certspotter":
         params = [("domain", value), ("include_subdomains", "true"),
                   ("match_wildcards", "true"), ("expand", "dns_names")]
@@ -219,7 +237,10 @@ def collect(source, kind, value, variant=None):
 def ct_names_bind(names, root):
     for raw in bounded_list(names, 128):
         kind = "dns_pattern" if isinstance(raw, str) and raw.startswith("*.") else "domain"
-        value = normalize(kind, raw)
+        try:
+            value = normalize(kind, raw)
+        except Refusal:
+            continue
         base = value.removeprefix("*.")
         if base == root or base.endswith("." + root) or (kind == "dns_pattern" and pattern_covers(value, root)):
             return True

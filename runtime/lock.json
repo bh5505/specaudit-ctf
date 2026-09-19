@@ -1729,7 +1729,7 @@
     "extension/arms/assetrecon/runner.py": "5122c89779366a50af34cd00b8571454b780d8df1614aa1a11758769b1ac7d11",
     "extension/arms/assetrecon/sanitize.py": "50d06518b94eb92e378ede8f980edb6b9c56eac4f17db42d063a16f6a9618f81",
     "extension/arms/assetrecon/sources.py": "17bd26d76edc60b96cc3f9de55b9e83b4ed29154878a05e69bbc6b19c37eb554",
-    "extension/arms/assetrecon/worker.py": "7d2aaf775dc4322f9e445a10b25dd33e57474a96019e721a2d3c109b51790ae0",
+    "extension/arms/assetrecon/worker.py": "cd4d7319928a5bb30d491a89f64391417e8cebcef2f802adc259be61de263d4e",
     "extension/arms/attackstix/__init__.py": "3ffcd206089f572aef05522982412297cb7f36548da14b8b7de4f27e35307f9f",
     "extension/arms/attackstix/arm.py": "7ef0498738d7c4968df081c1f583f52b18e72981d0dffa7aec6efca614aba0c8",
     "extension/arms/attackstix/data/demo-enterprise-sample.json": "704f253c5754d84c4dd19831c3369e9800165239276a3cb7c23b315d7fe47219",

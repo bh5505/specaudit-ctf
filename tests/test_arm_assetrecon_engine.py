@@ -327,6 +327,10 @@ def test_wildcard_is_one_label_only():
     assert not pattern_covers("*.example.test", "example.test")
 
 
+def test_ct_names_bind_skips_malformed_name_and_accepts_later_binding():
+    assert worker.ct_names_bind(["bad\x00name", "api.public.com"], "public.com") is True
+
+
 def test_graph_adjacency_visits_linear_in_records():
     budget = Budget({"max_nodes": 1000, "max_edges": 2000, "max_depth": 5})
     graph = Graph([("domain", "example.test")], Exclusions(), budget)
@@ -852,7 +856,7 @@ def test_crtsh_retries_transient_502_with_backoff(monkeypatch):
     def flaky(url, token=None, dns=False):
         calls["n"] += 1
         if calls["n"] < 3:
-            raise Refusal("invalid provider response")
+            raise OSError("transient transport failure")
         return ([{"name_value": "www.public.com"}, {"name_value": "public.com"}], HASH)
 
     monkeypatch.setattr(worker, "fetch", flaky)
@@ -860,6 +864,72 @@ def test_crtsh_retries_transient_502_with_backoff(monkeypatch):
     result = worker.collect("crtsh", "domain", "public.com", "exact")
     assert result["ok"] is True
     assert calls["n"] == 3
+
+
+def test_crtsh_collect_filters_one_non_binding_row(monkeypatch):
+    rows = [
+        {"name_value": "public.com"},
+        {"name_value": "api.public.com"},
+        {"name_value": "invalid_name.public.com\nwww.invalid_name.public.com"},
+    ]
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
+
+    result = worker.collect("crtsh", "domain", "public.com", "subdomains")
+
+    assert result["ok"] is True
+    assert result["data"] == rows[:2]
+    assert "CT rows not binding query filtered" in result["limitations"]
+
+
+def test_crtsh_collect_truncates_binding_rows_to_output_budget_cap(monkeypatch):
+    rows = [{"name_value": f"host-{index}.public.com"} for index in range(worker.CT_ROW_CAP + 1)]
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
+
+    result = worker.collect("crtsh", "domain", "public.com", "subdomains")
+
+    assert result["ok"] is True
+    assert result["data"] == rows[:worker.CT_ROW_CAP]
+    assert len(result["data"]) == worker.CT_ROW_CAP
+    assert "CT rows truncated to fit worker output budget" in result["limitations"]
+
+
+def test_crtsh_collect_does_not_report_truncation_below_cap(monkeypatch):
+    rows = [{"name_value": "public.com"}, {"name_value": "api.public.com"}]
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
+
+    result = worker.collect("crtsh", "domain", "public.com", "subdomains")
+
+    assert result["data"] == rows
+    assert "CT rows truncated to fit worker output budget" not in result["limitations"]
+
+
+def test_crtsh_collect_refuses_when_no_rows_bind_query(monkeypatch):
+    rows = [
+        {"name_value": "unrelated.example"},
+        {"name_value": "invalid_name.public.com"},
+    ]
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
+
+    with pytest.raises(Refusal, match="^CT record does not bind query$"):
+        worker.collect("crtsh", "domain", "public.com", "subdomains")
+
+
+def test_crtsh_collect_absorbs_http_502_then_succeeds(monkeypatch):
+    calls = {"n": 0}
+
+    def flaky(url, token=None, dns=False):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise worker.urllib.error.HTTPError(url, 502, "Bad Gateway", {}, None)
+        return ([{"name_value": "api.public.com"}], HASH)
+
+    sleeps = []
+    monkeypatch.setattr(worker, "fetch", flaky)
+    monkeypatch.setattr(worker.time, "sleep", sleeps.append)
+    result = worker.collect("crtsh", "domain", "public.com", "subdomains")
+    assert result["ok"] is True
+    assert calls["n"] == 2
+    assert sleeps == [1.0]
 
 
 def test_provider_credentials_are_bounded_before_transport(monkeypatch):
