@@ -107,10 +107,14 @@ class Graph:
             omitted = len(nodes) != len(all_nodes) or count != len(all_edges)
             limitations = list(self.limitations) + (["output budget reached"] if omitted else [])
             ranked = rank(nodes, edges, evidence, self.roots, self.organization_hints)
+            provider_counts = {
+                source: sum(item["source"] == source for item in evidence)
+                for source in sorted({item["source"] for item in evidence})
+            }
             return dict(schema="specaudit.ctf.asset-recon.v1", status="partial" if limitations else "complete",
                         context=dict(self.context),
                         nodes=ranked, edges=edges, evidence=evidence, limitations=limitations,
-                        requests=self.budget.requests, counts=dict(nodes=len(ranked), edges=len(edges), evidence=len(evidence)))
+                        requests=self.budget.requests, counts=dict(nodes=len(ranked), edges=len(edges), evidence=len(evidence), providers=provider_counts))
         result = retained(len(all_edges))
         maximum = self.budget.values["max_output_bytes"]
         def fits(value):

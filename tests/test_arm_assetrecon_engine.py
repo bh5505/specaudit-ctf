@@ -327,6 +327,10 @@ def test_wildcard_is_one_label_only():
     assert not pattern_covers("*.example.test", "example.test")
 
 
+def test_ct_names_bind_skips_malformed_name_and_accepts_later_binding():
+    assert worker.ct_names_bind(["bad\x00name", "api.public.com"], "public.com") is True
+
+
 def test_graph_adjacency_visits_linear_in_records():
     budget = Budget({"max_nodes": 1000, "max_edges": 2000, "max_depth": 5})
     graph = Graph([("domain", "example.test")], Exclusions(), budget)
@@ -415,6 +419,185 @@ def test_certspotter_pagination_empty_page_closes(monkeypatch):
     result = invoke("ct", {"live": True, "providers": ["certspotter"], "seeds": {"domains": ["public.com"]}, "limits": {"min_interval_ms": 50}})
     assert result.ok and len(calls) == 2
     assert calls[1]["variant"] == "opaque"
+
+
+def multi_provider_discover(monkeypatch):
+    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "crtsh,certspotter")
+    calls = []
+
+    def fake(request, timeout):
+        calls.append(dict(request))
+        if request["source"] == "crtsh":
+            name = f"crt-{len(calls)}.{request['value']}"
+            return {"ok": True, "digest": HASH, "data": [{"id": len(calls), "name_value": name}]}
+        if request["value"] == "public.com" and request["variant"] is None:
+            data = [
+                {"id": f"row-{index}", "dns_names": [f"cert-{index}.public.com"], "cert_sha256": f"{index:064x}"}
+                for index in range(20)
+            ]
+            return {"ok": True, "digest": HASH, "data": data, "cursor": "next-page"}
+        return {"ok": True, "digest": HASH, "data": [], "cursor": None}
+
+    monkeypatch.setattr(arm, "run_worker", fake)
+    result = invoke("discover", {
+        "live": True,
+        "providers": ["crtsh", "certspotter"],
+        "seeds": {"domains": ["public.com"]},
+        "limits": {"min_interval_ms": 50},
+    })
+    return result, calls
+
+
+def test_multi_provider_discover_yields_multiple_evidence_sources(monkeypatch):
+    result, _ = multi_provider_discover(monkeypatch)
+    assert len([count for count in result.output["counts"]["providers"].values() if count]) >= 2
+
+
+def test_per_provider_request_cap_prevents_starvation(monkeypatch):
+    result, calls = multi_provider_discover(monkeypatch)
+    fair_share = result.output["context"]["limits"]["max_requests"] // 2
+    assert sum(call["source"] == "certspotter" for call in calls) <= fair_share
+
+
+def test_per_provider_cap_binds_under_asymmetric_unbounded_pagination(monkeypatch):
+    """The fair-share cap must bind when one provider paginates after the other
+    provider runs out of items. multi_provider_discover cannot show this: with
+    symmetric providers, round-robin plus the global max_requests already split
+    requests evenly, so the per-provider cap sites are not load-bearing there.
+    Here certspotter returns data plus a unique cursor on every page (unbounded
+    pagination) while google returns empty dns_status 0 — with the cap sites
+    removed certspotter consumes the remaining global budget (14 of 16); with
+    them it stops at max_requests//2 and the leftover slots stay unused (the
+    fair share is static and is not redistributed)."""
+    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter,google")
+    calls = []
+
+    def fake(request, timeout):
+        calls.append(dict(request))
+        if request["source"] == "google":
+            return {"ok": True, "digest": HASH, "data": [], "dns_status": 0}
+        n = sum(1 for call in calls if call["source"] == "certspotter")
+        return {
+            "ok": True,
+            "digest": HASH,
+            "data": [{"id": "row-%d" % n, "dns_names": ["public.com"], "cert_sha256": FP}],
+            "cursor": "page-%d" % n,
+        }
+
+    monkeypatch.setattr(arm, "run_worker", fake)
+    max_requests = 16
+    result = invoke("discover", {
+        "live": True,
+        "providers": ["certspotter", "google"],
+        "seeds": {"domains": ["public.com"]},
+        "limits": {"min_interval_ms": 50, "retries": 0, "max_requests": max_requests},
+    })
+    certspotter_calls = sum(call["source"] == "certspotter" for call in calls)
+    google_calls = sum(call["source"] == "google" for call in calls)
+    assert google_calls == 2
+    assert certspotter_calls <= max_requests // 2
+    assert result.output["requests"] < max_requests
+    assert result.output["requests"] == certspotter_calls + google_calls
+
+
+def test_round_robin_seed_before_expansion(monkeypatch):
+    _, calls = multi_provider_discover(monkeypatch)
+    first_expansion = next(index for index, call in enumerate(calls) if call["value"] != "public.com")
+    seed_sources = {call["source"] for call in calls[:first_expansion]}
+    assert seed_sources == {"crtsh", "certspotter"}
+
+
+def test_slow_failing_provider_does_not_starve_others(monkeypatch):
+    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "crtsh,certspotter,google")
+    calls = []
+
+    def fake(request, timeout):
+        calls.append(dict(request))
+        if request["source"] == "crtsh":
+            raise Refusal("provider unavailable")
+        if request["source"] == "certspotter" and request["variant"] is None:
+            return {"ok": True, "digest": HASH, "data": [{"id": "first", "dns_names": ["public.com"], "cert_sha256": FP}], "cursor": "next"}
+        if request["source"] == "certspotter":
+            return {"ok": True, "digest": HASH, "data": [], "cursor": None}
+        return {"ok": True, "digest": HASH, "data": [], "dns_status": 0}
+
+    monkeypatch.setattr(arm, "run_worker", fake)
+    result = invoke("discover", {
+        "live": True,
+        "providers": ["crtsh", "certspotter", "google"],
+        "seeds": {"domains": ["public.com"]},
+        "limits": {"min_interval_ms": 50, "retries": 2},
+    })
+    dns_call = next(index for index, call in enumerate(calls) if call["source"] == "google")
+    failing_calls = [index for index, call in enumerate(calls) if call["source"] == "crtsh"]
+    assert dns_call < failing_calls[1]
+    assert len([count for count in result.output["counts"]["providers"].values() if count]) >= 2
+
+
+def test_pagination_is_interleaved_not_run_to_completion(monkeypatch):
+    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter,google")
+    calls = []
+
+    def fake(request, timeout):
+        calls.append(dict(request))
+        if request["source"] == "google":
+            return {"ok": True, "digest": HASH, "data": [], "dns_status": 0}
+        page = request["variant"]
+        number = {None: 1, "page-1": 2, "page-2": 3}.get(page)
+        if number is None:
+            return {"ok": True, "digest": HASH, "data": [], "cursor": None}
+        return {"ok": True, "digest": HASH, "data": [{"id": f"row-{number}", "dns_names": ["public.com"], "cert_sha256": FP}], "cursor": f"page-{number}"}
+
+    monkeypatch.setattr(arm, "run_worker", fake)
+    invoke("discover", {
+        "live": True,
+        "providers": ["certspotter", "google"],
+        "seeds": {"domains": ["public.com"]},
+        "limits": {"min_interval_ms": 50},
+    })
+    other = next(index for index, call in enumerate(calls) if call["source"] == "google")
+    later_page = next(index for index, call in enumerate(calls) if call["source"] == "certspotter" and call["variant"] == "page-1")
+    assert other < later_page
+
+
+def test_retries_yield_to_next_provider(monkeypatch):
+    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter,google")
+    calls = []
+    failed = False
+
+    def fake(request, timeout):
+        nonlocal failed
+        calls.append(dict(request))
+        if request["source"] == "certspotter" and not failed:
+            failed = True
+            raise Refusal("provider unavailable")
+        if request["source"] == "certspotter":
+            return {"ok": True, "digest": HASH, "data": [], "cursor": None}
+        return {"ok": True, "digest": HASH, "data": [], "dns_status": 0}
+
+    monkeypatch.setattr(arm, "run_worker", fake)
+    invoke("discover", {
+        "live": True,
+        "providers": ["certspotter", "google"],
+        "seeds": {"domains": ["public.com"]},
+        "limits": {"min_interval_ms": 50, "retries": 1},
+    })
+    provider_calls = [index for index, call in enumerate(calls) if call["source"] == "certspotter"]
+    assert len(provider_calls) == 2
+    assert any(calls[index]["source"] == "google" for index in range(provider_calls[0] + 1, provider_calls[1]))
+
+
+def test_large_isp_preset_raises_limits():
+    result = invoke("plan", {"seeds": {"domains": ["example.test"]}, "limits": {"large_isp": True}})
+    assert result.output["context"]["limits"]["max_requests"] == 32
+    assert result.output["context"]["limits"]["wall_seconds"] == 60
+    assert not invoke("plan", {"seeds": {"domains": ["example.test"]}, "limits": {"large_isp": 1}}).ok
+
+
+def test_per_provider_counts_in_output():
+    result = invoke("discover", packet())
+    assert "providers" in result.output["counts"]
+    assert sum(result.output["counts"]["providers"].values()) == result.output["counts"]["evidence"]
 
 
 def test_dns_negative_disagreement_and_provenance(monkeypatch):
@@ -714,7 +897,7 @@ def test_crtsh_retries_transient_502_with_backoff(monkeypatch):
     def flaky(url, token=None, dns=False):
         calls["n"] += 1
         if calls["n"] < 3:
-            raise Refusal("invalid provider response")
+            raise OSError("transient transport failure")
         return ([{"name_value": "www.public.com"}, {"name_value": "public.com"}], HASH)
 
     monkeypatch.setattr(worker, "fetch", flaky)
@@ -722,6 +905,89 @@ def test_crtsh_retries_transient_502_with_backoff(monkeypatch):
     result = worker.collect("crtsh", "domain", "public.com", "exact")
     assert result["ok"] is True
     assert calls["n"] == 3
+
+
+def test_crtsh_mixed_san_row_binds_and_parses(monkeypatch):
+    """P5 follow-up: a CT row whose name_value mixes a binding name with a malformed
+    one (underscore label) binds at collect time (ct_names_bind skips the malformed
+    name); the parser must do the same instead of refusing the whole response, which
+    previously dropped the provider's result through the arm's incomplete() path."""
+    rows = [{"name_value": "public.com\ninvalid_name.public.com"}]
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
+
+    result = worker.collect("crtsh", "domain", "public.com", "subdomains")
+
+    assert result["ok"] is True
+    assert result["data"] == rows  # the row binds via the valid name
+    observations = list(ADAPTERS["crtsh"].parse(result["data"]))
+    assert [(obs.relation, obs.right) for obs in observations] == [
+        ("query_match", "public.com")]
+
+
+def test_crtsh_collect_filters_one_non_binding_row(monkeypatch):
+    rows = [
+        {"name_value": "public.com"},
+        {"name_value": "api.public.com"},
+        {"name_value": "invalid_name.public.com\nwww.invalid_name.public.com"},
+    ]
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
+
+    result = worker.collect("crtsh", "domain", "public.com", "subdomains")
+
+    assert result["ok"] is True
+    assert result["data"] == rows[:2]
+    assert "CT rows not binding query filtered" in result["limitations"]
+
+
+def test_crtsh_collect_truncates_binding_rows_to_output_budget_cap(monkeypatch):
+    rows = [{"name_value": f"host-{index}.public.com"} for index in range(worker.CT_ROW_CAP + 1)]
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
+
+    result = worker.collect("crtsh", "domain", "public.com", "subdomains")
+
+    assert result["ok"] is True
+    assert result["data"] == rows[:worker.CT_ROW_CAP]
+    assert len(result["data"]) == worker.CT_ROW_CAP
+    assert "CT rows truncated to fit worker output budget" in result["limitations"]
+
+
+def test_crtsh_collect_does_not_report_truncation_below_cap(monkeypatch):
+    rows = [{"name_value": "public.com"}, {"name_value": "api.public.com"}]
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
+
+    result = worker.collect("crtsh", "domain", "public.com", "subdomains")
+
+    assert result["data"] == rows
+    assert "CT rows truncated to fit worker output budget" not in result["limitations"]
+
+
+def test_crtsh_collect_refuses_when_no_rows_bind_query(monkeypatch):
+    rows = [
+        {"name_value": "unrelated.example"},
+        {"name_value": "invalid_name.public.com"},
+    ]
+    monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
+
+    with pytest.raises(Refusal, match="^CT record does not bind query$"):
+        worker.collect("crtsh", "domain", "public.com", "subdomains")
+
+
+def test_crtsh_collect_absorbs_http_502_then_succeeds(monkeypatch):
+    calls = {"n": 0}
+
+    def flaky(url, token=None, dns=False):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise worker.urllib.error.HTTPError(url, 502, "Bad Gateway", {}, None)
+        return ([{"name_value": "api.public.com"}], HASH)
+
+    sleeps = []
+    monkeypatch.setattr(worker, "fetch", flaky)
+    monkeypatch.setattr(worker.time, "sleep", sleeps.append)
+    result = worker.collect("crtsh", "domain", "public.com", "subdomains")
+    assert result["ok"] is True
+    assert calls["n"] == 2
+    assert sleeps == [1.0]
 
 
 def test_provider_credentials_are_bounded_before_transport(monkeypatch):

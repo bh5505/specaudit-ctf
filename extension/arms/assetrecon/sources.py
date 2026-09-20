@@ -117,28 +117,70 @@ def observation(source, lk, left, relation, rk, right, metadata=None):
     return Observation(source, lk, normalize(lk, left), relation, rk, normalize(rk, right), attributes=metadata or {})
 
 
+MALFORMED_CT_NAME_LIMITATION = "malformed CT names omitted"
+
+
+class ParseResult:
+    """Iterable observations; `.limitations` is filled as the iterator runs."""
+
+    def __init__(self, iterator, limitations):
+        self._iterator = iterator
+        self.limitations = limitations
+
+    def __iter__(self):
+        return self._iterator
+
+
+def name_parses(kind, name):
+    """A CT name that fails normalize (e.g. an underscore label some feeds emit)
+    is skipped rather than refusing the whole response — mirroring worker
+    ct_names_bind. The row still contributes its valid names. Valid names that
+    are merely out of graph scope still parse; they are not malformed."""
+    try:
+        normalize(kind, name)
+    except Refusal:
+        return False
+    return True
+
+
+def _retain_parsed_name(kind, name, limitations):
+    if name_parses(kind, name):
+        return True
+    if MALFORMED_CT_NAME_LIMITATION not in limitations:
+        limitations.append(MALFORMED_CT_NAME_LIMITATION)
+    return False
+
+
 def crtsh(data):
-    for row in bounded_list(data, 4000):
-        if not isinstance(row, dict):
-            raise Refusal("invalid CT record")
-        names = row.get("name_value")
-        if not isinstance(names, str) or len(names) > 16384:
-            raise Refusal("invalid CT names")
-        names = list(dict.fromkeys(("dns_pattern" if v.startswith("*.") else "domain", v.lower().rstrip(".")) for v in names.splitlines()))
-        if not names or len(names) > 128:
-            raise Refusal("invalid CT names")
-        fingerprint = row.get("sha256") or row.get("fingerprint_sha256")
-        metadata = attributes(row)
-        if fingerprint:
-            for kind, name in names:
-                yield observation("crtsh", "certificate", fingerprint, "san", kind, name, metadata)
-        else:
-            # crt.sh JSON does not necessarily include a certificate digest.
-            # A synthetic digest would falsely claim certificate-byte custody.
-            anchor_kind, anchor_name = names[0]
-            yield observation("crtsh", anchor_kind, anchor_name, "query_match", anchor_kind, anchor_name, metadata)
-            for kind, name in names[1:]:
-                yield observation("crtsh", anchor_kind, anchor_name, "co_certificate_name", kind, name, metadata)
+    limitations = []
+
+    def produce():
+        for row in bounded_list(data, 4000):
+            if not isinstance(row, dict):
+                raise Refusal("invalid CT record")
+            names = row.get("name_value")
+            if not isinstance(names, str) or len(names) > 16384:
+                raise Refusal("invalid CT names")
+            names = list(dict.fromkeys(("dns_pattern" if v.startswith("*.") else "domain", v.lower().rstrip(".")) for v in names.splitlines()))
+            if not names or len(names) > 128:
+                raise Refusal("invalid CT names")
+            names = [pair for pair in names if _retain_parsed_name(*pair, limitations)]
+            if not names:
+                continue
+            fingerprint = row.get("sha256") or row.get("fingerprint_sha256")
+            metadata = attributes(row)
+            if fingerprint:
+                for kind, name in names:
+                    yield observation("crtsh", "certificate", fingerprint, "san", kind, name, metadata)
+            else:
+                # crt.sh JSON does not necessarily include a certificate digest.
+                # A synthetic digest would falsely claim certificate-byte custody.
+                anchor_kind, anchor_name = names[0]
+                yield observation("crtsh", anchor_kind, anchor_name, "query_match", anchor_kind, anchor_name, metadata)
+                for kind, name in names[1:]:
+                    yield observation("crtsh", anchor_kind, anchor_name, "co_certificate_name", kind, name, metadata)
+
+    return ParseResult(produce(), limitations)
 
 
 def dns(data):
@@ -160,12 +202,19 @@ def dns(data):
 
 
 def certspotter(data):
-    for row in bounded_list(data, 4000):
-        if not isinstance(row, dict) or not isinstance(row.get("dns_names"), list):
-            raise Refusal("invalid CertSpotter issuance")
-        for name in bounded_list(row["dns_names"], 128):
-            kind = "dns_pattern" if isinstance(name, str) and name.startswith("*.") else "domain"
-            yield observation("certspotter", "certificate", row.get("cert_sha256"), "san", kind, name, attributes(row))
+    limitations = []
+
+    def produce():
+        for row in bounded_list(data, 4000):
+            if not isinstance(row, dict) or not isinstance(row.get("dns_names"), list):
+                raise Refusal("invalid CertSpotter issuance")
+            for name in bounded_list(row["dns_names"], 128):
+                kind = "dns_pattern" if isinstance(name, str) and name.startswith("*.") else "domain"
+                if not _retain_parsed_name(kind, name, limitations):
+                    continue
+                yield observation("certspotter", "certificate", row.get("cert_sha256"), "san", kind, name, attributes(row))
+
+    return ParseResult(produce(), limitations)
 
 
 def registry(data):
