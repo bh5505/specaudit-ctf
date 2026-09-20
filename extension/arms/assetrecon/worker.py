@@ -96,7 +96,9 @@ def collect(source, kind, value, variant=None):
                 raise Refusal("invalid CT record")
             if ct_names_bind(row["name_value"].splitlines(), value):
                 filtered.append(row)
-        if not filtered:
+        # Empty [] is normal negative evidence. A nonempty page whose names
+        # are all unbound (including all-malformed) does not bind the query.
+        if rows and not filtered:
             raise Refusal("CT record does not bind query")
         limitations = ["CT index results are a snapshot; provider has no completeness guarantee"]
         if len(filtered) != len(rows):

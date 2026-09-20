@@ -149,7 +149,8 @@ class AssetReconArm:
                     if source not in fixture_sources:
                         fixture_sources.append(source)
                     data, digest = read_fixture(fixture.get("path"))
-                    self._records(records, source, data, digest, budget, graph.roots)
+                    for note in self._records(records, source, data, digest, budget, graph.roots):
+                        graph.limit(note)
                 except Refusal as exc:
                     graph.limit(str(exc))
             graph.context.update(live=live, providers=list(providers), fixture_sources=fixture_sources)
@@ -174,7 +175,8 @@ class AssetReconArm:
 
     def _records(self, records, source, data, digest, budget, roots=(), origin="local-fixture"):
         digest = normalize("certificate", digest)
-        for obs in ADAPTERS[source].parse(data):
+        parsed = ADAPTERS[source].parse(data)
+        for obs in parsed:
             budget.record(source)
             obs = replace(obs, source=source, attributes=dict(obs.attributes, origin=origin))
             records.append((obs, digest))
@@ -184,6 +186,8 @@ class AssetReconArm:
                         if (kind == "domain" and value != root and value.endswith("." + root)) or (kind == "dns_pattern" and (pattern_covers(value, root) or value[2:] == root or value[2:].endswith("." + root))):
                             budget.record(source)
                             records.append((Observation(source, "domain", root, "discovered_under", kind, value, "inferred", dict(obs.attributes)), digest))
+
+        return getattr(parsed, "limitations", ())
 
     def _grants(self, providers):
         if not providers or any(p not in ADAPTERS or p == "dns" for p in providers):
@@ -215,14 +219,16 @@ class AssetReconArm:
                     graph.limit("non-global or reserved value omitted from live queries")
                     continue
                 for source in providers:
-                    if (budget.provider_requests.get(source, 0) >= per_provider_request_cap or
-                            node["type"] not in ADAPTERS[source].query_kinds):
+                    if node["type"] not in ADAPTERS[source].query_kinds:
                         continue
                     variants = ("A", "AAAA") if source in ("google", "cloudflare") and node["type"] == "domain" else ("prefixes", "overview") if source == "registry" and node["type"] == "asn" else ("exact", "subdomains") if source == "crtsh" else (None,)
                     for variant in variants:
                         key = (source, node["type"], node["value"], variant)
                         if key not in attempted:
-                            pending.append((*key, None))
+                            if budget.provider_requests.get(source, 0) >= per_provider_request_cap:
+                                graph.limit("provider request cap reached with unqueried nodes")
+                            else:
+                                pending.append((*key, None))
             if not pending:
                 break
             pending.sort(key=lambda item: (
@@ -283,7 +289,8 @@ class AssetReconArm:
                         return
                     continue
                 try:
-                    self._records(records, source, response["data"], response["digest"], budget, graph.roots, "provider")
+                    for note in self._records(records, source, response["data"], response["digest"], budget, graph.roots, "provider"):
+                        graph.limit(note)
                     if source in ("google", "cloudflare"):
                         status = response.get("dns_status")
                         if type(status) is not int or status not in (0, 3):
