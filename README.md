@@ -1,7 +1,5 @@
 # specaudit-ctf
 
-Agent workflow: [AGENTS.md](AGENTS.md). Named harness files are pointers.
-
 ## Overview
 
 - **Arms**: 48 specialized adapters. No row is held (the HTTP-MCP
@@ -580,75 +578,6 @@ red-team framework here is Microsoft's PyRIT (`pyrit_scan`, installed
 as a Python package), not that tool. Every dispatch-class action still
 requires its explicit `*_DISPATCH_SCOPE`; installing a binary never
 arms anything by itself.
-
-Measured on a real Kali instance (WSL `kali-linux` 2026.2, 2026-09-03,
-default lab package set): the full suite passes hermetically (the test
-runner strips PATH, so a scanner-equipped host behaves like a
-scanner-less one — see [lab/README.md](lab/README.md)); `python -m
-extension availability` reports `is_kali: true` with the
-nmap/wapiti/routersploit/commix rows resolved from PATH; and against a
-spawned lab target, armed
-`nmap.scan` and `wapiti.scan` invocations returned `complete`
-execution-result envelopes with the `[dispatch]` audit line on stderr
-and digested artifacts — end-to-end proof of the gate → audit →
-stamp → envelope chain on real Kali. The `lab/` directory carries the
-instance and target tooling.
-
-Measured again on 2026-09-04 (same instance and package set): against
-a freshly spawned lab target, an armed `commix.scan`
-(`COMMIX_DISPATCH_SCOPE=<target-ip>`, target
-`http://<target-ip>:8080/form.html?q=1`) returned a `complete`
-envelope with the `[dispatch]` audit line and an ~19 KB digested
-report in which commix probed the form's `q` parameter through its
-technique set and closed with "GET parameter 'q' does not seem to be
-injectable" — the honest inert-form outcome. The measurement also
-caught a real integration defect: commix ≥ 4 switches to parsing
-targets from stdin whenever stdin is not a tty and then ignores
-`-u`, so the arm's original fixed argv exited 0 having scanned
-nothing; the fixed argv now carries the hidden `--ignore-stdin`
-option (verified against the installed 4.1-0kali1 source), pinned by
-a hermetic argv test.
-
-In the same 2026-09-04 session the two lab-executable HTTP-MCP rows
-were measured end-to-end (executable templates in
-[lab/README.md](lab/README.md)): an armed `semgrep_scan` (semgrep
-1.176.1 in the dev venv, inline rule pack, `SEMGREP_SCAN_ROOT`
-containment, a planted `eval` in a synthetic scan root) returned a
-`complete` envelope whose materialized report carries the finding
-(`tmp.lab-planted-eval` at `vuln.py:3`, severity ERROR); and the five
-admitted `metasploit-mcp` listing reads over the operator-run loopback
-SSE server (GH05TCREW/MetasploitMCP at pinned commit `afc792d`,
-metasploit-framework 6.4.135-dev) all returned `complete` envelopes —
-`list_tools` reporting the upstream 12-tool inventory matching the
-arm's read/dispatch tiers, `list_exploits`/`list_payloads` the
-wrapper's own 100-entry module lists, and the session/listener
-listings the honest empty success shape. The remaining three rows
-(burp, GTI, prowler) are operator-gated: lab/README.md carries their
-validation runbooks, and the lab never spends operator credentials.
-
-In the 2026-09-05 session `page-fetch` was live-measured for the first
-time since the stdin rewrite: the binary was installed at a pinned
-commit ([lab/install-page-fetch.sh](lab/install-page-fetch.sh);
-detectify/page-fetch has no release tags), the golden-image target was
-spawned, and an armed fetch of `http://<target>:8080/form.html?q=1`
-returned a `complete` envelope with the `[dispatch]` audit line
-recording scope and target, one 117-byte credentials-stripped
-policy-report artifact, ~1s elapsed. The same session's rehearsal
-battery and a real-head codex attempt are recorded in
-[lab/exercise-results.md](lab/exercise-results.md).
-
-The `zdns` arm's lookup — the last dispatch arm with no executable
-lab path — got its measurement through a loopback lab zone:
-`lab/zdns-measure.sh` runs dnsmasq authoritative for `lab.ctf` on an
-unoccupied loopback IP (no upstream — the script proves per run that
-an outside-zone query under the overlay is REFUSED) and executes the
-armed invoke inside a private mount namespace whose resolv.conf
-overlay points at it (host resolver asserted unchanged by a
-before/after hash). Measured 2026-09-04 as a `complete` envelope
-with the `[dispatch]` audit line answering
-`probe.lab.ctf A 192.0.2.10` from `127.0.0.2:53` — with the honest note that the
-dispatch scope authorizes the queried name, not the resolver
-transport, which is why the script pins and reports the resolver.
 
 ## Remote-read admission
 
