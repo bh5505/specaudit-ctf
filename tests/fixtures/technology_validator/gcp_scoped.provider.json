@@ -1,0 +1,24 @@
+{
+  "config": {},
+  "policy": {
+    "bindings": [
+      {
+        "members": [
+          "user:reader@example.test"
+        ],
+        "role": "roles/storage.objectViewer"
+      }
+    ],
+    "etag": "BwU-synthetic-scoped",
+    "version": 1,
+    "resourceId": "projects/_/buckets/demo-bucket"
+  },
+  "project": {
+    "projectId": "demo-project",
+    "projectNumber": "123456789012"
+  },
+  "bucket": {
+    "name": "demo-bucket",
+    "projectNumber": "123456789012"
+  }
+}

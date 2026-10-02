@@ -1,0 +1,21 @@
+{
+  "get_public_access_block": {
+    "exit_code": 255,
+    "stdout": "",
+    "stderr": "An error occurred (AccessDenied) when calling the GetPublicAccessBlock operation: expected owner mismatch or denied"
+  },
+  "get_bucket_acl": {
+    "exit_code": 255,
+    "stdout": "",
+    "stderr": "An error occurred (AccessDenied) when calling the GetBucketAcl operation: expected owner mismatch or denied"
+  },
+  "get_bucket_policy": {
+    "exit_code": 255,
+    "stdout": "",
+    "stderr": "An error occurred (AccessDenied) when calling the GetBucketPolicy operation: expected owner mismatch or denied"
+  },
+  "lane2": {
+    "aws_s3_ls": {"exit_code": 0, "stdout": "2026-01-01 00:00:00          1 canary.txt\n", "stderr": ""},
+    "curl_head": {"exit_code": 0, "stdout": "200", "stderr": ""}
+  }
+}

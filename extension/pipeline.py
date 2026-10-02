@@ -11,7 +11,7 @@ The governed end-to-end path (every step is an MCP surface tool):
     step 1   invoke <recon/enrich arm>          seed = top-level domains + a
              asset-recon, gti, vulnify, zdns,   description of the target
              zgrab2, httpprobe, nmap, ...       environment -> assets + intel
-    step 2   pack_run                          ext_telecom_asmvm over evidence
+    step 2   pack_run                          ext_telecom_offsec over evidence
                                                  -> report.json (findings)
     step 3   prioritize_targets                report -> prioritized target list
                                                  with threat models + attack
@@ -148,20 +148,26 @@ def pack_run(
     run_id: str | None = None,
     fast_csv: bool = False,
 ) -> dict:
-    """Run an ext_telecom_asmvm pack over an evidence dir (governed step 2).
+    """Run an ext_telecom_offsec pack over an evidence dir (governed step 2).
 
     Wraps ``tools/ctf_run_checks.run()`` (the durable runner) and returns both
     the parsed report and the report.json path, so the next surface step
     (``prioritize_targets``) consumes a stable, discoverable artifact rather
     than guessing at output locations.
     """
+    canonical_pack = _ROOT / "packs" / "ext_telecom_offsec"
+    if Path(pack_root).resolve() != canonical_pack.resolve():
+        raise ValueError("pack_run requires the checked-in ext_telecom_offsec pack root")
     out = Path(out_dir) if out_dir else Path(tempfile.mkdtemp(prefix="ctf-mcp-"))
     if db not in ("duckdb", "sqlite"):
         raise ValueError("db must be 'duckdb' or 'sqlite'")
     rid = run_id or "mcp-%s" % os.urandom(4).hex()
-    rc = ctf_run_checks.run(
-        pack_root, evidence_dir, str(out), db, limit, rid, fast_csv=fast_csv
-    )
+    try:
+        rc = ctf_run_checks.run(
+            pack_root, evidence_dir, str(out), db, limit, rid, fast_csv=fast_csv
+        )
+    except ctf_run_checks.RunnerError as exc:
+        raise RuntimeError(str(exc)) from exc
     if rc != 0:
         raise RuntimeError("pack run failed (rc=%r)" % rc)
     report_path = out / "report.json"

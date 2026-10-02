@@ -148,9 +148,7 @@ def main():
             headers = [r[0] for r in conn.execute(
                 "DESCRIBE %s" % m._quote_identifier(table)).fetchall()]
             m.stamp_accept_lineage(
-                conn, table, headers, args.run_id,
-                preserve_run_id=m.mapping_declares_run_id_source(
-                    mapping_columns, table))
+                conn, table, headers, args.run_id)
             loaded[table] = conn.execute(
                 "SELECT count(*) FROM %s"
                 % m._quote_identifier(table)).fetchone()[0]
@@ -172,8 +170,7 @@ def main():
         rows = m.apply_mapping_value_maps(mapping_value_maps, table, headers, rows)
         m.create_table(conn, engine, table, rows, headers, ddl_types=ddl_types)
         m.stamp_accept_lineage(
-            conn, table, headers, args.run_id,
-            preserve_run_id=m.mapping_declares_run_id_source(mapping_columns, table))
+            conn, table, headers, args.run_id)
         loaded[table] = len(rows)
     if not (args.fast_csv and engine == "duckdb"):
         print("engine=%s loaded %d tables in %.1fs: %s"

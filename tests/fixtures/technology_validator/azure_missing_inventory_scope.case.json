@@ -1,0 +1,32 @@
+{
+  "synthetic": true,
+  "request": {
+    "schema": "specaudit.validator.technology-fixture.v1",
+    "provider": "azure",
+    "finding_id": "ctf-azure-missing-inventory-scope",
+    "rule_id": "AZURE-NET-002",
+    "resource_uid": "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/ctf-rg/providers/Microsoft.Network/networkSecurityGroups/ctf-nsg",
+    "details": {
+      "account_id": "22222222-2222-4222-8222-222222222222",
+      "details": {
+        "rule_name": "allow-ssh"
+      }
+    },
+    "authorization": {
+      "subscription_id": "11111111-1111-4111-8111-111111111111",
+      "tenant_id": "22222222-2222-4222-8222-222222222222",
+      "principal": "validator@example.test"
+    }
+  },
+  "expect": {
+    "finding_id": "ctf-azure-missing-inventory-scope",
+    "rule_id": "AZURE-NET-002",
+    "configuration_status": "unknown",
+    "reachability_status": "unknown",
+    "verdict": "INCONCLUSIVE",
+    "reason_code": "account_scope_incomplete",
+    "planned_argv": []
+  },
+  "response_file": "azure_public.provider.json",
+  "expect_no_plan": true
+}

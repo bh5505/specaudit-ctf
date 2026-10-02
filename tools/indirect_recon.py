@@ -209,7 +209,7 @@ def table_file(evidence_dir, table):
     """Find a table's CSV: bare `<table>.csv` or a pack-prefixed export.
 
     Evidence directories come out of the pack loader with the pack's table
-    prefix (`ext_telecom_asmvm_service_endpoint.csv`); hand-built and exported
+    prefix (`ext_telecom_offsec_asmvm_service_endpoint.csv`); hand-built and exported
     directories often use the bare name. Both are accepted rather than
     hardcoding one pack's prefix into the tool.
     """

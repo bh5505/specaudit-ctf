@@ -219,7 +219,7 @@ _TOOL_DEFS: tuple[dict[str, Any], ...] = (
     {
         "name": "pack_run",
         "description": (
-            "Governed step 2: run an ext_telecom_asmvm pack over an evidence "
+            "Governed step 2: run an ext_telecom_offsec pack over an evidence "
             "dir and return the report.json findings + path. Backed by "
             "tools/ctf_run_checks.run(). Default engine is sqlite (stdlib) so "
             "the surface needs no duckdb."
@@ -481,7 +481,7 @@ class McpServer:
         raise _InvalidParams(f"unknown tool: {name}")
 
     def _pack_run_tool(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        """Governed step 2: run ext_telecom_asmvm over evidence (report.json)."""
+        """Governed step 2: run ext_telecom_offsec over evidence (report.json)."""
         pack_root = arguments.get("pack_root")
         evidence_dir = arguments.get("evidence_dir")
         if not isinstance(pack_root, str) or not pack_root.strip():

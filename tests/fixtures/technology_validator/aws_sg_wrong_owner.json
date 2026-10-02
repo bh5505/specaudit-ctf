@@ -1,0 +1,18 @@
+{
+  "SecurityGroups": [
+    {
+      "GroupId": "sg-0123456789abcdef0",
+      "OwnerId": "111111111111",
+      "VpcId": "vpc-0123456789abcdef0",
+      "IpPermissions": [
+        {
+          "IpProtocol": "tcp",
+          "FromPort": 22,
+          "ToPort": 22,
+          "IpRanges": [{"CidrIp": "0.0.0.0/0"}],
+          "Ipv6Ranges": []
+        }
+      ]
+    }
+  ]
+}

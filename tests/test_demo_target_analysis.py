@@ -11,7 +11,7 @@ from tools.demo_target_analysis import (
     read_cves,
 )
 
-T1 = "ext_telecom_asmvm_t1_critical_vuln_on_exposed"
+T1 = "ext_telecom_offsec_asmvm_t1_critical_vuln_on_exposed"
 
 
 def _t3(ip, port, tech):
@@ -74,7 +74,7 @@ def test_build_attack_paths_seeds_from_convergence():
 
 
 def test_read_cves(tmp_path):
-    co = tmp_path / "ext_telecom_asmvm_cve_observation.csv"
+    co = tmp_path / "ext_telecom_offsec_asmvm_cve_observation.csv"
     co.write_text("ip,cve,inferred_score\n9.9.9.9,CVE-2021-44790,8.0\n", encoding="utf-8")
     cves = read_cves(tmp_path)
     assert cves["9.9.9.9"] == [("CVE-2021-44790", "banner_asserted_inference")]

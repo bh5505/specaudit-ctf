@@ -1,0 +1,61 @@
+{
+  "synthetic": true,
+  "request": {
+    "schema": "specaudit.validator.technology-fixture.v1",
+    "provider": "azure",
+    "finding_id": "ctf-azure-cli-nonzero",
+    "rule_id": "AZURE-NET-002",
+    "resource_uid": "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/ctf-rg/providers/Microsoft.Network/networkSecurityGroups/ctf-nsg",
+    "account_id": "22222222-2222-4222-8222-222222222222",
+    "details": {
+      "account_id": "22222222-2222-4222-8222-222222222222",
+      "details": {
+        "rule_name": "allow-ssh"
+      }
+    },
+    "authorization": {
+      "subscription_id": "11111111-1111-4111-8111-111111111111",
+      "tenant_id": "22222222-2222-4222-8222-222222222222",
+      "principal": "validator@example.test"
+    },
+    "fake_provider_exit_code": 1
+  },
+  "expect": {
+    "finding_id": "ctf-azure-cli-nonzero",
+    "rule_id": "AZURE-NET-002",
+    "configuration_status": "unknown",
+    "reachability_status": "unknown",
+    "reason_code": "cli_nonzero_exit",
+    "planned_argv": [
+      [
+        "cloud",
+        "show",
+        "--name=AzureCloud",
+        "--output=json",
+        "--only-show-errors"
+      ],
+      [
+        "account",
+        "show",
+        "--subscription=11111111-1111-4111-8111-111111111111",
+        "--output=json",
+        "--only-show-errors"
+      ],
+      [
+        "network",
+        "nsg",
+        "show",
+        "--ids=/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/ctf-rg/providers/Microsoft.Network/networkSecurityGroups/ctf-nsg",
+        "--subscription=11111111-1111-4111-8111-111111111111",
+        "--output=json",
+        "--only-show-errors"
+      ]
+    ],
+    "verdict": "INCONCLUSIVE",
+    "evidence": {
+      "exit_code": 1
+    }
+  },
+  "response_file": "azure_public.provider.json",
+  "expect_plan": true
+}

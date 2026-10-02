@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build an evidence dir where ext_telecom_asmvm_vm_finding.csv is replaced by a
+"""Build an evidence dir where ext_telecom_offsec_asmvm_vm_finding.csv is replaced by a
 SEIF round-tripped projection, everything else hard-linked from the baseline.
 
 Used to run pack checks against SEIF-mediated evidence: same runner, same SQL,
@@ -7,7 +7,7 @@ only the VM-finding table's provenance changed
 (export -> SEIF -> pack CSV instead of export -> pack CSV).
 
   python make_seif_evidence_dir.py --baseline pack_evidence \
-      --projection seif_roundtrip_full/seif_A_ext_telecom_asmvm_vm_finding.csv \
+      --projection seif_roundtrip_full/seif_A_ext_telecom_offsec_asmvm_vm_finding.csv \
       --out evidence_seif_A
 """
 
@@ -18,7 +18,7 @@ import os
 import shutil
 import sys
 
-TABLE = "ext_telecom_asmvm_vm_finding.csv"
+TABLE = "ext_telecom_offsec_asmvm_vm_finding.csv"
 
 
 def rewrite_run_id(src, dst, run_id):

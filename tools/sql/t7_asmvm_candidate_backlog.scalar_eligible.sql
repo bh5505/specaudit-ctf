@@ -1,158 +1,453 @@
--- tools/sql/t7_asmvm_candidate_backlog.scalar_eligible.sql
--- (scalar-aggregate form; the rewrite that actually fixed SQLite)
---
--- Same row contract and same eligible-population definition as the shipped
--- check; only the shape changes. This is the same rewrite as
--- t7_asmvm_candidate_backlog.materialised.sql (variant 1) with each branch
--- wrapped in an UNCORRELATED scalar subquery.
---
--- WHY: the shipped form puts four filtered selects, two of them containing a
--- correlated EXISTS over unindexed ingest tables (vm_cve_observation 412k rows,
--- asm_vm_surface 108k rows, vm_finding 240k rows, vm_cve_finding 446k rows),
--- into one non-aggregate CTE that the outer query joins once. DuckDB builds hash
--- joins and finishes the whole 21-check pack in 12.5 s. SQLite FLATTENS a
--- non-aggregate CTE into the outer query, so each EXISTS re-scans its table for
--- every finding_candidate row - a nested loop with no index to help it, because
--- the runner creates none (tables arrive through CREATE TABLE ... INSERT, the
--- same shape as the product's accept path). Measured on the same evidence: the
--- rest of the pack finishes in minutes, this check alone was still running after
--- 2 hours when the run was terminated.
---
--- FIX: aggregate first, join key sets instead of rows. GROUP BY makes each
--- branch non-flattenable, so SQLite has to materialise it. Variant 2 goes one
--- step further and hides each aggregate behind an uncorrelated scalar subquery:
--- SQLite evaluates an uncorrelated scalar subquery once and treats the value as
--- a constant, so the plan no longer depends on the planner choosing to index the
--- materialised CTE.
---
--- EQUIVALENCE ARGUMENT (verified cell-for-cell against the shipped SQL on DuckDB
--- with check_probe.py, and against the shipped SQL's expected 4 rows on SQLite):
---   * branch vm.scan.critical_open_exposed is an INNER JOIN count whose
---     cardinality is, over ip, vm_rows(ip) * svc_rows(ip); the shipped form and
---     this form both compute that product, so no one-row-per-ip grain assumption
---     about asm_vm_surface is needed.
---   * branches asm.inferred_cve / vm.scan.cve are semi-join counts (EXISTS), so
---     the multiplicity that matters is the outer side's only: SUM(outer_rows)
---     restricted to keys present on both sides.
---   * NULL keys: an equality join or correlated EXISTS drops NULL ip / NULL cve.
---     A GROUP BY would keep a NULL-key group, so both sides filter IS NOT NULL.
---   * branch asm.alert.high_active is a single-table count and is unchanged.
---   * COUNT(*) over an empty input returns one row with 0 and
---     COALESCE(SUM(...), 0) preserves that, so eligible still yields exactly
---     four producer rows and the UNION ALL shape is unchanged.
---   * The outer SELECT (grouping by producer/check_id, details string, risk
---     score, ORDER BY, LIMIT ?2) is copied verbatim from the shipped check.
---
+-- Diagnostic scalar source-identity plan; projection and bounds mirror shipped T7.
+-- T7 compares source-derived identities with candidate finding_keys. A count
+-- match alone cannot establish coverage when one source is missing and an
+-- unrelated candidate offsets it. Definite eligibility drives backlog; possible
+-- eligibility bounds over-queue. The two bounds can differ when cross-accept
+-- chronology is unavailable. Vendor dates are observations, not accept times.
+-- Both CVE producers queue one (ip,cve) pair. For the VM critical producer,
+-- a pair can exclude a finding at its accept only when all source components
+-- share that non-default accept event. A later vendor observation on any of
+-- the three pair components identifies a source-time gap, but cannot prove
+-- accept order: the VM finding itself may have been accepted still later.
 -- Bound params: ?1 = run_id, ?2 = row limit.
 
-WITH eligible AS (
+WITH candidate_queue AS (
+    SELECT c.run_id, c.check_id, c.candidate_id,
+           MAX(CASE WHEN COALESCE(c.llm_verdict, 'pending') = 'pending' THEN 1 ELSE 0 END) AS pending_seen,
+           MAX(CASE WHEN c.llm_verdict = 'duplicate' THEN 1 ELSE 0 END) AS duplicate_seen,
+           MAX(CASE WHEN c.llm_verdict = 'confirmed' THEN 1 ELSE 0 END) AS confirmed_seen,
+           MAX(CASE WHEN c.llm_verdict = 'rejected' THEN 1 ELSE 0 END) AS rejected_seen,
+           MAX(CASE WHEN COALESCE(CAST(c.passed_deterministic_gate AS BOOLEAN), false) = false
+                    THEN 1 ELSE 0 END) AS gate_failed_seen,
+           COUNT(DISTINCT COALESCE(c.llm_verdict, 'pending')) AS verdict_variants,
+           MIN(NULLIF(c.finding_key, '')) AS finding_key,
+           CASE WHEN MIN(NULLIF(c.finding_key, '')) IS NULL
+                     OR MAX(CASE WHEN NULLIF(TRIM(c.finding_key), '') IS NULL
+                                 THEN 1 ELSE 0 END) > 0
+                     OR MIN(c.finding_key) <> MAX(c.finding_key)
+                THEN 0 ELSE 1 END AS key_consistent,
+           MIN(c.first_seen_ts) AS first_seen_ts,
+           MAX(c.last_seen_ts) AS last_seen_ts
+    FROM ext_telecom_offsec_asmvm_finding_candidate c
+    WHERE c.run_id = ?1
+    GROUP BY c.run_id, c.check_id, c.candidate_id
+),
+corroborated_pair AS (
+    SELECT DISTINCT a.ip, a.cve
+    FROM ext_telecom_offsec_asmvm_cve_observation a
+    JOIN ext_telecom_offsec_asmvm_vm_cve_observation v
+      ON v.run_id = a.run_id AND v.ip = a.ip AND v.cve = a.cve
+     AND CAST(v.is_open AS BOOLEAN)
+    WHERE a.run_id = ?1 AND CAST(a.is_active AS BOOLEAN)
+),
+alert_base_ids AS (
+    SELECT run_id, engagement_id, alert_id,
+           MIN(NULLIF(vendor_alert_id, '')) AS min_vendor_id,
+           MAX(NULLIF(vendor_alert_id, '')) AS max_vendor_id
+    FROM ext_telecom_offsec_asmvm_alert
+    WHERE run_id = ?1
+    GROUP BY run_id, engagement_id, alert_id
+),
+alert_source AS (
+    SELECT e.engagement_id, e.alert_id, e.ip,
+           CASE WHEN a.min_vendor_id IS NOT NULL
+                      AND a.min_vendor_id <> a.max_vendor_id
+                THEN NULL
+                WHEN a.min_vendor_id IS NOT NULL
+                      AND a.min_vendor_id = a.max_vendor_id
+                THEN a.min_vendor_id
+                WHEN e.alert_id LIKE 'xpanse-alert-%'
+                THEN SUBSTR(e.alert_id, LENGTH('xpanse-alert-') + 1)
+                ELSE e.alert_id END AS vendor_alert_id,
+           CASE WHEN a.min_vendor_id IS NOT NULL
+                      AND a.min_vendor_id <> a.max_vendor_id
+                THEN 1 ELSE 0 END AS source_identity_unknown
+    FROM (SELECT DISTINCT run_id, engagement_id, alert_id, ip
+          FROM ext_telecom_offsec_asmvm_alert_endpoint
+          WHERE run_id = ?1 AND CAST(is_active_state AS BOOLEAN)
+            AND severity IN ('High', 'Critical')) e
+    LEFT JOIN alert_base_ids a
+      ON a.run_id = e.run_id AND a.engagement_id = e.engagement_id
+     AND a.alert_id = e.alert_id
+),
+alert_possible_keys AS (
+    SELECT DISTINCT s.engagement_id, s.alert_id, s.ip,
+           'xpanse:alert:' || a.vendor_alert_id || ':ip:' || s.ip AS source_key
+    FROM alert_source s
+    JOIN ext_telecom_offsec_asmvm_alert a
+      ON a.run_id = ?1 AND a.engagement_id = s.engagement_id
+     AND a.alert_id = s.alert_id
+    WHERE s.source_identity_unknown = 1
+      AND NULLIF(TRIM(a.vendor_alert_id), '') IS NOT NULL
+),
+known_alert_source AS (
+    -- Builder candidate identity is vendor ID plus endpoint IP. Multiple
+    -- internal alert IDs with that same identity are one logical source.
+    SELECT DISTINCT vendor_alert_id, ip
+    FROM alert_source
+    WHERE source_identity_unknown = 0
+),
+asm_pair_times AS (
+    SELECT ip, cve, MAX(first_observed_ts) AS latest_first_observed,
+           MAX(CASE WHEN first_observed_ts IS NULL THEN 1 ELSE 0 END)
+               AS time_unknown
+    FROM ext_telecom_offsec_asmvm_cve_observation
+    WHERE run_id = ?1 AND CAST(is_active AS BOOLEAN)
+    GROUP BY ip, cve
+),
+vm_pair_times AS (
+    SELECT ip, cve, MAX(last_found_ts) AS latest_last_found,
+           MAX(CASE WHEN last_found_ts IS NULL THEN 1 ELSE 0 END)
+               AS time_unknown
+    FROM ext_telecom_offsec_asmvm_vm_cve_observation
+    WHERE run_id = ?1 AND CAST(is_open AS BOOLEAN)
+    GROUP BY ip, cve
+),
+finding_pair_times AS (
+    SELECT finding_id, ip, cve,
+           MAX(last_found_ts) AS latest_last_found,
+           MAX(CASE WHEN last_found_ts IS NULL THEN 1 ELSE 0 END)
+               AS time_unknown
+    FROM ext_telecom_offsec_asmvm_vm_cve_finding
+    WHERE run_id = ?1 AND CAST(is_open AS BOOLEAN)
+    GROUP BY finding_id, ip, cve
+),
+paired_vm_source AS (
+    SELECT cf.finding_id, cf.ip,
+           MAX(a.latest_first_observed) AS latest_asm_observed,
+           MAX(v.latest_last_found) AS latest_vm_observed,
+           MAX(cf.latest_last_found) AS latest_vm_finding,
+           MAX(a.time_unknown) AS asm_time_unknown,
+           MAX(v.time_unknown) AS vm_time_unknown,
+           MAX(cf.time_unknown) AS finding_time_unknown
+    FROM finding_pair_times cf
+    JOIN asm_pair_times a ON a.ip = cf.ip AND a.cve = cf.cve
+    JOIN vm_pair_times v ON v.ip = cf.ip AND v.cve = cf.cve
+    GROUP BY cf.finding_id, cf.ip
+),
+joint_pair AS (
+    SELECT DISTINCT cf.finding_id, cf.ip, cf.accept_event_id
+    FROM ext_telecom_offsec_asmvm_vm_cve_finding cf
+    JOIN ext_telecom_offsec_asmvm_cve_observation a
+      ON a.run_id = cf.run_id AND a.ip = cf.ip AND a.cve = cf.cve
+     AND a.accept_event_id = cf.accept_event_id AND CAST(a.is_active AS BOOLEAN)
+    JOIN ext_telecom_offsec_asmvm_vm_cve_observation v
+      ON v.run_id = cf.run_id AND v.ip = cf.ip AND v.cve = cf.cve
+     AND v.accept_event_id = cf.accept_event_id AND CAST(v.is_open AS BOOLEAN)
+    WHERE cf.run_id = ?1 AND CAST(cf.is_open AS BOOLEAN)
+      AND cf.accept_event_id <> '00000000-0000-0000-0000-000000000000'
+),
+critical_source_rows AS (
+    SELECT DISTINCT f.finding_id, f.accept_event_id, f.ip,
+           CASE WHEN p.finding_id IS NULL THEN 1 ELSE 0 END
+                AS definite_eligible,
+           CASE WHEN j.finding_id IS NULL THEN 1 ELSE 0 END
+                AS possible_eligible,
+           CASE WHEN p.finding_id IS NOT NULL AND j.finding_id IS NULL
+                     AND f.last_found_ts IS NOT NULL
+                     AND (COALESCE(p.latest_asm_observed > f.last_found_ts, false)
+                          OR COALESCE(p.latest_vm_observed > f.last_found_ts, false)
+                          OR COALESCE(p.latest_vm_finding > f.last_found_ts, false))
+                THEN 1 ELSE 0 END
+                AS later_pair_source_seen,
+           CASE WHEN p.finding_id IS NOT NULL AND j.finding_id IS NULL
+                     AND (f.last_found_ts IS NULL OR p.asm_time_unknown > 0
+                          OR p.vm_time_unknown > 0 OR p.finding_time_unknown > 0)
+                THEN 1 ELSE 0 END
+                AS pair_source_time_unknown
+    FROM ext_telecom_offsec_asmvm_vm_finding f
+    LEFT JOIN paired_vm_source p
+      ON p.finding_id = f.finding_id AND p.ip = f.ip
+    LEFT JOIN joint_pair j
+      ON j.finding_id = f.finding_id AND j.ip = f.ip
+     AND j.accept_event_id = f.accept_event_id
+    WHERE f.run_id = ?1 AND CAST(f.is_open AS BOOLEAN) AND f.severity >= 9.0
+      AND EXISTS (
+          SELECT 1 FROM ext_telecom_offsec_asmvm_asm_vm_surface s
+          WHERE s.run_id = f.run_id AND s.ip = f.ip
+            AND CAST(s.has_active_service AS BOOLEAN))
+),
+source_identities AS (
     SELECT 'vm.scan.critical_open_exposed' AS producer,
-           (SELECT COALESCE(SUM(k.vm_rows * k.svc_rows), 0)
-            FROM (
-                SELECT u.ip AS ip, u.run_id AS run_id,
-                       SUM(CASE WHEN u.src = 'vm' THEN 1 ELSE 0 END)  AS vm_rows,
-                       SUM(CASE WHEN u.src = 'svc' THEN 1 ELSE 0 END) AS svc_rows
-                FROM (
-                    SELECT f.ip AS ip, f.run_id AS run_id, 'vm' AS src
-                    FROM ext_telecom_asmvm_vm_finding f
-                    WHERE f.run_id = ?1
-                      AND CAST(f.is_open AS BOOLEAN) AND f.severity >= 9.0
-                      AND f.ip IS NOT NULL
-                    UNION ALL
-                    SELECT s.ip AS ip, s.run_id AS run_id, 'svc' AS src
-                    FROM ext_telecom_asmvm_asm_vm_surface s
-                    WHERE s.run_id = ?1
-                      AND CAST(s.has_active_service AS BOOLEAN)
-                      AND s.ip IS NOT NULL
-                ) u
-                GROUP BY u.ip, u.run_id
-            ) k
-            WHERE k.vm_rows > 0 AND k.svc_rows > 0)                   AS eligible_rows
-
+           'ivanti:finding:' || finding_id AS source_key,
+           'vcand-' || finding_id AS required_candidate_id,
+           MAX(definite_eligible) AS definite_eligible,
+           MAX(possible_eligible) AS possible_eligible,
+           MAX(later_pair_source_seen) AS later_pair_source_seen,
+           MAX(pair_source_time_unknown) AS pair_source_time_unknown,
+           NULL AS source_engagement_id, NULL AS source_alert_id,
+           NULL AS source_ip, 0 AS source_identity_unknown
+    FROM critical_source_rows GROUP BY finding_id
     UNION ALL
-
-    -- single-table count, no join to reorder
     SELECT 'asm.alert.high_active',
-           (SELECT COUNT(*)
-            FROM ext_telecom_asmvm_alert_endpoint a
-            WHERE a.run_id = ?1
-              AND CAST(a.is_active_state AS BOOLEAN)
-              AND a.severity IN ('High', 'Critical'))                AS eligible_rows
-
+           'xpanse:alert:' || vendor_alert_id || ':ip:' || ip,
+           NULL, 1, 1, 0, 0, NULL, NULL, ip, 0
+    FROM known_alert_source
     UNION ALL
-
-    SELECT 'asm.inferred_cve',
-           (SELECT COALESCE(SUM(k.asm_rows), 0)
-            FROM (
-                SELECT u.ip AS ip, u.cve AS cve, u.run_id AS run_id,
-                       SUM(CASE WHEN u.src = 'asm' THEN 1 ELSE 0 END) AS asm_rows,
-                       SUM(CASE WHEN u.src = 'vm' THEN 1 ELSE 0 END)  AS vm_rows
-                FROM (
-                    SELECT a.ip AS ip, a.cve AS cve, a.run_id AS run_id, 'asm' AS src
-                    FROM ext_telecom_asmvm_cve_observation a
-                    WHERE a.run_id = ?1
-                      AND CAST(a.is_active AS BOOLEAN)
-                      AND a.ip IS NOT NULL AND a.cve IS NOT NULL
-                    UNION ALL
-                    SELECT v.ip AS ip, v.cve AS cve, v.run_id AS run_id, 'vm' AS src
-                    FROM ext_telecom_asmvm_vm_cve_observation v
-                    WHERE v.run_id = ?1
-                      AND CAST(v.is_open AS BOOLEAN)
-                      AND v.ip IS NOT NULL AND v.cve IS NOT NULL
-                ) u
-                GROUP BY u.ip, u.cve, u.run_id
-            ) k
-            WHERE k.asm_rows > 0 AND k.vm_rows > 0)                   AS eligible_rows
-
+    SELECT 'asm.alert.high_active', NULL,
+           NULL, 0, 1, 0, 0, engagement_id, alert_id, ip, 1
+    FROM alert_source WHERE source_identity_unknown = 1
     UNION ALL
-
-    SELECT 'vm.scan.cve',
-           (SELECT COALESCE(SUM(k.vm_rows), 0)
-            FROM (
-                SELECT u.ip AS ip, u.cve AS cve, u.run_id AS run_id,
-                       SUM(CASE WHEN u.src = 'vm' THEN 1 ELSE 0 END)  AS vm_rows,
-                       SUM(CASE WHEN u.src = 'asm' THEN 1 ELSE 0 END) AS asm_rows
-                FROM (
-                    SELECT v.ip AS ip, v.cve AS cve, v.run_id AS run_id, 'vm' AS src
-                    FROM ext_telecom_asmvm_vm_cve_finding v
-                    WHERE v.run_id = ?1
-                      AND CAST(v.is_open AS BOOLEAN)
-                      AND v.ip IS NOT NULL AND v.cve IS NOT NULL
-                    UNION ALL
-                    SELECT a.ip AS ip, a.cve AS cve, a.run_id AS run_id, 'asm' AS src
-                    FROM ext_telecom_asmvm_cve_observation a
-                    WHERE a.run_id = ?1
-                      AND CAST(a.is_active AS BOOLEAN)
-                      AND a.ip IS NOT NULL AND a.cve IS NOT NULL
-                ) u
-                GROUP BY u.ip, u.cve, u.run_id
-            ) k
-            WHERE k.vm_rows > 0 AND k.asm_rows > 0)                   AS eligible_rows
+    SELECT 'asm.inferred_cve', 'xpanse:cve:' || cve || ':ip:' || ip,
+           NULL, 1, 1, 0, 0, NULL, NULL, NULL, 0 FROM corroborated_pair
+    UNION ALL
+    SELECT 'vm.scan.cve', 'ivanti:cve:' || cve || ':ip:' || ip,
+           NULL, 1, 1, 0, 0, NULL, NULL, NULL, 0 FROM corroborated_pair
+),
+source_with_queue AS (
+    SELECT s.*,
+           CASE WHEN EXISTS (
+               SELECT 1 FROM candidate_queue c
+               WHERE c.check_id = s.producer AND c.key_consistent = 1
+                 AND (c.finding_key = s.source_key OR
+                      (s.source_identity_unknown = 1 AND EXISTS (
+                          SELECT 1 FROM alert_possible_keys k
+                          WHERE k.engagement_id = s.source_engagement_id
+                            AND k.alert_id = s.source_alert_id
+                            AND k.ip = s.source_ip
+                            AND k.source_key = c.finding_key)))
+                 AND (s.required_candidate_id IS NULL
+                      OR c.candidate_id = s.required_candidate_id))
+                THEN 1 ELSE 0 END AS queued,
+           CASE WHEN s.source_identity_unknown = 1 THEN
+                CASE WHEN NOT EXISTS (
+                    SELECT 1 FROM alert_possible_keys k
+                    WHERE k.engagement_id = s.source_engagement_id
+                      AND k.alert_id = s.source_alert_id AND k.ip = s.source_ip
+                      AND NOT EXISTS (
+                          SELECT 1 FROM candidate_queue c
+                          WHERE c.check_id = s.producer AND c.key_consistent = 1
+                            AND c.finding_key = k.source_key))
+                THEN 1 ELSE 0 END
+                ELSE CASE WHEN EXISTS (
+                    SELECT 1 FROM candidate_queue c
+                    WHERE c.check_id = s.producer AND c.key_consistent = 1
+                      AND c.finding_key = s.source_key
+                      AND (s.required_candidate_id IS NULL
+                           OR c.candidate_id = s.required_candidate_id))
+                THEN 1 ELSE 0 END END AS definitely_queued,
+           CASE WHEN EXISTS (
+               SELECT 1 FROM candidate_queue c
+               WHERE c.check_id = s.producer AND c.key_consistent = 0
+                 AND (s.required_candidate_id IS NULL
+                      OR c.candidate_id = s.required_candidate_id))
+                THEN 1 ELSE 0 END AS unknown_queued
+    FROM source_identities s
+),
+known_candidate_support AS (
+    -- One stable finding_key has capacity for one logical source, even if
+    -- distinct queued candidate IDs claim the same key.
+    SELECT c.check_id AS producer,
+           COUNT(DISTINCT c.finding_key) AS possibly_supported_candidates
+    FROM candidate_queue c
+    WHERE c.key_consistent = 1 AND EXISTS (
+        SELECT 1 FROM source_identities s
+        WHERE s.producer = c.check_id AND s.possible_eligible = 1
+          AND (c.finding_key = s.source_key OR
+               (s.source_identity_unknown = 1 AND EXISTS (
+                   SELECT 1 FROM alert_possible_keys k
+                   WHERE k.engagement_id = s.source_engagement_id
+                     AND k.alert_id = s.source_alert_id AND k.ip = s.source_ip
+                     AND k.source_key = c.finding_key)))
+          AND (s.required_candidate_id IS NULL
+               OR c.candidate_id = s.required_candidate_id))
+    GROUP BY c.check_id
+),
+unknown_candidate_support AS (
+    SELECT c.check_id AS producer,
+           COUNT(*) AS possibly_supported_unknown_candidates
+    FROM candidate_queue c
+    WHERE c.key_consistent = 0 AND EXISTS (
+        SELECT 1 FROM source_identities s
+        WHERE s.producer = c.check_id AND s.possible_eligible = 1
+          AND (s.required_candidate_id IS NULL
+               OR c.candidate_id = s.required_candidate_id))
+    GROUP BY c.check_id
+),
+alert_key_pairs AS (
+    -- Pair subsets expose a definite shortage when two accepted vendor keys
+    -- can only belong to one conflicted endpoint.
+    SELECT DISTINCT k1.source_key AS key1, k2.source_key AS key2
+    FROM alert_possible_keys k1
+    JOIN alert_possible_keys k2
+      ON k2.engagement_id = k1.engagement_id AND k2.alert_id = k1.alert_id
+     AND k2.ip = k1.ip AND k1.source_key < k2.source_key
+    WHERE EXISTS (
+        SELECT 1 FROM candidate_queue c
+        WHERE c.check_id = 'asm.alert.high_active'
+          AND c.key_consistent = 1 AND c.finding_key = k1.source_key)
+      AND EXISTS (
+        SELECT 1 FROM candidate_queue c
+        WHERE c.check_id = 'asm.alert.high_active'
+          AND c.key_consistent = 1 AND c.finding_key = k2.source_key)
+),
+alert_pair_deficit AS (
+    SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM alert_key_pairs p
+        WHERE (SELECT COUNT(*) FROM source_identities s
+               WHERE s.producer = 'asm.alert.high_active'
+                 AND s.possible_eligible = 1
+                 AND (s.source_key IN (p.key1, p.key2)
+                      OR (s.source_identity_unknown = 1 AND EXISTS (
+                          SELECT 1 FROM alert_possible_keys k
+                          WHERE k.engagement_id = s.source_engagement_id
+                            AND k.alert_id = s.source_alert_id
+                            AND k.ip = s.source_ip
+                            AND k.source_key IN (p.key1, p.key2))))) = 1)
+        THEN 1 ELSE 0 END AS pair_deficit
+),
+source_totals AS (
+    SELECT producer,
+           SUM(definite_eligible) AS eligible_rows,
+           SUM(possible_eligible) AS possible_eligible_rows,
+           SUM(CASE WHEN definite_eligible = 1 AND queued = 0 THEN 1 ELSE 0 END)
+               AS backlog,
+           SUM(CASE WHEN possible_eligible = 1 AND definitely_queued = 0
+                    THEN 1 ELSE 0 END)
+               AS possible_backlog,
+           SUM(CASE WHEN definite_eligible = 1 AND definitely_queued = 1
+                    THEN 1 ELSE 0 END)
+               AS definitely_supported_queue,
+           SUM(CASE WHEN possible_eligible = 1 AND queued = 1 THEN 1 ELSE 0 END)
+               AS possibly_supported_queue,
+           SUM(CASE WHEN definite_eligible = 1 AND queued = 0
+                         AND unknown_queued = 0 THEN 1 ELSE 0 END)
+               AS required_identity_backlog,
+           SUM(later_pair_source_seen) AS later_pair_source_seen,
+           SUM(pair_source_time_unknown) AS pair_source_time_unknown,
+           SUM(source_identity_unknown) AS source_identity_unknown
+    FROM source_with_queue GROUP BY producer
+),
+queue_totals AS (
+    SELECT check_id AS producer, COUNT(*) AS queued,
+           SUM(pending_seen) AS pending_seen,
+           SUM(duplicate_seen) AS duplicate_seen,
+           SUM(confirmed_seen) AS confirmed_seen,
+           SUM(rejected_seen) AS rejected_seen,
+           SUM(gate_failed_seen) AS gate_failed_seen,
+           SUM(CASE WHEN verdict_variants > 1 THEN 1 ELSE 0 END)
+               AS multi_state_candidates,
+           SUM(CASE WHEN key_consistent = 0 THEN 1 ELSE 0 END)
+               AS queue_identity_unknown,
+           MIN(first_seen_ts) AS oldest_seen,
+           MAX(last_seen_ts) AS newest_seen
+    FROM candidate_queue GROUP BY check_id
+),
+eligible AS (
+    SELECT p.producer, ?1 AS run_id,
+           COALESCE(s.eligible_rows, 0) AS eligible_rows,
+           COALESCE(s.possible_eligible_rows, 0) AS possible_eligible_rows,
+           COALESCE(s.backlog, 0) AS backlog,
+           COALESCE(s.possible_backlog, 0) AS possible_backlog,
+           COALESCE(s.definitely_supported_queue, 0) AS definitely_supported_queue,
+           COALESCE(s.possibly_supported_queue, 0) AS possibly_supported_queue,
+           COALESCE(k.possibly_supported_candidates, 0)
+               AS possibly_supported_candidates,
+           COALESCE(u.possibly_supported_unknown_candidates, 0)
+               AS possibly_supported_unknown_candidates,
+           CASE WHEN p.producer = 'asm.alert.high_active'
+                THEN (SELECT pair_deficit FROM alert_pair_deficit)
+                ELSE 0 END AS alert_pair_deficit,
+           COALESCE(s.required_identity_backlog, 0) AS required_identity_backlog,
+           COALESCE(s.later_pair_source_seen, 0) AS later_pair_source_seen,
+           COALESCE(s.pair_source_time_unknown, 0) AS pair_source_time_unknown,
+           COALESCE(s.source_identity_unknown, 0) AS source_identity_unknown,
+           CASE WHEN COALESCE(s.source_identity_unknown, 0) > 0
+                THEN 1 ELSE 0 END AS matching_bound_incomplete,
+           COALESCE(q.queued, 0) AS queued,
+           COALESCE(q.pending_seen, 0) AS pending_seen,
+           COALESCE(q.duplicate_seen, 0) AS duplicate_seen,
+           COALESCE(q.confirmed_seen, 0) AS confirmed_seen,
+           COALESCE(q.rejected_seen, 0) AS rejected_seen,
+           COALESCE(q.gate_failed_seen, 0) AS gate_failed_seen,
+           COALESCE(q.multi_state_candidates, 0) AS multi_state_candidates,
+           COALESCE(q.queue_identity_unknown, 0) AS queue_identity_unknown,
+           q.oldest_seen, q.newest_seen
+    FROM (SELECT 'vm.scan.critical_open_exposed' AS producer
+          UNION ALL SELECT 'asm.alert.high_active'
+          UNION ALL SELECT 'asm.inferred_cve'
+          UNION ALL SELECT 'vm.scan.cve') p
+    LEFT JOIN source_totals s ON s.producer = p.producer
+    LEFT JOIN queue_totals q ON q.producer = p.producer
+    LEFT JOIN known_candidate_support k ON k.producer = p.producer
+    LEFT JOIN unknown_candidate_support u ON u.producer = p.producer
+),
+known_bounds AS (
+    SELECT e.*,
+           CASE WHEN e.possibly_supported_queue < e.possibly_supported_candidates
+                THEN e.possibly_supported_queue
+                ELSE e.possibly_supported_candidates END AS raw_known_support,
+           CASE WHEN e.producer = 'vm.scan.critical_open_exposed'
+                THEN e.required_identity_backlog
+                WHEN e.backlog > e.possibly_supported_unknown_candidates
+                THEN e.backlog - e.possibly_supported_unknown_candidates
+                ELSE 0 END
+                AS definite_backlog
+    FROM eligible e
+),
+bounds AS (
+    SELECT k.*,
+           CASE WHEN k.raw_known_support >
+                         k.possibly_supported_candidates - k.alert_pair_deficit
+                THEN k.possibly_supported_candidates - k.alert_pair_deficit
+                ELSE k.raw_known_support END AS known_possible_support
+    FROM known_bounds k
+),
+assessed AS (
+    SELECT b.*,
+           -- Known keys and source units each have capacity one. Unknown-key
+           -- rows must satisfy any required candidate ID and use only the
+           -- remaining possible source capacity.
+           CASE WHEN b.queued > b.known_possible_support +
+                     CASE WHEN b.possibly_supported_unknown_candidates <
+                                   b.possible_eligible_rows - b.known_possible_support
+                          THEN b.possibly_supported_unknown_candidates
+                          ELSE b.possible_eligible_rows - b.known_possible_support END
+                THEN b.queued - b.known_possible_support -
+                     CASE WHEN b.possibly_supported_unknown_candidates <
+                                   b.possible_eligible_rows - b.known_possible_support
+                          THEN b.possibly_supported_unknown_candidates
+                          ELSE b.possible_eligible_rows - b.known_possible_support END
+                ELSE 0 END AS definite_over_queued
+    FROM bounds b
 )
 SELECT
-    'asmvm:queue:' || c.check_id                    AS finding_key,
-    'Candidate queue coverage / backlog for ' || c.check_id AS title,
-    CAST(MAX(e.eligible_rows) AS BIGINT)            AS affected_count,
-    CAST(MAX(e.eligible_rows) - COUNT(*) AS BIGINT) AS exposure_estimate,
-    'queue:' || c.check_id                          AS record_locator,
-    'eligible=' || CAST(MAX(e.eligible_rows) AS VARCHAR) ||
-    '; queued=' || CAST(COUNT(*) AS VARCHAR) ||
-    '; backlog=' || CAST(MAX(e.eligible_rows) - COUNT(*) AS VARCHAR) ||
-    '; pending=' || CAST(COUNT(CASE WHEN COALESCE(c.llm_verdict, 'pending') = 'pending' THEN 1 ELSE NULL END) AS VARCHAR) ||
-    '; duplicates=' || CAST(COUNT(CASE WHEN c.llm_verdict = 'duplicate' THEN 1 ELSE NULL END) AS VARCHAR) ||
-    '; confirmed=' || CAST(COUNT(CASE WHEN c.llm_verdict = 'confirmed' THEN 1 ELSE NULL END) AS VARCHAR) ||
-    '; gate_failed=' || CAST(COUNT(CASE WHEN COALESCE(CAST(c.passed_deterministic_gate AS BOOLEAN), false) = false THEN 1 ELSE NULL END) AS VARCHAR) ||
-    '; oldest_seen=' || COALESCE(CAST(MIN(c.first_seen_ts) AS VARCHAR), '') ||
-    '; newest_seen=' || COALESCE(CAST(MAX(c.last_seen_ts) AS VARCHAR), '') AS details,
-    c.run_id                                        AS run_id,
-    CASE WHEN MAX(e.eligible_rows) - COUNT(*) > 1000 THEN 34
-         WHEN MAX(e.eligible_rows) - COUNT(*) > 0 THEN 26
-         ELSE 20 END                                AS risk_score
-FROM ext_telecom_asmvm_finding_candidate c
-JOIN eligible e
-    ON e.producer = c.check_id
-   AND e.eligible_rows > 0
-WHERE c.run_id = ?1
-GROUP BY c.check_id, c.run_id
+    'asmvm:queue:' || e.producer AS finding_key,
+    'Cumulative accepted-source candidate coverage for ' || e.producer AS title,
+    CAST(e.eligible_rows AS BIGINT) AS affected_count,
+    CAST(e.definite_backlog AS BIGINT) AS exposure_estimate,
+    'queue:' || e.producer AS record_locator,
+    'eligible=' || CAST(e.eligible_rows AS VARCHAR) ||
+    '; queued=' || CAST(e.queued AS VARCHAR) ||
+    '; backlog=' || CAST(e.definite_backlog AS VARCHAR) ||
+    '; over_queued=' || CAST(e.definite_over_queued AS VARCHAR) ||
+    '; possible_eligible=' || CAST(e.possible_eligible_rows AS VARCHAR) ||
+    '; possible_backlog=' || CAST(e.possible_backlog AS VARCHAR) ||
+    '; possible_over_queued=' || CAST(e.queued - e.definitely_supported_queue AS VARCHAR) ||
+    '; uncertain_sources=' || CAST(e.possible_eligible_rows - e.eligible_rows AS VARCHAR) ||
+    '; later_pair_source_seen=' || CAST(e.later_pair_source_seen AS VARCHAR) ||
+    '; pair_source_time_unknown=' || CAST(e.pair_source_time_unknown AS VARCHAR) ||
+    '; queue_identity_unknown=' || CAST(e.queue_identity_unknown AS VARCHAR) ||
+    '; source_identity_unknown=' || CAST(e.source_identity_unknown AS VARCHAR) ||
+    '; matching_bound_incomplete=' ||
+        CAST(e.matching_bound_incomplete AS VARCHAR) ||
+    '; pending_seen=' || CAST(e.pending_seen AS VARCHAR) ||
+    '; duplicate_seen=' || CAST(e.duplicate_seen AS VARCHAR) ||
+    '; confirmed_seen=' || CAST(e.confirmed_seen AS VARCHAR) ||
+    '; rejected_seen=' || CAST(e.rejected_seen AS VARCHAR) ||
+    '; gate_failed_seen=' || CAST(e.gate_failed_seen AS VARCHAR) ||
+    '; multi_state_candidates=' || CAST(e.multi_state_candidates AS VARCHAR) ||
+    '; oldest_seen=' || COALESCE(SUBSTR(CAST(e.oldest_seen AS VARCHAR), 1, 19), '') ||
+    '; newest_seen=' || COALESCE(SUBSTR(CAST(e.newest_seen AS VARCHAR), 1, 19), '') AS details,
+    e.run_id AS run_id,
+    CASE WHEN e.definite_over_queued > 0 THEN 34
+         WHEN e.definite_backlog > 1000 THEN 34
+         WHEN e.definite_backlog > 0 OR e.possible_eligible_rows > e.eligible_rows
+           OR e.queued > e.definitely_supported_queue
+           OR e.queue_identity_unknown > 0
+           OR e.matching_bound_incomplete > 0 THEN 26
+         ELSE 20 END AS risk_score
+FROM assessed e
+WHERE e.possible_eligible_rows > 0 OR e.queued > 0
 ORDER BY risk_score DESC, exposure_estimate DESC, finding_key
 LIMIT ?2;

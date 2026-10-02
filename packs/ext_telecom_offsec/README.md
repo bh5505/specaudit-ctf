@@ -1,0 +1,46 @@
+# Telecom offsec loopback pack
+
+This is the declarative, synthetic-test mirror of the AuditPack
+`ext_telecom_offsec` external pack. It combines AWS posture, ASM/VM
+reconciliation, and receipt-backed Technology validation under one pack identity.
+The product pack in AuditPack is the
+authoritative source for these declarations.
+
+The mirror includes the 41-check manifest, 34 mappings, classifier hints, migrations,
+checks, audit program, and workpaper declarations needed for local loopback
+validation. It contains no customer exports, live target list, credentials, or
+authority to probe a system. CTF action admission remains governed by
+[`OPERATIONS.md`](../../OPERATIONS.md) and the extension runtime.
+
+The two Technology checks reconcile selected AWS, GCP, and Azure source
+findings with validator results for the same project, engagement, finding,
+source run, inventory snapshot, resource, and account. The separate
+[technology validator fixtures](../../tests/fixtures/technology_validator/README.md)
+exercise the production probe evaluator with synthetic provider replies. Live
+cloud reads and receipt creation belong to the AuditPack validator
+binary in an explicitly authorized environment.
+
+Run the checks on synthetic evidence with
+`python tools/ctf_run_checks.py --pack packs/ext_telecom_offsec --evidence-dir
+<synthetic-evidence-dir> --out-dir <output-dir> --db sqlite`. The same check SQL
+also runs under DuckDB when installed. The loopback report is a test artifact;
+it is not a product ingest or deployment result.
+
+The evidence directory must include every table in
+`manifest.yaml`'s `input_contract.required_tables`; a header-only CSV records
+an observed empty source. The AuditPack ASM/VM builder derives that domain's
+raw-source tables but does not manufacture independent service observations.
+Supply any independent service observations collected, along with AWS posture
+and the Technology candidate,
+validation, inventory receipt, and expected-member sources separately for a
+complete run. Missing required source files abort before
+report generation.
+A Technology snapshot with zero eligible candidates still needs a scoped
+inventory receipt row; a header-only receipt produces a T2 coverage gap.
+T2 recomputes the receipt's member digest from imported rows in bounded,
+ordered chunks. The digest detects incomplete local imports; it is unsigned,
+so preserve the original validator session for source provenance. SQLite
+loopback requires SQLite 3.44 or later for ordered `string_agg`.
+
+New reports use the `ext_telecom_offsec` pack ID and renamed check IDs. Old
+pack IDs and aliases are not supported by this mirror.

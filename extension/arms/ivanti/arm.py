@@ -4,7 +4,7 @@ The sponsor estate is Xpanse ASM + Ivanti VM; this arm is the durable, governed
 way to pull host (assets), hostFinding (findings), vulnerability, and tag data
 straight from the Ivanti VM platform API. It is a pure-stdlib HTTP REST client
 (no requests/pandas/duckdb), so the sealed specaudit-ctf runtime can execute it
-hermetically. Output is the flattened, JSON-safe shape the ``ext_telecom_asmvm``
+hermetically. Output is the flattened, JSON-safe shape the ``ext_telecom_offsec``
 pack consumes as its Ivanti bronze (assets/findings rows).
 """
 

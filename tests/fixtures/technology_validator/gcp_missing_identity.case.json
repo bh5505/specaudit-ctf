@@ -1,0 +1,31 @@
+{
+  "synthetic": true,
+  "request": {
+    "schema": "specaudit.validator.technology-fixture.v1",
+    "provider": "gcp",
+    "finding_id": "ctf-gcp-missing-identity",
+    "rule_id": "GCP-IAM-001",
+    "resource_uid": "//storage.googleapis.com/demo-bucket",
+    "account_id": "123456789012",
+    "details": {
+      "account_id": "123456789012",
+      "details": {
+        "reason": "configured_public_iam_binding"
+      }
+    },
+    "authorization": {
+      "project_id": "demo-project",
+      "project_number": "123456789012",
+      "account": ""
+    }
+  },
+  "expect": {
+    "finding_id": "ctf-gcp-missing-identity",
+    "rule_id": "GCP-IAM-001",
+    "configuration_status": "unknown",
+    "reachability_status": "unknown",
+    "reason_code": "invalid_gcp_fixture_scope"
+  },
+  "expect_no_plan": true,
+  "response_file": "gcp_public.provider.json"
+}

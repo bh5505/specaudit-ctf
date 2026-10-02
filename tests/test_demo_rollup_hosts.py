@@ -1,9 +1,9 @@
 """Hermetic tests for tools/demo_rollup_hosts.py (durable rollup builder)."""
 from tools.demo_rollup_hosts import T3, build_rollup
 
-A = "ext_telecom_asmvm_t1_critical_vuln_on_exposed"
-C = "ext_telecom_asmvm_t1_asmvm_critical_service_corroborated"
-B = "ext_telecom_asmvm_t1_asmvm_critical_internal_record_only"
+A = "ext_telecom_offsec_asmvm_t1_critical_vuln_on_exposed"
+C = "ext_telecom_offsec_asmvm_t1_asmvm_critical_service_corroborated"
+B = "ext_telecom_offsec_asmvm_t1_asmvm_critical_internal_record_only"
 
 
 def _t3(ip, port, prov="alert_asserted_direct", tactics="TA0001 - Initial Access, TA0002 - Execution"):

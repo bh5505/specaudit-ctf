@@ -584,6 +584,63 @@ def test_builder_lineage_spine_and_grouping_key():
         "SPLIT_PART(ip, '.', 3), '.0/24')")
 
 
+def test_builder_reads_rehearsal_sources_and_writes_offsec_tables():
+    """The dev DB still uses staging names while exported tables use pack names."""
+    pack = Path(__file__).resolve().parents[1] / "packs" / "ext_telecom_offsec"
+    source_names = {
+        "evidence_bundle": "gw_silver_ext_telecom_evidence_bundle",
+        "finding_candidate": "gw_silver_ext_telecom_finding_candidate",
+        "rule": "gw_silver_ext_telecom_rule",
+        "check_run": "gw_silver_ext_telecom_check_run",
+    }
+    queries = dict(builder.inserts("dev"))
+    con = builder.duckdb.connect(":memory:")
+    try:
+        for migration in sorted((pack / "schema" / "migrations").glob("*.sql")):
+            con.execute(migration.read_text(encoding="utf-8"))
+        con.execute("ATTACH ':memory:' AS dev")
+        for suffix, source in source_names.items():
+            target = "ext_telecom_offsec_asmvm_" + suffix
+            con.execute(f"CREATE TABLE dev.main.{source} AS "
+                        f"SELECT * FROM main.{target} LIMIT 0")
+            con.execute(f"ALTER TABLE dev.main.{source} ADD COLUMN src_system VARCHAR")
+            con.execute(f"ALTER TABLE dev.main.{source} ADD COLUMN src_file VARCHAR")
+        con.execute("CREATE TABLE dev.main.gw_silver_ext_asmvm_vm_run AS "
+                    "SELECT source_run_id, started_at, finished_at, status, "
+                    "population_size, pages_completed, checkpoint_ts "
+                    "FROM main.ext_telecom_offsec_asmvm_check_run LIMIT 0")
+        con.execute(
+            "INSERT INTO dev.main.gw_silver_ext_telecom_evidence_bundle "
+            "(run_id, engagement_id, accept_event_id, bundle_id, "
+            "src_system, src_file) VALUES (?, ?, ?, ?, ?, ?)",
+            ["rehearsal-run", "rehearsal-engagement", "source-accept",
+             "synthetic-bundle", "rehearsal-stage", "synthetic-source.csv"],
+        )
+
+        for suffix, source in source_names.items():
+            target = "ext_telecom_offsec_asmvm_" + suffix
+            sql = queries[target]
+            assert f"dev.main.{source}" in sql
+            con.execute(sql)  # Binder proves no renamed product source is required.
+        assert con.execute(
+            "SELECT bundle_id, source_system, source_file "
+            "FROM main.ext_telecom_offsec_asmvm_evidence_bundle"
+        ).fetchall() == [
+            ("synthetic-bundle", "rehearsal-stage", "synthetic-source.csv")
+        ]
+
+        # Negative control: an accidental product-table source must fail here.
+        query = queries["ext_telecom_offsec_asmvm_evidence_bundle"]
+        broken = query.replace(
+            "dev.main.gw_silver_ext_telecom_evidence_bundle",
+            "dev.main.ext_telecom_offsec_aws_evidence_bundle",
+        )
+        with pytest.raises(builder.duckdb.CatalogException):
+            con.execute(broken)
+    finally:
+        con.close()
+
+
 def test_seif_projection_states_what_the_round_trip_lost(tmp_path):
     pytest.importorskip("duckdb")           # module imports duckdb at the top
     import seif_ivanti_roundtrip as seif_rt
@@ -650,7 +707,7 @@ def test_indirect_recon_corroborates_and_disagrees_without_packets(tmp_path,
 
     evidence = tmp_path / "evidence"
     evidence.mkdir()
-    _write_csv(evidence / "ext_telecom_asmvm_service_endpoint.csv",
+    _write_csv(evidence / "ext_telecom_offsec_asmvm_service_endpoint.csv",
                "run_id,ip,port,protocol,service_name,service_type,"
                "product_version,source_system",
                [["r1", "10.0.0.1", 443, "tcp", "http server at api.internal:443",
@@ -659,7 +716,7 @@ def test_indirect_recon_corroborates_and_disagrees_without_packets(tmp_path,
                 ["r1", "10.0.0.3", 7547, "tcp", "ftp", "file", "", "asm"],
                 ["r1", "10.0.0.4", 65001, "tcp", "telemetry", "other", "", "asm"],
                 ["r2", "10.9.9.9", 443, "tcp", "https", "web", "", "asm"]])
-    _write_csv(evidence / "ext_telecom_asmvm_vm_finding.csv",
+    _write_csv(evidence / "ext_telecom_offsec_asmvm_vm_finding.csv",
                "run_id,finding_id,ip,port,protocol,is_open,status",
                [["r1", "f1", "10.0.0.1", 443, "tcp", "true", "open"],
                 ["r1", "f2", "10.0.0.1", 443, "tcp", "false", "resolved"],
@@ -705,28 +762,28 @@ def _livefire_fixture(tmp_path):
     exercised without a vendor export."""
     base = tmp_path / "base"
     base.mkdir()
-    _write_csv(base / "ext_telecom_asmvm_owned_ip_range.csv",
+    _write_csv(base / "ext_telecom_offsec_asmvm_owned_ip_range.csv",
                "first_ip,last_ip", [["127.0.0.0", "127.255.255.255"]])
-    _write_csv(base / "ext_telecom_asmvm_ip.csv",
+    _write_csv(base / "ext_telecom_offsec_asmvm_ip.csv",
                "ip,source_file", [["198.51.100.7", "vendor_ip_export.csv"]])
-    _write_csv(base / "ext_telecom_asmvm_evidence_bundle.csv",
+    _write_csv(base / "ext_telecom_offsec_asmvm_evidence_bundle.csv",
                "bundle_id,source_file,has_report,has_receipt,has_live_fire,"
                "has_adversarial_reverify,is_sandboxed",
                [["bundle-vendor", "vendor_ip_export.csv",
                  "true", "false", "false", "false", "true"]])
-    _write_csv(base / "ext_telecom_asmvm_service_endpoint.csv",
+    _write_csv(base / "ext_telecom_offsec_asmvm_service_endpoint.csv",
                "service_endpoint_id,ip,service_name,service_type,port,protocol,"
                "is_active,mapping_version",
                [["svc-1", "198.51.100.7", "ssh at 198.51.100.7:22/tcp",
                  "SshServer", "22", "tcp", "true", "asmvm-v1"]])
-    _write_csv(base / "ext_telecom_asmvm_asm_vm_surface.csv",
+    _write_csv(base / "ext_telecom_offsec_asmvm_asm_vm_surface.csv",
                "ip,ip_bigint,prefix_16,prefix_24,has_active_service,"
                "inside_owned_range,in_vm_estate,asm_exposed_services,seen_via,"
                "source_system,source_file,source_row_id",
                [["198.51.100.7", "3145454599", "198.51.0.0/16", "198.51.100.0/24",
                  "false", "false", "false", "0", "service",
                  "vendor_asm", "vendor_ip_export.csv", "1"]])
-    _write_csv(base / "ext_telecom_asmvm_website_endpoint.csv",
+    _write_csv(base / "ext_telecom_offsec_asmvm_website_endpoint.csv",
                "website_endpoint_id,ip,port,is_active,http_type", [])
     receipts = tmp_path / "receipts.csv"
     _write_csv(receipts,
@@ -772,7 +829,7 @@ def test_lab_fixture_receipts_cannot_claim_live_fire(tmp_path, monkeypatch):
     assert [f["bundle_id"] for f in manifest["bundle_flips"]] == ["bundle-vendor"]
     assert manifest["bundle_flips"][0]["reproduced_ips"] == ["198.51.100.7"]
 
-    spine = list(_csv.DictReader((out / "ext_telecom_asmvm_asm_vm_surface.csv")
+    spine = list(_csv.DictReader((out / "ext_telecom_offsec_asmvm_asm_vm_surface.csv")
                                  .open(encoding="utf-8")))
     assert [r["ip"] for r in spine] == ["198.51.100.7"], \
         "loopback fixture must not become an asset row"
@@ -787,7 +844,7 @@ def test_lab_fixture_receipts_cannot_claim_live_fire(tmp_path, monkeypatch):
     assert all("--allow-lab-fixture-live-fire" in s["reason"] for s in skipped), \
         "the skip has to say how to override it"
 
-    endpoints = list(_csv.DictReader((out / "ext_telecom_asmvm_service_endpoint.csv")
+    endpoints = list(_csv.DictReader((out / "ext_telecom_offsec_asmvm_service_endpoint.csv")
                                      .open(encoding="utf-8")))
     added = [r for r in endpoints
              if r["mapping_version"].startswith("asmvm-v1-livefire")]
@@ -795,7 +852,7 @@ def test_lab_fixture_receipts_cannot_claim_live_fire(tmp_path, monkeypatch):
         "only the receipt of an address the feeds describe may add an endpoint"
     assert sorted(r["mapping_version"] for r in added) == [
         "asmvm-v1-livefire-dataset_endpoint"]
-    websites = list(_csv.DictReader((out / "ext_telecom_asmvm_website_endpoint.csv")
+    websites = list(_csv.DictReader((out / "ext_telecom_offsec_asmvm_website_endpoint.csv")
                                     .open(encoding="utf-8")))
     assert websites == [], "the lab fixture's TLS listener must not become a website"
 
@@ -825,12 +882,12 @@ def test_lab_fixture_override_says_so_in_the_reason(tmp_path, monkeypatch):
     skipped = [s for s in manifest["skipped"] if s["rule"] == "R6"]
     assert skipped == [], "the override has to let the lab rows through as well"
     import csv as _csv
-    spine = list(_csv.DictReader((out / "ext_telecom_asmvm_asm_vm_surface.csv")
+    spine = list(_csv.DictReader((out / "ext_telecom_offsec_asmvm_asm_vm_surface.csv")
                                  .open(encoding="utf-8")))
     assert "127.0.0.1" in [r["ip"] for r in spine], \
         "under the override the lab ip does enter the spine, which is the point"
 
-    bundles = list(_csv.DictReader((out / "ext_telecom_asmvm_evidence_bundle.csv")
+    bundles = list(_csv.DictReader((out / "ext_telecom_offsec_asmvm_evidence_bundle.csv")
                                    .open(encoding="utf-8")))
     vendor = [b for b in bundles if b["bundle_id"] == "bundle-vendor"][0]
     assert vendor["has_live_fire"] == "true"
@@ -839,7 +896,7 @@ def test_lab_fixture_override_says_so_in_the_reason(tmp_path, monkeypatch):
     assert livefire["has_adversarial_reverify"] == "false", \
         "nobody tried to disprove these observations"
     base_bundle = list(_csv.DictReader(
-        (base / "ext_telecom_asmvm_evidence_bundle.csv")
+        (base / "ext_telecom_offsec_asmvm_evidence_bundle.csv")
         .open(encoding="utf-8")))[0]
     assert base_bundle["has_live_fire"] == "false", "baseline must not be mutated"
 
@@ -856,7 +913,7 @@ def test_no_dataset_observation_means_no_live_fire_claim(tmp_path, monkeypatch):
     assert manifest["bundle_flips"] == []
     assert "lab fixture" in manifest["has_live_fire_reason"]
     bundles = list(__import__("csv").DictReader(
-        (out / "ext_telecom_asmvm_evidence_bundle.csv").open(encoding="utf-8")))
+        (out / "ext_telecom_offsec_asmvm_evidence_bundle.csv").open(encoding="utf-8")))
     livefire = [b for b in bundles if b["bundle_id"].startswith("livefire-")][0]
     assert livefire["has_live_fire"] == "false"
     assert livefire["has_receipt"] == "true", "receipts exist either way"
@@ -890,13 +947,13 @@ def test_refused_dataset_receipt_is_negative_not_live_fire(tmp_path, monkeypatch
     assert "refused/unreachable/no-answer" in manifest["has_live_fire_reason"]
 
     bundles = list(_csv.DictReader(
-        (out / "ext_telecom_asmvm_evidence_bundle.csv").open(encoding="utf-8")))
+        (out / "ext_telecom_offsec_asmvm_evidence_bundle.csv").open(encoding="utf-8")))
     vendor = [b for b in bundles if b["bundle_id"] == "bundle-vendor"][0]
     assert vendor["has_live_fire"] == "false"
     assert vendor["has_receipt"] == "false"
 
     endpoints = list(_csv.DictReader(
-        (out / "ext_telecom_asmvm_service_endpoint.csv").open(encoding="utf-8")))
+        (out / "ext_telecom_offsec_asmvm_service_endpoint.csv").open(encoding="utf-8")))
     added = [r for r in endpoints
              if r["mapping_version"].startswith("asmvm-v1-livefire")]
     assert [r["ip"] for r in added] == ["198.51.100.7"], \
@@ -907,7 +964,7 @@ def test_refused_dataset_receipt_is_negative_not_live_fire(tmp_path, monkeypatch
     # probe, not append the live_fire channel (the local patch already said
     # live_fire_probe_only; the row write used to ignore it).
     spine = list(_csv.DictReader(
-        (out / "ext_telecom_asmvm_asm_vm_surface.csv").open(encoding="utf-8")))
+        (out / "ext_telecom_offsec_asmvm_asm_vm_surface.csv").open(encoding="utf-8")))
     row = next(r for r in spine if r["ip"] == "198.51.100.7")
     assert row["seen_via"].endswith("+live_fire_probe_only"), row["seen_via"]
     assert not row["seen_via"].endswith("+live_fire"), \
@@ -976,10 +1033,10 @@ def test_indirect_recon_smoke_over_tiny_synthetic_evidence(tmp_path):
     recon = _recon_module()
     evidence = tmp_path / "ev"
     evidence.mkdir()
-    _write_csv(evidence / "ext_telecom_asmvm_service_endpoint.csv",
+    _write_csv(evidence / "ext_telecom_offsec_asmvm_service_endpoint.csv",
                "run_id,ip,port,protocol,service_name,service_type,source_system",
                [["smoke", "10.0.0.1", 443, "tcp", "https", "web", "asm"]])
-    _write_csv(evidence / "ext_telecom_asmvm_vm_finding.csv",
+    _write_csv(evidence / "ext_telecom_offsec_asmvm_vm_finding.csv",
                "run_id,ip,port,is_open,status",
                [["smoke", "10.0.0.1", 443, "true", "open"]])
     summary = recon.run(str(evidence), str(tmp_path / "out"), run_id="smoke")

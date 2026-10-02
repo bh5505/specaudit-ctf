@@ -1,0 +1,119 @@
+[pack]
+id      = "ext-telecom-offsec"
+title   = "Telecom Offensive Security Audit Pack"
+summary = "Combined AWS posture, ASM/VM reconciliation, and independent Technology validation with 41 deterministic checks."
+authors = ["audit-data-analytics@specaudit.local"]
+
+[pack.aliases]
+route = ["ext_telecom_offsec"]  # manifest.yaml pack_id
+
+[pack.shell]
+mode          = "extension"
+target_shells = ["operational"]
+
+[runtime]
+with_critic = true
+
+[agent_workspace]
+finding_prompt_template = "Explain this telecom offensive security audit finding in workpaper terms: {rule_id}."
+
+# Discovery-driven seam contract; both source domains are pack-owned.
+[seam]
+requires_seam         = "1.1"
+requires_capabilities = [
+    "substrate.gw_silver.v1",
+]
+
+[contributes]
+schema_namespace = "ext_telecom_offsec"
+controls         = ["assets/ext_telecom_offsec_audit_program.yaml"]
+
+# schema_migrations + check_packs MUST live under top-level [contributes] (they
+# are PackContributes fields), NOT after [contributes.readiness_capabilities]
+# headers, or TOML nests them and the server resolves no migration paths.
+schema_migrations = [
+    "schema/migrations/000_ext_telecom_offsec_asmvm_bootstrap.sql",
+    "schema/migrations/001_ext_telecom_offsec_asmvm_asm_silver.sql",
+    "schema/migrations/002_ext_telecom_offsec_asmvm_vm_silver.sql",
+    "schema/migrations/003_ext_telecom_offsec_asmvm_process_silver.sql",
+    "schema/migrations/004_ext_telecom_offsec_asmvm_vm_finding_distinct.sql",
+    "schema/migrations/005_ext_technique_landing_zone.sql",
+    "schema/migrations/006_ext_telecom_offsec_asmvm_provenance_hygiene.sql",
+    "schema/migrations/007_ext_telecom_offsec_asmvm_probe_corroboration.sql",
+    "schema/migrations/008_ext_telecom_offsec_asmvm_service_observation.sql",
+    "schema/migrations/009_ext_telecom_offsec_aws_bootstrap.sql",
+    "schema/migrations/010_ext_telecom_offsec_aws_silver.sql",
+    "schema/migrations/011_ext_telecom_offsec_aws_source_run_identity.sql",
+    "schema/migrations/012_ext_telecom_offsec_technology_validation.sql",
+]
+check_packs = ["manifest.yaml"]
+
+# Two-sided workpaper declaration: manifest.yaml carries `workpaper_template`,
+# this is the workbench half (01-anatomy.md).
+report_templates = ["templates/workpaper_ext_telecom_offsec_asmvm.md.tera"]
+
+[[contributes.readiness_capabilities]]
+id = "ext-telecom-offsec-asm-files-loaded"
+title = "ASM (attack surface management) exports loaded"
+required_tables = ["ext_telecom_offsec_asmvm_asset", "ext_telecom_offsec_asmvm_service", "ext_telecom_offsec_asmvm_website", "ext_telecom_offsec_asmvm_alert", "ext_telecom_offsec_asmvm_owned_ip_range", "ext_telecom_offsec_asmvm_asm_vm_surface"]
+gating_tables = ["ext_telecom_offsec_asmvm_asset", "ext_telecom_offsec_asmvm_owned_ip_range"]
+desc_ready = "ASM assets, internet-exposed services/websites, alerts and the owned IP-range inventory are loaded, and the ASM/VM reconciliation surface is populated."
+desc_partial = "Some ASM evidence is loaded, but asset / exposure / owned-range coverage is incomplete."
+desc_blocked = "No ASM evidence is loaded yet."
+
+[[contributes.readiness_capabilities]]
+id = "ext-telecom-offsec-vm-files-loaded"
+title = "VM (vulnerability management) exports loaded"
+required_tables = ["ext_telecom_offsec_asmvm_vm_asset", "ext_telecom_offsec_asmvm_vm_finding", "ext_telecom_offsec_asmvm_vm_cve_observation", "ext_telecom_offsec_asmvm_check_run"]
+gating_tables = ["ext_telecom_offsec_asmvm_vm_asset", "ext_telecom_offsec_asmvm_vm_finding"]
+desc_ready = "Vulnerability-management assets, findings and the CVE observations with their scan provenance are loaded."
+desc_partial = "Some VM evidence is loaded, but asset / finding / scan-run coverage is incomplete."
+desc_blocked = "No VM evidence is loaded yet."
+
+[[contributes.readiness_capabilities]]
+id = "ext-telecom-offsec-evidence-files-loaded"
+title = "ASM/VM process evidence (bundles, candidates, rules, run ledger) loaded"
+required_tables = ["ext_telecom_offsec_asmvm_evidence_bundle", "ext_telecom_offsec_asmvm_finding_candidate", "ext_telecom_offsec_asmvm_rule", "ext_telecom_offsec_asmvm_check_run"]
+gating_tables = ["ext_telecom_offsec_asmvm_evidence_bundle", "ext_telecom_offsec_asmvm_finding_candidate"]
+desc_ready = "Evidence bundles, finding candidates (with subject binding), the rule corpus and check-run ledger rows are loaded for the process checks."
+desc_partial = "Some process evidence is loaded, but bundle / candidate / rule / run-ledger coverage is incomplete."
+desc_blocked = "No process evidence is loaded yet."
+
+[[contributes.readiness_capabilities]]
+id = "ext-telecom-offsec-aws-posture-files-loaded"
+title = "AWS posture evidence loaded"
+required_tables = ["ext_telecom_offsec_aws_s3_bucket", "ext_telecom_offsec_aws_iam_principal", "ext_telecom_offsec_aws_security_group"]
+gating_tables = ["ext_telecom_offsec_aws_s3_bucket", "ext_telecom_offsec_aws_iam_principal"]
+desc_ready = "AWS posture evidence is loaded."
+desc_partial = "Some AWS posture evidence is loaded."
+desc_blocked = "No AWS posture evidence is loaded."
+
+[[contributes.readiness_capabilities]]
+id = "ext-telecom-offsec-aws-process-files-loaded"
+title = "AWS process evidence loaded"
+required_tables = ["ext_telecom_offsec_aws_evidence_bundle", "ext_telecom_offsec_aws_finding_candidate", "ext_telecom_offsec_aws_rule", "ext_telecom_offsec_aws_check_run"]
+gating_tables = ["ext_telecom_offsec_aws_evidence_bundle", "ext_telecom_offsec_aws_finding_candidate"]
+desc_ready = "AWS process evidence is loaded."
+desc_partial = "Some AWS process evidence is loaded."
+desc_blocked = "No AWS process evidence is loaded."
+
+[[contributes.readiness_capabilities]]
+id = "ext-telecom-offsec-technology-validation-loaded"
+title = "Technology inventory receipt and validator evidence imported"
+required_tables = ["ext_telecom_offsec_technology_candidate", "ext_telecom_offsec_technology_validation", "ext_telecom_offsec_technology_inventory_receipt", "ext_telecom_offsec_technology_inventory_member"]
+gating_tables = ["ext_telecom_offsec_technology_inventory_receipt"]
+desc_ready = "Technology transfer tables are accepted; T2 reconciles inventory membership and counts, then reports validator gaps."
+desc_partial = "A scoped inventory receipt is accepted but some transfer tables are absent or empty; inspect the T2 inventory and validation gaps."
+desc_blocked = "No scoped Technology inventory receipt is accepted; import the bridge receipt before interpreting validation coverage."
+
+[contributes.deliverables]
+workpaper_prompt_file = "deliverables/workpaper_prompt.md"
+control_roster_file = "assets/ext_telecom_offsec_audit_program.yaml"
+
+[contributes.deliverables.workpaper]
+template_selection = "completed-run"
+
+[[contributes.deliverables.workpaper.sections]]
+id = "audit_workpaper"
+title = "Telecom Offensive Security Audit Workpaper"
+template_file = "templates/workpaper_ext_telecom_offsec_asmvm.md.tera"

@@ -9,15 +9,28 @@ that used to point at somebody's laptop has been replaced by a required
 argument (`--pack`, `--evidence-dir`, `--seif-src`, `--dns-name`, ...).
 
 ```bash
-python tools/ctf_run_checks.py --pack ../packs/ext_telecom_asmvm \
+python tools/ctf_run_checks.py --pack packs/ext_telecom_offsec \
     --evidence-dir <evidence> --out-dir out/run --db duckdb --fast-csv \
     --limit 500000 --run-id <run_id>
 ```
 
-The pack's evidence CSVs carry a `run_id` column that the runner overwrites with
-`--run-id` at load time ("accept lineage"), unless the pack's mapping declares
-`run_id` as a mapped source. Keep that in mind when reading a run: the run_id in
-the report is the run, not the file.
+For the checked-in `ext_telecom_offsec` pack, `--db sqlite` requires Python's
+`sqlite3` to use SQLite 3.44.0 or newer. The pack checks use ordered
+`string_agg`; the runner rejects an older SQLite before loading evidence. This
+minimum applies to this pack, not to other packs with simpler SQL.
+
+The runner stamps `--run-id` into each pack table's `run_id` column at load time
+("accept lineage"). When a mapping declares `source_run_id`, it copies the
+CSV's original run identifier there. The report's `run_id` names the check run,
+while `source_run_id` names the source evidence run.
+
+The evidence directory must contain one CSV for every table in the pack
+manifest's `input_contract.required_tables`. A header-only CSV represents a
+present, empty source. `asmvm_evidence_builder.py` projects the ASM/VM source
+only; its output alone is incomplete for this consolidated pack. Supply AWS
+posture and Technology candidate/validation CSVs from their respective
+authorized producers before running the full pack. The runner refuses missing
+sources before issuing any report.
 
 ## Verification instruments
 
@@ -33,7 +46,7 @@ says which. Read them before changing behaviour.
 
 | script | what it is for |
 | --- | --- |
-| `asmvm_evidence_builder.py` | Generate the pack's evidence CSVs (exporters, and the `ext_telecom_asmvm_asm_vm_surface` patch that rewrites asset-keyed rows onto real IP rows). |
+| `asmvm_evidence_builder.py` | Generate the ASM/VM portion of the pack's evidence CSVs (exporters, and the `ext_telecom_offsec_asmvm_asm_vm_surface` patch that rewrites asset-keyed rows onto real IP rows). |
 | `livefire_capture.py` | Read-only verification of the pack's exposure claims against lab addresses: TCP banner grab and `openssl s_client` certificate capture, plus one DNS lookup. Nothing is mutated on the target; the host set is restricted to loopback/RFC1918 and the DNS name defaults to a `.local` name (`--dns-name`, `ASMVM_DNS_PROBE_NAME`) so a stray lookup does not disclose anything. |
 | `livefire_target_list.py` | Derives the live-fire target list from the pack's own reproduction queue (which endpoints the checks say are exposed), so the live-fire set is derived rather than invented. |
 | `livefire_overlay.py` | Applies live observations to the evidence and re-runs the checks. The overlay is a delta: it patches existing rows (a host observed listening moves `has_active_service`/`is_exposed`), it does not invent new findings. |
@@ -119,37 +132,43 @@ After the change DuckDB and SQLite produce 10,761 findings on the corpus and
 `tests/test_asmvm_tools_smoke.py` pins both halves: the declared type wins, and
 the inference path demonstrably produces the wrong score.
 
-## The t7 rewrite, and what the two instruments have to say about it
+## T7 candidate coverage and diagnostic plans
 
-`ext_telecom_asmvm_t7_asmvm_candidate_backlog.sql` builds its eligible
-population as a non-aggregate CTE and then tests it with a correlated `EXISTS`.
-SQLite cannot flatten that shape, so it re-evaluates the whole eligibility chain
-per candidate row: on a 240k-finding corpus it ran **over two hours** where
-DuckDB needed 0.09 s. Rewriting each eligibility branch as a *scalar aggregate*
-subquery (one row per producer, uncorrelated) gives SQLite a constant to bind:
-row-for-row identical on both engines (`check_probe.py --engine sqlite --budget
-45` reports the original as `TIMEOUT_INCOMPLETE` - note `progress_handler:
-armed`, which is what makes that a real timeout rather than a slow run).
+The shipped `ext_telecom_offsec_asmvm_t7_asmvm_candidate_backlog.sql` matches
+each accepted source identity to a candidate's exact `finding_key`. A VM
+critical finding also requires its `vcand-<finding_id>` candidate ID. The query
+counts logical source identities and queued candidates once across accept
+events, so an unrelated candidate cannot cancel a missing source. It reports
+definite backlog and over-queue alongside possible bounds and identity or
+chronology uncertainty. Producers with no candidates or no eligible sources
+still appear when the opposite side has rows.
 
-The rewrite's timings here were first measured on a **mistyped load** and read
-2.6-3.3 s on SQLite; that number was an artifact. Once the loader typed the
-columns as declared, the predicates had real work to do and SQLite needed over
-**240 s** for that check even in the rewritten form, until the runner started
-building join indexes (next section). Typed and indexed: **13.4 s**.
+Alert source keys use the accepted alert's vendor ID. Conflicting accepted
+vendor IDs remain uncertain, with their observed IDs as possible keys.
+Known alert sources with different internal IDs but the same vendor ID and IP
+count as one builder-grain source. The over-queue lower bound gives each
+possible source and each known key at most one unit of support. Candidates
+with unknown keys use only remaining possible source capacity and must meet
+the required VM candidate ID. Pairwise vendor-key shortages can establish a
+definite over-queue. Larger overlapping key sets may leave additional excess
+uncounted; `matching_bound_incomplete=1` makes these rows non-clean even when
+`over_queued=0`. The reported over-queue count is a conservative lower bound.
+For VM critical findings, a corroborated CVE pair excludes the finding
+definitively only when all three pair components share its non-default accept
+event. Vendor observation dates cannot establish the order of accept events;
+cross-accept pair evidence therefore contributes to possible eligibility.
 
-`sql/t7_asmvm_candidate_backlog.scalar_eligible.sql` is that rewrite, verified with
-`check_probe.py` against the real corpus on both engines. `sql/t7_asmvm_candidate_backlog.materialised.sql`
-is the first attempt - aggregates pre-computed but `eligible` still a
-non-aggregate CTE - kept as the negative control: DuckDB 0.121 s and row-identical,
-SQLite still `TIMEOUT_INCOMPLETE` at a 600 s budget (and ~18 min inside a full pack
-run, which is where that run was killed). What fixes SQLite is removing the
-correlation, not pre-aggregating.
-
-It is a candidate, not a replacement: the pack's own check file is unchanged, and
-swapping it in is the owner's call. Whoever swaps it should re-run
-`check_probe.py --check <pack check> --candidate sql/t7_asmvm_candidate_backlog.scalar_eligible.sql`
-on both engines against a corpus, and both full pack runs; the row sets were
-identical when this was measured, on a corpus, not in the abstract.
+`sql/t7_asmvm_candidate_backlog.scalar_eligible.sql` retains its historical
+filename and mirrors the shipped query's logic and complete output.
+`sql/t7_asmvm_candidate_backlog.materialised.sql` explicitly materialises
+reused source and queue identity sets for plan comparison. The parity test
+compares complete rows under SQLite and DuckDB for repeated accepts, alert
+vendor IDs and aliases, pairwise Hall shortages, larger unresolved matching
+graphs, wrong IDs including missing keys, moved VM findings, and known or
+unknown pair times. No performance result is claimed for these
+revised plans; run
+`check_probe.py` on a representative typed corpus before using either one for
+performance decisions.
 
 `csv_type_preflight.py` caught the related ingest risk: the SEIF round trip's
 first variant put Ivanti asset ids into `ip` (alias order prefers `Asset ID`),

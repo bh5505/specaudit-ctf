@@ -1,0 +1,236 @@
+version: 1
+pack_id: ext_telecom_offsec
+file_patterns:
+- silver_table: ext_telecom_offsec_asmvm_asset
+  filename_regex: (?i).*(unified.?assets|asm.?assets|xpanse.?assets|asset.?inventory).*
+  filename_keywords:
+  - unified
+  - assets
+  - asm
+  - xpanse
+  - inventory
+  - ipv4
+  - inferred
+  required_columns:
+  - asset_id
+- silver_table: ext_telecom_offsec_asmvm_service
+  filename_regex: (?i).*(external.?services|internet.?exposure.*services|asm.?services|service.?inventory).*
+  filename_keywords:
+  - services
+  - internet
+  - exposure
+  - asm
+  - port
+  - protocol
+  - service
+  required_columns:
+  - service_id
+- silver_table: ext_telecom_offsec_asmvm_website
+  filename_regex: (?i).*(external.?websites|internet.?exposure.*websites|asm.?websites|website.?inventory).*
+  filename_keywords:
+  - websites
+  - internet
+  - exposure
+  - asm
+  - host
+  - technologies
+  required_columns:
+  - website_id
+- silver_table: ext_telecom_offsec_asmvm_alert
+  filename_regex: (?i).*(xpanse.?alerts|asm.?alerts|attack.?surface.?rule.?alerts|alert.?export).*
+  filename_keywords:
+  - alerts
+  - attack
+  - surface
+  - rule
+  - asr
+  - severity
+  - mitre
+  required_columns:
+  - alert_id
+- silver_table: ext_telecom_offsec_asmvm_incident
+  filename_regex: (?i).*(xpanse.?incidents|asm.?incidents|incident.?export|incident.?list).*
+  filename_keywords:
+  - incidents
+  - incident
+  - severity
+  - asr
+  - assignee
+  required_columns:
+  - incident_id
+- silver_table: ext_telecom_offsec_asmvm_owned_ip_range
+  filename_regex: (?i).*(owned.?(ipv4|ipv6).?ranges|owned.?ranges|address.?space|ip.?range.?inventory).*
+  filename_keywords:
+  - owned
+  - range
+  - ranges
+  - ipv4
+  - ipv6
+  - address
+  - space
+  - asn
+  required_columns:
+  - range_id
+- silver_table: ext_telecom_offsec_asmvm_vm_asset
+  filename_regex: (?i).*(vm.?assets|neurons.?assets|scanner.?assets|asset.?findings|vuln.?assets).*
+  filename_keywords:
+  - assets
+  - vm
+  - neurons
+  - scanner
+  - vuln
+  - credentialed
+  - vrr
+  - criticality
+  required_columns:
+  - ip
+- silver_table: ext_telecom_offsec_asmvm_vm_finding
+  filename_regex: (?i).*(vm.?findings|neurons.?findings|scanner.?findings|vulnerability.?findings|external.?findings).*
+  filename_keywords:
+  - findings
+  - vulnerability
+  - scanner
+  - qid
+  - plugin
+  - severity
+  - open
+  required_columns:
+  - finding_id
+- silver_table: ext_telecom_offsec_asmvm_evidence_bundle
+  filename_regex: (?i)^.*ext_telecom_offsec_asmvm_evidence_bundle\.(csv|xlsx)$
+  filename_keywords:
+  - offsec
+  - asmvm
+  - bundle
+  required_columns:
+  - bundle_id
+- silver_table: ext_telecom_offsec_asmvm_finding_candidate
+  filename_regex: (?i)^.*ext_telecom_offsec_asmvm_finding_candidate\.(csv|xlsx)$
+  filename_keywords:
+  - offsec
+  - asmvm
+  - candidate
+  required_columns:
+  - candidate_id
+- silver_table: ext_telecom_offsec_asmvm_rule
+  filename_regex: (?i)^.*ext_telecom_offsec_asmvm_rule\.(csv|xlsx)$
+  filename_keywords:
+  - offsec
+  - asmvm
+  - rule
+  required_columns:
+  - rule_id
+- silver_table: ext_telecom_offsec_asmvm_check_run
+  filename_regex: (?i)^.*ext_telecom_offsec_asmvm_check_run\.(csv|xlsx)$
+  filename_keywords:
+  - offsec
+  - asmvm
+  - run
+  required_columns:
+  - source_run_id
+- silver_table: ext_telecom_offsec_asmvm_probe_corroboration
+  filename_regex: (?i).*(probe.?corroboration|asmvm.?probes|probe.?results|live.?probe).*
+  filename_keywords:
+  - probe
+  - probes
+  - corroboration
+  - version
+  - banner
+  - live
+  required_columns:
+  - probe_corroboration_id
+- silver_table: ext_telecom_offsec_asmvm_service_observation
+  filename_regex: (?i).*(service.?observation|asmvm.?service.?observations|service.?probe).*
+  filename_keywords:
+  - service
+  - observation
+  - observed
+  - service_name
+  - probe
+  - intel
+  required_columns:
+  - service_observation_id
+- silver_table: ext_telecom_offsec_aws_s3_bucket
+  filename_regex: (?i).*(s3.?bucket|bucket.?inventory|bucket.?config|bucket.?posture).*
+  filename_keywords:
+  - s3
+  - bucket
+  - aws
+  - storage
+  - posture
+  required_columns:
+  - bucket_name
+- silver_table: ext_telecom_offsec_aws_iam_principal
+  filename_regex: (?i).*(iam.?principal|iam.?user|iam.?role|principal.?inventory).*
+  filename_keywords:
+  - iam
+  - principal
+  - user
+  - role
+  - arn
+  required_columns:
+  - principal_arn
+- silver_table: ext_telecom_offsec_aws_security_group
+  filename_regex: (?i).*(security.?group|sg.?rules|sg.?inventory|ec2.?sg).*
+  filename_keywords:
+  - security
+  - group
+  - sg
+  - ingress
+  - egress
+  - cidr
+  required_columns:
+  - sg_id
+- silver_table: ext_telecom_offsec_aws_evidence_bundle
+  filename_regex: (?i)^.*ext_telecom_offsec_aws_evidence_bundle\.(csv|xlsx)$
+  filename_keywords:
+  - offsec
+  - aws
+  - bundle
+  required_columns:
+  - bundle_id
+- silver_table: ext_telecom_offsec_aws_check_run
+  filename_regex: (?i)^.*ext_telecom_offsec_aws_check_run\.(csv|xlsx)$
+  filename_keywords:
+  - offsec
+  - aws
+  - run
+  required_columns:
+  - source_run_id
+- silver_table: ext_telecom_offsec_aws_finding_candidate
+  filename_regex: (?i)^.*ext_telecom_offsec_aws_finding_candidate\.(csv|xlsx)$
+  filename_keywords:
+  - offsec
+  - aws
+  - candidate
+  required_columns:
+  - candidate_id
+- silver_table: ext_telecom_offsec_aws_rule
+  filename_regex: (?i)^.*ext_telecom_offsec_aws_rule\.(csv|xlsx)$
+  filename_keywords:
+  - offsec
+  - aws
+  - rule
+  required_columns:
+  - rule_id
+- silver_table: ext_telecom_offsec_technology_candidate
+  filename_regex: (?i)^.*ext_telecom_offsec_technology_candidate\.(csv|xlsx)$
+  filename_keywords: [offsec, technology, candidate]
+  required_columns: [finding_id, rule_id, resource_uid]
+- silver_table: ext_telecom_offsec_technology_validation
+  filename_regex: (?i)^.*ext_telecom_offsec_technology_validation\.(csv|xlsx)$
+  filename_keywords: [offsec, technology, validation]
+  required_columns: [attempt_id, finding_id, verdict]
+- silver_table: ext_telecom_offsec_technology_inventory_receipt
+  filename_regex: (?i)^.*ext_telecom_offsec_technology_inventory_receipt\.(csv|xlsx)$
+  filename_keywords: [offsec, technology, inventory, receipt]
+  required_columns: [inventory_snapshot_id, expected_eligible_candidates, candidate_identity_sha256]
+- silver_table: ext_telecom_offsec_technology_inventory_member
+  filename_regex: (?i)^.*ext_telecom_offsec_technology_inventory_member\.(csv|xlsx)$
+  filename_keywords: [offsec, technology, inventory, member]
+  required_columns: [inventory_snapshot_id, finding_id, rule_id]
+thresholds:
+  stage_b_trigger_confidence: 0.7
+  auto_accept_confidence: 0.85
+  file_candidate_top_n: 5
+  column_candidate_top_n: 5

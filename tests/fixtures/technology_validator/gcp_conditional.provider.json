@@ -1,0 +1,28 @@
+{
+  "config": {},
+  "policy": {
+    "bindings": [
+      {
+        "condition": {
+          "expression": "resource.name.startsWith('projects/_/buckets/demo-bucket/objects/synthetic-limited')",
+          "title": "synthetic-limited-grant"
+        },
+        "members": [
+          "allUsers"
+        ],
+        "role": "roles/storage.objectViewer"
+      }
+    ],
+    "etag": "BwU-synthetic-conditional",
+    "version": 3,
+    "resourceId": "projects/_/buckets/demo-bucket"
+  },
+  "project": {
+    "projectId": "demo-project",
+    "projectNumber": "123456789012"
+  },
+  "bucket": {
+    "name": "demo-bucket",
+    "projectNumber": "123456789012"
+  }
+}

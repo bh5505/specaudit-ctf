@@ -85,6 +85,30 @@ smoke are offline. Generated runtimes are not committed. See
 [runtime/README.md](runtime/README.md) for the lock, reproducibility,
 installation, rotation, and rollback contract.
 
+### Technology validator fixture harness
+
+The [technology fixtures](tests/fixtures/technology_validator/README.md)
+exercise the validator's `--evaluate-technology-fixture` interface with
+synthetic AWS, GCP, and Azure provider responses. From this checkout, pass the
+absolute path to a compiled validator binary:
+
+```text
+python3 tools/validator_technology_harness.py --validator-bin /absolute/path/to/validator-binary
+```
+
+The cases cover S3 public ACL versus full Block Public Access (`AWS-NET-001`),
+public and private security-group SSH/RDP ingress including IPv6
+(`AWS-NET-010/011`), bucket IAM public and scoped bindings (`GCP-IAM-001`),
+and NSG management ingress with deny/priority uncertainty (`AZURE-NET-002`).
+They also check missing or mismatched authorization, provider identity, and
+claim identity. The harness uses the validator's production parsers and
+evaluators with synthetic transport replies. It does not use live cloud
+credentials or contact a cloud account. Live, authorized cloud validation
+belongs to AuditPack's validator run-validation path. A fixture configuration
+result is not proof of workload reachability. S3 cases separately feed synthetic
+anonymous list and HTTP results through the validator's reachability classifier;
+all other cases leave reachability unknown.
+
 ## CLI
 
 From the repository root:

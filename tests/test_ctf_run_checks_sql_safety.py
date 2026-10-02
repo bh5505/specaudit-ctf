@@ -16,6 +16,38 @@ def _load_runner():
     return module
 
 
+@pytest.mark.parametrize(("value", "expected"), [
+    ("abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+    ("réseau 🔒", "fb6c81e8cd0fbad82a0662c915da078f67c789ff9fa13ccfcc9121a192128494"),
+    ("", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+    (None, None),
+])
+def test_sqlite_sha256_hashes_utf8_text_and_preserves_null(value, expected):
+    runner = _load_runner()
+    connection, engine = runner.open_engine("sqlite")
+    try:
+        assert engine == "sqlite"
+        assert connection.execute("SELECT sha256(?)", (value,)).fetchone() == (expected,)
+    finally:
+        connection.close()
+
+
+def test_offsec_sqlite_run_rejects_unsupported_version_before_connect(
+        monkeypatch, tmp_path):
+    runner = _load_runner()
+    monkeypatch.setattr(runner.sqlite3, "sqlite_version_info", (3, 43, 2))
+    monkeypatch.setattr(
+        runner.sqlite3, "connect",
+        lambda *args, **kwargs: pytest.fail("opened an unsupported SQLite"),
+    )
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    with pytest.raises(runner.RunnerError, match="SQLite 3.44.0 or newer") as exc:
+        runner.run(PRODUCT_PACK, evidence, tmp_path / "out", "sqlite", 100,
+                   "unsupported-sqlite")
+    assert "Python sqlite3 has 3.43.2" in str(exc.value)
+
+
 def _create_test_table(runner, connection, engine, table, rows, headers):
     """Focused helper for lineage tests whose tables are not pack fixtures."""
     cols = runner._infer_columns(rows, headers)
@@ -47,16 +79,71 @@ def test_materializer_quotes_untrusted_table_and_csv_header_identifiers():
     ).fetchall() == [("value", "run-1")]
 
 
-PRODUCT_PACK = Path(__file__).parents[1] / "packs/ext_telecom_cyber"
-CHECK_RUN_TABLE = "gw_silver_ext_telecom_check_run"
+PRODUCT_PACK = Path(__file__).parents[1] / "packs/ext_telecom_offsec"
+CHECK_RUN_TABLE = "ext_telecom_offsec_aws_check_run"
+
+
+def test_duplicate_mapping_pattern_fails_before_any_csv_is_loaded(tmp_path):
+    runner = _load_runner()
+    (tmp_path / "manifest.yaml").write_text(
+        "contributes:\n  ingest:\n    mapping_spec_path: mapping_spec.yaml\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "mapping_spec.yaml").write_text(
+        "mappings:\n"
+        "  - source_pattern: findings.csv\n"
+        "    silver_table: first_table\n"
+        "  - source_pattern: findings.csv\n"
+        "    silver_table: second_table\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(runner.RunnerError, match="duplicate source_pattern"):
+        runner.load_mapping_spec(tmp_path)
+
+
+def test_overlapping_mapping_patterns_refuse_ambiguous_csv():
+    runner = _load_runner()
+    with pytest.raises(runner.RunnerError, match="ambiguous source filename"):
+        runner._table_for({"*assets.csv": "asm_asset", "assets.csv": "vm_asset"},
+                          "assets.csv")
+
+
+def test_completeness_gate_uses_the_input_contract_not_a_self_declared_pack_id():
+    runner = _load_runner()
+    with pytest.raises(runner.RunnerError, match="required source table"):
+        runner.require_complete_evidence(
+            {"pack_id": "other-pack", "input_contract": {
+                "required_tables": ["source_table"]}}, [])
+    with pytest.raises(runner.RunnerError, match="pack_id ext_telecom_offsec"):
+        runner.require_complete_evidence(
+            {"pack_id": "renamed-pack", "checks": [{
+                "id": "ext_telecom_offsec_aws_t1_trust_boundary"}],
+             "input_contract": {"required_tables": ["source_table"]}}, [])
+    with pytest.raises(runner.RunnerError, match="required_tables"):
+        runner.require_complete_evidence(
+            {"pack_id": "ext_telecom_offsec", "checks": [{
+                "id": "ext_telecom_offsec_aws_t1_trust_boundary"}]}, [])
+
+
+def _product_t7_path(runner):
+    checks = runner.load_manifest(PRODUCT_PACK)["checks"]
+    matches = [check for check in checks
+               if check["id"] == "ext_telecom_offsec_aws_t7_resumable_runs"]
+    assert len(matches) == 1
+    return PRODUCT_PACK / matches[0]["file"]
 
 
 def _product_t7_sql(engine):
-    sql = (PRODUCT_PACK / "checks/ext_telecom_t7_resumable_runs.sql").read_text()
+    sql = _product_t7_path(_load_runner()).read_text()
     if engine == "duckdb":
         # DuckDB uses positional '?' whereas SQLite accepts numbered '?N'.
         sql = sql.replace("?1", "?").replace("?2", "?")
     return sql
+
+
+def _event_key(source_id, accept_event_id):
+    return (f"run:{len(source_id)}:{source_id}:"
+            f"{len(accept_event_id)}:{accept_event_id}")
 
 
 @pytest.mark.parametrize("engine", ["sqlite", "duckdb"])
@@ -118,9 +205,9 @@ def test_declared_value_map_normalizes_mixed_case_status_for_real_t7(engine):
         sql = _product_t7_sql(engine)
         findings = connection.execute(sql, ["execution-current", 100]).fetchall()
         assert {row[0] for row in findings} == {
-            "run:src-mixed:%s" % runner.ZERO_ACCEPT_EVENT_ID,
-            "run:src-padded:%s" % runner.ZERO_ACCEPT_EVENT_ID,
-            "run:src-canon:%s" % runner.ZERO_ACCEPT_EVENT_ID,
+            _event_key("src-mixed", runner.ZERO_ACCEPT_EVENT_ID),
+            _event_key("src-padded", runner.ZERO_ACCEPT_EVENT_ID),
+            _event_key("src-canon", runner.ZERO_ACCEPT_EVENT_ID),
         }
         assert all(row[-2] == "execution-current" for row in findings)
         assert connection.execute(sql, ["execution-sibling", 100]).fetchall() == []
@@ -158,51 +245,26 @@ def test_stamp_accept_lineage_overwrites_stale_triple(engine):
 
 
 @pytest.mark.parametrize("engine", ["sqlite", "duckdb"])
-def test_stamp_accept_lineage_preserves_declared_run_id_source(engine):
-    """Legacy mirror contract: mapped source run_id survives, the rest stamps."""
+def test_stamp_accept_lineage_separates_source_and_cross_run_scope(engine):
+    """Source identity survives while an imported sibling run cannot set scope."""
     runner = _load_runner()
     if engine == "duckdb":
         pytest.importorskip("duckdb")
-    headers = ["run_id", "status", "engagement_id", "accept_event_id"]
-    rows = [["cr-2026-001", "interrupted", "stale-engagement",
-             "11111111-1111-1111-1111-111111111111"],
-            ["cr-2026-002", "completed", "stale-engagement",
-             "11111111-1111-1111-1111-111111111111"]]
+    headers = ["source_run_id", "run_id", "status"]
+    rows = [["source-one", "execution-sibling", "interrupted"]]
     connection, engine = runner.open_engine(engine)
     try:
-        _create_test_table(runner, connection, engine, "legacy_check_run", rows, headers)
-        runner.stamp_accept_lineage(connection, "legacy_check_run",
-                                    headers, "execution-current",
-                                    preserve_run_id=True)
+        _create_test_table(runner, connection, engine, "check_run", rows, headers)
+        runner.stamp_accept_lineage(connection, "check_run", headers,
+                                    "execution-current")
         assert connection.execute(
-            "SELECT run_id, engagement_id, accept_event_id "
-            "FROM %s ORDER BY run_id" % runner._quote_identifier("legacy_check_run")
-        ).fetchall() == [
-            ("cr-2026-001", runner.ENGAGEMENT_ID, runner.ZERO_ACCEPT_EVENT_ID),
-            ("cr-2026-002", runner.ENGAGEMENT_ID, runner.ZERO_ACCEPT_EVENT_ID),
-        ]
-    finally:
-        connection.close()
-
-
-@pytest.mark.parametrize("engine", ["sqlite", "duckdb"])
-def test_stamp_accept_lineage_rejects_missing_mapped_source_run_id(engine):
-    """A missing source identity must not be fabricated from the ambient run."""
-    runner = _load_runner()
-    if engine == "duckdb":
-        pytest.importorskip("duckdb")
-    headers = ["status"]
-    rows = [["interrupted"]]
-    connection, engine = runner.open_engine(engine)
-    try:
-        _create_test_table(runner, connection, engine, "ledger_no_run", rows, headers)
-        with pytest.raises(runner.RunnerError, match="missing its mapped source run_id"):
-            runner.stamp_accept_lineage(connection, "ledger_no_run",
-                                        headers, "execution-current",
-                                        preserve_run_id=True)
-        assert connection.execute("SELECT * FROM ledger_no_run").fetchall() == [
-            ("interrupted",),
-        ]
+            "SELECT source_run_id, run_id FROM check_run WHERE run_id = ?",
+            ["execution-current"],
+        ).fetchall() == [("source-one", "execution-current")]
+        assert connection.execute(
+            "SELECT source_run_id FROM check_run WHERE run_id = ?",
+            ["execution-sibling"],
+        ).fetchall() == []
     finally:
         connection.close()
 
@@ -227,8 +289,8 @@ def test_product_ledger_mapping_preserves_source_identity_and_binds_t7(
     runner = _load_runner()
     if engine == "duckdb":
         pytest.importorskip("duckdb")
-    pack = Path(__file__).parents[1] / "packs/ext_telecom_cyber"
-    table = "gw_silver_ext_telecom_check_run"
+    pack = Path(__file__).parents[1] / "packs/ext_telecom_offsec"
+    table = "ext_telecom_offsec_aws_check_run"
     headers = [
         source_header,
         "status",
@@ -269,14 +331,14 @@ def test_product_ledger_mapping_preserves_source_identity_and_binds_t7(
             headers,
         )
         runner.stamp_accept_lineage(connection, table, headers, "execution-current")
-        sql = (pack / "checks/ext_telecom_t7_resumable_runs.sql").read_text()
+        sql = _product_t7_path(runner).read_text()
         # DuckDB uses positional '?' whereas SQLite accepts numbered '?N'.
         if engine == "duckdb":
             sql = sql.replace("?1", "?").replace("?2", "?")
         rows = connection.execute(sql, ["execution-current", 100]).fetchall()
         assert {row[0] for row in rows} == {
-            f"run:source-one:{runner.ZERO_ACCEPT_EVENT_ID}",
-            f"run:source-two:{runner.ZERO_ACCEPT_EVENT_ID}",
+            _event_key("source-one", runner.ZERO_ACCEPT_EVENT_ID),
+            _event_key("source-two", runner.ZERO_ACCEPT_EVENT_ID),
         }
         assert all(row[-2] == "execution-current" for row in rows)
         assert connection.execute(sql, ["execution-sibling", 100]).fetchall() == []

@@ -1,0 +1,42 @@
+{
+  "synthetic": true,
+  "response_file": "aws_sg_public.json",
+  "request": {
+    "schema": "specaudit.validator.technology-fixture.v1",
+    "provider": "aws",
+    "finding_id": "ctf-aws-ssh-public",
+    "rule_id": "AWS-NET-010",
+    "resource_uid": "arn:aws:ec2:us-east-1:000000000000:security-group/sg-0123456789abcdef0",
+    "account_id": "000000000000",
+    "region": "us-east-1",
+    "authorization": {
+      "aws_read_role": true,
+      "account_id": "000000000000",
+      "regions": [
+        "us-east-1"
+      ]
+    },
+    "details": {
+      "details": {},
+      "account_id": "000000000000",
+      "region": "us-east-1"
+    }
+  },
+  "expect": {
+    "finding_id": "ctf-aws-ssh-public",
+    "rule_id": "AWS-NET-010",
+    "configuration_status": "confirmed",
+    "reachability_status": "unknown",
+    "reason_code": "configured_ingress_confirmed",
+    "planned_argv": [
+      [
+        "ec2",
+        "describe-security-groups",
+        "--group-ids",
+        "sg-0123456789abcdef0",
+        "--output",
+        "json"
+      ]
+    ]
+  }
+}

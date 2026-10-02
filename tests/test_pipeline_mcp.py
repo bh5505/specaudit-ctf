@@ -6,6 +6,7 @@ Covers the two new surface tools wired into extension/mcp_server.py:
 human-validation-ready report). The backend is extension/pipeline.py, which
 imports the durable tools/demo_* cores.
 """
+import hashlib
 import json
 import tempfile
 from pathlib import Path
@@ -14,9 +15,122 @@ import pytest
 
 from extension import mcp_server as mcp
 from extension.pipeline import pack_run, prioritize_targets, validation_report
+from tools import ctf_run_checks
 
-T1 = "ext_telecom_asmvm_t1_critical_vuln_on_exposed"
-T3 = "ext_telecom_asmvm_t3_asmvm_technique_context_bridge_gap"
+T1 = "ext_telecom_offsec_asmvm_t1_critical_vuln_on_exposed"
+T3 = "ext_telecom_offsec_asmvm_t3_asmvm_technique_context_bridge_gap"
+PACK_ROOT = Path(__file__).resolve().parents[1] / "packs" / "ext_telecom_offsec"
+AWS_T1 = "ext_telecom_offsec_aws_t1_trust_boundary"
+
+
+def _synthetic_pack_evidence(root: Path, *, complete: bool = True,
+                             benign: bool = False) -> Path:
+    """Manifest-complete empty sources plus one documentation-only bucket."""
+    evidence = root / "evidence"
+    evidence.mkdir()
+    if complete:
+        required = ctf_run_checks.load_manifest(PACK_ROOT)["input_contract"]["required_tables"]
+        for table in required:
+            (evidence / f"{table}.csv").write_text("run_id\n", encoding="utf-8")
+        empty_members = hashlib.sha256(
+            b"ext_telecom_offsec.technology_inventory_members.v2.root|0|"
+        ).hexdigest()
+        (evidence / "ext_telecom_offsec_technology_inventory_receipt.csv").write_text(
+            "validator_project_id,validator_engagement_id,inventory_snapshot_id,"
+            "inventory_membership_id,source_inventory_total,"
+            "expected_eligible_candidates,candidate_identity_sha256\n"
+            f"synthetic-project,{ctf_run_checks.ENGAGEMENT_ID},{'a' * 64},"
+            f"00000000-0000-0000-0000-000000000001,0,0,{empty_members}\n",
+            encoding="utf-8",
+        )
+    (evidence / "ext_telecom_offsec_aws_s3_bucket.csv").write_text(
+        "bucket_name,account_id,region,public_access_block_enabled,"
+        "policy_allows_anonymous,run_id,engagement_id\n"
+        "synthetic-offsec-bucket,000000000000,us-test-1,"
+        f"{'true,false' if benign else 'false,true'},"
+        "sibling-run,synthetic-engagement\n",
+        encoding="utf-8",
+    )
+    return evidence
+
+
+@pytest.mark.parametrize("db,fast_csv", [
+    ("sqlite", False), ("duckdb", False), ("duckdb", True),
+])
+def test_pack_run_rejects_missing_required_sources(tmp_path, db, fast_csv):
+    evidence = _synthetic_pack_evidence(tmp_path, complete=False)
+    out = tmp_path / "out"
+    with pytest.raises(RuntimeError, match="pack evidence incomplete") as exc:
+        pack_run(str(PACK_ROOT), str(evidence), out_dir=str(out), db=db,
+                 run_id="missing-sources", fast_csv=fast_csv)
+    assert "ext_telecom_offsec_asmvm_asset" in str(exc.value)
+    assert not (out / "report.json").exists()
+
+
+def test_mcp_pack_run_missing_sources_is_error(tmp_path):
+    evidence = _synthetic_pack_evidence(tmp_path, complete=False)
+    result = mcp.McpServer().handle({
+        "jsonrpc": "2.0", "id": 4, "method": "tools/call",
+        "params": {"name": "pack_run", "arguments": {
+            "pack_root": str(PACK_ROOT), "evidence_dir": str(evidence),
+            "db": "sqlite", "run_id": "missing-sources"}},
+    })
+    assert result["result"]["isError"] is True
+    assert "pack evidence incomplete" in result["result"]["content"][0]["text"]
+
+
+def test_governed_pack_run_refuses_forged_offsec_manifest(tmp_path):
+    fake_pack = tmp_path / "forged-pack"
+    fake_pack.mkdir()
+    (fake_pack / "manifest.yaml").write_text(
+        "pack_id: ext_telecom_offsec\n"
+        "input_contract:\n  required_tables: [dummy]\n"
+        "checks:\n  - id: ext_telecom_offsec_aws_t1_trust_boundary\n"
+        "    file: check.sql\n",
+        encoding="utf-8",
+    )
+    (fake_pack / "check.sql").write_text(
+        "SELECT 'none', 'none', 0, 0, 'none', 'none', ?1, 0 WHERE 0 LIMIT ?2;\n",
+        encoding="utf-8",
+    )
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    (evidence / "dummy.csv").write_text("run_id\n", encoding="utf-8")
+    out = tmp_path / "out"
+
+    with pytest.raises(ValueError, match="checked-in ext_telecom_offsec"):
+        pack_run(str(fake_pack), str(evidence), out_dir=str(out), db="sqlite")
+    with pytest.raises(ctf_run_checks.RunnerError,
+                       match="checked-in pack root"):
+        ctf_run_checks.run(fake_pack, evidence, out, "sqlite", 100, "fake-run")
+    result = mcp.McpServer().handle({
+        "jsonrpc": "2.0", "id": 5, "method": "tools/call",
+        "params": {"name": "pack_run", "arguments": {
+            "pack_root": str(fake_pack), "evidence_dir": str(evidence),
+            "db": "sqlite", "run_id": "fake-run"}},
+    })
+    assert result["result"]["isError"] is True
+    assert "checked-in ext_telecom_offsec" in result["result"]["content"][0]["text"]
+    assert not (out / "report.json").exists()
+
+
+def test_complete_benign_offsec_run_can_report_no_findings(tmp_path):
+    evidence = _synthetic_pack_evidence(tmp_path, benign=True)
+    result = pack_run(str(PACK_ROOT), str(evidence), db="sqlite",
+                      run_id="complete-benign")
+    assert result["report"]["findings"] == []
+    assert len(result["report"]["checks_status"]) == len(
+        ctf_run_checks.load_manifest(PACK_ROOT)["checks"])
+
+
+def test_source_run_is_stamped_into_ambient_pack_run(tmp_path):
+    evidence = _synthetic_pack_evidence(tmp_path)
+    result = pack_run(str(PACK_ROOT), str(evidence), db="sqlite",
+                      run_id="ambient-offsec-run")
+    report = result["report"]
+    assert report["run_id"] == "ambient-offsec-run"
+    assert [finding["check_id"] for finding in report["findings"]] == [AWS_T1]
+    assert "sibling-run" not in json.dumps(report["findings"])
 
 
 def _t3(ip, port, tech):
@@ -113,15 +227,15 @@ def test_validation_report_binds_real_receipt_paths(tmp_path):
 def _pairing_evidence(tmp_path):
     d = tmp_path / "pairing_ev"
     d.mkdir()
-    (d / "ext_telecom_asmvm_alert.csv").write_text(
+    (d / "ext_telecom_offsec_asmvm_alert.csv").write_text(
         "vendor_alert_id,alert_id,mitre_tactic,mitre_technique,asr_rule,"
         "ipv4_list,is_active_state,run_id,engagement_id\n"
         "VA-1,al-1,Initial Access,T1190,Rule-A,203.0.113.10,true,r1,e1\n",
         encoding="utf-8")
-    (d / "ext_telecom_asmvm_alert_endpoint.csv").write_text(
+    (d / "ext_telecom_offsec_asmvm_alert_endpoint.csv").write_text(
         "alert_id,ip,is_active_state,run_id,engagement_id\n"
         "al-1,203.0.113.10,true,r1,e1\n", encoding="utf-8")
-    (d / "ext_telecom_asmvm_service_endpoint.csv").write_text(
+    (d / "ext_telecom_offsec_asmvm_service_endpoint.csv").write_text(
         "service_endpoint_id,ip,port,is_active,run_id,engagement_id\n"
         "svc-1,203.0.113.10,443,true,r1,e1\n", encoding="utf-8")
     return d
@@ -150,7 +264,7 @@ def test_prioritize_degrades_when_pairing_extract_fails(tmp_path):
     ev = _pairing_evidence(tmp_path)
     # Drop the is_active column the G3 join references: CREATE TABLE succeeds,
     # the JOIN then fails with a duckdb binder error.
-    (ev / "ext_telecom_asmvm_service_endpoint.csv").write_text(
+    (ev / "ext_telecom_offsec_asmvm_service_endpoint.csv").write_text(
         "service_endpoint_id,ip,port,run_id,engagement_id\n"
         "svc-1,203.0.113.10,443,r1,e1\n", encoding="utf-8")
     res = prioritize_targets(
@@ -181,27 +295,62 @@ def test_prioritize_marks_pairing_incomplete_without_evidence(tmp_path):
     assert "absent" in res2["pairing"]["reason"]
 
 
-def test_pack_run_minimal_via_scenario(monkeypatch):
-    """pack_run runs the real ext_telecom_asmvm pack over a scenario evidence
-    dir and returns findings. Skips if the pack isn't present on this host."""
-    pack_root = Path("C:/AuditPack", "specaudit", "packs", "ext_telecom_asmvm")
-    if not pack_root.is_dir():
-        pytest.skip("ext_telecom_asmvm pack not present")
-    sys_path = str(pack_root / "synthetic")
-    monkeypatch.syspath_prepend(sys_path)
-    import delta_scenario  # noqa: PLC0415 - scenario lives in the pack
+@pytest.mark.parametrize("db,fast_csv", [
+    ("sqlite", False), ("duckdb", False), ("duckdb", True),
+])
+def test_pack_run_minimal_via_scenario(db, fast_csv):
+    """pack_run runs the checked-in offsec pack over synthetic evidence."""
+    pack_root = PACK_ROOT
+    assert pack_root.is_dir()
     with tempfile.TemporaryDirectory(prefix="ctf-mcp-tst-") as td:
-        evidence = delta_scenario.emit(delta_scenario._scenario(delta_scenario.RUN_DELTA), Path(td))
-        res = pack_run(str(pack_root), str(evidence), db="sqlite", run_id="mcp-test-hermetic")
+        evidence = _synthetic_pack_evidence(Path(td))
+        res = pack_run(str(pack_root), str(evidence), db=db,
+                       run_id="mcp-test-hermetic", fast_csv=fast_csv)
     rep = res["report"]
-    assert rep["pack_id"] == "ext_telecom_asmvm"
-    assert rep["engine"] == "sqlite"
+    assert rep["pack_id"] == "ext_telecom_offsec"
+    assert rep["engine"] == db
     assert res["report_path"]
     assert isinstance(rep["findings"], list)
-    # The Delta-shaped scenario surfaces control-plane/mgmt/T1190 findings.
+    # The fixture's AWS trust-boundary finding is scoped to this execution.
     checks = {f["check_id"] for f in rep["findings"]}
-    assert "ext_telecom_asmvm_t1_telecom_control_plane_exposed" in checks
-    assert "ext_telecom_asmvm_t1_exposed_mgmt_ports" in checks
+    assert checks == {AWS_T1}
+    assert rep["findings"][0]["finding_alias"].startswith(
+        "ext_telecom_offsec:" + AWS_T1 + ":bucket:synthetic-offsec-bucket"
+    )
+
+
+@pytest.mark.parametrize("csv_body", [
+    "source_run_id\nsource-original\n",
+    ("source_run_id,run_id,engagement_id,accept_event_id\n"
+     "source-original,sibling-run,sibling-engagement,"
+     "11111111-1111-1111-1111-111111111111\n"),
+])
+def test_native_csv_stamps_lineage_before_constrained_insert(tmp_path, csv_body):
+    """Absent or stale CSV lineage cannot fail or control the accepted scope."""
+    pytest.importorskip("duckdb")
+    (tmp_path / "native_lineage.csv").write_text(csv_body, encoding="utf-8")
+    conn, _ = ctf_run_checks.open_engine("duckdb")
+    try:
+        conn.execute(
+            "CREATE TABLE native_lineage ("
+            "source_run_id VARCHAR NOT NULL, run_id VARCHAR NOT NULL, "
+            "engagement_id VARCHAR NOT NULL, accept_event_id VARCHAR NOT NULL)"
+        )
+        columns = {"source_run_id", "run_id", "engagement_id", "accept_event_id"}
+        loaded = ctf_run_checks.load_evidence_native_csv(
+            conn, tmp_path, {}, {"native_lineage": columns}, "execution-current",
+            {"native_lineage": {column: "VARCHAR" for column in columns}},
+        )
+        assert loaded == ["native_lineage"]
+        assert conn.execute(
+            "SELECT source_run_id, run_id, engagement_id, accept_event_id "
+            "FROM native_lineage"
+        ).fetchall() == [(
+            "source-original", "execution-current", ctf_run_checks.ENGAGEMENT_ID,
+            ctf_run_checks.ZERO_ACCEPT_EVENT_ID,
+        )]
+    finally:
+        conn.close()
 
 
 def test_mcp_tools_list_exposes_pipeline():
@@ -234,15 +383,11 @@ def test_mcp_call_prioritize_error_envelope():
     assert r["error"]["code"] == -32602
 
 
-def test_mcp_call_pack_run_envelope(monkeypatch):
-    pack_root = Path("C:/AuditPack", "specaudit", "packs", "ext_telecom_asmvm")
-    if not pack_root.is_dir():
-        pytest.skip("ext_telecom_asmvm pack not present")
-    sys_path = str(pack_root / "synthetic")
-    monkeypatch.syspath_prepend(sys_path)
-    import delta_scenario  # noqa: PLC0415
+def test_mcp_call_pack_run_envelope():
+    pack_root = PACK_ROOT
+    assert pack_root.is_dir()
     with tempfile.TemporaryDirectory(prefix="ctf-mcp-tst-") as td:
-        evidence = delta_scenario.emit(delta_scenario._scenario(delta_scenario.RUN_DELTA), Path(td))
+        evidence = _synthetic_pack_evidence(Path(td))
         srv = mcp.McpServer()
         r = srv.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
                         "params": {"name": "pack_run", "arguments": {
@@ -251,5 +396,5 @@ def test_mcp_call_pack_run_envelope(monkeypatch):
                             "db": "sqlite", "run_id": "mcp-test-env"}}})
     assert r["result"]["isError"] is False
     body = json.loads(r["result"]["content"][0]["text"])
-    assert body["report"]["pack_id"] == "ext_telecom_asmvm"
-    assert len(body["report"]["findings"]) > 0
+    assert body["report"]["pack_id"] == "ext_telecom_offsec"
+    assert {f["check_id"] for f in body["report"]["findings"]} == {AWS_T1}

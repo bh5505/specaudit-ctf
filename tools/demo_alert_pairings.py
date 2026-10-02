@@ -18,20 +18,20 @@ import json
 from pathlib import Path
 from typing import Iterable
 
-BASE_TABLES = ("ext_telecom_asmvm_alert",
-               "ext_telecom_asmvm_alert_endpoint",
-               "ext_telecom_asmvm_service_endpoint")
+BASE_TABLES = ("ext_telecom_offsec_asmvm_alert",
+               "ext_telecom_offsec_asmvm_alert_endpoint",
+               "ext_telecom_offsec_asmvm_service_endpoint")
 
 JOIN_PREDICATE = """
 SELECT a.vendor_alert_id, a.alert_id, s.ip, s.port,
        a.mitre_tactic, a.mitre_technique, MAX(a.asr_rule) AS asr_rule,
        CASE WHEN a.ipv4_list = ae.ip THEN 'alert_asserted_direct'
             ELSE 'alert_endpoint_bridged' END AS provenance_class
-FROM ext_telecom_asmvm_alert a
-JOIN ext_telecom_asmvm_alert_endpoint ae
+FROM ext_telecom_offsec_asmvm_alert a
+JOIN ext_telecom_offsec_asmvm_alert_endpoint ae
   ON ae.run_id = a.run_id AND ae.engagement_id = a.engagement_id
  AND ae.alert_id = a.alert_id
-JOIN ext_telecom_asmvm_service_endpoint s
+JOIN ext_telecom_offsec_asmvm_service_endpoint s
   ON s.run_id = ae.run_id AND s.engagement_id = ae.engagement_id AND s.ip = ae.ip
 WHERE a.mitre_technique IS NOT NULL AND TRIM(a.mitre_technique) <> ''
   AND a.is_active_state AND ae.is_active_state AND s.is_active
