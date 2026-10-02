@@ -58,10 +58,10 @@ network_lists AS (
 SELECT
     'asmvm:critical-service-corroborated:' || f.ip    AS finding_key,
     'Open critical finding on ASM-confirmed service port: ' || f.ip AS title,
-    COUNT(*)                                         AS affected_count,
+    COUNT(DISTINCT f.finding_id)                     AS affected_count,
     CAST(COUNT(DISTINCT ep.port) AS BIGINT)          AS exposure_estimate,
     'vm:asset:' || f.ip || ' + asm:service:' || f.ip AS record_locator,
-    'port_matched_critical_findings=' || CAST(COUNT(*) AS VARCHAR) ||
+    'port_matched_critical_findings=' || CAST(COUNT(DISTINCT f.finding_id) AS VARCHAR) ||
     '; max_severity=' || CAST(ROUND(MAX(f.severity), 2) AS VARCHAR) ||
     '; finding_networks=' || COALESCE(MAX(nl.networks), 'unknown') ||
     '; matched_ports=' || COALESCE(MAX(pl.ports), 'unknown') ||

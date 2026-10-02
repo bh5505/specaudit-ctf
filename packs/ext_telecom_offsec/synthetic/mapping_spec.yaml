@@ -7,7 +7,7 @@ ingest_defaults:
   - Xpanse
 mappings:
 - silver_table: ext_telecom_offsec_asmvm_asset
-  source_pattern: '*{UNIFIED_ASSETS_TABLE,asm_assets,assets}.{csv,xlsx}'
+  source_pattern: '{*UNIFIED_ASSETS_TABLE,*asm_assets,*xpanse_assets,*asset_inventory,ext_telecom_offsec_asmvm_asset}.{csv,xlsx}'
   sheet_selection: auto
   required: true
   columns:
@@ -19,7 +19,7 @@ mappings:
     - asset id
     - external id
     required: true
-  - target: name
+  - target: asset_name
     aliases:
     - Name
     - name
@@ -29,12 +29,12 @@ mappings:
     - Type
     - type
     - asset type
-  - target: ipv4_addresses
+  - target: ipv4_list
     aliases:
     - IPv4 Addresses
     - ipv4_addresses
     - ipv4
-  - target: ipv6_addresses
+  - target: ipv6_list
     aliases:
     - IPv6 Addresses
     - ipv6_addresses
@@ -57,8 +57,9 @@ mappings:
     - First Observed
     - first_observed
     - first_seen
-  - target: last_observed_ts
+  - target: last_observed
     aliases:
+    - last_observed_ts
     - Last Observed
     - last_observed
     - last_seen
@@ -115,8 +116,14 @@ mappings:
     aliases:
     - ASN Record Names
     - asn_record_names
+  - target: raw_source_file
+    aliases:
+    - raw_source_file
+  - target: raw_source_row_id
+    aliases:
+    - raw_source_row_id
 - silver_table: ext_telecom_offsec_asmvm_service
-  source_pattern: '*{INTERNET_EXPOSURE_EXTERNAL_SERVICES,asm_services,services}.{csv,xlsx}'
+  source_pattern: '{*INTERNET_EXPOSURE_EXTERNAL_SERVICES,*asm_services,*services,ext_telecom_offsec_asmvm_service}.{csv,xlsx}'
   sheet_selection: auto
   required: true
   columns:
@@ -148,11 +155,11 @@ mappings:
     aliases:
     - Port
     - port
-  - target: ipv4_addresses
+  - target: ipv4_list
     aliases:
     - IPv4 Addresses
     - ipv4_addresses
-  - target: ipv6_addresses
+  - target: ipv6_list
     aliases:
     - IPv6 Addresses
     - ipv6_addresses
@@ -166,7 +173,7 @@ mappings:
     - Service Product Version
     - product_version
     - version
-  - target: classifications
+  - target: active_classifications
     aliases:
     - Active Classifications
     - classifications
@@ -178,12 +185,14 @@ mappings:
     aliases:
     - Externally Inferred Vulnerability Score
     - inferred_vuln_score
-  - target: first_observed_ts
+  - target: first_observed
     aliases:
+    - first_observed_ts
     - First Observed
     - first_observed
-  - target: last_observed_ts
+  - target: last_observed
     aliases:
+    - last_observed_ts
     - Last Observed
     - last_observed
   - target: business_units
@@ -208,8 +217,14 @@ mappings:
     aliases:
     - Discovery Type
     - discovery_type
+  - target: raw_source_file
+    aliases:
+    - raw_source_file
+  - target: raw_source_row_id
+    aliases:
+    - raw_source_row_id
 - silver_table: ext_telecom_offsec_asmvm_website
-  source_pattern: '*{INTERNET_EXPOSURE_EXTERNAL_WEBSITES,asm_websites,websites}.{csv,xlsx}'
+  source_pattern: '{*INTERNET_EXPOSURE_EXTERNAL_WEBSITES,*asm_websites,*websites,ext_telecom_offsec_asmvm_website}.{csv,xlsx}'
   sheet_selection: auto
   required: true
   columns:
@@ -254,7 +269,7 @@ mappings:
     aliases:
     - Authentication
     - authentication
-  - target: root_page_status_code
+  - target: root_http_status
     aliases:
     - Root Page HTTP Status Code
     - root_page_status_code
@@ -262,7 +277,7 @@ mappings:
     aliases:
     - Is Non-Configured Host
     - is_non_configured_host
-  - target: ipv4_addresses
+  - target: ipv4_list
     aliases:
     - IPv4 Addresses
     - ipv4_addresses
@@ -278,12 +293,14 @@ mappings:
     aliases:
     - Externally Inferred Vulnerability Score
     - inferred_vuln_score
-  - target: first_observed_ts
+  - target: first_observed
     aliases:
+    - first_observed_ts
     - First Observed
     - first_observed
-  - target: last_observed_ts
+  - target: last_observed
     aliases:
+    - last_observed_ts
     - Last Observed
     - last_observed
   - target: business_units
@@ -294,8 +311,14 @@ mappings:
     aliases:
     - Country
     - country
+  - target: raw_source_file
+    aliases:
+    - raw_source_file
+  - target: raw_source_row_id
+    aliases:
+    - raw_source_row_id
 - silver_table: ext_telecom_offsec_asmvm_alert
-  source_pattern: '*{XPANSE_Alerts,asm_alerts,alerts}.{csv,xlsx}'
+  source_pattern: '{*XPANSE_Alerts,*asm_alerts,*alerts,ext_telecom_offsec_asmvm_alert}.{csv,xlsx}'
   sheet_selection: auto
   required: true
   columns:
@@ -332,11 +355,11 @@ mappings:
       medium: Medium
       low: Low
       informational: Info
-  - target: ipv4_addresses
+  - target: ipv4_list
     aliases:
     - IPv4 Addresses
     - ipv4_addresses
-  - target: ipv6_addresses
+  - target: ipv6_list
     aliases:
     - IPv6 Addresses
     - ipv6_addresses
@@ -364,11 +387,11 @@ mappings:
     value_map:
       'true': true
       'false': false
-  - target: excluded
+  - target: is_excluded
     aliases:
     - Excluded
     - excluded
-  - target: incident_id
+  - target: incident_ref
     aliases:
     - Incident ID
     - incident_id
@@ -395,7 +418,7 @@ mappings:
     aliases:
     - Business Unit Names
     - business_units
-  - target: observed_ts
+  - target: last_observed
     aliases:
     - Last Observed
     - observed_ts
@@ -405,12 +428,18 @@ mappings:
     - Timestamp
     - created_ts
     - created_at
-  - target: version
+  - target: alert_version
     aliases:
     - Version
     - version
+  - target: raw_source_file
+    aliases:
+    - raw_source_file
+  - target: raw_source_row_id
+    aliases:
+    - raw_source_row_id
 - silver_table: ext_telecom_offsec_asmvm_incident
-  source_pattern: '*{XPANSE_Incidents,asm_incidents,incidents}.{csv,xlsx}'
+  source_pattern: '{*XPANSE_Incidents,*asm_incidents,*incidents,ext_telecom_offsec_asmvm_incident}.{csv,xlsx}'
   sheet_selection: auto
   required: false
   columns:
@@ -432,11 +461,11 @@ mappings:
     - Status
     - status
     - incident_status
-  - target: ipv4_addresses
+  - target: ipv4_list
     aliases:
     - IPv4 Addresses
     - ipv4_addresses
-  - target: ipv6_addresses
+  - target: ipv6_list
     aliases:
     - IPv6 Addresses
     - ipv6_addresses
@@ -480,7 +509,7 @@ mappings:
     aliases:
     - MITRE ATT&CK Technique
     - mitre_technique
-  - target: created_ts
+  - target: created_at
     aliases:
     - Creation Time
     - created_ts
@@ -488,11 +517,11 @@ mappings:
     aliases:
     - Last Updated
     - last_updated_ts
-  - target: last_observed_ts
+  - target: last_observed
     aliases:
     - Last Observed
     - last_observed_ts
-  - target: resolved_ts
+  - target: resolved_at
     aliases:
     - Resolved Timestamp
     - resolved_ts
@@ -504,8 +533,14 @@ mappings:
     aliases:
     - Integration Source
     - integration_source
+  - target: raw_source_file
+    aliases:
+    - raw_source_file
+  - target: raw_source_row_id
+    aliases:
+    - raw_source_row_id
 - silver_table: ext_telecom_offsec_asmvm_owned_ip_range
-  source_pattern: '*{Owned_IPv4_Ranges,Owned_IPv6_Ranges,asm_owned_ranges,owned_ranges}.{csv,xlsx}'
+  source_pattern: '{*Owned_IPv4_Ranges,*Owned_IPv6_Ranges,*asm_owned_ranges,*owned_ranges,ext_telecom_offsec_asmvm_owned_ip_range}.{csv,xlsx}'
   sheet_selection: auto
   required: true
   columns:
@@ -519,6 +554,7 @@ mappings:
     - cidr
     - CIDR
     - IPv4 Addresses
+    - IPv6 Addresses
   - target: first_ip
     aliases:
     - First IPv4 Address
@@ -531,21 +567,23 @@ mappings:
     - Last IPv6 Address
     - last_ip
     - end_ip
-  - target: ip_family
+  - target: ip_version
     aliases:
+    - IP Version
+    - ip_version
     - ip_family
     - family
     value_map:
-      v4: ipv4
-      v6: ipv6
-      ipv4: ipv4
-      ipv6: ipv6
-  - target: ip_count
+      v4: "4"
+      v6: "6"
+      ipv4: "4"
+      ipv6: "6"
+  - target: ips_count
     aliases:
     - IPs Count
     - ip_count
     - address count
-  - target: active_responsive_ip_count
+  - target: active_responsive_ips
     aliases:
     - Active Responsive IPs Count
     - active_responsive_ip_count
@@ -573,8 +611,14 @@ mappings:
     aliases:
     - Date Added
     - date_added
+  - target: raw_source_file
+    aliases:
+    - raw_source_file
+  - target: raw_source_row_id
+    aliases:
+    - raw_source_row_id
 - silver_table: ext_telecom_offsec_asmvm_ip
-  source_pattern: '*{UNIFIED_ASSETS_TABLE,XPANSE_Alerts,EXTERNAL_SERVICES,EXTERNAL_WEBSITES,Incidents}.{csv,xlsx}'
+  source_pattern: '{*UNIFIED_ASSETS_TABLE,*XPANSE_Alerts,*EXTERNAL_SERVICES,*EXTERNAL_WEBSITES,*Incidents,ext_telecom_offsec_asmvm_ip}.{csv,xlsx}'
   sheet_selection: auto
   required: true
   derived_at_ingest: true
@@ -639,7 +683,7 @@ mappings:
     aliases:
     - last_observed_ts
 - silver_table: ext_telecom_offsec_asmvm_service_endpoint
-  source_pattern: '*{INTERNET_EXPOSURE_EXTERNAL_SERVICES,asm_services}.{csv,xlsx}'
+  source_pattern: '{*INTERNET_EXPOSURE_EXTERNAL_SERVICES,*asm_services,ext_telecom_offsec_asmvm_service_endpoint}.{csv,xlsx}'
   required: false
   derived_at_ingest: true
   columns:
@@ -696,7 +740,7 @@ mappings:
     - Last Observed
     - last_observed_ts
 - silver_table: ext_telecom_offsec_asmvm_website_endpoint
-  source_pattern: '*{INTERNET_EXPOSURE_EXTERNAL_WEBSITES,asm_websites}.{csv,xlsx}'
+  source_pattern: '{*INTERNET_EXPOSURE_EXTERNAL_WEBSITES,*asm_websites,ext_telecom_offsec_asmvm_website_endpoint}.{csv,xlsx}'
   required: false
   derived_at_ingest: true
   columns:
@@ -739,7 +783,7 @@ mappings:
     - Externally Inferred Vulnerability Score
     - inferred_vuln_score
 - silver_table: ext_telecom_offsec_asmvm_alert_endpoint
-  source_pattern: '*{XPANSE_Alerts,asm_alerts}.{csv,xlsx}'
+  source_pattern: '{*XPANSE_Alerts,*asm_alerts,ext_telecom_offsec_asmvm_alert_endpoint}.{csv,xlsx}'
   required: false
   derived_at_ingest: true
   columns:
@@ -783,7 +827,7 @@ mappings:
     - Last Observed
     - observed_ts
 - silver_table: ext_telecom_offsec_asmvm_cve_observation
-  source_pattern: '*{UNIFIED_ASSETS_TABLE,EXTERNAL_SERVICES,EXTERNAL_WEBSITES}.{csv,xlsx}'
+  source_pattern: '{*UNIFIED_ASSETS_TABLE,*EXTERNAL_SERVICES,*EXTERNAL_WEBSITES,ext_telecom_offsec_asmvm_cve_observation}.{csv,xlsx}'
   required: false
   derived_at_ingest: true
   columns:
@@ -820,11 +864,11 @@ mappings:
     aliases:
     - last_observed_ts
 - silver_table: ext_telecom_offsec_asmvm_vm_asset
-  source_pattern: '*{assets,vm_assets,neurons_assets}.{csv,xlsx}'
+  source_pattern: '{assets,*vm_assets,*neurons_assets,*scanner_assets,*vuln_assets,*asset_findings,ext_telecom_offsec_asmvm_vm_asset}.{csv,xlsx}'
   sheet_selection: auto
   required: true
   columns:
-  - target: asset_key
+  - target: asset_id
     aliases:
     - Asset ID
     - asset_key
@@ -847,8 +891,9 @@ mappings:
     - fqdn
     - FQDN
     - rdns
-  - target: operating_system
+  - target: os_detected
     aliases:
+    - operating_system
     - Operating System
     - operatingSystemScanner
     - os
@@ -856,7 +901,6 @@ mappings:
     aliases:
     - network
     - network name
-    - record type
   - target: scanner
     aliases:
     - scannerName
@@ -939,8 +983,14 @@ mappings:
     aliases:
     - vrrCriticalMax
     - vrr_critical_max
+  - target: raw_source_file
+    aliases:
+    - raw_source_file
+  - target: raw_source_row_id
+    aliases:
+    - raw_source_row_id
 - silver_table: ext_telecom_offsec_asmvm_vm_finding
-  source_pattern: '*{findings,vm_findings,neurons_findings}.{csv,xlsx}'
+  source_pattern: '{findings,*vm_findings,*neurons_findings,*scanner_findings,*vulnerability_findings,*external_findings,ext_telecom_offsec_asmvm_vm_finding}.{csv,xlsx}'
   sheet_selection: auto
   required: true
   columns:
@@ -950,7 +1000,7 @@ mappings:
     - finding_id
     - id
     required: true
-  - target: asset_key
+  - target: vm_asset_id
     aliases:
     - Asset ID
     - asset_key
@@ -977,7 +1027,7 @@ mappings:
     - pluginFamily
     - plugin_family
     - plugin family
-  - target: scanner_name
+  - target: scanner
     aliases:
     - scannerName
     - scanner_name
@@ -998,7 +1048,7 @@ mappings:
   - target: protocol
     aliases:
     - protocol
-  - target: network_name
+  - target: scan_network_name
     aliases:
     - network
     - network_name
@@ -1032,8 +1082,14 @@ mappings:
     - lastFoundOn
     - last_found_ts
     - last found
+  - target: raw_source_file
+    aliases:
+    - raw_source_file
+  - target: raw_source_row_id
+    aliases:
+    - raw_source_row_id
 - silver_table: ext_telecom_offsec_asmvm_vm_cve_finding
-  source_pattern: '*{findings,vm_findings}.{csv,xlsx}'
+  source_pattern: '*ext_telecom_offsec_asmvm_vm_cve_finding.{csv,xlsx}'
   required: false
   derived_at_ingest: true
   columns:
@@ -1086,7 +1142,7 @@ mappings:
     - lastFoundOn
     - last_found_ts
 - silver_table: ext_telecom_offsec_asmvm_vm_cve_observation
-  source_pattern: '*{findings,vm_findings}.{csv,xlsx}'
+  source_pattern: '*ext_telecom_offsec_asmvm_vm_cve_observation.{csv,xlsx}'
   required: false
   derived_at_ingest: true
   columns:
@@ -1117,7 +1173,7 @@ mappings:
     aliases:
     - last_found_ts
 - silver_table: ext_telecom_offsec_asmvm_asm_vm_surface
-  source_pattern: '*{UNIFIED_ASSETS_TABLE,assets,findings}.{csv,xlsx}'
+  source_pattern: '*ext_telecom_offsec_asmvm_asm_vm_surface.{csv,xlsx}'
   required: true
   derived_at_ingest: true
   columns:
@@ -1286,7 +1342,7 @@ mappings:
     - last_seen_ts
     - last_seen
 - silver_table: ext_telecom_offsec_asmvm_candidate_subject
-  source_pattern: '*{candidate_queue,asmvm_candidates,candidates}.{csv,xlsx}'
+  source_pattern: '{*candidate_queue,*asmvm_candidates,*candidates,ext_telecom_offsec_asmvm_candidate_subject}.{csv,xlsx}'
   required: false
   derived_at_ingest: true
   columns:
@@ -1353,7 +1409,7 @@ mappings:
     - Attack Surface Rule
     - rule_name
     - rule
-  - target: rule_type
+  - target: rule_kind
     aliases:
     - rule_type
     - kind

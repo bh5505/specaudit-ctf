@@ -40,11 +40,19 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_asset (
     asn_handles                        VARCHAR,             -- ownership attribution evidence
     date_added                         TIMESTAMP,           -- first seen by ASM
     last_observed                      TIMESTAMP,
+    first_observed_ts                  TIMESTAMP,
+    providers                          VARCHAR,
+    tags                               VARCHAR,
+    cloud_id                           VARCHAR,
+    asn_countries                      VARCHAR,
+    asn_record_names                   VARCHAR,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
     source_file                        VARCHAR,
     source_row_id                      VARCHAR,
+    raw_source_file                    VARCHAR,             -- original vendor export filename
+    raw_source_row_id                  VARCHAR,             -- original CSV record position or vendor row key
     record_hash                        VARCHAR,
     lineage_batch_id                   VARCHAR,
     mapping_version                    VARCHAR,
@@ -76,11 +84,16 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_service (
     has_inferred_cve_signal            BOOLEAN,
     first_observed                     TIMESTAMP,
     last_observed                      TIMESTAMP,
+    business_units                     VARCHAR,
+    country                            VARCHAR,
+    discovery_type                     VARCHAR,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
     source_file                        VARCHAR,
     source_row_id                      VARCHAR,
+    raw_source_file                    VARCHAR,             -- original vendor export filename
+    raw_source_row_id                  VARCHAR,             -- original CSV record position or vendor row key
     record_hash                        VARCHAR,
     lineage_batch_id                   VARCHAR,
     mapping_version                    VARCHAR,
@@ -114,11 +127,14 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_website (
     country                            VARCHAR,
     first_observed                     TIMESTAMP,
     last_observed                      TIMESTAMP,
+    business_units                     VARCHAR,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
     source_file                        VARCHAR,
     source_row_id                      VARCHAR,
+    raw_source_file                    VARCHAR,             -- original vendor export filename
+    raw_source_row_id                  VARCHAR,             -- original CSV record position or vendor row key
     record_hash                        VARCHAR,
     lineage_batch_id                   VARCHAR,
     mapping_version                    VARCHAR,
@@ -151,11 +167,20 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_alert (
     mitre_technique                    VARCHAR,
     observed_at                        TIMESTAMP,
     last_observed                      TIMESTAMP,
+    description                        VARCHAR,
+    ipv6_list                          VARCHAR,
+    has_service                        BOOLEAN,
+    resolution_comment                 VARCHAR,
+    integration_source                 VARCHAR,
+    business_units                     VARCHAR,
+    created_ts                         TIMESTAMP,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
     source_file                        VARCHAR,
     source_row_id                      VARCHAR,
+    raw_source_file                    VARCHAR,             -- original vendor export filename
+    raw_source_row_id                  VARCHAR,             -- original CSV record position or vendor row key
     record_hash                        VARCHAR,
     lineage_batch_id                   VARCHAR,
     mapping_version                    VARCHAR,
@@ -188,11 +213,18 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_incident (
     created_at                         TIMESTAMP,
     last_observed                      TIMESTAMP,
     resolved_at                        TIMESTAMP,
+    description                        VARCHAR,
+    ipv6_list                          VARCHAR,
+    last_updated_ts                    TIMESTAMP,
+    assignee_email                     VARCHAR,
+    integration_source                 VARCHAR,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
     source_file                        VARCHAR,
     source_row_id                      VARCHAR,
+    raw_source_file                    VARCHAR,             -- original vendor export filename
+    raw_source_row_id                  VARCHAR,             -- original CSV record position or vendor row key
     record_hash                        VARCHAR,
     lineage_batch_id                   VARCHAR,
     mapping_version                    VARCHAR,
@@ -219,11 +251,17 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_owned_ip_range (
     asn_handles                        VARCHAR,
     is_subrange                        BOOLEAN,
     date_added                         VARCHAR,             -- declaration date as exported
+    cidr                               VARCHAR,
+    asn_countries                      VARCHAR,
+    asn_record_names                   VARCHAR,
+    notes                              VARCHAR,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
     source_file                        VARCHAR,
     source_row_id                      VARCHAR,
+    raw_source_file                    VARCHAR,             -- original vendor export filename
+    raw_source_row_id                  VARCHAR,             -- original CSV record position or vendor row key
     record_hash                        VARCHAR,
     lineage_batch_id                   VARCHAR,
     mapping_version                    VARCHAR,
@@ -243,6 +281,24 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_ip (
     seen_via                           VARCHAR,             -- asset|service|website|alert (pipe-joined)
     has_active_service                 BOOLEAN,             -- at least one active service or website observation
     asm_observations                   BIGINT,              -- observation count across ASM sources
+    has_asset                          BOOLEAN,
+    has_service                        BOOLEAN,
+    has_website                        BOOLEAN,
+    has_alert                          BOOLEAN,
+    has_incident                       BOOLEAN,
+    asset_count                        BIGINT,
+    service_count                      BIGINT,
+    website_count                      BIGINT,
+    alert_count                        BIGINT,
+    incident_count                     BIGINT,
+    active_service_count               BIGINT,
+    active_alert_count                 BIGINT,
+    high_alert_count                   BIGINT,
+    critical_alert_count               BIGINT,
+    max_inferred_vuln_score            DOUBLE,
+    inferred_cve_count                 BIGINT,
+    first_observed_ts                  TIMESTAMP,
+    last_observed_ts                   TIMESTAMP,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
@@ -273,6 +329,7 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_service_endpoint (
     inferred_vuln_score                DOUBLE,
     inferred_cves                      VARCHAR,
     product_version                    VARCHAR,
+    last_observed_ts                   TIMESTAMP,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
@@ -302,6 +359,8 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_website_endpoint (
     has_failed_assessment              BOOLEAN,
     failed_security_assessments        VARCHAR,
     inferred_cves                      VARCHAR,
+    root_page_status_code              INTEGER,
+    inferred_vuln_score                DOUBLE,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
@@ -328,6 +387,9 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_alert_endpoint (
     resolution_status                  VARCHAR,
     is_active_state                    BOOLEAN,
     asr_rule                           VARCHAR,
+    asr_category                       VARCHAR,
+    has_service                        BOOLEAN,
+    observed_ts                        TIMESTAMP,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
@@ -354,6 +416,10 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_cve_observation (
     evidence_ref                       VARCHAR,             -- asset/service id the inference came from
     inferred_score                     DOUBLE,              -- vendor inferred CVSS
     is_active                          BOOLEAN,
+    subject_kind                       VARCHAR,
+    subject_id                         VARCHAR,
+    first_observed_ts                  TIMESTAMP,
+    last_observed_ts                   TIMESTAMP,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,

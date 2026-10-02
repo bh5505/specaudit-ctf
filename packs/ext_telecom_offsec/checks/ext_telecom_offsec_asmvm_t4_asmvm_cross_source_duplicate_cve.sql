@@ -14,34 +14,48 @@
 -- Tables: ext_telecom_offsec_asmvm_cve_observation, ext_telecom_offsec_asmvm_vm_cve_observation.
 -- Bound params: ?1 = run_id, ?2 = row limit.
 
+WITH asm_pair AS (
+    SELECT run_id, ip, cve,
+           MIN(evidence_ref) AS evidence_ref,
+           MIN(sources) AS sources,
+           MIN(inferred_score) AS inferred_score
+    FROM ext_telecom_offsec_asmvm_cve_observation
+    WHERE run_id = ?1 AND CAST(is_active AS BOOLEAN)
+    GROUP BY run_id, ip, cve
+),
+vm_pair AS (
+    SELECT run_id, ip, cve,
+           MIN(evidence_ref) AS evidence_ref,
+           MAX(COALESCE(n_findings, 0)) AS n_findings,
+           MAX(COALESCE(severity, 0)) AS severity,
+           MIN(scan_mode) AS scan_mode,
+           MAX(last_found_ts) AS last_found_ts
+    FROM ext_telecom_offsec_asmvm_vm_cve_observation
+    WHERE run_id = ?1 AND CAST(is_open AS BOOLEAN)
+    GROUP BY run_id, ip, cve
+)
 SELECT
     'asmvm:dup-cve:' || a.ip || ':' || a.cve        AS finding_key,
     'Cross-source duplicate finding (ASM + VM): ' || a.cve || ' on ' || a.ip AS title,
-    -- one finding per (ip, cve) pair: several VM rows may corroborate the same
-    -- ASM inference (one per source system), and the finding contract requires
-    -- a unique finding_key per run, so every VM-side value is aggregated
-    CAST(1 + SUM(COALESCE(v.n_findings, 0)) AS BIGINT) AS affected_count,
+    -- The aggregate CTEs collapse reaccepted rows before the cross-source join.
+    CAST(1 + v.n_findings AS BIGINT) AS affected_count,
     1                                               AS exposure_estimate,
-    a.ip || ' / ' || a.cve || ' / ' || MIN(a.evidence_ref) AS record_locator,
-    'asm_sources=' || COALESCE(MIN(a.sources), '') ||
-    '; vm_evidence=' || COALESCE(MIN(v.evidence_ref), '') ||
-    '; vm_rows_for_pair=' || CAST(COUNT(*) AS VARCHAR) ||
-    '; vm_findings_for_pair=' || CAST(SUM(COALESCE(v.n_findings, 0)) AS VARCHAR) ||
-    '; vm_severity=' || CAST(ROUND(MAX(COALESCE(v.severity, 0)), 2) AS VARCHAR) ||
-    '; asm_inferred_score=' || CAST(ROUND(MIN(COALESCE(a.inferred_score, 0)), 2) AS VARCHAR) ||
-    '; vm_scan_mode=' || COALESCE(MIN(v.scan_mode), 'unknown') ||
-    '; vm_last_found=' || COALESCE(SUBSTR(CAST(MAX(v.last_found_ts) AS VARCHAR), 1, 19), '') ||
+    a.ip || ' / ' || a.cve || ' / ' || a.evidence_ref AS record_locator,
+    'asm_sources=' || COALESCE(a.sources, '') ||
+    '; vm_evidence=' || COALESCE(v.evidence_ref, '') ||
+    '; vm_rows_for_pair=1' ||
+    '; vm_findings_for_pair=' || CAST(v.n_findings AS VARCHAR) ||
+    '; vm_severity=' || CAST(ROUND(v.severity, 2) AS VARCHAR) ||
+    '; asm_inferred_score=' || CAST(ROUND(COALESCE(a.inferred_score, 0), 2) AS VARCHAR) ||
+    '; vm_scan_mode=' || COALESCE(v.scan_mode, 'unknown') ||
+    '; vm_last_found=' || COALESCE(SUBSTR(CAST(v.last_found_ts AS VARCHAR), 1, 19), '') ||
     '; canonical=vm_scan'                           AS details,
     a.run_id                                        AS run_id,
     34                                              AS risk_score
-FROM ext_telecom_offsec_asmvm_cve_observation a
-JOIN ext_telecom_offsec_asmvm_vm_cve_observation v
+FROM asm_pair a
+JOIN vm_pair v
     ON v.run_id = a.run_id
    AND v.ip = a.ip
    AND v.cve = a.cve
-WHERE a.run_id = ?1
-  AND CAST(a.is_active AS BOOLEAN)
-  AND CAST(v.is_open AS BOOLEAN)
-GROUP BY a.run_id, a.ip, a.cve
 ORDER BY risk_score DESC, finding_key
 LIMIT ?2;

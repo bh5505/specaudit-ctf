@@ -12,12 +12,14 @@ SELECT DISTINCT
     a.mitre_technique AS mitre_technique,
     COALESCE(a.asr_rule, ae.asr_rule) AS asr_rule,
     CASE
-        WHEN a.ipv4_list = ae.ip THEN 'alert_asserted_direct'
+        WHEN INSTR(',' || REPLACE(COALESCE(a.ipv4_list, ''), ' ', '') || ',',
+                   ',' || ae.ip || ',') > 0 THEN 'alert_asserted_direct'
         ELSE 'alert_endpoint_bridged'
     END AS provenance_class,
     CASE
-        WHEN a.ipv4_list = ae.ip
-            THEN 'alert address assertion equals the confirmed service address'
+        WHEN INSTR(',' || REPLACE(COALESCE(a.ipv4_list, ''), ' ', '') || ',',
+                   ',' || ae.ip || ',') > 0
+            THEN 'alert address list contains the confirmed service address'
         ELSE 'alert endpoint bridge resolves the confirmed service address'
     END AS provenance_note
 FROM ext_telecom_offsec_asmvm_alert a

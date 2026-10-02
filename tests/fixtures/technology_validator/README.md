@@ -17,8 +17,11 @@ Each case passes a synthetic candidate and explicit scope to the validator's
 raw JSON objects. GCP and Azure bundles capture configuration, identity, and
 policy or NSG replies; the Rust fixture path feeds them to the production
 evaluator in memory and does not launch a provider executable. The harness
-checks a small result projection and, where relevant, absence of a planned
-live command. It does not decide whether a cloud configuration is public.
+checks a small result projection. A preflight refusal must assert that no
+provider command was planned. An identity mismatch discovered in a supplied
+provider reply asserts that the necessary read was planned; the fixture path
+still executes no provider process. The harness does not decide whether a cloud
+configuration is public.
 Those decisions are made by the same Rust parser and evaluator used by the
 live technology probes.
 
@@ -26,8 +29,16 @@ The cases cover a public S3 bucket ACL and the same grant blocked by all four
 bucket BPA controls, both with and without synthetic anonymous-access replies;
 public and private AWS security-group rules, including
 IPv6 RDP; scoped and conditional GCP IAM; Azure public and private NSG rules,
-a replaced saved rule, and priority uncertainty; and missing or mismatched
-authorization, provider identity, and claim identity.
+a replaced saved rule, list-only source and port ranges, and priority
+uncertainty; and missing or mismatched authorization, provider identity, and
+claim identity. GCP and Azure nonzero provider exits remain inconclusive even
+when the captured reply looks positive.
+For Azure, the candidate and finding detail `account_id` are the tenant GUID
+emitted by the collector. The NSG resource ID and provider account response
+carry the separate subscription GUID. Cases check wrong or missing tenant
+scope, a subscription mismatch in the NSG resource ID or provider response,
+an NSG response that returns the right name under a different subscription,
+and case-insensitive UUID matching across the tenant and NSG resource ID.
 The positive and private GCP/Azure cases omit `details.reason`, as the
 producing checks do; separate changed-reason cases require a command-free
 inconclusive result.

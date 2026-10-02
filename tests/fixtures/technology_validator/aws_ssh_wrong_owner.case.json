@@ -28,5 +28,6 @@
     "configuration_status": "unknown",
     "reachability_status": "unknown",
     "reason_code": "group_identity_mismatch"
-  }
+  },
+  "expect_plan": true
 }

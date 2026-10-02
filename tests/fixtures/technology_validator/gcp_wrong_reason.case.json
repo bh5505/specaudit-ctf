@@ -8,7 +8,10 @@
     "resource_uid": "//cloudresourcemanager.googleapis.com/projects/demo-project",
     "account_id": "123456789012",
     "details": {
-      "reason": "unrelated_claim"
+      "account_id": "123456789012",
+      "details": {
+        "reason": "unrelated_claim"
+      }
     },
     "authorization": {
       "project_id": "demo-project",

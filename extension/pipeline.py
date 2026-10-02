@@ -155,6 +155,9 @@ def pack_run(
     (``prioritize_targets``) consumes a stable, discoverable artifact rather
     than guessing at output locations.
     """
+    canonical_pack = _ROOT / "packs" / "ext_telecom_offsec"
+    if Path(pack_root).resolve() != canonical_pack.resolve():
+        raise ValueError("pack_run requires the checked-in ext_telecom_offsec pack root")
     out = Path(out_dir) if out_dir else Path(tempfile.mkdtemp(prefix="ctf-mcp-"))
     if db not in ("duckdb", "sqlite"):
         raise ValueError("db must be 'duckdb' or 'sqlite'")

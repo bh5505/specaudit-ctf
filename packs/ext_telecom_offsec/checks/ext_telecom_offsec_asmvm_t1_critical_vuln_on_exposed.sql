@@ -37,10 +37,10 @@ WITH network_lists AS (
 SELECT
     'asmvm:critical-exposed:' || f.ip                AS finding_key,
     'Open critical finding on internet-active IP: ' || f.ip AS title,
-    COUNT(*)                                         AS affected_count,
+    COUNT(DISTINCT f.finding_id)                     AS affected_count,
     CAST(COALESCE(MAX(s.asm_exposed_services), 0) AS BIGINT) AS exposure_estimate,
     'vm:asset:' || f.ip || ' + asm:ip:' || f.ip      AS record_locator,
-    'open_critical=' || CAST(COUNT(*) AS VARCHAR) ||
+    'open_critical=' || CAST(COUNT(DISTINCT f.finding_id) AS VARCHAR) ||
     '; max_severity=' || CAST(ROUND(MAX(f.severity), 2) AS VARCHAR) ||
     '; exposed_services=' || CAST(COALESCE(MAX(s.asm_exposed_services), 0) AS VARCHAR) ||
     '; exposed_websites=' || CAST(COALESCE(MAX(s.asm_exposed_websites), 0) AS VARCHAR) ||

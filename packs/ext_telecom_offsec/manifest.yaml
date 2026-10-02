@@ -18,6 +18,7 @@ input_contract:
   - ext_telecom_offsec_asmvm_asset
   - ext_telecom_offsec_asmvm_service
   - ext_telecom_offsec_asmvm_website
+  - ext_telecom_offsec_asmvm_alert
   - ext_telecom_offsec_asmvm_asm_vm_surface
   - ext_telecom_offsec_asmvm_ip
   - ext_telecom_offsec_asmvm_service_endpoint
@@ -166,8 +167,7 @@ checks:
   depends_on_tables:
   - ext_telecom_offsec_asmvm_evidence_bundle
   severity: medium
-  explanation: 'Inherited from ext_telecom_cyber_t2_adversarial_validation, retargeted at this pack''s evidence-bundle
-    ledger: flags bundles no second reviewer or critic model tried to disprove before findings shipped.'
+  explanation: Flags evidence bundles no second reviewer or critic model tried to disprove before findings shipped.
 - id: ext_telecom_offsec_asmvm_t2_asmvm_cve_uncorroborated
   name: ASM/VM T2 inferred CVE with no second source
   check_type: deterministic_sql
@@ -240,8 +240,7 @@ checks:
   depends_on_tables:
   - ext_telecom_offsec_asmvm_finding_candidate
   severity: high
-  explanation: 'Inherited from ext_telecom_cyber_t3_evidence_gate, retargeted at this pack''s candidate queue: flags
-    candidates that entered the LLM lane without passing the deterministic evidence gate.'
+  explanation: Flags candidates that entered the LLM lane without passing the deterministic evidence gate.
 - id: ext_telecom_offsec_asmvm_t3_asmvm_scan_confidence_vocabulary_gap
   name: ASM/VM T3 undocumented VM observation scan vocabulary
   check_type: deterministic_sql
@@ -318,8 +317,7 @@ checks:
   depends_on_tables:
   - ext_telecom_offsec_asmvm_finding_candidate
   severity: medium
-  explanation: 'Inherited from ext_telecom_cyber_t4_duplicate_candidates, retargeted at this pack''s candidate queue:
-    flags duplicate-verdict candidates inside dedupe-hash clusters that must collapse before chaining.'
+  explanation: Flags duplicate-verdict candidates inside dedupe-hash clusters that must collapse before chaining.
 - id: ext_telecom_offsec_asmvm_t4_asmvm_cross_source_duplicate_cve
   name: ASM/VM T4 same CVE reported by both sources
   check_type: deterministic_sql
@@ -338,8 +336,7 @@ checks:
   depends_on_tables:
   - ext_telecom_offsec_asmvm_evidence_bundle
   severity: critical
-  explanation: 'Inherited from ext_telecom_cyber_t5_sandboxed_reproduction, retargeted at this pack''s evidence-bundle
-    ledger: flags live-fire reproduction that did not run in isolated compute.'
+  explanation: Flags live-fire reproduction that did not run in isolated compute.
 - id: ext_telecom_offsec_asmvm_t5_asmvm_reproduction_queue
   name: ASM/VM T5 reproduction lanes still outstanding
   check_type: deterministic_sql
@@ -360,8 +357,7 @@ checks:
   - ext_telecom_offsec_asmvm_finding_candidate
   - ext_telecom_offsec_asmvm_rule
   severity: medium
-  explanation: 'Inherited from ext_telecom_cyber_t6_rule_corpus, retargeted at this pack''s candidate and rule tables:
-    flags candidates whose rule reference is empty or does not resolve to an active generalized rule.'
+  explanation: Flags candidates whose rule reference is empty or does not resolve to an active generalized rule.
 - id: ext_telecom_offsec_asmvm_t6_asmvm_rule_corpus_gap
   name: ASM/VM T6 open finding class with no active rule
   check_type: deterministic_sql
@@ -380,8 +376,7 @@ checks:
   depends_on_tables:
   - ext_telecom_offsec_asmvm_check_run
   severity: low
-  explanation: 'Inherited from ext_telecom_cyber_t7_resumable_runs, retargeted at this pack''s source-run ledger:
-    flags interrupted runs and runs whose checkpoint predates their own start.'
+  explanation: Flags interrupted runs and runs whose checkpoint predates their own start.
 - id: ext_telecom_offsec_asmvm_t7_asmvm_candidate_backlog
   name: ASM/VM T7 candidate queue backlog and batch truncation
   check_type: deterministic_sql
@@ -390,8 +385,10 @@ checks:
   - ext_telecom_offsec_asmvm_finding_candidate
   - ext_telecom_offsec_asmvm_vm_finding
   - ext_telecom_offsec_asmvm_asm_vm_surface
+  - ext_telecom_offsec_asmvm_alert
   - ext_telecom_offsec_asmvm_alert_endpoint
   - ext_telecom_offsec_asmvm_cve_observation
+  - ext_telecom_offsec_asmvm_vm_cve_observation
   - ext_telecom_offsec_asmvm_vm_cve_finding
   severity: medium
   explanation: Recomputes the eligible population per candidate producer from silver and compares it with the rows

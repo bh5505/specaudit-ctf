@@ -1,11 +1,11 @@
 -- 003_ext_telecom_offsec_asmvm_process_silver.sql - process ledger: evidence bundles,
--- the finding-candidate queue (finding_candidate contract shape, the same
--- columns as ext_telecom_offsec_aws_finding_candidate), the pack-local candidate
+-- the finding-candidate queue (contract fields plus source title and creation
+-- time), the pack-local candidate
 -- SUBJECT binding, the generalized rule corpus, and the source-run ledger with
 -- ingest-computed freshness.
 --
 -- ext_telecom_offsec_asmvm_candidate_subject exists because the finding_candidate
--- contract carries no subject/asset binding, no severity and no first/last-seen
+-- contract carries no subject/asset binding or severity and no first/last-seen
 -- timestamps. An ASM/VM candidate is address-scoped and its age is the audit
 -- question (T7 backlog), so the extension lives in a pack-local table joined on
 -- candidate_id instead of an altered contract table. See
@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_evidence_bundle (
     has_live_fire                      BOOLEAN,             -- an independent active probe reproduced it
     has_adversarial_reverify           BOOLEAN,             -- a second reviewer or model tried to disprove it
     is_sandboxed                       BOOLEAN,             -- reproduction ran in isolated compute
+    evidence_class                     VARCHAR,
+    collected_at                       TIMESTAMP,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
@@ -38,7 +40,7 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_evidence_bundle (
     PRIMARY KEY (run_id, accept_event_id, bundle_id)
 );
 
--- ext_telecom_offsec_asmvm_finding_candidate - Candidate queue in the finding_candidate contract shape (same columns as ext_telecom_offsec_aws_finding_candidate).
+-- ext_telecom_offsec_asmvm_finding_candidate - Candidate queue with the finding_candidate contract fields and optional source metadata.
 -- Spine: (run_id, engagement_id, accept_event_id) + entity key + source/lineage columns.
 CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_finding_candidate (
     -- accept spine (required on every pack-owned silver table)
@@ -55,6 +57,8 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_finding_candidate (
     rule_id                            VARCHAR,
     first_seen_ts                      TIMESTAMP,
     last_seen_ts                       TIMESTAMP,
+    title                              VARCHAR,
+    created_at                         TIMESTAMP,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
@@ -87,6 +91,7 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_candidate_subject (
     dedupe_hash                        VARCHAR,
     first_seen_ts                      TIMESTAMP,
     last_seen_ts                       TIMESTAMP,
+    subject_key                        VARCHAR,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
@@ -111,6 +116,11 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_rule (
     source_technique                   VARCHAR,             -- T1..T7
     rule_kind                          VARCHAR,             -- asm_asr|scanner_family|deterministic
     active                             BOOLEAN,             -- false = proposed or retired, not deployed
+    description                        VARCHAR,
+    category                           VARCHAR,
+    source                             VARCHAR,
+    mitre_tactic                       VARCHAR,
+    mitre_technique                    VARCHAR,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,

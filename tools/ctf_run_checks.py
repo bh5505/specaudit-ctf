@@ -85,6 +85,7 @@ except ImportError:
 
 ENGAGEMENT_ID = "rehearsal-2026"
 ZERO_ACCEPT_EVENT_ID = "00000000-0000-0000-0000-000000000000"
+OFFSEC_PACK_ROOT = Path(__file__).resolve().parents[1] / "packs" / "ext_telecom_offsec"
 
 SEVERITY_ORDER = {"critical": 4, "high": 3, "medium": 2, "low": 1, "informational": 0}
 SARIF_LEVEL = {"critical": "error", "high": "error", "medium": "warning",
@@ -103,6 +104,7 @@ def _quote_identifier(value):
 
 
 def load_manifest(pack_root):
+    pack_root = Path(pack_root)
     manifest_path = pack_root / "manifest.yaml"
     if not manifest_path.is_file():
         raise RunnerError("manifest.yaml not found at %s" % manifest_path)
@@ -116,28 +118,41 @@ def load_manifest(pack_root):
     for check in checks:
         if not isinstance(check, dict) or not check.get("id"):
             raise RunnerError("every manifest check needs an id")
+    declares_offsec = manifest.get("pack_id") == "ext_telecom_offsec" or any(
+        str(check["id"]).startswith("ext_telecom_offsec_") for check in checks)
+    if declares_offsec and pack_root.resolve() != OFFSEC_PACK_ROOT.resolve():
+        raise RunnerError(
+            "ext_telecom_offsec reports require the checked-in pack root")
     return manifest
 
 
-def require_complete_offsec_evidence(manifest, loaded_tables):
-    """Refuse a governed offsec report when a required source was not loaded.
+def require_complete_evidence(manifest, loaded_tables):
+    """Refuse a governed report when a required source was not loaded.
 
     The pack manifest owns the required-table inventory. A header-only CSV is
     present evidence of an empty source; migration-created empty tables are not.
-    Other packs retain the loopback runner's existing partial-run behavior.
+    A pack without an input contract retains the runner's partial-run behavior,
+    except that the consolidated offsec check inventory requires its contract.
     """
-    if manifest.get("pack_id") != "ext_telecom_offsec":
-        return
+    offsec_checks = any(
+        isinstance(check, dict)
+        and str(check.get("id") or "").startswith("ext_telecom_offsec_")
+        for check in manifest.get("checks", [])
+    )
+    if offsec_checks and manifest.get("pack_id") != "ext_telecom_offsec":
+        raise RunnerError("offsec check IDs require pack_id ext_telecom_offsec")
     contract = manifest.get("input_contract")
+    if contract is None and not offsec_checks and manifest.get("pack_id") != "ext_telecom_offsec":
+        return
     required = contract.get("required_tables") if isinstance(contract, dict) else None
     if (not isinstance(required, list) or not required
             or any(not isinstance(table, str) or not table for table in required)
             or len(set(required)) != len(required)):
-        raise RunnerError("offsec manifest requires a non-empty unique required_tables list")
+        raise RunnerError("pack manifest requires a non-empty unique required_tables list")
     missing = sorted(set(required) - set(loaded_tables))
     if missing:
         raise RunnerError(
-            "offsec evidence incomplete: %d required source table(s) absent: %s"
+            "pack evidence incomplete: %d required source table(s) absent: %s"
             % (len(missing), ", ".join(missing))
         )
 
@@ -172,6 +187,11 @@ def load_mapping_spec(pack_root):
         pattern = entry.get("source_pattern", "")
         table = entry.get("silver_table", "")
         if pattern and table:
+            if pattern in mapping:
+                raise RunnerError(
+                    "duplicate source_pattern %r maps to both %s and %s"
+                    % (pattern, mapping[pattern], table)
+                )
             mapping[pattern] = table
     return mapping
 
@@ -303,10 +323,15 @@ def _pattern_matches(pattern, filename):
 
 
 def _table_for(mapping, filename):
-    for pattern, table in mapping.items():
-        if _pattern_matches(pattern, filename):
-            return table
-    return Path(filename).stem
+    matches = [(pattern, table) for pattern, table in mapping.items()
+               if _pattern_matches(pattern, filename)]
+    tables = {table for _, table in matches}
+    if len(tables) > 1:
+        raise RunnerError(
+            "ambiguous source filename %r matches multiple tables: %s"
+            % (filename, ", ".join(sorted(tables)))
+        )
+    return matches[0][1] if matches else Path(filename).stem
 
 
 # Spine column types from schema/migrations/001_ext_telecom_silver.sql. The
@@ -1043,7 +1068,7 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
         loaded_tables.append(table)
         print("loaded %s -> table %s (%d rows)" % (csv_path.name, table, len(rows)))
 
-    require_complete_offsec_evidence(manifest, loaded_tables)
+    require_complete_evidence(manifest, loaded_tables)
 
     check_sqls = []
     for check in manifest["checks"]:

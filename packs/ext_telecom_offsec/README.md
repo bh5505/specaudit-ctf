@@ -26,5 +26,13 @@ Run the checks on synthetic evidence with
 also runs under DuckDB when installed. The loopback report is a test artifact;
 it is not a product ingest or deployment result.
 
+The evidence directory must include every table in
+`manifest.yaml`'s `input_contract.required_tables`; a header-only CSV records
+an observed empty source. The AuditPack ASM/VM builder derives that domain's
+raw-source tables but does not manufacture independent service observations.
+Supply those observations, AWS posture, and Technology candidate/validation
+sources separately for a complete run. Missing source files abort before
+report generation.
+
 New reports use the `ext_telecom_offsec` pack ID and renamed check IDs. Old
 pack IDs and aliases are not supported by this mirror.

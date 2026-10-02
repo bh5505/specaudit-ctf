@@ -51,15 +51,46 @@ PRODUCT_PACK = Path(__file__).parents[1] / "packs/ext_telecom_offsec"
 CHECK_RUN_TABLE = "ext_telecom_offsec_aws_check_run"
 
 
-def test_completeness_gate_is_scoped_to_offsec_pack():
+def test_duplicate_mapping_pattern_fails_before_any_csv_is_loaded(tmp_path):
     runner = _load_runner()
-    runner.require_complete_offsec_evidence(
-        {"pack_id": "other-pack", "input_contract": {
-            "required_tables": ["source_table"]}}, [])
+    (tmp_path / "manifest.yaml").write_text(
+        "contributes:\n  ingest:\n    mapping_spec_path: mapping_spec.yaml\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "mapping_spec.yaml").write_text(
+        "mappings:\n"
+        "  - source_pattern: findings.csv\n"
+        "    silver_table: first_table\n"
+        "  - source_pattern: findings.csv\n"
+        "    silver_table: second_table\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(runner.RunnerError, match="duplicate source_pattern"):
+        runner.load_mapping_spec(tmp_path)
+
+
+def test_overlapping_mapping_patterns_refuse_ambiguous_csv():
+    runner = _load_runner()
+    with pytest.raises(runner.RunnerError, match="ambiguous source filename"):
+        runner._table_for({"*assets.csv": "asm_asset", "assets.csv": "vm_asset"},
+                          "assets.csv")
+
+
+def test_completeness_gate_uses_the_input_contract_not_a_self_declared_pack_id():
+    runner = _load_runner()
     with pytest.raises(runner.RunnerError, match="required source table"):
-        runner.require_complete_offsec_evidence(
-            {"pack_id": "ext_telecom_offsec", "input_contract": {
+        runner.require_complete_evidence(
+            {"pack_id": "other-pack", "input_contract": {
                 "required_tables": ["source_table"]}}, [])
+    with pytest.raises(runner.RunnerError, match="pack_id ext_telecom_offsec"):
+        runner.require_complete_evidence(
+            {"pack_id": "renamed-pack", "checks": [{
+                "id": "ext_telecom_offsec_aws_t1_trust_boundary"}],
+             "input_contract": {"required_tables": ["source_table"]}}, [])
+    with pytest.raises(runner.RunnerError, match="required_tables"):
+        runner.require_complete_evidence(
+            {"pack_id": "ext_telecom_offsec", "checks": [{
+                "id": "ext_telecom_offsec_aws_t1_trust_boundary"}]}, [])
 
 
 def _product_t7_path(runner):

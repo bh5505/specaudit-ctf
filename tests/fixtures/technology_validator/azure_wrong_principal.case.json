@@ -6,10 +6,13 @@
     "finding_id": "ctf-azure-wrong-principal",
     "rule_id": "AZURE-NET-002",
     "resource_uid": "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/ctf-rg/providers/Microsoft.Network/networkSecurityGroups/ctf-nsg",
-    "account_id": "11111111-1111-4111-8111-111111111111",
+    "account_id": "22222222-2222-4222-8222-222222222222",
     "details": {
-      "reason": "configured_public_management_ingress",
-      "rule_name": "allow-ssh"
+      "account_id": "22222222-2222-4222-8222-222222222222",
+      "details": {
+        "reason": "configured_public_management_ingress",
+        "rule_name": "allow-ssh"
+      }
     },
     "authorization": {
       "subscription_id": "11111111-1111-4111-8111-111111111111",
@@ -24,5 +27,6 @@
     "reachability_status": "unknown",
     "reason_code": "subscription_identity_mismatch"
   },
-  "response_file": "azure_wrong_principal.provider.json"
+  "response_file": "azure_wrong_principal.provider.json",
+  "expect_plan": true
 }

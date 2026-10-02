@@ -9,14 +9,14 @@ SELECT
     1 AS affected_count,
     1 AS exposure_estimate,
     c.candidate_id || ' / ' || COALESCE(c.check_id, '') || ' / ' || COALESCE(c.finding_key, '') AS record_locator,
-    'passed_deterministic_gate=' || CAST(COALESCE(c.passed_deterministic_gate, false) AS VARCHAR) ||
+    'passed_deterministic_gate=' || COALESCE(CAST(CAST(c.passed_deterministic_gate AS BOOLEAN) AS VARCHAR), 'unknown') ||
     '; llm_lane_entered=' || CAST(COALESCE(c.llm_lane_entered, false) AS VARCHAR) ||
     '; llm_verdict=' || COALESCE(c.llm_verdict, '') AS details,
     c.run_id AS run_id,
     55 AS risk_score
 FROM ext_telecom_offsec_aws_finding_candidate c
 WHERE c.run_id = ?1
-  AND c.llm_lane_entered = true
-  AND c.passed_deterministic_gate = false
+  AND COALESCE(CAST(c.llm_lane_entered AS BOOLEAN), false) = true
+  AND COALESCE(CAST(c.passed_deterministic_gate AS BOOLEAN), false) = false
 ORDER BY finding_key
 LIMIT ?2;

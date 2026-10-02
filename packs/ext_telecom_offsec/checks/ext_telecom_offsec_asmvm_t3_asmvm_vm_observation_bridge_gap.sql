@@ -97,8 +97,8 @@ gaps AS (
     JOIN ext_telecom_offsec_asmvm_vm_cve_observation o
          ON o.ip = nm.ip AND o.cve = nm.cve AND o.run_id = nm.run_id
     WHERE o.run_id = ?1
-      AND (',' || coalesce(o.scan_networks, '') || ',')
-              NOT LIKE '%,' || nm.net_name || ',%'
+      AND instr(',' || coalesce(o.scan_networks, '') || ',',
+                ',' || nm.net_name || ',') = 0
 
     UNION ALL
     SELECT o.run_id, o.ip, o.cve, 'scan_networks_cardinality_mismatch'

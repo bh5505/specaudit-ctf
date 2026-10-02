@@ -7,8 +7,9 @@
 -- to cover. Purely additive and idempotent (CREATE TABLE IF NOT EXISTS).
 --
 -- Deliberately NOT seeded here: migrations own DDL, not data (the
--- seed-backdoor anti-pattern). Period rows arrive through the ingest mapping
--- (synthetic/mapping_spec.yaml) or the fixture-engagement path.
+-- seed-backdoor anti-pattern). Period rows are supplemental context supplied
+-- separately from source ingest (for example by the fixture-engagement path);
+-- the builder's audit_period CSV has no mapping entry or check dependency.
 
 CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_audit_period (
     audit_year   INTEGER PRIMARY KEY,

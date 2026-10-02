@@ -8,12 +8,14 @@
 
 SELECT
     'bucket:' || b.bucket_name AS finding_key,
-    'S3 bucket outside trust boundary: ' || b.bucket_name AS title,
+    'S3 bucket trust-boundary exception: ' || b.bucket_name AS title,
     1 AS affected_count,
-    1 AS exposure_estimate,
+    CASE WHEN CAST(b.public_access_block_enabled AS BOOLEAN) = false
+           OR CAST(b.policy_allows_anonymous AS BOOLEAN) = true
+         THEN 1 ELSE NULL END AS exposure_estimate,
     b.bucket_name || ' / ' || COALESCE(b.account_id, '') || ' / ' || COALESCE(b.region, '') AS record_locator,
-    'public_access_block_enabled=' || CAST(COALESCE(b.public_access_block_enabled, false) AS VARCHAR) ||
-    '; policy_allows_anonymous=' || CAST(COALESCE(b.policy_allows_anonymous, false) AS VARCHAR) ||
+    'public_access_block_enabled=' || COALESCE(CAST(CAST(b.public_access_block_enabled AS BOOLEAN) AS VARCHAR), 'unknown') ||
+    '; policy_allows_anonymous=' || COALESCE(CAST(CAST(b.policy_allows_anonymous AS BOOLEAN) AS VARCHAR), 'unknown') ||
     '; public_read_acl=' || CAST(COALESCE(b.public_read_acl, false) AS VARCHAR) ||
     '; public_write_acl=' || CAST(COALESCE(b.public_write_acl, false) AS VARCHAR) ||
     '; encryption_enabled=' || CAST(COALESCE(b.encryption_enabled, false) AS VARCHAR) ||
@@ -23,44 +25,46 @@ SELECT
 FROM ext_telecom_offsec_aws_s3_bucket b
 WHERE b.run_id = ?1
   AND (
-    b.public_access_block_enabled = false
-    OR b.policy_allows_anonymous = true
+    COALESCE(CAST(b.public_access_block_enabled AS BOOLEAN), false) = false
+    OR COALESCE(CAST(b.policy_allows_anonymous AS BOOLEAN), true) = true
   )
 UNION ALL
 SELECT
     'principal:' || p.principal_arn AS finding_key,
-    'IAM principal outside trust boundary: ' || p.principal_arn AS title,
+    'IAM principal trust-boundary exception: ' || p.principal_arn AS title,
     1 AS affected_count,
-    1 AS exposure_estimate,
+    CASE WHEN CAST(p.allows_external_principal AS BOOLEAN) = true
+         THEN 1 ELSE NULL END AS exposure_estimate,
     p.principal_arn || ' / ' || COALESCE(p.principal_type, '') AS record_locator,
-    'allows_external_principal=' || CAST(COALESCE(p.allows_external_principal, false) AS VARCHAR) ||
+    'allows_external_principal=' || COALESCE(CAST(CAST(p.allows_external_principal AS BOOLEAN) AS VARCHAR), 'unknown') ||
     '; mfa_required=' || CAST(COALESCE(p.mfa_required, false) AS VARCHAR) AS details,
     p.run_id AS run_id,
     45 AS risk_score
 FROM ext_telecom_offsec_aws_iam_principal p
 WHERE p.run_id = ?1
-  AND p.allows_external_principal = true
+  AND COALESCE(CAST(p.allows_external_principal AS BOOLEAN), true) = true
 UNION ALL
 SELECT
     'sg:' || sg.sg_id || ':' || sg.direction || ':' || sg.ip_protocol || ':' ||
         CAST(sg.from_port AS VARCHAR) || ':' || CAST(sg.to_port AS VARCHAR) || ':' || sg.cidr AS finding_key,
-    'Security-group rule outside trust boundary: ' || sg.sg_id AS title,
+    'Security-group rule trust-boundary exception: ' || sg.sg_id AS title,
     1 AS affected_count,
-    1 AS exposure_estimate,
+    CASE WHEN CAST(sg.is_public AS BOOLEAN) = true OR sg.cidr = '0.0.0.0/0'
+         THEN 1 ELSE NULL END AS exposure_estimate,
     sg.sg_id || ' / ' || COALESCE(sg.vpc_id, '') || ' / ' || sg.direction AS record_locator,
     'direction=' || sg.direction ||
     '; ip_protocol=' || sg.ip_protocol ||
     '; from_port=' || CAST(sg.from_port AS VARCHAR) ||
     '; to_port=' || CAST(sg.to_port AS VARCHAR) ||
     '; cidr=' || sg.cidr ||
-    '; is_public=' || CAST(COALESCE(sg.is_public, false) AS VARCHAR) AS details,
+    '; is_public=' || COALESCE(CAST(CAST(sg.is_public AS BOOLEAN) AS VARCHAR), 'unknown') AS details,
     sg.run_id AS run_id,
     45 AS risk_score
 FROM ext_telecom_offsec_aws_security_group sg
 WHERE sg.run_id = ?1
   AND sg.direction = 'ingress'
   AND (
-    sg.is_public = true
+    COALESCE(CAST(sg.is_public AS BOOLEAN), true) = true
     OR sg.cidr = '0.0.0.0/0'
   )
 ORDER BY finding_key

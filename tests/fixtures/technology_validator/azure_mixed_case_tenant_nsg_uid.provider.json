@@ -1,0 +1,33 @@
+{
+  "account": {
+    "environmentName": "AzureCloud",
+    "id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    "tenantId": "bBbBbBbB-bbbb-4bbb-8bbb-BbBbBbBbBbBb",
+    "user": {
+      "name": "validator@example.test"
+    }
+  },
+  "cloud": {
+    "endpoints": {
+      "activeDirectory": "https://login.microsoftonline.com/",
+      "resourceManager": "https://management.azure.com/"
+    },
+    "isActive": true,
+    "name": "AzureCloud"
+  },
+  "nsg": {
+    "id": "/subscriptions/AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA/resourceGroups/ctf-rg/providers/Microsoft.Network/networkSecurityGroups/ctf-nsg",
+    "name": "ctf-nsg",
+    "securityRules": [
+      {
+        "access": "Allow",
+        "destinationPortRange": "22",
+        "direction": "Inbound",
+        "name": "allow-ssh",
+        "priority": 200,
+        "protocol": "Tcp",
+        "sourceAddressPrefix": "Internet"
+      }
+    ]
+  }
+}

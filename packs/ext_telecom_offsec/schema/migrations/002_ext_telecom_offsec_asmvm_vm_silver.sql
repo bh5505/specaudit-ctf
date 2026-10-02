@@ -33,11 +33,25 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_vm_asset (
     vrr_critical_max                   DOUBLE,              -- max critical severity reported for the asset
     vrr_high_max                       DOUBLE,
     os_detected                        VARCHAR,
+    fqdn                               VARCHAR,
+    mac_address                        VARCHAR,
+    criticality                        VARCHAR,
+    tags                               VARCHAR,
+    record_type                        VARCHAR,
+    sources                            VARCHAR,
+    first_seen_ts                      TIMESTAMP,
+    open_finding_count                 INTEGER,
+    open_critical_count                INTEGER,
+    open_high_count                    INTEGER,
+    open_medium_count                  INTEGER,
+    open_low_count                     INTEGER,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
     source_file                        VARCHAR,
     source_row_id                      VARCHAR,
+    raw_source_file                    VARCHAR,             -- original vendor export filename
+    raw_source_row_id                  VARCHAR,             -- original CSV record position or vendor row key
     record_hash                        VARCHAR,
     lineage_batch_id                   VARCHAR,
     mapping_version                    VARCHAR,
@@ -71,11 +85,16 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_vm_finding (
     vm_asset_id                        VARCHAR,             -- producing scanner asset row
     scan_network_name                  VARCHAR,             -- producing asset's scanner network
     scan_network_id                    INTEGER,             -- vendor scanner-network id
+    source                             VARCHAR,
+    scan_mode                          VARCHAR,
+    first_found_ts                     TIMESTAMP,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
     source_file                        VARCHAR,
     source_row_id                      VARCHAR,
+    raw_source_file                    VARCHAR,             -- original vendor export filename
+    raw_source_row_id                  VARCHAR,             -- original CSV record position or vendor row key
     record_hash                        VARCHAR,
     lineage_batch_id                   VARCHAR,
     mapping_version                    VARCHAR,
@@ -96,6 +115,11 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_vm_cve_finding (
     severity                           DOUBLE,
     is_open                            BOOLEAN,
     last_found_ts                      TIMESTAMP,
+    asset_key                          VARCHAR,
+    qid                                INTEGER,
+    title                              VARCHAR,
+    plugin_family                      VARCHAR,
+    scan_mode                          VARCHAR,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,
@@ -167,6 +191,12 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_asmvm_asm_vm_surface (
     asm_high_alerts                    BIGINT,
     asm_exposed_services               BIGINT,
     asm_exposed_websites               BIGINT,
+    in_asm                             BOOLEAN,
+    asm_alerts                         BIGINT,
+    max_inferred_score                 DOUBLE,
+    vm_asset_count                     BIGINT,
+    vm_open_cves                       BIGINT,
+    owned_range_id                     VARCHAR,
     -- source provenance + ingest lineage
     audit_year                         INTEGER,
     source_system                      VARCHAR,

@@ -2,8 +2,8 @@
 -- first: is the boundary you drew the boundary you own?).
 --
 -- The ASM feed observes an active internet-facing service on an IPv4 address
--- that falls OUTSIDE every declared owned range. Either the owned-address-space
--- declaration is stale/incomplete, or the asset is genuinely third-party
+-- that is outside every declared owned range or whose ownership is unknown.
+-- Either the owned-address-space declaration is stale/incomplete, or the asset is genuinely third-party
 -- (SaaS-adjacent, hosting, partner) exposure the engagement never scoped. Both
 -- answers change scope, so the exception is surfaced rather than filtered away.
 --
@@ -18,7 +18,7 @@
 
 SELECT
     'asmvm:unattributed:' || s.prefix_16            AS finding_key,
-    'Exposed service outside declared owned ranges: ' || s.prefix_16 AS title,
+    'Exposed service without confirmed owned range: ' || s.prefix_16 AS title,
     COUNT(*)                                        AS affected_count,
     CAST(COALESCE(SUM(s.asm_exposed_services), 0)
          + COALESCE(SUM(s.asm_exposed_websites), 0) AS BIGINT) AS exposure_estimate,
@@ -29,6 +29,7 @@ SELECT
     '; ips_in_vm_estate=' || CAST(COUNT(CASE WHEN CAST(s.in_vm_estate AS BOOLEAN) THEN 1 ELSE NULL END) AS VARCHAR) ||
     '; active_alerts=' || CAST(COALESCE(SUM(s.asm_active_alerts), 0) AS VARCHAR) ||
     '; inferred_cves=' || CAST(COALESCE(SUM(s.asm_inferred_cves), 0) AS VARCHAR) ||
+    '; unknown_ownership_ips=' || CAST(COUNT(CASE WHEN s.inside_owned_range IS NULL THEN 1 END) AS VARCHAR) ||
     '; sample_ip=' || MIN(s.ip) ||
     '; resolution=confirm_ownership_or_scope_in'     AS details,
     s.run_id                                        AS run_id,
@@ -36,7 +37,7 @@ SELECT
 FROM ext_telecom_offsec_asmvm_asm_vm_surface s
 WHERE s.run_id = ?1
   AND CAST(s.has_active_service AS BOOLEAN)
-  AND NOT CAST(s.inside_owned_range AS BOOLEAN)
+  AND COALESCE(CAST(s.inside_owned_range AS BOOLEAN), false) = false
 GROUP BY s.prefix_16, s.run_id
 ORDER BY risk_score DESC, affected_count DESC, finding_key
 LIMIT ?2;

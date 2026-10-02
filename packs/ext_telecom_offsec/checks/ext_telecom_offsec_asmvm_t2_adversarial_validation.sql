@@ -3,12 +3,8 @@
 -- through an adversarial re-verification pass, so unverified findings cannot
 -- ship. Bound params: ?1 = run_id, ?2 = row limit.
 --
--- INHERITED CHECK: re-expressed from ext_telecom_cyber/checks/ext_telecom_t2_adversarial_validation.sql unchanged
--- in logic, retargeted to this pack's own ledger tables (ext_telecom_offsec_asmvm_evidence_bundle). The
--- ASM/VM pack owns its evidence/candidate/rule/run ledger so it loads and runs
--- standalone; running it here keeps the process controls (adversarial
--- validation, evidence gates, dedupe, sandboxing, rule corpus, resumability)
--- enforced over the ASM/VM evidence instead of only over the AWS posture pack.
+-- Reads this pack's ASM/VM evidence ledger. An unknown re-verification state
+-- is an unresolved control gap and is labelled unknown in the details.
 -- Booleans are CAST explicitly so the SQL stays valid under the CSV loopback
 -- runner, which types an all-true/all-false column as INTEGER.
 
@@ -21,12 +17,14 @@ SELECT
     'has_report=' || CASE WHEN COALESCE(CAST(e.has_report AS BOOLEAN), false) THEN 'true' ELSE 'false' END ||
     '; has_receipt=' || CASE WHEN COALESCE(CAST(e.has_receipt AS BOOLEAN), false) THEN 'true' ELSE 'false' END ||
     '; has_live_fire=' || CASE WHEN COALESCE(CAST(e.has_live_fire AS BOOLEAN), false) THEN 'true' ELSE 'false' END ||
-    '; has_adversarial_reverify=' || CASE WHEN COALESCE(CAST(e.has_adversarial_reverify AS BOOLEAN), false) THEN 'true' ELSE 'false' END ||
+    '; has_adversarial_reverify=' || CASE WHEN e.has_adversarial_reverify IS NULL THEN 'unknown'
+                                        WHEN CAST(e.has_adversarial_reverify AS BOOLEAN) THEN 'true'
+                                        ELSE 'false' END ||
     '; is_sandboxed=' || CASE WHEN COALESCE(CAST(e.is_sandboxed AS BOOLEAN), false) THEN 'true' ELSE 'false' END AS details,
     e.run_id AS run_id,
     35 AS risk_score
 FROM ext_telecom_offsec_asmvm_evidence_bundle e
 WHERE e.run_id = ?1
-  AND CAST(e.has_adversarial_reverify AS BOOLEAN) = false
+  AND COALESCE(CAST(e.has_adversarial_reverify AS BOOLEAN), false) = false
 ORDER BY risk_score DESC, finding_key
 LIMIT ?2;

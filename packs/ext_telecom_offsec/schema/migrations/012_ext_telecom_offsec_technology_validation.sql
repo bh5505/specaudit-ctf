@@ -25,7 +25,8 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_technology_candidate (
     lineage_batch_id          VARCHAR,
     mapping_version           VARCHAR,
     model_version             VARCHAR,
-    PRIMARY KEY (run_id, accept_event_id, finding_id)
+    PRIMARY KEY (run_id, accept_event_id, engagement_id,
+                 validator_project_id, validator_engagement_id, finding_id)
 );
 
 CREATE TABLE IF NOT EXISTS ext_telecom_offsec_technology_validation (
@@ -55,5 +56,6 @@ CREATE TABLE IF NOT EXISTS ext_telecom_offsec_technology_validation (
     lineage_batch_id          VARCHAR,
     mapping_version           VARCHAR,
     model_version             VARCHAR,
-    PRIMARY KEY (run_id, accept_event_id, attempt_id)
+    PRIMARY KEY (run_id, accept_event_id, engagement_id,
+                 validator_project_id, validator_engagement_id, attempt_id)
 );

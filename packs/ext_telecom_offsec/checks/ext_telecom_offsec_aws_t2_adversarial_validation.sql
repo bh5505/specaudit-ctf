@@ -12,12 +12,12 @@ SELECT
     'has_report=' || CAST(COALESCE(e.has_report, false) AS VARCHAR) ||
     '; has_receipt=' || CAST(COALESCE(e.has_receipt, false) AS VARCHAR) ||
     '; has_live_fire=' || CAST(COALESCE(e.has_live_fire, false) AS VARCHAR) ||
-    '; has_adversarial_reverify=' || CAST(COALESCE(e.has_adversarial_reverify, false) AS VARCHAR) ||
+    '; has_adversarial_reverify=' || COALESCE(CAST(CAST(e.has_adversarial_reverify AS BOOLEAN) AS VARCHAR), 'unknown') ||
     '; is_sandboxed=' || CAST(COALESCE(e.is_sandboxed, false) AS VARCHAR) AS details,
     e.run_id AS run_id,
     35 AS risk_score
 FROM ext_telecom_offsec_aws_evidence_bundle e
 WHERE e.run_id = ?1
-  AND e.has_adversarial_reverify = false
+  AND COALESCE(CAST(e.has_adversarial_reverify AS BOOLEAN), false) = false
 ORDER BY finding_key
 LIMIT ?2;

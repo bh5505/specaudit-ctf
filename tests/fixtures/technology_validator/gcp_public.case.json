@@ -7,7 +7,10 @@
     "rule_id": "GCP-IAM-001",
     "resource_uid": "//cloudresourcemanager.googleapis.com/projects/demo-project",
     "account_id": "123456789012",
-    "details": {},
+    "details": {
+      "account_id": "123456789012",
+      "details": {}
+    },
     "authorization": {
       "project_id": "demo-project",
       "project_number": "123456789012",
@@ -21,9 +24,33 @@
     "reachability_status": "unknown",
     "reason_code": "public_project_binding_present",
     "planned_argv": [
-      ["config", "list", "--all", "--format=json", "--project=demo-project", "--account=validator@example.test", "--quiet"],
-      ["projects", "describe", "demo-project", "--format=json", "--project=demo-project", "--account=validator@example.test", "--quiet"],
-      ["projects", "get-iam-policy", "demo-project", "--format=json", "--project=demo-project", "--account=validator@example.test", "--quiet"]
+      [
+        "config",
+        "list",
+        "--all",
+        "--format=json",
+        "--project=demo-project",
+        "--account=validator@example.test",
+        "--quiet"
+      ],
+      [
+        "projects",
+        "describe",
+        "demo-project",
+        "--format=json",
+        "--project=demo-project",
+        "--account=validator@example.test",
+        "--quiet"
+      ],
+      [
+        "projects",
+        "get-iam-policy",
+        "demo-project",
+        "--format=json",
+        "--project=demo-project",
+        "--account=validator@example.test",
+        "--quiet"
+      ]
     ]
   },
   "response_file": "gcp_public.provider.json"

@@ -8,7 +8,10 @@
     "resource_uid": "//cloudresourcemanager.googleapis.com/projects/demo-project",
     "account_id": "123456789012",
     "details": {
-      "reason": "configured_public_project_iam_binding"
+      "account_id": "123456789012",
+      "details": {
+        "reason": "configured_public_project_iam_binding"
+      }
     },
     "authorization": {
       "project_id": "demo-project",
@@ -23,5 +26,6 @@
     "reachability_status": "unknown",
     "reason_code": "project_identity_mismatch"
   },
-  "response_file": "gcp_wrong_project.provider.json"
+  "response_file": "gcp_wrong_project.provider.json",
+  "expect_plan": true
 }

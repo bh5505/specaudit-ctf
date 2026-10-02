@@ -22,6 +22,21 @@ ROOT = Path(__file__).resolve().parents[1]
 CASES_ROOT = ROOT / "tests" / "fixtures" / "technology_validator"
 MAX_CASE_BYTES = 64 * 1024
 TIMEOUT_SECONDS = 20
+PREFLIGHT_REFUSAL_REASONS = {
+    "not_authorized",
+    "claim_reason_mismatch",
+    "account_scope_incomplete",
+    "account_scope_mismatch",
+    "region_scope_mismatch",
+    "invalid_gcp_fixture_scope",
+    "candidate_scope_mismatch",
+}
+PROVIDER_IDENTITY_MISMATCH_REASONS = {
+    "group_identity_mismatch",
+    "project_identity_mismatch",
+    "subscription_identity_mismatch",
+    "nsg_identity_mismatch",
+}
 
 
 class HarnessError(Exception):
@@ -76,6 +91,13 @@ def run_case(validator_bin: Path, case_file: str) -> None:
     response_file = case.get("response_file")
     if not isinstance(request, dict) or not isinstance(expected, dict):
         raise HarnessError(f"{case_file}: request and expect must be objects")
+    reason = expected.get("reason_code")
+    if reason in PREFLIGHT_REFUSAL_REASONS and case.get("expect_no_plan") is not True:
+        raise HarnessError(f"{case_file}: preflight refusal must assert no command plan")
+    if reason in PROVIDER_IDENTITY_MISMATCH_REASONS and case.get("expect_plan") is not True:
+        raise HarnessError(f"{case_file}: provider identity mismatch must assert a command plan")
+    if case.get("expect_no_plan") is True and case.get("expect_plan") is True:
+        raise HarnessError(f"{case_file}: conflicting command-plan expectations")
     if request.get("schema") != "specaudit.validator.technology-fixture.v1":
         raise HarnessError(f"{case_file}: unsupported fixture request schema")
     if request.get("provider") not in ("aws", "gcp", "azure"):
@@ -90,6 +112,23 @@ def run_case(validator_bin: Path, case_file: str) -> None:
         key in authorization for key in ("executable", "credential_root")
     ):
         raise HarnessError(f"{case_file}: provider executable and credential root are forbidden")
+    if request["provider"] == "azure":
+        tenant = authorization.get("tenant_id")
+        subscription = authorization.get("subscription_id")
+        if isinstance(tenant, str) and tenant and isinstance(subscription, str) and subscription:
+            if tenant.lower() == subscription.lower():
+                raise HarnessError(f"{case_file}: Azure tenant and subscription must differ")
+        if case.get("expect_no_plan") is not True:
+            detail = request.get("details")
+            detail_account = detail.get("account_id") if isinstance(detail, dict) else None
+            inventory_account = request.get("account_id")
+            if not isinstance(tenant, str) or not tenant or not all(
+                isinstance(account, str) and account.lower() == tenant.lower()
+                for account in (inventory_account, detail_account)
+            ):
+                raise HarnessError(
+                    f"{case_file}: admitted Azure candidate/detail account IDs must be the tenant"
+                )
 
     with tempfile.TemporaryDirectory(prefix="specaudit-ctf-tech-") as tmp:
         scratch = Path(tmp)
@@ -138,7 +177,7 @@ def run_case(validator_bin: Path, case_file: str) -> None:
         if result.get("schema") != "specaudit.validator.result.v1":
             raise HarnessError(f"{case_file}: unexpected validator result schema")
         if request["provider"] in ("gcp", "azure") and (
-            expected.get("reason_code") != "claim_reason_mismatch"
+            case.get("expect_no_plan") is not True
         ) and (
             result.get("probe_schema") != "specaudit.validator.technology-probe.v1"
         ):
@@ -148,6 +187,8 @@ def run_case(validator_bin: Path, case_file: str) -> None:
         # authorization or subject identity fails.
         if case.get("expect_no_plan") is True and result.get("planned_argv") != []:
             raise HarnessError(f"{case_file}: refused case still planned a provider command")
+        if case.get("expect_plan") is True and not result.get("planned_argv"):
+            raise HarnessError(f"{case_file}: expected provider reads were not planned")
 
 
 def main(argv: list[str] | None = None) -> int:

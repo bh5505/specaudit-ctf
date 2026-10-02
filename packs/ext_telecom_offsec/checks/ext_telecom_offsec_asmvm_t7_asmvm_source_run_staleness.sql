@@ -20,7 +20,7 @@
 
 SELECT
     'asmvm:stale-run:' || cr.source_run_id          AS finding_key,
-    'Stale source run beyond freshness SLA: ' || cr.source_run_id AS title,
+    'Source run freshness or completion gap: ' || cr.source_run_id AS title,
     1                                               AS affected_count,
     CAST(COALESCE(cr.population_size, 0) AS BIGINT) AS exposure_estimate,
     cr.source_run_id || ' / ' || COALESCE(cr.accept_event_id, '') || ' / ' ||
@@ -37,7 +37,7 @@ SELECT
     '; population_size=' || CAST(COALESCE(cr.population_size, 0) AS VARCHAR) ||
     '; pages_completed=' || CAST(COALESCE(cr.pages_completed, 0) AS VARCHAR) AS details,
     cr.run_id                                       AS run_id,
-    CASE WHEN cr.checkpoint_ts IS NULL THEN 45
+    CASE WHEN cr.checkpoint_ts IS NULL OR cr.stale_days IS NULL THEN 45
          WHEN cr.stale_days > 2 * COALESCE(cr.freshness_sla_days, 14) THEN 38
          ELSE 30 END                                AS risk_score
 FROM ext_telecom_offsec_asmvm_check_run cr
@@ -46,7 +46,8 @@ WHERE cr.run_id = ?1
     COALESCE(cr.status, '') <> 'completed'
     OR cr.finished_at IS NULL
     OR cr.checkpoint_ts IS NULL
-    OR COALESCE(cr.stale_days, -1) > COALESCE(cr.freshness_sla_days, 14)
+    OR cr.stale_days IS NULL
+    OR cr.stale_days > COALESCE(cr.freshness_sla_days, 14)
   )
 ORDER BY risk_score DESC, cr.checkpoint_ts, finding_key
 LIMIT ?2;

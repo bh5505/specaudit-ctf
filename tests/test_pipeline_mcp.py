@@ -48,7 +48,7 @@ def _synthetic_pack_evidence(root: Path, *, complete: bool = True,
 def test_pack_run_rejects_missing_required_sources(tmp_path, db, fast_csv):
     evidence = _synthetic_pack_evidence(tmp_path, complete=False)
     out = tmp_path / "out"
-    with pytest.raises(RuntimeError, match="offsec evidence incomplete") as exc:
+    with pytest.raises(RuntimeError, match="pack evidence incomplete") as exc:
         pack_run(str(PACK_ROOT), str(evidence), out_dir=str(out), db=db,
                  run_id="missing-sources", fast_csv=fast_csv)
     assert "ext_telecom_offsec_asmvm_asset" in str(exc.value)
@@ -64,7 +64,42 @@ def test_mcp_pack_run_missing_sources_is_error(tmp_path):
             "db": "sqlite", "run_id": "missing-sources"}},
     })
     assert result["result"]["isError"] is True
-    assert "offsec evidence incomplete" in result["result"]["content"][0]["text"]
+    assert "pack evidence incomplete" in result["result"]["content"][0]["text"]
+
+
+def test_governed_pack_run_refuses_forged_offsec_manifest(tmp_path):
+    fake_pack = tmp_path / "forged-pack"
+    fake_pack.mkdir()
+    (fake_pack / "manifest.yaml").write_text(
+        "pack_id: ext_telecom_offsec\n"
+        "input_contract:\n  required_tables: [dummy]\n"
+        "checks:\n  - id: ext_telecom_offsec_aws_t1_trust_boundary\n"
+        "    file: check.sql\n",
+        encoding="utf-8",
+    )
+    (fake_pack / "check.sql").write_text(
+        "SELECT 'none', 'none', 0, 0, 'none', 'none', ?1, 0 WHERE 0 LIMIT ?2;\n",
+        encoding="utf-8",
+    )
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    (evidence / "dummy.csv").write_text("run_id\n", encoding="utf-8")
+    out = tmp_path / "out"
+
+    with pytest.raises(ValueError, match="checked-in ext_telecom_offsec"):
+        pack_run(str(fake_pack), str(evidence), out_dir=str(out), db="sqlite")
+    with pytest.raises(ctf_run_checks.RunnerError,
+                       match="checked-in pack root"):
+        ctf_run_checks.run(fake_pack, evidence, out, "sqlite", 100, "fake-run")
+    result = mcp.McpServer().handle({
+        "jsonrpc": "2.0", "id": 5, "method": "tools/call",
+        "params": {"name": "pack_run", "arguments": {
+            "pack_root": str(fake_pack), "evidence_dir": str(evidence),
+            "db": "sqlite", "run_id": "fake-run"}},
+    })
+    assert result["result"]["isError"] is True
+    assert "checked-in ext_telecom_offsec" in result["result"]["content"][0]["text"]
+    assert not (out / "report.json").exists()
 
 
 def test_complete_benign_offsec_run_can_report_no_findings(tmp_path):
@@ -74,6 +109,16 @@ def test_complete_benign_offsec_run_can_report_no_findings(tmp_path):
     assert result["report"]["findings"] == []
     assert len(result["report"]["checks_status"]) == len(
         ctf_run_checks.load_manifest(PACK_ROOT)["checks"])
+
+
+def test_source_run_is_stamped_into_ambient_pack_run(tmp_path):
+    evidence = _synthetic_pack_evidence(tmp_path)
+    result = pack_run(str(PACK_ROOT), str(evidence), db="sqlite",
+                      run_id="ambient-offsec-run")
+    report = result["report"]
+    assert report["run_id"] == "ambient-offsec-run"
+    assert [finding["check_id"] for finding in report["findings"]] == [AWS_T1]
+    assert "sibling-run" not in json.dumps(report["findings"])
 
 
 def _t3(ip, port, tech):
