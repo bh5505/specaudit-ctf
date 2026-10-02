@@ -16,6 +16,38 @@ def _load_runner():
     return module
 
 
+@pytest.mark.parametrize(("value", "expected"), [
+    ("abc", "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"),
+    ("réseau 🔒", "fb6c81e8cd0fbad82a0662c915da078f67c789ff9fa13ccfcc9121a192128494"),
+    ("", "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"),
+    (None, None),
+])
+def test_sqlite_sha256_hashes_utf8_text_and_preserves_null(value, expected):
+    runner = _load_runner()
+    connection, engine = runner.open_engine("sqlite")
+    try:
+        assert engine == "sqlite"
+        assert connection.execute("SELECT sha256(?)", (value,)).fetchone() == (expected,)
+    finally:
+        connection.close()
+
+
+def test_offsec_sqlite_run_rejects_unsupported_version_before_connect(
+        monkeypatch, tmp_path):
+    runner = _load_runner()
+    monkeypatch.setattr(runner.sqlite3, "sqlite_version_info", (3, 43, 2))
+    monkeypatch.setattr(
+        runner.sqlite3, "connect",
+        lambda *args, **kwargs: pytest.fail("opened an unsupported SQLite"),
+    )
+    evidence = tmp_path / "evidence"
+    evidence.mkdir()
+    with pytest.raises(runner.RunnerError, match="SQLite 3.44.0 or newer") as exc:
+        runner.run(PRODUCT_PACK, evidence, tmp_path / "out", "sqlite", 100,
+                   "unsupported-sqlite")
+    assert "Python sqlite3 has 3.43.2" in str(exc.value)
+
+
 def _create_test_table(runner, connection, engine, table, rows, headers):
     """Focused helper for lineage tests whose tables are not pack fixtures."""
     cols = runner._infer_columns(rows, headers)

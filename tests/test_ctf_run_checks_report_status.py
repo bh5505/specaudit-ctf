@@ -69,6 +69,19 @@ def _make_pack_and_evidence(root, first_check_sql=None):
     return pack, evidence
 
 
+def test_generic_pack_accepts_sqlite_below_offsec_version_floor(tmp_path, monkeypatch):
+    """The offsec SQL minimum must not exclude packs with simpler check SQL."""
+    runner = _load_runner()
+    monkeypatch.setattr(runner.sqlite3, "sqlite_version_info", (3, 43, 2))
+    pack, evidence = _make_pack_and_evidence(tmp_path)
+    out = tmp_path / "out"
+
+    assert runner.run(pack, evidence, out, "sqlite", 100, "generic-run") == 0
+    report = json.loads((out / "report.json").read_text(encoding="utf-8"))
+    assert report["engine"] == "sqlite"
+    assert len(report["findings"]) == 2
+
+
 @pytest.mark.parametrize("engine", ["sqlite", "duckdb"])
 def test_report_records_every_check_in_manifest_order(tmp_path, engine, capsys):
     if engine == "duckdb":

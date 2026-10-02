@@ -33,7 +33,7 @@ def _synthetic_pack_evidence(root: Path, *, complete: bool = True,
         for table in required:
             (evidence / f"{table}.csv").write_text("run_id\n", encoding="utf-8")
         empty_members = hashlib.sha256(
-            b"ext_telecom_offsec.technology_inventory_members.v1\0"
+            b"ext_telecom_offsec.technology_inventory_members.v2.root|0|"
         ).hexdigest()
         (evidence / "ext_telecom_offsec_technology_inventory_receipt.csv").write_text(
             "validator_project_id,validator_engagement_id,inventory_snapshot_id,"

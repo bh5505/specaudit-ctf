@@ -14,6 +14,11 @@ python tools/ctf_run_checks.py --pack packs/ext_telecom_offsec \
     --limit 500000 --run-id <run_id>
 ```
 
+For the checked-in `ext_telecom_offsec` pack, `--db sqlite` requires Python's
+`sqlite3` to use SQLite 3.44.0 or newer. The pack checks use ordered
+`string_agg`; the runner rejects an older SQLite before loading evidence. This
+minimum applies to this pack, not to other packs with simpler SQL.
+
 The runner stamps `--run-id` into each pack table's `run_id` column at load time
 ("accept lineage"). When a mapping declares `source_run_id`, it copies the
 CSV's original run identifier there. The report's `run_id` names the check run,

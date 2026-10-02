@@ -73,6 +73,65 @@ expected_members AS (
     FROM ext_telecom_offsec_technology_inventory_member
     WHERE run_id = ?1
 ),
+-- The receipt digest is recomputed from the imported member rows, not merely
+-- checked for hexadecimal syntax. HEX(UTF-8) and fixed field order make ':'
+-- unambiguous even when a source identity contains punctuation or Unicode.
+-- Each SHA-256 aggregate holds at most 256 member keys; the root aggregate
+-- holds at most 196 chunk digests for the 50,000-candidate inventory ceiling.
+digest_member_keys AS (
+    SELECT run_id, engagement_id, validator_project_id,
+           validator_engagement_id, inventory_snapshot_id,
+           HEX(validator_project_id) || ':' ||
+           HEX(validator_engagement_id) || ':' ||
+           HEX(inventory_snapshot_id) || ':' ||
+           HEX(finding_id) || ':' ||
+           HEX(source_run_id) || ':' ||
+           HEX(rule_id) || ':' ||
+           HEX(provider) || ':' ||
+           HEX(resource_uid) || ':' ||
+           HEX(account_id) || ':' ||
+           HEX(region) || ':' ||
+           HEX(severity) || ':' ||
+           HEX(title) AS member_key
+    FROM expected_members
+),
+digest_ranked AS (
+    SELECT *, ROW_NUMBER() OVER (
+        PARTITION BY run_id, engagement_id, validator_project_id,
+                     validator_engagement_id, inventory_snapshot_id
+        ORDER BY member_key
+    ) - 1 AS member_ordinal
+    FROM digest_member_keys
+),
+digest_chunks AS (
+    SELECT run_id, engagement_id, validator_project_id,
+           validator_engagement_id, inventory_snapshot_id,
+           CAST((member_ordinal - member_ordinal % 256) / 256 AS BIGINT) AS chunk_index,
+           COUNT(*) AS chunk_count,
+           string_agg(member_key, '|' ORDER BY member_key) AS chunk_members
+    FROM digest_ranked
+    GROUP BY run_id, engagement_id, validator_project_id,
+             validator_engagement_id, inventory_snapshot_id,
+             CAST((member_ordinal - member_ordinal % 256) / 256 AS BIGINT)
+),
+digest_chunk_hashes AS (
+    SELECT run_id, engagement_id, validator_project_id,
+           validator_engagement_id, inventory_snapshot_id, chunk_index, chunk_count,
+           sha256('ext_telecom_offsec.technology_inventory_members.v2.chunk|' ||
+                  CAST(chunk_index AS VARCHAR) || '|' ||
+                  CAST(chunk_count AS VARCHAR) || '|' || chunk_members) AS chunk_sha256
+    FROM digest_chunks
+),
+member_digests AS (
+    SELECT run_id, engagement_id, validator_project_id,
+           validator_engagement_id, inventory_snapshot_id,
+           sha256('ext_telecom_offsec.technology_inventory_members.v2.root|' ||
+                  CAST(SUM(chunk_count) AS VARCHAR) || '|' ||
+                  string_agg(chunk_sha256, '|' ORDER BY chunk_index)) AS actual_sha256
+    FROM digest_chunk_hashes
+    GROUP BY run_id, engagement_id, validator_project_id,
+             validator_engagement_id, inventory_snapshot_id
+),
 candidate_counts AS (
     SELECT run_id, engagement_id, validator_project_id,
            validator_engagement_id, inventory_snapshot_id, COUNT(*) AS actual_count
@@ -162,6 +221,9 @@ inventory_coverage AS (
            s.validator_engagement_id, s.inventory_snapshot_id,
            r.source_inventory_total, r.expected_eligible_candidates,
            r.candidate_identity_sha256,
+           COALESCE(d.actual_sha256,
+                    '8b1067396bb1d3f198d0c3ecf2f3cc524528dba9db76dac6d13ce19eeb1033bd')
+             AS actual_sha256,
            COALESCE(c.actual_count, 0) AS actual_count,
            COALESCE(m.member_count, 0) AS member_count,
            COALESCE(a.unmatched_count, 0) AS unmatched_actual_count,
@@ -197,6 +259,10 @@ inventory_coverage AS (
              WHEN COALESCE(a.unmatched_count, 0) > 0
                   OR COALESCE(e.unmatched_count, 0) > 0
                   THEN 'candidate_identity_mismatch'
+             WHEN COALESCE(d.actual_sha256,
+                           '8b1067396bb1d3f198d0c3ecf2f3cc524528dba9db76dac6d13ce19eeb1033bd')
+                  <> r.candidate_identity_sha256
+                  THEN 'receipt_member_digest_mismatch'
              ELSE NULL
            END AS gap_reason
     FROM inventory_scopes s
@@ -215,6 +281,11 @@ inventory_coverage AS (
      AND m.validator_project_id = s.validator_project_id
      AND m.validator_engagement_id = s.validator_engagement_id
      AND m.inventory_snapshot_id = s.inventory_snapshot_id
+    LEFT JOIN member_digests d
+      ON d.run_id = s.run_id AND d.engagement_id = s.engagement_id
+     AND d.validator_project_id = s.validator_project_id
+     AND d.validator_engagement_id = s.validator_engagement_id
+     AND d.inventory_snapshot_id = s.inventory_snapshot_id
     LEFT JOIN unmatched_actual a
       ON a.run_id = s.run_id AND a.engagement_id = s.engagement_id
      AND a.validator_project_id = s.validator_project_id
@@ -334,6 +405,7 @@ SELECT
       '; unmatched_expected=' || CAST(i.unmatched_expected_count AS VARCHAR) ||
       '; source_inventory_total=' || COALESCE(CAST(i.source_inventory_total AS VARCHAR), 'none') ||
       '; candidate_identity_sha256=' || COALESCE(i.candidate_identity_sha256, 'none') ||
+      '; actual_candidate_identity_sha256=' || i.actual_sha256 ||
       '; validator_project=' || i.validator_project_id ||
       '; validator_engagement=' || i.validator_engagement_id ||
       '; snapshot=' || i.inventory_snapshot_id AS details,

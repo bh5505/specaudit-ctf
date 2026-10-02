@@ -37,6 +37,10 @@ complete run. Missing required source files abort before
 report generation.
 A Technology snapshot with zero eligible candidates still needs a scoped
 inventory receipt row; a header-only receipt produces a T2 coverage gap.
+T2 recomputes the receipt's member digest from imported rows in bounded,
+ordered chunks. The digest detects incomplete local imports; it is unsigned,
+so preserve the original validator session for source provenance. SQLite
+loopback requires SQLite 3.44 or later for ordered `string_agg`.
 
 New reports use the `ext_telecom_offsec` pack ID and renamed check IDs. Old
 pack IDs and aliases are not supported by this mirror.

@@ -439,9 +439,18 @@ def _convert_value(value, coltype, mismatch=None):
     return value
 
 
+def _sqlite_sha256_text(value):
+    """Match DuckDB's sha256(TEXT): hash UTF-8 text, propagate SQL NULL."""
+    if value is None:
+        return None
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
 def open_engine(db_choice):
     if db_choice == "sqlite":
         conn = sqlite3.connect(":memory:")
+        conn.create_function("sha256", 1, _sqlite_sha256_text,
+                             deterministic=True)
         conn.execute("PRAGMA foreign_keys = ON")
         return conn, "sqlite"
     if db_choice == "duckdb":
@@ -1027,6 +1036,13 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
 
     manifest = load_manifest(pack_root)
     pack_id = str(manifest.get("pack_id") or "unknown")
+    if (db_choice == "sqlite" and pack_id == "ext_telecom_offsec"
+            and sqlite3.sqlite_version_info < (3, 44, 0)):
+        found = ".".join(str(part) for part in sqlite3.sqlite_version_info)
+        raise RunnerError(
+            "--db sqlite for ext_telecom_offsec requires SQLite 3.44.0 or "
+            "newer for ordered string_agg (Python sqlite3 has %s); use a "
+            "Python build with newer SQLite or --db duckdb" % found)
     mapping = load_mapping_spec(pack_root)
     mapping_columns = load_mapping_columns(pack_root)
     mapping_value_maps = load_mapping_value_maps(pack_root)
