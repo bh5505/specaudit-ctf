@@ -43,7 +43,7 @@ def main():
                 problems.append(cid)
             alias_same = base_by.get(cid, set()) == by.get(cid, set())
             print("  %s %-62s baseline=%-6d now=%-6d aliases=%s"
-                  % (mark, cid.replace("ext_telecom_asmvm_", ""), b, c,
+                  % (mark, cid.replace("ext_telecom_offsec_asmvm_", ""), b, c,
                      "same" if alias_same else "DIFFERENT"))
             if not alias_same:
                 problems.append(cid + ":aliases")

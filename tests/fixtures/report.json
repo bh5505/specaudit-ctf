@@ -1,13 +1,13 @@
 {
-  "pack_id": "ext_telecom_cyber",
+  "pack_id": "ext_telecom_offsec",
   "run_id": "ctf-20260101-120000-abcdef",
   "generated_at": "2026-01-01T12:00:00Z",
   "engine": "sqlite",
   "seed": 42,
   "findings": [
     {
-      "finding_alias": "ext_telecom_cyber:ext_telecom_t1_trust_boundary:FG-001",
-      "check_id": "ext_telecom_t1_trust_boundary",
+      "finding_alias": "ext_telecom_offsec:ext_telecom_offsec_aws_t1_trust_boundary:FG-001",
+      "check_id": "ext_telecom_offsec_aws_t1_trust_boundary",
       "technique": "T1",
       "severity": "high",
       "risk_score": 85,
@@ -18,8 +18,8 @@
       "exposure_estimate": 85
     },
     {
-      "finding_alias": "ext_telecom_cyber:ext_telecom_t2_adversarial_validation:FG-002",
-      "check_id": "ext_telecom_t2_adversarial_validation",
+      "finding_alias": "ext_telecom_offsec:ext_telecom_offsec_aws_t2_adversarial_validation:FG-002",
+      "check_id": "ext_telecom_offsec_aws_t2_adversarial_validation",
       "technique": "T2",
       "severity": "medium",
       "risk_score": 65,
@@ -30,8 +30,8 @@
       "exposure_estimate": 65
     },
     {
-      "finding_alias": "ext_telecom_cyber:ext_telecom_t3_evidence_gate:FG-003",
-      "check_id": "ext_telecom_t3_evidence_gate",
+      "finding_alias": "ext_telecom_offsec:ext_telecom_offsec_aws_t3_evidence_gate:FG-003",
+      "check_id": "ext_telecom_offsec_aws_t3_evidence_gate",
       "technique": "T3",
       "severity": "high",
       "risk_score": 90,

@@ -1,0 +1,23 @@
+{
+  "config": {
+    "auth": {
+      "impersonate_service_account": "other-principal@example.test"
+    }
+  },
+  "policy": {
+    "bindings": [
+      {
+        "members": [
+          "allUsers"
+        ],
+        "role": "roles/viewer"
+      }
+    ],
+    "etag": "BwU-synthetic-public",
+    "version": 1
+  },
+  "project": {
+    "projectId": "demo-project",
+    "projectNumber": "123456789012"
+  }
+}

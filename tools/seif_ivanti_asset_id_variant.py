@@ -58,11 +58,11 @@ def main(base, out_dir):
     out["convert_C"] = rt.step_convert(csvC, seifC,
                                        os.path.join(OUT, "seif_cli_shim.py"), "C")
     out["validate_C"] = rt.step_validate(seifC)
-    projC = os.path.join(OUT, "seif_C_ext_telecom_asmvm_vm_finding.csv")
+    projC = os.path.join(OUT, "seif_C_ext_telecom_offsec_asmvm_vm_finding.csv")
     out["projection_C"] = rt.project(seifC, projC, "B", "gw-seif-20260909")
     out["diff_C"] = rt.diff_against_pack(
         os.path.join(base, "pack_evidence",
-                     "ext_telecom_asmvm_vm_finding.csv"), projC, out)
+                     "ext_telecom_offsec_asmvm_vm_finding.csv"), projC, out)
     with io.open(os.path.join(OUT, "seif_variant_c_report.json"), "w",
                  encoding="utf-8") as fh:
         json.dump(out, fh, indent=2, default=str)

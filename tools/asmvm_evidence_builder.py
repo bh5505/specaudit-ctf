@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """build_pack_evidence.py — project the rehearsal silver DB into the real
-pack-shaped tables of packs/ext_telecom_asmvm and write one CSV per table.
+pack-shaped tables of packs/ext_telecom_offsec and write one CSV per table.
 
 The dev workspace (rehearsal_silver.duckdb, built by build_rehearsal_silver.py)
 uses gw_silver_ext_* staging tables whose columns are close to, but not equal
@@ -76,13 +76,13 @@ def inserts(dev: str) -> list[tuple[str, str]]:
     out: list[tuple[str, str]] = []
     add = out.append
 
-    add(("ext_telecom_asmvm_audit_period", f"""
-        INSERT INTO ext_telecom_asmvm_audit_period
+    add(("ext_telecom_offsec_asmvm_audit_period", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_audit_period
           (audit_year, period_start, period_end, is_open)
         VALUES (2026, DATE '2026-01-01', DATE '2026-12-31', TRUE)"""))
 
-    add(("ext_telecom_asmvm_asset", f"""
-        INSERT INTO ext_telecom_asmvm_asset
+    add(("ext_telecom_offsec_asmvm_asset", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_asset
           (run_id, engagement_id, accept_event_id, asset_id, asset_name,
            asset_type, ipv4_list, ipv6_list, has_active_services,
            has_related_alerts, has_related_incidents, inferred_vuln_score,
@@ -100,8 +100,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                record_hash, lineage_batch_id, mapping_version, model_version
         FROM {d}gw_silver_ext_asmvm_asm_asset"""))
 
-    add(("ext_telecom_asmvm_service", f"""
-        INSERT INTO ext_telecom_asmvm_service
+    add(("ext_telecom_offsec_asmvm_service", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_service
           (run_id, engagement_id, accept_event_id, service_id, service_name,
            service_type, ipv4_list, ipv6_list, port, protocol, is_active,
            domain, providers, active_classifications, product_version,
@@ -120,8 +120,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                model_version
         FROM {d}gw_silver_ext_asmvm_asm_service"""))
 
-    add(("ext_telecom_asmvm_website", f"""
-        INSERT INTO ext_telecom_asmvm_website
+    add(("ext_telecom_offsec_asmvm_website", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_website
           (run_id, engagement_id, accept_event_id, website_id, host, port,
            is_active, http_type, site_category, technologies,
            failed_security_assessments, has_failed_assessment, authentication,
@@ -141,8 +141,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                record_hash, lineage_batch_id, mapping_version, model_version
         FROM {d}gw_silver_ext_asmvm_asm_website"""))
 
-    add(("ext_telecom_asmvm_alert", f"""
-        INSERT INTO ext_telecom_asmvm_alert
+    add(("ext_telecom_offsec_asmvm_alert", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_alert
           (run_id, engagement_id, accept_event_id, alert_id, vendor_alert_id,
            alert_version, alert_name, asr_rule, asr_category, severity,
            resolution_status, is_excluded, is_active_state, ipv4_list,
@@ -161,8 +161,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                model_version
         FROM {d}gw_silver_ext_asmvm_asm_alert"""))
 
-    add(("ext_telecom_asmvm_incident", f"""
-        INSERT INTO ext_telecom_asmvm_incident
+    add(("ext_telecom_offsec_asmvm_incident", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_incident
           (run_id, engagement_id, accept_event_id, incident_id,
            vendor_incident_id, asr_rule, status, score, total_alerts,
            critical_alerts, high_alerts, medium_alerts, low_alerts, ipv4_list,
@@ -180,8 +180,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                record_hash, lineage_batch_id, mapping_version, model_version
         FROM {d}gw_silver_ext_asmvm_asm_incident"""))
 
-    add(("ext_telecom_asmvm_owned_ip_range", f"""
-        INSERT INTO ext_telecom_asmvm_owned_ip_range
+    add(("ext_telecom_offsec_asmvm_owned_ip_range", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_owned_ip_range
           (run_id, engagement_id, accept_event_id, range_id, ip_version,
            first_ip, last_ip, ip_from, ip_to, ips_count,
            active_responsive_ips, business_units, asn_handles, is_subrange,
@@ -197,8 +197,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
         FROM {d}gw_silver_ext_asmvm_owned_ip_range
         WHERE ip_version = 4"""))
 
-    add(("ext_telecom_asmvm_ip", f"""
-        INSERT INTO ext_telecom_asmvm_ip
+    add(("ext_telecom_offsec_asmvm_ip", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_ip
           (run_id, engagement_id, accept_event_id, ip, ip_bigint, seen_via,
            has_active_service, asm_observations, audit_year, source_system,
            source_file, source_row_id, record_hash, lineage_batch_id,
@@ -210,8 +210,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                md5(concat('ip|', ip)), '{BATCH}', '{VERSION}', '{VERSION}'
         FROM {d}gw_silver_ext_asmvm_asm_ip"""))
 
-    add(("ext_telecom_asmvm_service_endpoint", f"""
-        INSERT INTO ext_telecom_asmvm_service_endpoint
+    add(("ext_telecom_offsec_asmvm_service_endpoint", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_service_endpoint
           (run_id, engagement_id, accept_event_id, service_endpoint_id,
            service_id, ip, service_name, service_type, port, protocol,
            is_active, inferred_vuln_score, inferred_cves, product_version,
@@ -228,8 +228,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                '{VERSION}', '{VERSION}'
         FROM {d}gw_silver_ext_asmvm_service_ip"""))
 
-    add(("ext_telecom_asmvm_website_endpoint", f"""
-        INSERT INTO ext_telecom_asmvm_website_endpoint
+    add(("ext_telecom_offsec_asmvm_website_endpoint", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_website_endpoint
           (run_id, engagement_id, accept_event_id, website_endpoint_id,
            website_id, ip, host, port, is_active, http_type,
            has_failed_assessment, failed_security_assessments, inferred_cves,
@@ -246,8 +246,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                '{VERSION}', '{VERSION}'
         FROM {d}gw_silver_ext_asmvm_website_ip"""))
 
-    add(("ext_telecom_asmvm_alert_endpoint", f"""
-        INSERT INTO ext_telecom_asmvm_alert_endpoint
+    add(("ext_telecom_offsec_asmvm_alert_endpoint", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_alert_endpoint
           (run_id, engagement_id, accept_event_id, alert_endpoint_id,
            alert_id, ip, severity, resolution_status, is_active_state,
            asr_rule, audit_year, source_system, source_file, source_row_id,
@@ -262,8 +262,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                '{VERSION}', '{VERSION}'
         FROM {d}gw_silver_ext_asmvm_alert_ip"""))
 
-    add(("ext_telecom_asmvm_cve_observation", f"""
-        INSERT INTO ext_telecom_asmvm_cve_observation
+    add(("ext_telecom_offsec_asmvm_cve_observation", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_cve_observation
           (run_id, engagement_id, accept_event_id, cve_observation_id, ip, cve,
            sources, evidence_ref, inferred_score, is_active, audit_year,
            source_system, source_file, source_row_id, record_hash,
@@ -276,8 +276,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                '{VERSION}'
         FROM {d}gw_silver_ext_asmvm_cve_observation"""))
 
-    add(("ext_telecom_asmvm_vm_asset", f"""
-        INSERT INTO ext_telecom_asmvm_vm_asset
+    add(("ext_telecom_offsec_asmvm_vm_asset", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_vm_asset
           (run_id, engagement_id, accept_event_id, asset_id, ip, hostname,
            network_name, scanner, is_external, last_scan_ts,
            last_credentialed_scan_ts, has_credentialed_scan, open_cve_count,
@@ -295,8 +295,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                lineage_batch_id, mapping_version, model_version
         FROM {d}gw_silver_ext_asmvm_vm_asset"""))
 
-    add(("ext_telecom_asmvm_vm_finding", f"""
-        INSERT INTO ext_telecom_asmvm_vm_finding
+    add(("ext_telecom_offsec_asmvm_vm_finding", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_vm_finding
           (run_id, engagement_id, accept_event_id, finding_id, ip, title, qid,
            plugin_family, port, protocol, severity, risk_rating, status,
            is_open, last_found_ts, resolved_ts, scanner, audit_year,
@@ -311,8 +311,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                model_version
         FROM {d}gw_silver_ext_asmvm_vm_finding"""))
 
-    add(("ext_telecom_asmvm_vm_cve_finding", f"""
-        INSERT INTO ext_telecom_asmvm_vm_cve_finding
+    add(("ext_telecom_offsec_asmvm_vm_cve_finding", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_vm_cve_finding
           (run_id, engagement_id, accept_event_id, ip, cve, finding_id,
            severity, is_open, last_found_ts, audit_year, source_system,
            source_file, source_row_id, record_hash, lineage_batch_id,
@@ -332,8 +332,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
         FROM {d}gw_silver_ext_asmvm_vm_cve_finding
         GROUP BY ip, cve, finding_id"""))
 
-    add(("ext_telecom_asmvm_vm_cve_observation", f"""
-        INSERT INTO ext_telecom_asmvm_vm_cve_observation
+    add(("ext_telecom_offsec_asmvm_vm_cve_observation", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_vm_cve_observation
           (run_id, engagement_id, accept_event_id, ip, cve, evidence_ref,
            severity, is_open, finding_count, last_found_ts, scan_mode,
            scan_confidence, audit_year, source_system, source_file,
@@ -351,8 +351,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
         FROM {d}gw_silver_ext_asmvm_vm_cve_observation
         GROUP BY ip, cve, source_system"""))
 
-    add(("ext_telecom_asmvm_asm_vm_surface", f"""
-        INSERT INTO ext_telecom_asmvm_asm_vm_surface
+    add(("ext_telecom_offsec_asmvm_asm_vm_surface", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_asm_vm_surface
           (run_id, engagement_id, accept_event_id, ip, ip_bigint, prefix_16,
            prefix_24, seen_via, has_active_service, inside_owned_range,
            in_vm_estate, vm_asset_id, vm_last_scan_ts,
@@ -374,8 +374,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                '{VERSION}'
         FROM {d}gw_silver_ext_asmvm_surface"""))
 
-    add(("ext_telecom_asmvm_evidence_bundle", f"""
-        INSERT INTO ext_telecom_asmvm_evidence_bundle
+    add(("ext_telecom_offsec_asmvm_evidence_bundle", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_evidence_bundle
           (run_id, engagement_id, accept_event_id, bundle_id, project_id,
            source_lane, has_report, has_receipt, has_live_fire,
            has_adversarial_reverify, is_sandboxed, audit_year, source_system,
@@ -389,8 +389,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                lineage_batch_id, mapping_version, model_version
         FROM {d}gw_silver_ext_telecom_evidence_bundle"""))
 
-    add(("ext_telecom_asmvm_finding_candidate", f"""
-        INSERT INTO ext_telecom_asmvm_finding_candidate
+    add(("ext_telecom_offsec_asmvm_finding_candidate", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_finding_candidate
           (run_id, engagement_id, accept_event_id, candidate_id, check_id,
            finding_key, dedupe_hash, passed_deterministic_gate,
            llm_lane_entered, llm_verdict, rule_id, first_seen_ts, last_seen_ts,
@@ -405,8 +405,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                mapping_version, model_version
         FROM {d}gw_silver_ext_telecom_finding_candidate"""))
 
-    add(("ext_telecom_asmvm_candidate_subject", f"""
-        INSERT INTO ext_telecom_asmvm_candidate_subject
+    add(("ext_telecom_offsec_asmvm_candidate_subject", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_candidate_subject
           (run_id, engagement_id, accept_event_id, candidate_id, check_id,
            finding_key, subject_ip, subject_kind, candidate_source_system,
            severity, rule_name, detail_ref, evidence_ref, dedupe_hash,
@@ -425,8 +425,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
                '{VERSION}'
         FROM {d}gw_silver_ext_asmvm_candidate_ext"""))
 
-    add(("ext_telecom_asmvm_rule", f"""
-        INSERT INTO ext_telecom_asmvm_rule
+    add(("ext_telecom_offsec_asmvm_rule", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_rule
           (run_id, engagement_id, accept_event_id, rule_id, rule_name,
            source_technique, rule_kind, active, audit_year, source_system,
            source_file, source_row_id, record_hash, lineage_batch_id,
@@ -443,8 +443,8 @@ def inserts(dev: str) -> list[tuple[str, str]]:
     # a NULL checkpoint_ts stays NULL (unknown), never 0.
     stale = ("CASE WHEN checkpoint_ts IS NULL THEN NULL ELSE "
              "datediff('day', checkpoint_ts, TIMESTAMP '" + REFERENCE_TS + "') END")
-    add(("ext_telecom_asmvm_check_run", f"""
-        INSERT INTO ext_telecom_asmvm_check_run
+    add(("ext_telecom_offsec_asmvm_check_run", f"""
+        INSERT INTO ext_telecom_offsec_asmvm_check_run
           (run_id, engagement_id, accept_event_id, source_run_id, started_at,
            finished_at, status, population_size, pages_completed,
            checkpoint_ts, reference_ts, freshness_sla_days, stale_days,

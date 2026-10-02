@@ -206,7 +206,7 @@ def load_owned_ranges(base):
     never from RFC1918 convention: the pack's own T1 checks key off this
     column, and RFC1918 membership is not what the vendor declared.
     """
-    rows, _ = read_csv(os.path.join(base, "ext_telecom_asmvm_owned_ip_range.csv"))
+    rows, _ = read_csv(os.path.join(base, "ext_telecom_offsec_asmvm_owned_ip_range.csv"))
     spans = []
     for r in rows:
         try:
@@ -337,10 +337,10 @@ def main():
     # R1 + R6: only an observation of an address the feeds describe can tie a
     # receipt back to the bundle that described it.
     receipt_ips = sorted({r["target_ip"] for r in live_receipts})
-    ip_rows, _ = read_csv(os.path.join(base, "ext_telecom_asmvm_ip.csv"))
+    ip_rows, _ = read_csv(os.path.join(base, "ext_telecom_offsec_asmvm_ip.csv"))
     src_files = {r["source_file"] for r in ip_rows if r["ip"] in set(receipt_ips)}
     bundles, bundle_fields = read_csv(
-        os.path.join(base, "ext_telecom_asmvm_evidence_bundle.csv"))
+        os.path.join(base, "ext_telecom_offsec_asmvm_evidence_bundle.csv"))
     reproduced = {b["bundle_id"]: sorted(
         {r["target_ip"] for r in live_receipts}) for b in bundles
         if b["source_file"] in src_files}
@@ -379,11 +379,11 @@ def main():
     bundles.append(lb)
     manifest["added_rows"].append({"table": "evidence_bundle",
                                   "row": lb, "justification": "R2"})
-    write_csv(os.path.join(out, "ext_telecom_asmvm_evidence_bundle.csv"),
+    write_csv(os.path.join(out, "ext_telecom_offsec_asmvm_evidence_bundle.csv"),
               bundles, bundle_fields)
 
     # ---- R3: service_endpoint, one row per receipt (incl. negative receipts)
-    se_path = os.path.join(base, "ext_telecom_asmvm_service_endpoint.csv")
+    se_path = os.path.join(base, "ext_telecom_offsec_asmvm_service_endpoint.csv")
     se_rows, se_fields = read_csv(se_path)
     se_baseline_len = len(se_rows)
     for i, r in enumerate(receipts, start=1):
@@ -429,12 +429,12 @@ def main():
             "key": "%s:%s/%s" % (r["target_ip"], r["proto"], r["port"]),
             "endpoint_status": r["endpoint_status"], "is_active": row["is_active"],
             "observation_class": receipt_class[id(r)]})
-    write_csv(os.path.join(out, "ext_telecom_asmvm_service_endpoint.csv"),
+    write_csv(os.path.join(out, "ext_telecom_offsec_asmvm_service_endpoint.csv"),
               se_rows, se_fields)
     manifest["service_endpoint_rows_added"] = len(se_rows) - se_baseline_len
 
     # ---- R4: asm_vm_surface, reconcile-or-append
-    sv_path = os.path.join(base, "ext_telecom_asmvm_asm_vm_surface.csv")
+    sv_path = os.path.join(base, "ext_telecom_offsec_asmvm_asm_vm_surface.csv")
     sv_rows, sv_fields = read_csv(sv_path)
     by_ip = {r["ip"]: r for r in sv_rows}
     per_ip = {}
@@ -527,11 +527,11 @@ def main():
                 "key": ip, "has_active_service": row["has_active_service"],
                 "inside_owned_range": row["inside_owned_range"],
                 "prefix_24": row["prefix_24"]})
-    write_csv(os.path.join(out, "ext_telecom_asmvm_asm_vm_surface.csv"),
+    write_csv(os.path.join(out, "ext_telecom_offsec_asmvm_asm_vm_surface.csv"),
               sv_rows, sv_fields)
 
     # ---- R5: website_endpoint for HTTP(S) receipts
-    we_path = os.path.join(base, "ext_telecom_asmvm_website_endpoint.csv")
+    we_path = os.path.join(base, "ext_telecom_offsec_asmvm_website_endpoint.csv")
     we_rows, we_fields = read_csv(we_path)
     we_added = 0
     for i, r in enumerate(receipts, start=1):
@@ -573,15 +573,15 @@ def main():
                                        "justification": "R5",
                                        "key": "%s:%s" % (r["target_ip"],
                                                          r["port"])})
-    write_csv(os.path.join(out, "ext_telecom_asmvm_website_endpoint.csv"),
+    write_csv(os.path.join(out, "ext_telecom_offsec_asmvm_website_endpoint.csv"),
               we_rows, we_fields)
     manifest["website_endpoint_rows_added"] = we_added
 
     # ---- every other CSV is linked in unchanged (identical bytes)
-    patched = {"ext_telecom_asmvm_evidence_bundle.csv",
-               "ext_telecom_asmvm_service_endpoint.csv",
-               "ext_telecom_asmvm_asm_vm_surface.csv",
-               "ext_telecom_asmvm_website_endpoint.csv"}
+    patched = {"ext_telecom_offsec_asmvm_evidence_bundle.csv",
+               "ext_telecom_offsec_asmvm_service_endpoint.csv",
+               "ext_telecom_offsec_asmvm_asm_vm_surface.csv",
+               "ext_telecom_offsec_asmvm_website_endpoint.csv"}
     for name in sorted(os.listdir(base)):
         if not name.endswith(".csv") or name in patched:
             continue

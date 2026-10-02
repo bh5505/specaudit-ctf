@@ -47,12 +47,31 @@ def test_materializer_quotes_untrusted_table_and_csv_header_identifiers():
     ).fetchall() == [("value", "run-1")]
 
 
-PRODUCT_PACK = Path(__file__).parents[1] / "packs/ext_telecom_cyber"
-CHECK_RUN_TABLE = "gw_silver_ext_telecom_check_run"
+PRODUCT_PACK = Path(__file__).parents[1] / "packs/ext_telecom_offsec"
+CHECK_RUN_TABLE = "ext_telecom_offsec_aws_check_run"
+
+
+def test_completeness_gate_is_scoped_to_offsec_pack():
+    runner = _load_runner()
+    runner.require_complete_offsec_evidence(
+        {"pack_id": "other-pack", "input_contract": {
+            "required_tables": ["source_table"]}}, [])
+    with pytest.raises(runner.RunnerError, match="required source table"):
+        runner.require_complete_offsec_evidence(
+            {"pack_id": "ext_telecom_offsec", "input_contract": {
+                "required_tables": ["source_table"]}}, [])
+
+
+def _product_t7_path(runner):
+    checks = runner.load_manifest(PRODUCT_PACK)["checks"]
+    matches = [check for check in checks
+               if check["id"] == "ext_telecom_offsec_aws_t7_resumable_runs"]
+    assert len(matches) == 1
+    return PRODUCT_PACK / matches[0]["file"]
 
 
 def _product_t7_sql(engine):
-    sql = (PRODUCT_PACK / "checks/ext_telecom_t7_resumable_runs.sql").read_text()
+    sql = _product_t7_path(_load_runner()).read_text()
     if engine == "duckdb":
         # DuckDB uses positional '?' whereas SQLite accepts numbered '?N'.
         sql = sql.replace("?1", "?").replace("?2", "?")
@@ -158,51 +177,26 @@ def test_stamp_accept_lineage_overwrites_stale_triple(engine):
 
 
 @pytest.mark.parametrize("engine", ["sqlite", "duckdb"])
-def test_stamp_accept_lineage_preserves_declared_run_id_source(engine):
-    """Legacy mirror contract: mapped source run_id survives, the rest stamps."""
+def test_stamp_accept_lineage_separates_source_and_cross_run_scope(engine):
+    """Source identity survives while an imported sibling run cannot set scope."""
     runner = _load_runner()
     if engine == "duckdb":
         pytest.importorskip("duckdb")
-    headers = ["run_id", "status", "engagement_id", "accept_event_id"]
-    rows = [["cr-2026-001", "interrupted", "stale-engagement",
-             "11111111-1111-1111-1111-111111111111"],
-            ["cr-2026-002", "completed", "stale-engagement",
-             "11111111-1111-1111-1111-111111111111"]]
+    headers = ["source_run_id", "run_id", "status"]
+    rows = [["source-one", "execution-sibling", "interrupted"]]
     connection, engine = runner.open_engine(engine)
     try:
-        _create_test_table(runner, connection, engine, "legacy_check_run", rows, headers)
-        runner.stamp_accept_lineage(connection, "legacy_check_run",
-                                    headers, "execution-current",
-                                    preserve_run_id=True)
+        _create_test_table(runner, connection, engine, "check_run", rows, headers)
+        runner.stamp_accept_lineage(connection, "check_run", headers,
+                                    "execution-current")
         assert connection.execute(
-            "SELECT run_id, engagement_id, accept_event_id "
-            "FROM %s ORDER BY run_id" % runner._quote_identifier("legacy_check_run")
-        ).fetchall() == [
-            ("cr-2026-001", runner.ENGAGEMENT_ID, runner.ZERO_ACCEPT_EVENT_ID),
-            ("cr-2026-002", runner.ENGAGEMENT_ID, runner.ZERO_ACCEPT_EVENT_ID),
-        ]
-    finally:
-        connection.close()
-
-
-@pytest.mark.parametrize("engine", ["sqlite", "duckdb"])
-def test_stamp_accept_lineage_rejects_missing_mapped_source_run_id(engine):
-    """A missing source identity must not be fabricated from the ambient run."""
-    runner = _load_runner()
-    if engine == "duckdb":
-        pytest.importorskip("duckdb")
-    headers = ["status"]
-    rows = [["interrupted"]]
-    connection, engine = runner.open_engine(engine)
-    try:
-        _create_test_table(runner, connection, engine, "ledger_no_run", rows, headers)
-        with pytest.raises(runner.RunnerError, match="missing its mapped source run_id"):
-            runner.stamp_accept_lineage(connection, "ledger_no_run",
-                                        headers, "execution-current",
-                                        preserve_run_id=True)
-        assert connection.execute("SELECT * FROM ledger_no_run").fetchall() == [
-            ("interrupted",),
-        ]
+            "SELECT source_run_id, run_id FROM check_run WHERE run_id = ?",
+            ["execution-current"],
+        ).fetchall() == [("source-one", "execution-current")]
+        assert connection.execute(
+            "SELECT source_run_id FROM check_run WHERE run_id = ?",
+            ["execution-sibling"],
+        ).fetchall() == []
     finally:
         connection.close()
 
@@ -227,8 +221,8 @@ def test_product_ledger_mapping_preserves_source_identity_and_binds_t7(
     runner = _load_runner()
     if engine == "duckdb":
         pytest.importorskip("duckdb")
-    pack = Path(__file__).parents[1] / "packs/ext_telecom_cyber"
-    table = "gw_silver_ext_telecom_check_run"
+    pack = Path(__file__).parents[1] / "packs/ext_telecom_offsec"
+    table = "ext_telecom_offsec_aws_check_run"
     headers = [
         source_header,
         "status",
@@ -269,7 +263,7 @@ def test_product_ledger_mapping_preserves_source_identity_and_binds_t7(
             headers,
         )
         runner.stamp_accept_lineage(connection, table, headers, "execution-current")
-        sql = (pack / "checks/ext_telecom_t7_resumable_runs.sql").read_text()
+        sql = _product_t7_path(runner).read_text()
         # DuckDB uses positional '?' whereas SQLite accepts numbered '?N'.
         if engine == "duckdb":
             sql = sql.replace("?1", "?").replace("?2", "?")

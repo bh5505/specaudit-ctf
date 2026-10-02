@@ -1,0 +1,390 @@
+version: 1
+program_id: ext_telecom_offsec_rehearsal_2026
+title: Telecom offensive security audit program
+owner: audit-data-analytics-po
+audit_period:
+  year: 2026
+  start: '2026-01-01'
+  end: '2026-12-31'
+controls:
+- control_id: OFFSEC-ASMVM-T1
+  title: 'Threat-model-first: what is reachable from the internet, and is it owned and managed'
+  objective: Demonstrate the internet-facing estate is bounded by declared owned address space, that what answers from outside
+    is either managed by the VM estate or explicitly accepted, and that no management or clear-text service answers on the
+    public internet.
+  risk: Owned but unmanaged internet-facing hosts, and management/data-plane ports answering publicly, are the classic telecom
+    perimeter failure; neither the ASM feed nor the VM feed can detect the pair alone.
+  framework_refs:
+  - NIST CSF 2.0 ID.AM-01, ID.AM-02
+  - ISO 27001:2022 A.8.9, A.8.22
+  pack_checks:
+  - ext_telecom_offsec_asmvm_t1_critical_vuln_on_exposed
+  - ext_telecom_offsec_asmvm_t1_exposed_mgmt_ports
+  - ext_telecom_offsec_asmvm_t1_telecom_control_plane_exposed
+  - ext_telecom_offsec_asmvm_t1_transport_security
+  - ext_telecom_offsec_asmvm_t1_unattributed_exposure
+  - ext_telecom_offsec_asmvm_t1_unmanaged_surface
+  - ext_telecom_offsec_asmvm_t1_vm_asset_unobserved
+  - ext_telecom_offsec_asmvm_t1_asmvm_critical_internal_record_only
+  - ext_telecom_offsec_asmvm_t1_asmvm_critical_service_corroborated
+  test_steps:
+  - step_id: OFFSEC-ASMVM-T1-S1
+    procedure: Reconcile the ASM-observed internet-facing addresses against the declared owned IP range table; report addresses
+      outside every owned /16 and owned addresses that the VM estate does not scan.
+    expected_result: Every observed address is inside a declared owned range, or an ownership decision is documented; owned
+      and externally-responsive addresses have VM coverage or an accepted exception.
+  - step_id: OFFSEC-ASMVM-T1-S2
+    procedure: List ASM-observed active services answering on management, clear-text and data-plane ports (the port list in
+      engagement_configs/default.yaml) and confirm a boundary rule or documented exception per protocol/port.
+    expected_result: No management, clear-text or data-plane port answers on the public internet without an approved, time-bounded
+      exception naming the owner.
+  - step_id: OFFSEC-ASMVM-T1-S3
+    procedure: For every VM finding at or above the critical severity threshold, confirm whether ASM observes the address
+      as internet-active, and for the intersection confirm the remediation or compensating control.
+    expected_result: No open critical vulnerability sits on an internet-active address without a remediation ticket or an
+      approved compensating control.
+  - step_id: OFFSEC-ASMVM-T1-S4
+    procedure: 'List ASM-observed active services on the telecom control plane (CWMP/TR-069, SIP/SIPS, GTP/GTP''/Diameter,
+      NTP, public resolvers, IKE/IPsec anchors - the class list in engagement_configs/default.yaml). For each class: name
+      the owner, confirm the boundary rule, and for the classes that must never be internet-reachable (gtp_core, cpe_management)
+      confirm a reproduction attempt that shows whether the endpoint answers with protocol behaviour or only a TCP handshake.'
+    expected_result: Every telecom control-plane class has a named owner and a boundary decision. gtp_core and cpe_management
+      are not internet-reachable, or carry a time-bounded exception; IKE/IPsec anchors are attributable and allow-listed rather
+      than simply open.
+- control_id: OFFSEC-ASMVM-T2
+  title: 'Adversarial validation: every claim has a second source or a reproduction'
+  objective: Demonstrate that externally inferred CVEs are corroborated by an independent source or reproduced, and that scanner
+    coverage is authenticated where patch state is asserted.
+  risk: Vendor-inferred CVEs are banner-parse guesses; unauthenticated scanning cannot see patch level. Findings built on
+    either, uncorroborated, become confident statements about systems nobody verified.
+  framework_refs:
+  - NIST CSF 2.0 ID.RA-01, ID.RA-05
+  - ISO 27001:2022 A.8.8
+  pack_checks:
+  - ext_telecom_offsec_asmvm_t2_asmvm_cve_uncorroborated
+  - ext_telecom_offsec_asmvm_t2_asmvm_no_authenticated_visibility
+  - ext_telecom_offsec_asmvm_t2_asmvm_no_independent_reproduction
+  - ext_telecom_offsec_asmvm_t2_adversarial_validation
+  - ext_telecom_offsec_asmvm_t2_asmvm_initial_access_convergence
+  - ext_telecom_offsec_asmvm_t2_asmvm_vendor_confidence_gap
+  - ext_telecom_offsec_asmvm_t2_asmvm_vendor_confidence_gap_external_scan
+  test_steps:
+  - step_id: OFFSEC-ASMVM-T2-S1
+    procedure: Join externally inferred CVEs against the VM CVE observations per (ip, cve); sample the pairs with no VM corroboration
+      and reproduce them by banner re-verification or credentialed scan.
+    expected_result: Every externally inferred CVE in the workpaper is corroborated by the VM feed or by a reproduction artifact;
+      uncorroborated claims are labelled as inference, not fact.
+  - step_id: OFFSEC-ASMVM-T2-S2
+    procedure: For each scanner network scope, confirm at least one credentialed scan exists for the assets in scope, and
+      record the last credentialed scan timestamp.
+    expected_result: No network scope asserts patch state on unauthenticated data alone; scopes without credentialed coverage
+      are declared as visibility gaps in the report.
+  - step_id: OFFSEC-ASMVM-T2-S3
+    procedure: Inspect the evidence-bundle ledger for bundles with no independent reproduction lane and bundles nobody tried
+      to disprove; sample two bundles and trace the evidence to its original export or probe.
+    expected_result: Every bundle supporting a reported finding carries either independent reproduction evidence or an explicit
+      statement that the claim is single-source.
+- control_id: OFFSEC-ASMVM-T3
+  title: Deterministic evidence gate before LLM spend
+  objective: Demonstrate no candidate enters the LLM review lane before a deterministic corroboration path exists for its
+    subject.
+  risk: Spending LLM review on candidates that no independent source can speak about produces narrative from a single vendor
+    export, and hides the fact that the subject address is outside coverage.
+  framework_refs:
+  - NIST CSF 2.0 ID.IML-04
+  - ISO 27001:2022 A.5.34
+  pack_checks:
+  - ext_telecom_offsec_asmvm_t3_asmvm_unverifiable_candidate
+  - ext_telecom_offsec_asmvm_t3_evidence_gate
+  - ext_telecom_offsec_asmvm_t3_asmvm_bridge_exclusion_reason
+  - ext_telecom_offsec_asmvm_t3_asmvm_technique_context_bridge_gap
+  - ext_telecom_offsec_asmvm_t3_asmvm_observation_lineage_gap
+  - ext_telecom_offsec_asmvm_t3_asmvm_scan_confidence_vocabulary_gap
+  - ext_telecom_offsec_asmvm_t3_asmvm_vm_observation_bridge_gap
+  test_steps:
+  - step_id: OFFSEC-ASMVM-T3-S1
+    procedure: For every High/Critical ASM candidate, confirm the subject IP exists in the VM estate (a deterministic corroboration
+      path exists) before it entered the LLM lane.
+    expected_result: No High/Critical candidate entered the LLM lane on an address the VM estate does not cover; such candidates
+      are held with a named owner and a coverage action.
+  - step_id: OFFSEC-ASMVM-T3-S2
+    procedure: Query the candidate ledger for rows with llm_lane_entered = true and passed_deterministic_gate = false, and
+      confirm the deterministic gate ran.
+    expected_result: No candidate entered the LLM lane without passing the deterministic evidence gate.
+  - step_id: OFFSEC-ASMVM-T3-S3
+    procedure: Review mapped alert technique context for active service endpoints and confirm every headline consumer filters
+      on an explicit provenance class.
+    expected_result: Technique metadata remains labelled context and is never treated as observed exploitation or vulnerability
+      confirmation.
+  - step_id: OFFSEC-ASMVM-T3-S4
+    procedure: Review bridge-exclusion reasons for alert/service candidates absent from the technique landing zone, and investigate
+      any unclassified row.
+    expected_result: Every exclusion is explained as no alert coverage, inactive-only evidence, or an absent service endpoint;
+      the unclassified count is zero.
+- control_id: OFFSEC-ASMVM-T4
+  title: Deduplicate, then chain
+  objective: Demonstrate the same fact reported by two sources collapses to one canonical record before chaining and before
+    exposure arithmetic.
+  risk: An ASM-inferred CVE and a VM-confirmed CVE for the same host are one problem; counted twice they inflate exposure
+    and fork every chain built on them.
+  framework_refs:
+  - NIST CSF 2.0 ID.AM-08
+  - ISO 27001:2022 A.8.24
+  pack_checks:
+  - ext_telecom_offsec_asmvm_t4_asmvm_cross_source_duplicate_cve
+  - ext_telecom_offsec_asmvm_t4_duplicate_candidates
+  test_steps:
+  - step_id: OFFSEC-ASMVM-T4-S1
+    procedure: Reconcile the (ip, cve) pair space across sources; confirm each pair appearing in both sources resolves to
+      one canonical record (the VM finding, which carries the finding id, scanner plugin id and scan timestamp).
+    expected_result: No double-counted (ip, cve) pair in exposure totals or in any chain; the canonical survivor is named
+      per pair.
+  - step_id: OFFSEC-ASMVM-T4-S2
+    procedure: Sample candidate records sharing a dedupe hash and confirm a canonical candidate is designated before chaining,
+      with a recorded decision.
+    expected_result: No uncollapsed duplicate clusters and no chain containing two records for the same fact.
+- control_id: OFFSEC-ASMVM-T5
+  title: Sandboxed reproduction with a read-only verifier; no live probing without authorization
+  objective: Demonstrate reproduction runs in isolated compute, and that every queued claim needing an active lane has a lane
+    planned, authorized and executed.
+  risk: Un-sandboxed reproduction can mutate the target estate, and live probing of third-party internet addresses without
+    authorization is itself a control failure (and, in this lab, an egress-policy violation).
+  framework_refs:
+  - NIST CSF 2.0 PR.PS-01
+  - ISO 27001:2022 A.8.31
+  pack_checks:
+  - ext_telecom_offsec_asmvm_t5_asmvm_reproduction_queue
+  - ext_telecom_offsec_asmvm_t5_sandboxed_reproduction
+  test_steps:
+  - step_id: OFFSEC-ASMVM-T5-S1
+    procedure: Confirm each reproduction lane (credentialed scan, banner re-verification, live probe) has an authorization
+      record naming the target addresses, and that probing was limited to owned address space.
+    expected_result: No live probe targets an address outside declared owned space without a written authorization.
+  - step_id: OFFSEC-ASMVM-T5-S2
+    procedure: Inspect evidence bundles with has_live_fire = true and confirm is_sandboxed = true and an execution receipt
+      exists.
+    expected_result: No un-sandboxed live-fire evidence; every live-fire bundle carries a receipt.
+- control_id: OFFSEC-ASMVM-T6
+  title: The rule corpus is the compounding asset
+  objective: Demonstrate each open finding class is covered by an active, generalized rule, so detection compounds instead
+    of being re-derived each cycle.
+  risk: Scanner finding classes with no rule in the corpus are rediscovered at full cost every cycle; ASM attack-surface rules
+    that fire without owner disposition are detection that never becomes prevention.
+  framework_refs:
+  - NIST CSF 2.0 DE.CM-01, DE.AE-02
+  - ISO 27001:2022 A.8.16
+  pack_checks:
+  - ext_telecom_offsec_asmvm_t6_asmvm_rule_corpus_gap
+  - ext_telecom_offsec_asmvm_t6_rule_corpus
+  test_steps:
+  - step_id: OFFSEC-ASMVM-T6-S1
+    procedure: Match every open scanner finding class (plugin family) against the deployed rule corpus; confirm the high-volume
+      and critical-bearing classes have an active rule or a documented reason for absence.
+    expected_result: No high-exposure finding class without an active rule, or an owner and date recorded for the corpus gap.
+  - step_id: OFFSEC-ASMVM-T6-S2
+    procedure: Sample candidates whose rule reference is empty or resolves to an inactive rule, and confirm each is either
+      generalized into the corpus or explicitly rejected with a reason.
+    expected_result: No candidate is left outside the corpus with neither an active rule nor a recorded generalization decision.
+- control_id: OFFSEC-ASMVM-T7
+  title: Resumable, batched, additive runs; source freshness
+  objective: Demonstrate source collection is checkpointed and resumable, that batch truncation is visible, and that no source
+    run silently rots past its freshness SLA.
+  risk: 'ASM/VM coverage rots quietly: a source run reports completed while its last checkpoint is weeks old, so every exposure
+    statement keeps being computed against an out-of-date view of the estate.'
+  framework_refs:
+  - NIST CSF 2.0 ID.AM-08, DE.CM-01
+  - ISO 27001:2022 A.8.16, A.5.28
+  pack_checks:
+  - ext_telecom_offsec_asmvm_t7_asmvm_source_run_staleness
+  - ext_telecom_offsec_asmvm_t7_asmvm_candidate_backlog
+  - ext_telecom_offsec_asmvm_t7_resumable_runs
+  test_steps:
+  - step_id: OFFSEC-ASMVM-T7-S1
+    procedure: For each source run, compute staleness against the source's freshness SLA at the run's reference time, and
+      confirm every source meeting its SLA is named with population counts.
+    expected_result: No source is stale, or staleness is declared as a scope limitation in the report body (not in a footnote).
+  - step_id: OFFSEC-ASMVM-T7-S2
+    procedure: Confirm every source run has a checkpoint, resumable cursor and population count, and that candidate batches
+      report eligible versus queued counts so truncation is visible.
+    expected_result: No interrupted source run; no candidate batch where the queued count is silently below the eligible population.
+- control_id: OFFSEC-AWS-T1
+  title: Threat-model-first trust-boundary completeness
+  objective: Confirm the AWS posture surface (S3 buckets, IAM principals, security groups) is mapped against the trust boundary
+    before hunting, and that every object reachable from outside the boundary is flagged.
+  risk: Unmapped or partially mapped trust boundaries leave externally reachable S3 buckets, IAM principals, and security-group
+    rules undiscovered, enabling data exposure that the audit claims to cover.
+  framework_refs:
+  - NIST SP 800-53 SC-7 Boundary Protection
+  - CIS AWS Foundations 2.1 - S3 Block Public Access
+  pack_checks:
+  - ext_telecom_offsec_aws_t1_trust_boundary
+  test_steps:
+  - step_id: OFFSEC-AWS-T1.1
+    description: Reperform trust-boundary exception testing over the S3 posture surface
+    procedure: 'Re-run the T1 check over the seeded S3 inventory and tie every fired row to the threat model: bucket with
+      public-access block disabled or bucket policy granting anonymous principals.'
+    expected_result: Every S3 bucket with public access block disabled or anonymous policy allowance is surfaced as a T1 finding
+      with a bucket-level finding key.
+    evidence_needed:
+    - S3 bucket inventory (public access block, ACL, policy, encryption, TLS)
+    pack_check: ext_telecom_offsec_aws_t1_trust_boundary
+  - step_id: OFFSEC-AWS-T1.2
+    description: Reperform trust-boundary exception testing over IAM principals
+    procedure: 'Re-run the T1 check over the seeded IAM principal inventory and tie every fired row to the threat model: principal
+      with allows_external_principal true.'
+    expected_result: Every IAM principal that allows an external principal is surfaced as a T1 finding with a principal-level
+      finding key.
+    evidence_needed:
+    - IAM principal inventory (ARN, type, external-principal flag, MFA)
+    pack_check: ext_telecom_offsec_aws_t1_trust_boundary
+  - step_id: OFFSEC-AWS-T1.3
+    description: Reperform trust-boundary exception testing over security-group rules
+    procedure: 'Re-run the T1 check over the seeded security-group inventory and tie every fired ingress row to the threat
+      model: is_public true or cidr 0.0.0.0/0, without collapsing distinct protocol/port/cidr rules.'
+    expected_result: Every public or 0.0.0.0/0 ingress rule is surfaced as a T1 finding with a rule-level finding key (sg,
+      direction, protocol, ports, cidr).
+    evidence_needed:
+    - Security-group inventory (sg_id, direction, protocol, ports, cidr, is_public)
+    pack_check: ext_telecom_offsec_aws_t1_trust_boundary
+- control_id: OFFSEC-AWS-T2
+  title: Adversarial validation coverage (finder != validator)
+  objective: Confirm every evidence bundle that ships a finding was re-verified by an independent adversarial pass before
+    the finding is released.
+  risk: Un-reverified bundles allow the original finder's blind spots to become false positives or missed negatives in the
+    final report.
+  framework_refs:
+  - IIA 2024 Standard 14.1 - Quality and supervision of engagement communication
+  pack_checks:
+  - ext_telecom_offsec_aws_t2_adversarial_validation
+  test_steps:
+  - step_id: OFFSEC-AWS-T2.1
+    description: Confirm adversarial re-verification coverage on shipped evidence bundles
+    procedure: Re-run the T2 check over the evidence-bundle inventory and confirm every bundle without has_adversarial_reverify
+      is captured.
+    expected_result: Every evidence bundle lacking adversarial re-verification is surfaced as a T2 finding.
+    evidence_needed:
+    - Evidence bundle inventory (report, receipt, live-fire, re-verify, sandbox flags)
+    pack_check: ext_telecom_offsec_aws_t2_adversarial_validation
+- control_id: OFFSEC-AWS-T3
+  title: Deterministic evidence gates before LLM spend
+  objective: Confirm no finding candidate reaches the LLM critic lane without first passing the deterministic evidence gate.
+  risk: Candidates that skip the deterministic gate waste LLM spend and let evidence-poor claims reach the verdict stage.
+  framework_refs:
+  - "playbook \xA72.1 T3 - evidence gates before LLM spend"
+  pack_checks:
+  - ext_telecom_offsec_aws_t3_evidence_gate
+  test_steps:
+  - step_id: OFFSEC-AWS-T3.1
+    description: Confirm gate-before-LLM ordering on finding candidates
+    procedure: Re-run the T3 check over the candidate queue and verify every row with llm_lane_entered true and passed_deterministic_gate
+      false is flagged.
+    expected_result: Every LLM-entered candidate that failed (or skipped) the deterministic gate is surfaced as a T3 finding.
+    evidence_needed:
+    - Finding candidate queue (gate flags, LLM lane flag, verdict, rule link)
+    pack_check: ext_telecom_offsec_aws_t3_evidence_gate
+- control_id: OFFSEC-AWS-T4
+  title: Deduplicate, then chain
+  objective: Confirm candidate overlaps are collapsed by dedupe hash before findings are prioritized and chained into multi-step
+    narratives.
+  risk: Duplicate-verdict clusters that survive to reporting double-count exposure and distort the chain synthesis.
+  framework_refs:
+  - "playbook \xA72.1 T4 - deduplicate, then chain"
+  pack_checks:
+  - ext_telecom_offsec_aws_t4_duplicate_candidates
+  test_steps:
+  - step_id: OFFSEC-AWS-T4.1
+    description: Confirm duplicate-verdict clusters are collapsed
+    procedure: Re-run the T4 check over the candidate queue and confirm every dedupe-hash cluster with more than one candidate
+      and a duplicate verdict is captured with the cluster size.
+    expected_result: Every multi-row dedupe cluster with a duplicate verdict is surfaced as a T4 finding carrying the cluster
+      count.
+    evidence_needed:
+    - Finding candidate queue (dedupe hash, LLM verdict, finding key)
+    pack_check: ext_telecom_offsec_aws_t4_duplicate_candidates
+- control_id: OFFSEC-AWS-T5
+  title: Sandboxed reproduction with read-only verifier
+  objective: Confirm live-fire reproductions run only inside isolated compute and are verified by a read-only verifier.
+  risk: Unsandboxed live-fire execution can mutate production state or probe live networks during a rehearsal that is synthetic-only
+    by contract.
+  framework_refs:
+  - NIST SP 800-53 SC-7 Boundary Protection - isolated execution environments
+  - "playbook \xA72.1 T5 - sandboxed reproduction + read-only verifier"
+  pack_checks:
+  - ext_telecom_offsec_aws_t5_sandboxed_reproduction
+  test_steps:
+  - step_id: OFFSEC-AWS-T5.1
+    description: Confirm live-fire bundles were reproduced in a sandbox
+    procedure: Re-run the T5 check over the evidence-bundle inventory and confirm every bundle with has_live_fire true and
+      is_sandboxed false is flagged.
+    expected_result: Every live-fire bundle that ran outside isolated compute is surfaced as a T5 finding.
+    evidence_needed:
+    - Evidence bundle inventory (live-fire and sandbox flags, execution receipts)
+    pack_check: ext_telecom_offsec_aws_t5_sandboxed_reproduction
+- control_id: OFFSEC-AWS-T6
+  title: Rule corpus as the compounding asset
+  objective: Confirm every exploratory finding is generalized into an active rule (detection or prevention) so coverage compounds
+    across runs.
+  risk: Candidates that never become rules leave the same exposure to be rediscovered manually every audit cycle.
+  framework_refs:
+  - "playbook \xA72.1 T6 - rule corpus as the compounding asset"
+  pack_checks:
+  - ext_telecom_offsec_aws_t6_rule_corpus
+  test_steps:
+  - step_id: OFFSEC-AWS-T6.1
+    description: Confirm candidates resolve to active generalized rules
+    procedure: Re-run the T6 check over the candidate queue joined to the rule corpus and confirm every candidate with an
+      empty rule reference or no active matching rule is flagged.
+    expected_result: Every candidate not covered by an active generalized rule is surfaced as a T6 finding.
+    evidence_needed:
+    - Finding candidate queue (rule reference) and rule corpus (active rules)
+    pack_check: ext_telecom_offsec_aws_t6_rule_corpus
+- control_id: OFFSEC-AWS-T7
+  title: Resumable, batched, additive runs
+  objective: Confirm the check-run ledger shows completed, resumable runs so coverage grows additively with each run and is
+    diff-able.
+  risk: Interrupted runs that are never resumed silently truncate the audit population and invalidate coverage claims.
+  framework_refs:
+  - "playbook \xA72.1 T7 - resumable, batched, additive runs"
+  pack_checks:
+  - ext_telecom_offsec_aws_t7_resumable_runs
+  test_steps:
+  - step_id: OFFSEC-AWS-T7.1
+    description: Confirm the run ledger is complete and resumable
+    procedure: Re-run the T7 check over the check-run ledger and confirm every interrupted or internally inconsistent run
+      is flagged for resume.
+    expected_result: Every run with status interrupted, or with no finish time and a checkpoint older than its start, is surfaced
+      as a T7 finding.
+    evidence_needed:
+    - Check-run ledger (start, finish, status, checkpoint, pages completed)
+    pack_check: ext_telecom_offsec_aws_t7_resumable_runs
+- control_id: OFFSEC-TECH-T1
+  title: Reconcile selected cloud posture findings with live read-only validation
+  objective: Bind each selected Technology source finding to an independently executed validator result for the exact resource,
+    source run, inventory snapshot, rule, and receipt; distinguish configuration from observed reachability.
+  risk: A public cloud configuration can be overstated as an exploitable path, while a genuinely exposed resource can be
+    understated when the verifier result is detached from its source finding or omitted.
+  framework_refs:
+  - NIST CSF 2.0 DE.CM-09, ID.RA-05
+  pack_checks:
+  - ext_telecom_offsec_technology_t1_validated_configuration
+  test_steps:
+  - step_id: OFFSEC-TECH-T1-S1
+    procedure: Match AWS-NET-001, AWS-NET-010/011, GCP-IAM-001, and AZURE-NET-002 findings to receipt-backed validator
+      outcomes by complete source identity; review the recorded configuration and reachability states separately.
+    expected_result: Each reported validation identifies its source finding and receipt. A configured ingress rule or public
+      binding is never described as practically reachable without independent observation.
+- control_id: OFFSEC-TECH-T2
+  title: Independent validation coverage and contradiction handling
+  objective: Expose selected Technology findings lacking a complete validator result, as well as results that contradict
+    the source claim or cannot determine configuration or S3 public reachability.
+  risk: Treating a missing, ambiguous, or inconclusive probe as a clean finding disposition hides unchecked cloud exposure.
+  framework_refs:
+  - NIST CSF 2.0 ID.RA-05, GV.OV-03
+  pack_checks:
+  - ext_telecom_offsec_technology_t2_validation_gap
+  test_steps:
+  - step_id: OFFSEC-TECH-T2-S1
+    procedure: Reconcile the complete eligible validator inventory to one current result per finding and inspect every
+      missing, contradictory, or unknown outcome before releasing the workpaper.
+    expected_result: Every unresolved source finding remains visible with its source run and inventory snapshot; no
+      missing result is treated as confirmed safe.

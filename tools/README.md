@@ -9,15 +9,15 @@ that used to point at somebody's laptop has been replaced by a required
 argument (`--pack`, `--evidence-dir`, `--seif-src`, `--dns-name`, ...).
 
 ```bash
-python tools/ctf_run_checks.py --pack ../packs/ext_telecom_asmvm \
+python tools/ctf_run_checks.py --pack packs/ext_telecom_offsec \
     --evidence-dir <evidence> --out-dir out/run --db duckdb --fast-csv \
     --limit 500000 --run-id <run_id>
 ```
 
-The pack's evidence CSVs carry a `run_id` column that the runner overwrites with
-`--run-id` at load time ("accept lineage"), unless the pack's mapping declares
-`run_id` as a mapped source. Keep that in mind when reading a run: the run_id in
-the report is the run, not the file.
+The runner stamps `--run-id` into each pack table's `run_id` column at load time
+("accept lineage"). When a mapping declares `source_run_id`, it copies the
+CSV's original run identifier there. The report's `run_id` names the check run,
+while `source_run_id` names the source evidence run.
 
 ## Verification instruments
 
@@ -33,7 +33,7 @@ says which. Read them before changing behaviour.
 
 | script | what it is for |
 | --- | --- |
-| `asmvm_evidence_builder.py` | Generate the pack's evidence CSVs (exporters, and the `ext_telecom_asmvm_asm_vm_surface` patch that rewrites asset-keyed rows onto real IP rows). |
+| `asmvm_evidence_builder.py` | Generate the pack's evidence CSVs (exporters, and the `ext_telecom_offsec_asmvm_asm_vm_surface` patch that rewrites asset-keyed rows onto real IP rows). |
 | `livefire_capture.py` | Read-only verification of the pack's exposure claims against lab addresses: TCP banner grab and `openssl s_client` certificate capture, plus one DNS lookup. Nothing is mutated on the target; the host set is restricted to loopback/RFC1918 and the DNS name defaults to a `.local` name (`--dns-name`, `ASMVM_DNS_PROBE_NAME`) so a stray lookup does not disclose anything. |
 | `livefire_target_list.py` | Derives the live-fire target list from the pack's own reproduction queue (which endpoints the checks say are exposed), so the live-fire set is derived rather than invented. |
 | `livefire_overlay.py` | Applies live observations to the evidence and re-runs the checks. The overlay is a delta: it patches existing rows (a host observed listening moves `has_active_service`/`is_exposed`), it does not invent new findings. |
@@ -121,7 +121,7 @@ the inference path demonstrably produces the wrong score.
 
 ## The t7 rewrite, and what the two instruments have to say about it
 
-`ext_telecom_asmvm_t7_asmvm_candidate_backlog.sql` builds its eligible
+`ext_telecom_offsec_asmvm_t7_asmvm_candidate_backlog.sql` builds its eligible
 population as a non-aggregate CTE and then tests it with a correlated `EXISTS`.
 SQLite cannot flatten that shape, so it re-evaluates the whole eligibility chain
 per candidate row: on a 240k-finding corpus it ran **over two hours** where

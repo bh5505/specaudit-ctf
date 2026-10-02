@@ -7,7 +7,7 @@ priority-target ranking and a grounded multi-step ATT&CK attack-path map.
 Pure-python stdlib core (csv/json/re) so it stays hermetic and independent of
 engine report formats. Inputs:
 
-  --report   findings from the ext_telecom_asmvm pack run (the durable pack
+  --report   findings from the ext_telecom_offsec pack run (the durable pack
              output; technique context in T3 details, tiers/risk in t1 rows)
   --evidence canonical silver evidence directory (cve_observation.csv for
              ASM-inferred CVEs, vm_cve_observation.csv for scan-confirmed)
@@ -26,8 +26,8 @@ import re
 from collections import defaultdict
 from pathlib import Path
 
-T3 = "ext_telecom_asmvm_t3_asmvm_technique_context_bridge_gap"
-T1_FLAGSHIP = "ext_telecom_asmvm_t1_critical_vuln_on_exposed"
+T3 = "ext_telecom_offsec_asmvm_t3_asmvm_technique_context_bridge_gap"
+T1_FLAGSHIP = "ext_telecom_offsec_asmvm_t1_critical_vuln_on_exposed"
 CVE_RE = re.compile(r"CVE-\d{4}-\d+", re.IGNORECASE)
 IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
 TECH_RE = re.compile(r"technique=([^;]*)")
@@ -70,7 +70,7 @@ def _ports(locator: str) -> set[int]:
 def read_cves(evidence_dir: Path) -> dict:
     """Per-IP CVEs with provenance from canonical silver CSVs."""
     out: dict[str, list] = defaultdict(list)
-    co = evidence_dir / "ext_telecom_asmvm_cve_observation.csv"  # ASM-inferred
+    co = evidence_dir / "ext_telecom_offsec_asmvm_cve_observation.csv"  # ASM-inferred
     if co.exists():
         with co.open(encoding="utf-8", newline="") as fh:
             for row in csv.DictReader(fh):
@@ -78,7 +78,7 @@ def read_cves(evidence_dir: Path) -> dict:
                 if ip and cve:
                     out[ip].append({"cve": cve, "inferred_score": row.get("inferred_score"),
                                     "provenance_class": "banner_asserted_inference"})
-    vo = evidence_dir / "ext_telecom_asmvm_vm_cve_observation.csv"  # scan-confirmed
+    vo = evidence_dir / "ext_telecom_offsec_asmvm_vm_cve_observation.csv"  # scan-confirmed
     if vo.exists():
         with vo.open(encoding="utf-8", newline="") as fh:
             for row in csv.DictReader(fh):

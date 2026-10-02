@@ -18,7 +18,7 @@ capabilities:
    (assetrecon discovery, `ivanti` assets+findings pull, `gti` domain/VT intel).
    The `ivanti` arm is the governed Ivanti VM extractor; its flattened output is
    the pack's Ivanti bronze shape.
-2. **`pack_run`** — fold evidence into a pack (`ext_telecom_asmvm`) and produce
+2. **`pack_run`** — fold evidence into the `ext_telecom_offsec` pack and produce
    a deterministic `report.json` (the pack's ASM/VM findings, incl. T1190
    initial-access convergence).
 3. **`prioritize_targets`** — from the report, build a **prioritized target list
@@ -42,5 +42,6 @@ exploitability step in between.
 - Backend wiring: `extension/pipeline.py` imports the `tools/*.py` durable
   cores (`ctf_run_checks`, `demo_target_analysis`, `demo_rollup_hosts`,
   `demo_rank_hosts`, `render_provenance_header`).
-- Pack role: `packs/ext_telecom_asmvm/docs/IVANTI_ARM_BRIDGE.md` documents how
-  the `ivanti` arm feeds the pack bronze.
+- Pack input: `tools/asmvm_evidence_builder.py` prepares rehearsal evidence;
+  `packs/ext_telecom_offsec/synthetic/mapping_spec.yaml` declares the CSV inputs
+  accepted by the unified pack.

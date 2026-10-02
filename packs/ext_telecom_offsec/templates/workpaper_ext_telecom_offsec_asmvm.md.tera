@@ -1,0 +1,66 @@
+{# Telecom Offensive Security Audit — workpaper template (Tera).
+   Expected context: engagement_id, run_id, generated_at, controls (one entry
+   per audit-program control: control_id, title, objective, checks — each with
+   check_id, severity, finding_count), conclusion (optional). #}
+# Telecom Offensive Security Audit — Workpaper
+
+**Engagement:** {{ engagement_id }}
+**Run:** {{ run_id }}
+**Prepared:** {{ generated_at }}
+
+## Scope & population
+
+This workpaper covers the AWS cyber posture surface (S3 public access, IAM external principals, and security-group ingress), its separate process ledger, selected Technology findings with independent validator receipts, and two independently collected ASM/VM views of the same estate: the **attack-surface-management (ASM) view** — assets,
+externally exposed services and websites, attack-surface-rule alerts, incidents,
+and the declared owned IPv4/IPv6 address space — and the **vulnerability-
+management (VM) view** — scanned assets, scanner findings, per-CVE scan
+observations, and the scanner run ledger — joined on IPv4 address, plus this
+ASM/VM evidence-bundle, finding-candidate, rule and source-run ledgers. AWS and ASM/VM process ledgers remain separate because their sources and populations differ.
+
+Coverage is the full loaded population, not a sample. The two views are never
+merged into one "truth" table: every row states which source it came from, and
+the checks are written to report the *disagreements* between the views (ASM-only
+exposure, VM-only assets, cross-source duplicates, uncorroborated inferences),
+because those disagreements are the audit findings and a merged table would
+destroy them.
+
+Externally inferred CVEs in the ASM feed are banner-parse inferences, not
+scan-confirmed findings. Findings that rest on an inference alone say so in
+`details` (`validation=live_probe_required` / `corroborated=false`) and may not
+be restated in the report body as confirmed vulnerabilities.
+
+## Procedures & results
+
+{% for control in controls %}
+### {{ control.control_id }} — {{ control.title }}
+
+{{ control.objective }}
+
+| Check | Severity | Findings |
+|---|---|---|
+{% for check in control.checks %}| {{ check.check_id }} | {{ check.severity }} | {{ check.finding_count }} |
+{% endfor %}
+
+{% endfor %}
+
+## Source currency
+
+Every exposure statement in this workpaper is a statement about the estate *as
+observed by the source runs in this run*. Stale or interrupted source runs are
+reported by the AWS and ASM/VM T7 checks and must be restated in the report body as a scope
+limitation, not in a footnote. Where a scanner network scope has no credentialed
+coverage (T2), patch-state statements about that scope are unauthenticated and
+must be labelled as such.
+
+## Exceptions & reperformance
+
+Each fired row is an exception to its control. Why each exception matters and
+what to reperform is documented per check under `docs/findings/`; dispositions
+are recorded per finding. Every row carries a `record_locator` that names the
+source rows behind it (ASM alert/rule id, VM finding id, IP, scanner name,
+evidence bundle) so a reviewer can reperform the finding from the source export
+without re-running the check.
+
+## Conclusion
+
+{{ conclusion | default(value="Pending reviewer disposition.") }}

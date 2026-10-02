@@ -1,0 +1,30 @@
+{
+  "synthetic": true,
+  "request": {
+    "schema": "specaudit.validator.technology-fixture.v1",
+    "provider": "gcp",
+    "finding_id": "ctf-gcp-public-member",
+    "rule_id": "GCP-IAM-001",
+    "resource_uid": "//cloudresourcemanager.googleapis.com/projects/demo-project",
+    "account_id": "123456789012",
+    "details": {},
+    "authorization": {
+      "project_id": "demo-project",
+      "project_number": "123456789012",
+      "account": "validator@example.test"
+    }
+  },
+  "expect": {
+    "finding_id": "ctf-gcp-public-member",
+    "rule_id": "GCP-IAM-001",
+    "configuration_status": "confirmed",
+    "reachability_status": "unknown",
+    "reason_code": "public_project_binding_present",
+    "planned_argv": [
+      ["config", "list", "--all", "--format=json", "--project=demo-project", "--account=validator@example.test", "--quiet"],
+      ["projects", "describe", "demo-project", "--format=json", "--project=demo-project", "--account=validator@example.test", "--quiet"],
+      ["projects", "get-iam-policy", "demo-project", "--format=json", "--project=demo-project", "--account=validator@example.test", "--quiet"]
+    ]
+  },
+  "response_file": "gcp_public.provider.json"
+}

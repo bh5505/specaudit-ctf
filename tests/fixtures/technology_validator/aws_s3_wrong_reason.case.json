@@ -1,0 +1,28 @@
+{
+  "synthetic": true,
+  "response_file": "aws_s3_acl_public.json",
+  "request": {
+    "schema": "specaudit.validator.technology-fixture.v1",
+    "provider": "aws",
+    "finding_id": "ctf-aws-s3-wrong-claim-reason",
+    "rule_id": "AWS-NET-001",
+    "resource_uid": "arn:aws:s3:::ctf-synthetic-bucket",
+    "account_id": "000000000000",
+    "region": "us-east-1",
+    "details": {"reason": "unrelated_claim"},
+    "authorization": {
+      "aws_read_role": true,
+      "account_id": "000000000000",
+      "regions": ["us-east-1"]
+    }
+  },
+  "expect": {
+    "finding_id": "ctf-aws-s3-wrong-claim-reason",
+    "rule_id": "AWS-NET-001",
+    "configuration_status": "unknown",
+    "reachability_status": "unknown",
+    "reason_code": "claim_reason_mismatch",
+    "planned_argv": []
+  },
+  "expect_no_plan": true
+}

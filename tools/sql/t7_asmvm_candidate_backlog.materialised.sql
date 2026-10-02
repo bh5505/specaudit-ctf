@@ -1,4 +1,4 @@
--- ext_telecom_asmvm_t7_asmvm_candidate_backlog.sql (MATERIALIZED-AGGREGATE FORM)
+-- ext_telecom_offsec_asmvm_t7_asmvm_candidate_backlog.sql (MATERIALIZED-AGGREGATE FORM)
 --
 -- Same row contract, same eligible-population definition, different shape.
 --
@@ -56,14 +56,14 @@ WITH eligible AS (
                SUM(CASE WHEN u.src = 'svc' THEN 1 ELSE 0 END) AS svc_rows
         FROM (
             SELECT f.ip AS ip, f.run_id AS run_id, 'vm' AS src
-            FROM ext_telecom_asmvm_vm_finding f
+            FROM ext_telecom_offsec_asmvm_vm_finding f
             WHERE f.run_id = ?1
               AND CAST(f.is_open AS BOOLEAN)
               AND f.severity >= 9.0
               AND f.ip IS NOT NULL
             UNION ALL
             SELECT s.ip AS ip, s.run_id AS run_id, 'svc' AS src
-            FROM ext_telecom_asmvm_asm_vm_surface s
+            FROM ext_telecom_offsec_asmvm_asm_vm_surface s
             WHERE s.run_id = ?1
               AND CAST(s.has_active_service AS BOOLEAN)
               AND s.ip IS NOT NULL
@@ -76,7 +76,7 @@ WITH eligible AS (
 
     -- unchanged: single-table count, no join to reorder
     SELECT 'asm.alert.high_active', COUNT(*)
-    FROM ext_telecom_asmvm_alert_endpoint a
+    FROM ext_telecom_offsec_asmvm_alert_endpoint a
     WHERE a.run_id = ?1
       AND CAST(a.is_active_state AS BOOLEAN)
       AND a.severity IN ('High', 'Critical')
@@ -92,14 +92,14 @@ WITH eligible AS (
                SUM(CASE WHEN u.src = 'vm' THEN 1 ELSE 0 END)  AS vm_rows
         FROM (
             SELECT a.ip AS ip, a.cve AS cve, a.run_id AS run_id, 'asm' AS src
-            FROM ext_telecom_asmvm_cve_observation a
+            FROM ext_telecom_offsec_asmvm_cve_observation a
             WHERE a.run_id = ?1
               AND CAST(a.is_active AS BOOLEAN)
               AND a.ip IS NOT NULL
               AND a.cve IS NOT NULL
             UNION ALL
             SELECT v.ip AS ip, v.cve AS cve, v.run_id AS run_id, 'vm' AS src
-            FROM ext_telecom_asmvm_vm_cve_observation v
+            FROM ext_telecom_offsec_asmvm_vm_cve_observation v
             WHERE v.run_id = ?1
               AND CAST(v.is_open AS BOOLEAN)
               AND v.ip IS NOT NULL
@@ -120,14 +120,14 @@ WITH eligible AS (
                SUM(CASE WHEN u.src = 'asm' THEN 1 ELSE 0 END) AS asm_rows
         FROM (
             SELECT v.ip AS ip, v.cve AS cve, v.run_id AS run_id, 'vm' AS src
-            FROM ext_telecom_asmvm_vm_cve_finding v
+            FROM ext_telecom_offsec_asmvm_vm_cve_finding v
             WHERE v.run_id = ?1
               AND CAST(v.is_open AS BOOLEAN)
               AND v.ip IS NOT NULL
               AND v.cve IS NOT NULL
             UNION ALL
             SELECT a.ip AS ip, a.cve AS cve, a.run_id AS run_id, 'asm' AS src
-            FROM ext_telecom_asmvm_cve_observation a
+            FROM ext_telecom_offsec_asmvm_cve_observation a
             WHERE a.run_id = ?1
               AND CAST(a.is_active AS BOOLEAN)
               AND a.ip IS NOT NULL
@@ -156,7 +156,7 @@ SELECT
     CASE WHEN MAX(e.eligible_rows) - COUNT(*) > 1000 THEN 34
          WHEN MAX(e.eligible_rows) - COUNT(*) > 0 THEN 26
          ELSE 20 END                                AS risk_score
-FROM ext_telecom_asmvm_finding_candidate c
+FROM ext_telecom_offsec_asmvm_finding_candidate c
 JOIN eligible e
     ON e.producer = c.check_id
    AND e.eligible_rows > 0

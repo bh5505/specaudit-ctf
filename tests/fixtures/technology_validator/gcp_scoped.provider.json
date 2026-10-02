@@ -1,0 +1,19 @@
+{
+  "config": {},
+  "policy": {
+    "bindings": [
+      {
+        "members": [
+          "user:reader@example.test"
+        ],
+        "role": "roles/viewer"
+      }
+    ],
+    "etag": "BwU-synthetic-scoped",
+    "version": 1
+  },
+  "project": {
+    "projectId": "demo-project",
+    "projectNumber": "123456789012"
+  }
+}

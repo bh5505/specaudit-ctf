@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""ctf_run_checks.py - loopback check runner for the specaudit-ctf telecom
-pack (Project rehearsal rehearsal).
+"""ctf_run_checks.py - loopback check runner for the specaudit-ctf offsec pack.
 
-Materializes the seven evidence CSVs produced by gen_evidence.py into a
-chosen engine (DuckDB when importable, SQLite fallback), creates a
+Materializes supplied evidence CSVs into a chosen engine (DuckDB when
+importable, SQLite fallback), creates a
 ``fusion_runs`` shim binding the ambient run, executes every ``checks[].file``
 SQL from the pack's manifest.yaml, and writes:
 
@@ -18,8 +17,7 @@ With --export-bin <export-tool>, the run's complete artifact set
 two-sided workpaper declaration and fails loudly rather than exporting an
 incomplete set. The engagement id recorded in the workpaper is derived as
 ``ctf-loopback:<run_id>`` — the loopback has no engagement entity of its own.
-The sandbox mirror has no workpaper declaration; select the current product
-pack explicitly when requesting workpaper export (see tools/README.md).
+Select the pack explicitly when requesting workpaper export (see tools/README.md).
 
 Check SQL contract (portable across DuckDB + SQLite):
   - SELECT finding_key, title, affected_count, exposure_estimate,
@@ -28,22 +26,16 @@ Check SQL contract (portable across DuckDB + SQLite):
   - safety_json is an optional positional ninth column containing a JSON object
     no larger than 4 KiB; absent/NULL values are omitted from the finding.
   - the ambient run reaches the checks through the stamped ``run_id``
-    column; the ``fusion_runs`` shim records the ambient run. The current
-    product T7 filters the stamped engine scope directly
-    (``cr.run_id = ?1``) while the legacy mirror T7 joins ``fusion_runs``
-    for the ambient run/engagement (``fr.run_id = ?1 AND
-    fr.engagement_id = cr.engagement_id``) and reads finding identity from
-    the preserved source ``run_id`` — see ``stamp_accept_lineage`` for the
-    two lineage contracts.
+    column; the ``fusion_runs`` shim records the ambient run. The product
+    T7 filters the stamped engine scope directly (``cr.run_id = ?1``).
   - portable SQL only: ``||`` concatenation, ``CAST(x AS VARCHAR)``, no
     DISTINCT ON, no DuckDB-only functions.
-  - in the current product pack, migration 002_ext_telecom_source_run_identity
-    separates the check-run identities:
+  - the product pack separates the check-run identities:
     ledger's source identity ingests as ``source_run_id`` (via the mapping
     aliases from the CSV's ``run_id`` column) while ``run_id`` is the engine
     run scope stamped at accept time — the materializer mirrors both.
 
-Column types mirror the pack spine DDL (001_ext_telecom_silver.sql): booleans
+Column types mirror the pack spine DDL: booleans
 are stored as 1/0 INTEGERs on ingest for both engines so check SQL can write
 ``public_access_block_enabled = false`` engine-neutrally; the numeric spine
 columns (audit_year, from_port, to_port, population_size, pages_completed) are
@@ -125,6 +117,29 @@ def load_manifest(pack_root):
         if not isinstance(check, dict) or not check.get("id"):
             raise RunnerError("every manifest check needs an id")
     return manifest
+
+
+def require_complete_offsec_evidence(manifest, loaded_tables):
+    """Refuse a governed offsec report when a required source was not loaded.
+
+    The pack manifest owns the required-table inventory. A header-only CSV is
+    present evidence of an empty source; migration-created empty tables are not.
+    Other packs retain the loopback runner's existing partial-run behavior.
+    """
+    if manifest.get("pack_id") != "ext_telecom_offsec":
+        return
+    contract = manifest.get("input_contract")
+    required = contract.get("required_tables") if isinstance(contract, dict) else None
+    if (not isinstance(required, list) or not required
+            or any(not isinstance(table, str) or not table for table in required)
+            or len(set(required)) != len(required)):
+        raise RunnerError("offsec manifest requires a non-empty unique required_tables list")
+    missing = sorted(set(required) - set(loaded_tables))
+    if missing:
+        raise RunnerError(
+            "offsec evidence incomplete: %d required source table(s) absent: %s"
+            % (len(missing), ", ".join(missing))
+        )
 
 
 def _load_raw_mapping_spec(pack_root):
@@ -480,11 +495,11 @@ def insert_evidence_rows(conn, engine, table, rows, headers, ddl_types=None):
 
 
 def create_table(conn, engine, table, rows, headers, ddl_types=None):
-    """Create and load a synthetic table for focused compatibility callers.
+    """Create and load a synthetic table for focused test callers.
 
     Production runs create the migration schema first and call
     :func:`insert_evidence_rows`; the public smoke tests intentionally build
-    tiny ad-hoc tables through this older helper.
+    tiny ad-hoc tables through this helper.
     """
     cols = declared_columns(ddl_types, table, headers) or _infer_columns(rows, headers)
     coldefs = ", ".join(
@@ -527,32 +542,16 @@ def create_fusion_runs_shim(conn, run_id):
     )
 
 
-def mapping_declares_run_id_source(mapping_columns, table):
-    """Whether the mapping treats run_id itself as a source column.
-
-    The legacy mirror declares target run_id; the current product declares
-    source_run_id instead. Only a mapping declaration permits preservation:
-    an imported stale run_id header alone never opts out of engine stamping.
-    """
-    for column in mapping_columns.get(table) or []:
-        if isinstance(column, dict) and column.get("target") == "run_id":
-            return True
-    return False
-
-
-def prepare_accept_lineage(headers, rows, run_id, *, preserve_run_id=False,
-                           table="evidence", declared_table_columns=None):
+def prepare_accept_lineage(headers, rows, run_id, *,
+                           declared_table_columns=None):
     """Stamp required lineage before inserting into migration-constrained tables."""
     headers = list(headers)
     rows = [list(row) for row in rows]
-    if preserve_run_id and "run_id" not in headers:
-        raise RunnerError("%s is missing its mapped source run_id column" % table)
     values = {
+        "run_id": run_id,
         "engagement_id": ENGAGEMENT_ID,
         "accept_event_id": ZERO_ACCEPT_EVENT_ID,
     }
-    if not preserve_run_id:
-        values["run_id"] = run_id
     for column, value in values.items():
         if (declared_table_columns is not None
                 and column not in declared_table_columns):
@@ -568,29 +567,21 @@ def prepare_accept_lineage(headers, rows, run_id, *, preserve_run_id=False,
     return headers, rows
 
 
-def stamp_accept_lineage(conn, table, headers, run_id, *, preserve_run_id=False,
-                         engine=None):
-    """Stamp ambient lineage, with an explicit legacy source-ID exception.
+def stamp_accept_lineage(conn, table, headers, run_id, *, engine=None):
+    """Stamp ambient lineage.
 
     By default, overwrite run_id/engagement_id/accept_event_id even when
     imported values exist; source_run_id remains untouched. The current
     product's checks bind this stamped engine run_id.
 
-    run() derives preserve_run_id from a declared target: run_id mapping.
-    The legacy mirror uses that column as source identity and joins
-    fusion_runs for ambient scope, so preserve it while stamping the other
-    two fields. A missing mapped source ID fails before changing the table.
     """
-    imported = set(headers)
-    if preserve_run_id and "run_id" not in imported:
-        raise RunnerError("%s is missing its mapped source run_id column" % table)
     quoted_table = _quote_identifier(table)
     if engine == "duckdb":
         existing = {r[0] for r in conn.execute("DESCRIBE %s" % quoted_table).fetchall()}
     elif engine == "sqlite":
         existing = {r[1] for r in conn.execute(
             "PRAGMA table_info(%s)" % quoted_table).fetchall()}
-    else:  # compatibility for focused callers that use synthesized test tables
+    else:  # focused callers may use synthesized test tables
         existing = set(headers)
     if engine is None:
         for col in ("run_id", "engagement_id", "accept_event_id"):
@@ -600,10 +591,9 @@ def stamp_accept_lineage(conn, table, headers, run_id, *, preserve_run_id=False,
                     % (quoted_table, _quote_identifier(col))
                 )
                 existing.add(col)
-    values = [("engagement_id", ENGAGEMENT_ID),
+    values = [("run_id", run_id),
+              ("engagement_id", ENGAGEMENT_ID),
               ("accept_event_id", ZERO_ACCEPT_EVENT_ID)]
-    if not preserve_run_id:
-        values.insert(0, ("run_id", run_id))
     values = [(column, value) for column, value in values if column in existing]
     if values:
         conn.execute(
@@ -1027,8 +1017,6 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
                 "DESCRIBE %s" % _quote_identifier(table)).fetchall()]
             stamp_accept_lineage(
                 conn, table, headers, run_id,
-                preserve_run_id=mapping_declares_run_id_source(
-                    mapping_columns, table),
                 engine=engine,
             )
 
@@ -1044,18 +1032,18 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
         headers = apply_mapping_column_aliases(
             mapping_columns, table, headers, ddl_columns.get(table))
         rows = apply_mapping_value_maps(mapping_value_maps, table, headers, rows)
-        preserve_run_id = mapping_declares_run_id_source(mapping_columns, table)
         headers, rows = prepare_accept_lineage(
-            headers, rows, run_id, preserve_run_id=preserve_run_id, table=table,
+            headers, rows, run_id,
             declared_table_columns=ddl_columns.get(table))
         insert_evidence_rows(conn, engine, table, rows, headers, ddl_types=ddl_types)
         stamp_accept_lineage(
             conn, table, headers, run_id,
-            preserve_run_id=preserve_run_id,
             engine=engine,
         )
         loaded_tables.append(table)
         print("loaded %s -> table %s (%d rows)" % (csv_path.name, table, len(rows)))
+
+    require_complete_offsec_evidence(manifest, loaded_tables)
 
     check_sqls = []
     for check in manifest["checks"]:

@@ -1,0 +1,27 @@
+{
+  "synthetic": true,
+  "request": {
+    "schema": "specaudit.validator.technology-fixture.v1",
+    "provider": "azure",
+    "finding_id": "ctf-azure-nsg-private",
+    "rule_id": "AZURE-NET-002",
+    "resource_uid": "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/ctf-rg/providers/Microsoft.Network/networkSecurityGroups/ctf-nsg",
+    "account_id": "11111111-1111-4111-8111-111111111111",
+    "details": {
+      "rule_name": "allow-private-ssh"
+    },
+    "authorization": {
+      "subscription_id": "11111111-1111-4111-8111-111111111111",
+      "tenant_id": "22222222-2222-4222-8222-222222222222",
+      "principal": "validator@example.test"
+    }
+  },
+  "expect": {
+    "finding_id": "ctf-azure-nsg-private",
+    "rule_id": "AZURE-NET-002",
+    "configuration_status": "refuted",
+    "reachability_status": "unknown",
+    "reason_code": "public_management_rule_not_present"
+  },
+  "response_file": "azure_private.provider.json"
+}

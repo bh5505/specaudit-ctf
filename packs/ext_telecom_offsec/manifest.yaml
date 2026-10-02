@@ -1,0 +1,500 @@
+pack_id: ext_telecom_offsec
+pack_name: Telecom Offensive Security Audit Pack
+pack_version: 0.1.1-dev
+category: deterministic
+domain: ext_telecom_offsec
+description: Combined AWS posture, ASM/VM reconciliation, and independently validated Technology findings with 41 deterministic T1-T7 checks, 32 ingest mappings, and separate process ledgers.
+owner: audit-data-analytics-po
+status: draft
+check:
+  cost_class: deterministic
+contributes:
+  ingest:
+    mapping_spec_path: synthetic/mapping_spec.yaml
+    classifier_hints_path: classifier_hints.yaml
+    engagement_configs_dir: engagement_configs
+input_contract:
+  required_tables:
+  - ext_telecom_offsec_asmvm_asset
+  - ext_telecom_offsec_asmvm_service
+  - ext_telecom_offsec_asmvm_website
+  - ext_telecom_offsec_asmvm_asm_vm_surface
+  - ext_telecom_offsec_asmvm_ip
+  - ext_telecom_offsec_asmvm_service_endpoint
+  - ext_telecom_offsec_asmvm_alert_endpoint
+  - ext_telecom_offsec_asmvm_owned_ip_range
+  - ext_telecom_offsec_asmvm_cve_observation
+  - ext_telecom_offsec_asmvm_vm_asset
+  - ext_telecom_offsec_asmvm_vm_finding
+  - ext_telecom_offsec_asmvm_vm_cve_observation
+  - ext_telecom_offsec_asmvm_evidence_bundle
+  - ext_telecom_offsec_asmvm_finding_candidate
+  - ext_telecom_offsec_asmvm_candidate_subject
+  - ext_telecom_offsec_asmvm_rule
+  - ext_telecom_offsec_asmvm_check_run
+  - ext_telecom_offsec_aws_s3_bucket
+  - ext_telecom_offsec_aws_iam_principal
+  - ext_telecom_offsec_aws_security_group
+  - ext_telecom_offsec_aws_evidence_bundle
+  - ext_telecom_offsec_aws_finding_candidate
+  - ext_telecom_offsec_aws_rule
+  - ext_telecom_offsec_aws_check_run
+  - ext_telecom_offsec_technology_candidate
+  - ext_telecom_offsec_technology_validation
+  required_event_types: []
+  required_fields: {}
+  minimum_rows: {}
+thresholds: {}
+eval_cases: []
+workpaper_template: templates/workpaper_ext_telecom_offsec_asmvm.md.tera
+explain_doc: README.md
+checks:
+- id: ext_telecom_offsec_asmvm_t1_critical_vuln_on_exposed
+  name: ASM/VM T1 critical vulnerability on an internet-active address
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t1_critical_vuln_on_exposed.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_finding
+  - ext_telecom_offsec_asmvm_asm_vm_surface
+  severity: critical
+  explanation: Flags IPv4 addresses where the vulnerability-management feed reports an open finding with severity
+    >= 9.0 AND the ASM feed confirms the address is answering on the internet. Neither source supports the claim
+    alone (the scanner does not know reachability, the ASM feed only infers the vulnerability), so the finding is
+    the agreement between two independent views and the record_locator names both evidence paths.
+- id: ext_telecom_offsec_asmvm_t1_asmvm_critical_internal_record_only
+  name: ASM/VM T1 internet-active critical represented only by internal-network records
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t1_asmvm_critical_internal_record_only.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_finding
+  - ext_telecom_offsec_asmvm_asm_vm_surface
+  severity: critical
+  explanation: Additively qualifies the flagship IP-level intersection by identifying open critical records produced
+    on scanner networks not named external. ASM still confirms address reachability, but the VM record itself does
+    not establish an external scan context, so independent service or external-scan validation is required.
+- id: ext_telecom_offsec_asmvm_t1_asmvm_critical_service_corroborated
+  name: ASM/VM T1 critical finding corroborated on an ASM-observed service port
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t1_asmvm_critical_service_corroborated.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_finding
+  - ext_telecom_offsec_asmvm_service_endpoint
+  severity: critical
+  explanation: Flags open critical VM findings whose own port is independently present on an ASM service endpoint
+    for the same IP. This narrower additive result corroborates the vulnerable service itself rather than only the
+    address.
+- id: ext_telecom_offsec_asmvm_t1_exposed_mgmt_ports
+  name: ASM/VM T1 management/legacy service surface reachable from the internet
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t1_exposed_mgmt_ports.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_service_endpoint
+  - ext_telecom_offsec_asmvm_vm_asset
+  - ext_telecom_offsec_asmvm_service_observation
+  severity: high
+  explanation: 'Flags every ASM-observed active service answering on the public internet on a management, clear-text
+    or data-plane port, grouped by protocol and port (the policy exception an owner can fix). This is the observed-reachability
+    analogue of the AWS security-group ingress test: an ASM feed shows what answers, not what a firewall allows.
+    Also reports how many of the affected addresses the VM estate does not scan at all.'
+- id: ext_telecom_offsec_asmvm_t1_telecom_control_plane_exposed
+  name: ASM/VM T1 telecom control plane reachable from the internet
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t1_telecom_control_plane_exposed.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_service_endpoint
+  - ext_telecom_offsec_asmvm_vm_asset
+  - ext_telecom_offsec_asmvm_service_observation
+  severity: high
+  explanation: 'Flags ASM-observed active services on the telecom control plane, which the enterprise management-port
+    list above does not name: GTP-C / GTP-U / GTP'' and Diameter, CWMP/TR-069 CPE management, SIP/SIPS, the NTP
+    timing plane, public resolvers, and IKE / IPsec NAT-T anchors. Grouped by class + protocol + port because exposing
+    Diameter and exposing NTP are different decisions with different owners; per-class risk comes from CAP-PARAM
+    `telecom_control_plane_ports`. IKE / NAT-T sits at the bottom of the order on purpose - an anchor is expected
+    to answer, so the finding there is attribution and allow-listing, not existence. Use the current run findings
+    for endpoint counts and the separate unattributed-exposure check for ownership gaps; historical corpus counts
+    are not population coverage.'
+- id: ext_telecom_offsec_asmvm_t1_transport_security
+  name: ASM/VM T1 active insecure-transport attack-surface rules
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t1_transport_security.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_alert
+  - ext_telecom_offsec_asmvm_alert_endpoint
+  - ext_telecom_offsec_asmvm_asm_vm_surface
+  - ext_telecom_offsec_asmvm_vm_asset
+  severity: high
+  explanation: Flags ASM attack-surface rules in the clear-text-login and weak-cryptography categories that are
+    still active, grouped BY RULE rather than by alert, and sizes each rule by the addresses behind it, how many
+    are unmanaged, and how many sit outside declared owned space. The rule is the unit of work because it is the
+    generalization that compounds into the rule corpus.
+- id: ext_telecom_offsec_asmvm_t1_unattributed_exposure
+  name: ASM/VM T1 exposure outside declared owned address space
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t1_unattributed_exposure.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_asm_vm_surface
+  severity: high
+  explanation: Flags active internet-facing services on addresses outside every declared owned range, grouped by
+    /16. Either the ownership declaration is stale or the exposure is third-party; both change engagement scope,
+    so the exception is surfaced instead of filtered away.
+- id: ext_telecom_offsec_asmvm_t1_unmanaged_surface
+  name: ASM/VM T1 owned, exposed, and not in the VM estate
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t1_unmanaged_surface.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_asm_vm_surface
+  severity: high
+  explanation: Flags addresses that are inside declared owned space, observed answering from outside, and absent
+    from the vulnerability-management estate - the ASM/VM analogue of an unmanaged trust-boundary asset. Grouped
+    by /24 because a block is the unit a network owner can act on. This result is not derivable from either source
+    alone.
+- id: ext_telecom_offsec_asmvm_t1_vm_asset_unobserved
+  name: ASM/VM T1 VM-scanned address never observed as internet-facing
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t1_vm_asset_unobserved.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_asm_vm_surface
+  severity: medium
+  explanation: Flags addresses the VM estate scans that ASM never observed externally, grouped by /24 and weighted
+    by the open criticals on them. Either the scanner scope includes internal space (expected, and worth stating
+    so the population gap is explained) or ASM discovery is blind for that range (a gap in the attacker-view threat
+    model).
+- id: ext_telecom_offsec_asmvm_t2_adversarial_validation
+  name: ASM/VM T2 evidence bundles never adversarially re-verified
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t2_adversarial_validation.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_evidence_bundle
+  severity: medium
+  explanation: 'Inherited from ext_telecom_cyber_t2_adversarial_validation, retargeted at this pack''s evidence-bundle
+    ledger: flags bundles no second reviewer or critic model tried to disprove before findings shipped.'
+- id: ext_telecom_offsec_asmvm_t2_asmvm_cve_uncorroborated
+  name: ASM/VM T2 inferred CVE with no second source
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t2_asmvm_cve_uncorroborated.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_cve_observation_provenance
+  severity: high
+  explanation: 'Flags CVEs the ASM feed inferred from banner parsing on an address the VM feed has never reported
+    the same CVE for, grouped by CVE. These are claims with no second source and no reproduction: they may not enter
+    the workpaper as facts until a probe or a credentialed scan settles them.'
+- id: ext_telecom_offsec_asmvm_t2_asmvm_initial_access_convergence
+  name: ASM/VM T2 alert-asserted initial access on a CVE-corroborated address
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t2_asmvm_initial_access_convergence.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_technique_context
+  - ext_telecom_offsec_asmvm_cve_observation_provenance
+  severity: high
+  explanation: Flags addresses where alert-asserted technique context includes an initial-access technique (T1190/T1110/T1203/TA0001)
+    AND the same address carries a CVE observation with scan-, probe- or banner-corroborating provenance. This is
+    the cross-corroborated initial-access signal; the specaudit-ctf target-analysis layer confirms each flagged
+    (ip, technique) with the Finding E curated CVE->technique map.
+- id: ext_telecom_offsec_asmvm_t2_asmvm_no_authenticated_visibility
+  name: ASM/VM T2 scanner scope with no credentialed coverage
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t2_asmvm_no_authenticated_visibility.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_asset
+  severity: high
+  explanation: Flags any scanner network scope in which no asset has ever had a credentialed scan. Without credentials
+    the VM feed cannot observe patch level, OS or installed versions, so every patch-state claim from that scope
+    is an unauthenticated guess and the ASM banner inference has nothing independent to be checked against.
+- id: ext_telecom_offsec_asmvm_t2_asmvm_no_independent_reproduction
+  name: ASM/VM T2 evidence bundle with no independent reproduction lane
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t2_asmvm_no_independent_reproduction.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_evidence_bundle
+  severity: medium
+  explanation: Flags evidence bundles with no live-fire reproduction, i.e. bundles whose claims rest on a single
+    vendor artifact. Complements ext_telecom_offsec_asmvm_t2_adversarial_validation, which asks whether a second
+    reviewer tried to disprove the bundle's conclusions.
+- id: ext_telecom_offsec_asmvm_t2_asmvm_vendor_confidence_gap
+  name: ASM/VM T2 internet-active critical observations with potential-only vendor confidence
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t2_asmvm_vendor_confidence_gap.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_cve_observation
+  - ext_telecom_offsec_asmvm_asm_vm_surface
+  severity: critical
+  explanation: Flags internet-active IPs with open severity >= 9 VM CVE observations whose per-(IP,CVE) confidence
+    remains vendor-potential only. Confirmed and mixed vendor categories are excluded so this bounded lane identifies
+    critical claims that need independent validation without flooding the report. Fully external lineage is partitioned
+    into the strict sibling check below.
+- id: ext_telecom_offsec_asmvm_t2_asmvm_vendor_confidence_gap_external_scan
+  name: ASM/VM T2 external-scan critical observations with potential-only vendor confidence
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t2_asmvm_vendor_confidence_gap_external_scan.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_cve_observation
+  - ext_telecom_offsec_asmvm_asm_vm_surface
+  severity: critical
+  explanation: Strictly partitions the vendor-confidence gap to observations for which every contributing VM finding
+    came from a scanner network named external. The per-observation finding-lineage rollup makes this attribution
+    sound even when several findings contribute to one IP/CVE observation.
+- id: ext_telecom_offsec_asmvm_t3_evidence_gate
+  name: ASM/VM T3 candidates entering the LLM lane without passing the gate
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t3_evidence_gate.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_finding_candidate
+  severity: high
+  explanation: 'Inherited from ext_telecom_cyber_t3_evidence_gate, retargeted at this pack''s candidate queue: flags
+    candidates that entered the LLM lane without passing the deterministic evidence gate.'
+- id: ext_telecom_offsec_asmvm_t3_asmvm_scan_confidence_vocabulary_gap
+  name: ASM/VM T3 undocumented VM observation scan vocabulary
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t3_asmvm_scan_confidence_vocabulary_gap.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_cve_observation
+  severity: medium
+  explanation: Aggregates VM CVE observations whose scan mode or confidence falls outside the documented ingest
+    vocabulary. The loopback runner recreates CHECK-less VARCHAR columns, so this deterministic guard makes schema
+    drift visible without emitting one report row per malformed observation.
+- id: ext_telecom_offsec_asmvm_t3_asmvm_observation_lineage_gap
+  name: ASM/VM T3 VM observation lineage counts inconsistent or missing
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t3_asmvm_observation_lineage_gap.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_cve_observation
+  severity: medium
+  explanation: 'Guards the Finding R lineage rollups against projection drift: the legacy finding_count (still read
+    by the cross-source duplicate CVE check) must equal the lineage-authoritative n_findings, external plus unknown-context
+    contributors must not exceed the total, and scan_networks must hold only real network names. Aggregates one
+    row per reason because the loopback runner re-issues CHECK-less VARCHAR columns and cannot enforce this in DDL.'
+- id: ext_telecom_offsec_asmvm_t3_asmvm_unverifiable_candidate
+  name: ASM/VM T3 high-severity candidate with no second-source coverage
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t3_asmvm_unverifiable_candidate.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_candidate_subject
+  - ext_telecom_offsec_asmvm_finding_candidate
+  - ext_telecom_offsec_asmvm_vm_asset
+  severity: high
+  explanation: Flags High/Critical ASM candidates whose subject IP the VM estate does not cover, so no deterministic
+    corroboration path exists at all. Sending these to the LLM lane spends review budget narrating one vendor export
+    back to itself; they must be held out until an authenticated scan or live probe covers the address. Uses the
+    pack-local candidate subject binding, because the finding_candidate contract carries no subject column.
+- id: ext_telecom_offsec_asmvm_t3_asmvm_vm_observation_bridge_gap
+  name: ASM/VM T3 observation lineage disagrees with its contributing findings
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t3_asmvm_vm_observation_bridge_gap.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_cve_observation
+  - ext_telecom_offsec_asmvm_vm_cve_finding
+  - ext_telecom_offsec_asmvm_vm_finding
+  severity: medium
+  explanation: 'Recomputes each vm_cve_observation rollup from the pair''s own contributing bridge rows (count(DISTINCT
+    finding_id), never count(*)) and flags any pair whose projected lineage disagrees with them. A repeated CVE within one source finding can inflate contributor counts unless
+    bridge rows are counted at their distinct (IP, CVE, finding) grain. One aggregate row per reason so drift cannot flood the report.'
+- id: ext_telecom_offsec_asmvm_t3_asmvm_bridge_exclusion_reason
+  name: ASM/VM T3 explain technique-context bridge exclusions
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t3_asmvm_bridge_exclusion_reason.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_alert
+  - ext_telecom_offsec_asmvm_alert_endpoint
+  - ext_telecom_offsec_asmvm_service_endpoint
+  - ext_telecom_offsec_asmvm_vm_technique_context
+  severity: medium
+  explanation: Classifies alert/service candidates excluded from the mapped technique landing zone as lacking alert
+    technique coverage, inactive-only evidence, or lacking an active service endpoint. The deterministic fallback
+    class is held at zero by the portable synthetic fixture.
+- id: ext_telecom_offsec_asmvm_t3_asmvm_technique_context_bridge_gap
+  name: ASM/VM T3 mapped technique context not consumed by headline predicates
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t3_asmvm_technique_context_bridge_gap.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_technique_context
+  severity: medium
+  explanation: Reports active service endpoints with alert-supplied technique context in the mapped landing zone
+    while the flagship and T1 checks still ignore that context. Provenance remains explicit so metadata cannot be
+    mistaken for observed exploitation or vulnerability confirmation.
+- id: ext_telecom_offsec_asmvm_t4_duplicate_candidates
+  name: ASM/VM T4 duplicate candidate clusters
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t4_duplicate_candidates.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_finding_candidate
+  severity: medium
+  explanation: 'Inherited from ext_telecom_cyber_t4_duplicate_candidates, retargeted at this pack''s candidate queue:
+    flags duplicate-verdict candidates inside dedupe-hash clusters that must collapse before chaining.'
+- id: ext_telecom_offsec_asmvm_t4_asmvm_cross_source_duplicate_cve
+  name: ASM/VM T4 same CVE reported by both sources
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t4_asmvm_cross_source_duplicate_cve.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_cve_observation
+  - ext_telecom_offsec_asmvm_vm_cve_observation
+  severity: medium
+  explanation: Flags (ip, cve) pairs reported by both the ASM inference and the VM scan, and names the canonical
+    survivor (the VM finding, the only source with a finding id, scanner plugin id and scan timestamp). Uncollapsed
+    cross-source duplicates double-count exposure and fork any chain built on the pair.
+- id: ext_telecom_offsec_asmvm_t5_sandboxed_reproduction
+  name: ASM/VM T5 live-fire reproduction outside sandbox
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t5_sandboxed_reproduction.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_evidence_bundle
+  severity: critical
+  explanation: 'Inherited from ext_telecom_cyber_t5_sandboxed_reproduction, retargeted at this pack''s evidence-bundle
+    ledger: flags live-fire reproduction that did not run in isolated compute.'
+- id: ext_telecom_offsec_asmvm_t5_asmvm_reproduction_queue
+  name: ASM/VM T5 reproduction lanes still outstanding
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t5_asmvm_reproduction_queue.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_candidate_subject
+  - ext_telecom_offsec_asmvm_evidence_bundle
+  severity: high
+  explanation: Reports the queued candidates that only an active lane can settle, grouped by lane (credentialed
+    scan, banner re-verification, live probe), together with how many evidence bundles in the run actually carry
+    reproduction evidence. When that count is zero every lane is un-started and none of these claims may be promoted
+    into findings.
+- id: ext_telecom_offsec_asmvm_t6_rule_corpus
+  name: ASM/VM T6 candidates outside the active rule corpus
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t6_rule_corpus.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_finding_candidate
+  - ext_telecom_offsec_asmvm_rule
+  severity: medium
+  explanation: 'Inherited from ext_telecom_cyber_t6_rule_corpus, retargeted at this pack''s candidate and rule tables:
+    flags candidates whose rule reference is empty or does not resolve to an active generalized rule.'
+- id: ext_telecom_offsec_asmvm_t6_asmvm_rule_corpus_gap
+  name: ASM/VM T6 open finding class with no active rule
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t6_asmvm_rule_corpus_gap.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_vm_finding
+  - ext_telecom_offsec_asmvm_rule
+  severity: medium
+  explanation: Matches every open scanner finding class (plugin family) against the generalized rule corpus deployed
+    for the engagement and flags classes with no active rule, distinguishing "absent" from "proposed but inactive".
+    Detection that is not written down is re-derived at full cost every cycle.
+- id: ext_telecom_offsec_asmvm_t7_resumable_runs
+  name: ASM/VM T7 interrupted or non-resumable source runs
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t7_resumable_runs.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_check_run
+  severity: low
+  explanation: 'Inherited from ext_telecom_cyber_t7_resumable_runs, retargeted at this pack''s source-run ledger:
+    flags interrupted runs and runs whose checkpoint predates their own start.'
+- id: ext_telecom_offsec_asmvm_t7_asmvm_candidate_backlog
+  name: ASM/VM T7 candidate queue backlog and batch truncation
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t7_asmvm_candidate_backlog.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_finding_candidate
+  - ext_telecom_offsec_asmvm_vm_finding
+  - ext_telecom_offsec_asmvm_asm_vm_surface
+  - ext_telecom_offsec_asmvm_alert_endpoint
+  - ext_telecom_offsec_asmvm_cve_observation
+  - ext_telecom_offsec_asmvm_vm_cve_finding
+  severity: medium
+  explanation: Recomputes the eligible population per candidate producer from silver and compares it with the rows
+    that actually entered the queue. A silently truncated batch looks green while a slice of the estate was never
+    queued; the eligible-versus-queued delta is also what makes the next run additive.
+- id: ext_telecom_offsec_asmvm_t7_asmvm_source_run_staleness
+  name: ASM/VM T7 source run beyond its freshness SLA
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_asmvm_t7_asmvm_source_run_staleness.sql
+  depends_on_tables:
+  - ext_telecom_offsec_asmvm_check_run
+  severity: high
+  explanation: 'Flags source runs that completed but are stale: the checkpoint is older than the source''s declared
+    freshness SLA relative to the run''s reference time. This is the failure mode that matters for ASM/VM coverage
+    - the run status is green, so every exposure statement keeps being computed against an out-of-date view of the
+    estate. Freshness arithmetic is computed at ingest (stale_days) because date arithmetic is not portable between
+    the DuckDB and SQLite runners; a missing checkpoint is reported as unknown, never as zero days.'
+- id: ext_telecom_offsec_aws_t1_trust_boundary
+  name: Ext Telecom T1 trust-boundary completeness
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_aws_t1_trust_boundary.sql
+  depends_on_tables:
+  - ext_telecom_offsec_aws_s3_bucket
+  - ext_telecom_offsec_aws_iam_principal
+  - ext_telecom_offsec_aws_security_group
+  severity: high
+  explanation: Flags S3 buckets whose public-access block is disabled or whose bucket policy allows anonymous principals,
+    IAM principals that allow an external principal, and ingress security-group rules that are public or use 0.0.0.0/0,
+    operationalizing the threat-model-first trust-boundary map (T1) over the AWS posture surface.
+- id: ext_telecom_offsec_aws_t2_adversarial_validation
+  name: Ext Telecom T2 adversarial validation coverage
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_aws_t2_adversarial_validation.sql
+  depends_on_tables:
+  - ext_telecom_offsec_aws_evidence_bundle
+  severity: medium
+  explanation: Flags evidence bundles that were never adversarially re-verified by a second reviewer, enforcing
+    the finder-never-validates rule (T2) before findings ship.
+- id: ext_telecom_offsec_aws_t3_evidence_gate
+  name: Ext Telecom T3 deterministic evidence gate
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_aws_t3_evidence_gate.sql
+  depends_on_tables:
+  - ext_telecom_offsec_aws_finding_candidate
+  severity: high
+  explanation: Flags finding candidates that entered the LLM lane without passing the deterministic evidence gate,
+    enforcing evidence-gates-before-LLM-spend (T3) cost tiers.
+- id: ext_telecom_offsec_aws_t4_duplicate_candidates
+  name: Ext Telecom T4 duplicate candidate clusters
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_aws_t4_duplicate_candidates.sql
+  depends_on_tables:
+  - ext_telecom_offsec_aws_finding_candidate
+  severity: medium
+  explanation: Flags duplicate-verdict candidates inside dedupe-hash clusters, surfacing overlaps that must collapse
+    before multi-step chaining (T4).
+- id: ext_telecom_offsec_aws_t5_sandboxed_reproduction
+  name: Ext Telecom T5 sandboxed reproduction compliance
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_aws_t5_sandboxed_reproduction.sql
+  depends_on_tables:
+  - ext_telecom_offsec_aws_evidence_bundle
+  severity: critical
+  explanation: Flags live-fire evidence bundles that were not reproduced in isolated compute, enforcing sandboxed-reproduction
+    with a read-only verifier (T5).
+- id: ext_telecom_offsec_aws_t6_rule_corpus
+  name: Ext Telecom T6 rule-corpus generalization gaps
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_aws_t6_rule_corpus.sql
+  depends_on_tables:
+  - ext_telecom_offsec_aws_finding_candidate
+  - ext_telecom_offsec_aws_rule
+  severity: medium
+  explanation: Flags candidates not covered by an active generalized rule, surfacing exploratory gaps that must
+    compound into the rule corpus (T6).
+- id: ext_telecom_offsec_aws_t7_resumable_runs
+  name: Ext Telecom T7 resumable run ledger
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_aws_t7_resumable_runs.sql
+  depends_on_tables:
+  - ext_telecom_offsec_aws_check_run
+  severity: low
+  explanation: Flags interrupted or non-resumable check runs in the ledger, keeping coverage additive, checkpointed,
+    and diff-able across runs (T7).
+- id: ext_telecom_offsec_technology_t1_validated_configuration
+  name: Technology T1 independently validated cloud configuration
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_technology_t1_validated_configuration.sql
+  depends_on_tables:
+  - ext_telecom_offsec_technology_candidate
+  - ext_telecom_offsec_technology_validation
+  severity: high
+  explanation: Joins an exact source Technology finding and receipt-backed validator result for AWS-NET-001,
+    AWS-NET-010/011, GCP-IAM-001, or AZURE-NET-002. It reports confirmed configuration with the live-reachability
+    state explicitly; configured ingress or IAM binding alone never becomes a claim of practical exploitation.
+- id: ext_telecom_offsec_technology_t2_validation_gap
+  name: Technology T2 missing or disputed independent validation
+  check_type: deterministic_sql
+  file: checks/ext_telecom_offsec_technology_t2_validation_gap.sql
+  depends_on_tables:
+  - ext_telecom_offsec_technology_candidate
+  - ext_telecom_offsec_technology_validation
+  severity: high
+  explanation: Flags supported Technology source findings whose validator result is missing, inconclusive,
+    contradicted, or ambiguous. The join binds source run, snapshot, finding, rule, provider, and resource identity;
+    absence cannot be interpreted as a clean validation result.

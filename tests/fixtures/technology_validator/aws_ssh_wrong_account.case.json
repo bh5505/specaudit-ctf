@@ -1,0 +1,26 @@
+{
+  "synthetic": true,
+  "response_file": "aws_sg_public.json",
+  "request": {
+    "schema": "specaudit.validator.technology-fixture.v1",
+    "provider": "aws",
+    "finding_id": "ctf-aws-ssh-wrong-account",
+    "rule_id": "AWS-NET-010",
+    "resource_uid": "arn:aws:ec2:us-east-1:000000000000:security-group/sg-0123456789abcdef0",
+    "account_id": "000000000000",
+    "region": "us-east-1",
+    "authorization": {
+      "aws_read_role": true,
+      "account_id": "111111111111",
+      "regions": ["us-east-1"]
+    }
+  },
+  "expect": {
+    "finding_id": "ctf-aws-ssh-wrong-account",
+    "rule_id": "AWS-NET-010",
+    "configuration_status": "unknown",
+    "reachability_status": "unknown",
+    "reason_code": "not_authorized"
+  },
+  "expect_no_plan": true
+}

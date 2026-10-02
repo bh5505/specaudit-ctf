@@ -32,7 +32,7 @@ from collections import defaultdict
 import duckdb
 
 RUN = "gw-asmvm-20260902"
-T1_PREFIX = "ext_telecom_asmvm_t1_"
+T1_PREFIX = "ext_telecom_offsec_asmvm_t1_"
 
 # lane -> probe priority (lower = probe first) and the port intent
 LANE_PRIORITY = {
@@ -131,7 +131,7 @@ def main():
                COUNT(*) AS candidates,
                MAX(COALESCE(rule_name, '')) AS sample_rule,
                MAX(COALESCE(severity, '')) AS vendor_severity
-        FROM ext_telecom_asmvm_candidate_subject
+        FROM ext_telecom_offsec_asmvm_candidate_subject
         WHERE run_id = ? AND subject_ip IS NOT NULL AND subject_ip <> ''
         GROUP BY 1, 2
     """
@@ -144,7 +144,7 @@ def main():
 
     # ---- 3. owned ranges + exposed service ports -------------------------
     owned = con.execute(
-        "SELECT ip_from, ip_to FROM ext_telecom_asmvm_owned_ip_range "
+        "SELECT ip_from, ip_to FROM ext_telecom_offsec_asmvm_owned_ip_range "
         "WHERE run_id = ? AND ip_version = 4 AND ip_from IS NOT NULL", [RUN]).fetchall()
     # merge first so the point lookup cannot be fooled by nested/overlapping ranges
     merged = []
@@ -174,7 +174,7 @@ def main():
     ports = defaultdict(list)
     for ipv4_list, port, proto, active, name in con.execute(
             "SELECT ipv4_list, port, protocol, is_active, service_name "
-            "FROM ext_telecom_asmvm_service WHERE run_id = ?", [RUN]).fetchall():
+            "FROM ext_telecom_offsec_asmvm_service WHERE run_id = ?", [RUN]).fetchall():
         if not ipv4_list:
             continue
         for one in str(ipv4_list).split(","):

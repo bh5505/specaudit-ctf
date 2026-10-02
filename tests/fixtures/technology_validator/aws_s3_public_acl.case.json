@@ -1,0 +1,31 @@
+{
+  "synthetic": true,
+  "response_file": "aws_s3_acl_public.json",
+  "request": {
+    "schema": "specaudit.validator.technology-fixture.v1",
+    "provider": "aws",
+    "finding_id": "ctf-aws-s3-public-acl",
+    "rule_id": "AWS-NET-001",
+    "resource_uid": "arn:aws:s3:::ctf-synthetic-bucket",
+    "account_id": "000000000000",
+    "region": "us-east-1",
+    "details": {"reason": "confirmed_public_exposure"},
+    "authorization": {
+      "aws_read_role": true,
+      "account_id": "000000000000",
+      "regions": ["us-east-1"]
+    }
+  },
+  "expect": {
+    "finding_id": "ctf-aws-s3-public-acl",
+    "rule_id": "AWS-NET-001",
+    "configuration_status": "confirmed",
+    "reachability_status": "unknown",
+    "reason_code": "public_acl",
+    "planned_argv": [
+      ["s3api", "get-public-access-block", "--bucket", "ctf-synthetic-bucket", "--expected-bucket-owner", "000000000000"],
+      ["s3api", "get-bucket-acl", "--bucket", "ctf-synthetic-bucket", "--expected-bucket-owner", "000000000000"],
+      ["s3api", "get-bucket-policy", "--bucket", "ctf-synthetic-bucket", "--expected-bucket-owner", "000000000000"]
+    ]
+  }
+}

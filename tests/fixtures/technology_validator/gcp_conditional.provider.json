@@ -1,0 +1,23 @@
+{
+  "config": {},
+  "policy": {
+    "bindings": [
+      {
+        "condition": {
+          "expression": "resource.name.startsWith('projects/_/buckets/synthetic-limited')",
+          "title": "synthetic-limited-grant"
+        },
+        "members": [
+          "allUsers"
+        ],
+        "role": "roles/viewer"
+      }
+    ],
+    "etag": "BwU-synthetic-conditional",
+    "version": 3
+  },
+  "project": {
+    "projectId": "demo-project",
+    "projectNumber": "123456789012"
+  }
+}

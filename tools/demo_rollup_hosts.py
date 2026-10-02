@@ -1,15 +1,15 @@
 """Durable host-rollup builder feeding the demo-arc ranking/analysis pipeline.
 
-Consumes the ext_telecom_asmvm pack report.json (the durable output of a real
+Consumes the ext_telecom_offsec pack report.json (the durable output of a real
 `ctf_run_checks.py` run) and produces the exact `g_rollup_input`-style rollup
 that `tools/demo_rank_hosts.py` consumes. This closes the durable end-to-end
 pipeline: pack report -> demo_rollup_hosts -> demo_rank_hosts ->
 demo_target_analysis.
 
 Tiers are derived by check_id (mirroring the operator flagship ruling, option C):
-  A_flagship_ip_only         <- ext_telecom_asmvm_t1_critical_vuln_on_exposed
-  C_port_corroborated        <- ext_telecom_asmvm_t1_asmvm_critical_service_corroborated
-  B_inverse_internal_only    <- ext_telecom_asmvm_t1_asmvm_critical_internal_record_only
+  A_flagship_ip_only         <- ext_telecom_offsec_asmvm_t1_critical_vuln_on_exposed
+  C_port_corroborated        <- ext_telecom_offsec_asmvm_t1_asmvm_critical_service_corroborated
+  B_inverse_internal_only    <- ext_telecom_offsec_asmvm_t1_asmvm_critical_internal_record_only
   T3_technique_context       <- any technique-context bridge-gap finding
 
 Technique context (t3_rows / stages_observed / prov_mix) is parsed from the T3
@@ -25,10 +25,10 @@ import json
 import re
 from collections import defaultdict
 
-T3 = "ext_telecom_asmvm_t3_asmvm_technique_context_bridge_gap"
-A = "ext_telecom_asmvm_t1_critical_vuln_on_exposed"
-C = "ext_telecom_asmvm_t1_asmvm_critical_service_corroborated"
-B = "ext_telecom_asmvm_t1_asmvm_critical_internal_record_only"
+T3 = "ext_telecom_offsec_asmvm_t3_asmvm_technique_context_bridge_gap"
+A = "ext_telecom_offsec_asmvm_t1_critical_vuln_on_exposed"
+C = "ext_telecom_offsec_asmvm_t1_asmvm_critical_service_corroborated"
+B = "ext_telecom_offsec_asmvm_t1_asmvm_critical_internal_record_only"
 
 IP_RE = re.compile(r"\b(\d{1,3}(?:\.\d{1,3}){3})\b")
 TACTIC_RE = re.compile(r"tactic=([^;]*)")

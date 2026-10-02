@@ -52,31 +52,6 @@ def sample_rubric():
 
 
 @pytest.fixture(scope="session")
-def sample_evidence_bundle():
-    return (FIXTURES_DIR / "evidence_bundle.csv").read_text()
-
-
-@pytest.fixture(scope="session")
-def sample_finding_candidate():
-    return (FIXTURES_DIR / "finding_candidate.csv").read_text()
-
-
-@pytest.fixture(scope="session")
-def sample_iam_principal():
-    return (FIXTURES_DIR / "iam_principal.csv").read_text()
-
-
-@pytest.fixture(scope="session")
-def sample_rule():
-    return (FIXTURES_DIR / "rule.csv").read_text()
-
-
-@pytest.fixture(scope="session")
-def sample_check_run():
-    return (FIXTURES_DIR / "check_run.csv").read_text()
-
-
-@pytest.fixture(scope="session")
 def sample_agent_card():
     with (FIXTURES_DIR / "agent-card.json").open() as fh:
         return json.load(fh)

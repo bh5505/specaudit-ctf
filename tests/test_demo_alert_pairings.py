@@ -8,9 +8,9 @@ from tools.demo_alert_pairings import extract_pairings
 
 pytest.importorskip("duckdb")
 
-ALERT = "ext_telecom_asmvm_alert.csv"
-ENDPOINT = "ext_telecom_asmvm_alert_endpoint.csv"
-SERVICE = "ext_telecom_asmvm_service_endpoint.csv"
+ALERT = "ext_telecom_offsec_asmvm_alert.csv"
+ENDPOINT = "ext_telecom_offsec_asmvm_alert_endpoint.csv"
+SERVICE = "ext_telecom_offsec_asmvm_service_endpoint.csv"
 
 
 def _silver(tmp_path: Path) -> Path:

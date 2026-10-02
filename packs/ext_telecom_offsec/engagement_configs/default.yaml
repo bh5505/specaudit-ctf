@@ -1,0 +1,120 @@
+# Default engagement config for ext_telecom_offsec. Copy into a
+# per-engagement file (engagement_configs/<engagement_id>.yaml) to override.
+# Keep it valid YAML - `pack check --external` strict-loads every file in this
+# directory.
+#
+# NOTE: the T1-T7 check SQL does not read these keys. Predicates are SQL
+# literals that mirror the policy documented here (CAP-PARAM - keep them in sync
+# with the checks):
+#   T1  mgmt_legacy_data_ports, telecom_control_plane_ports,
+#       insecure_transport_categories,
+#       vm_critical_severity_threshold, unattributed_prefix_bits,
+#       unmanaged_prefix_bits
+#   T3  llm_lane_gate_required
+#   T5  reproduction_lanes
+#   T7  candidate_queue_eligible_backlog_threshold, freshness_sla_days
+# current_audit_year / period_* are example period values. Set them for the
+# authorized engagement before use; sample_seed is for synthetic generation.
+ext_telecom_offsec_asmvm:
+  # CAP-PARAM: example audit period; replace for the authorized engagement.
+  current_audit_year: 2026
+  period_start: "2026-01-01"
+  period_end: "2026-12-31"
+
+  # Expected source-system labels for the two-view reconciliation.
+  asm_source_system: cortex_xpanse
+  vm_source_system: ivanti_neurons
+
+  # CAP-PARAM (T1 mgmt-port check): ports that must never answer on the public
+  # internet in a telecom estate - management, clear-text, and data-plane.
+  # Mirrored as a literal IN-list in
+  # checks/ext_telecom_offsec_asmvm_t1_exposed_mgmt_ports.sql.
+  # WinRM-HTTP 7680 shares the management-port class with 5985/5986.
+  # Telecom control-plane ports are NOT added here - see
+  # telecom_control_plane_ports below and its own check.
+  mgmt_legacy_data_ports: [21, 22, 23, 25, 69, 110, 111, 135, 137, 139, 143, 161,
+    162, 389, 445, 512, 513, 514, 636, 873, 993, 995, 1433, 1521, 1723, 2049,
+    2181, 2375, 2376, 3306, 3389, 4444, 5432, 5601, 5672, 5900, 5901, 5902,
+    5984, 5985, 5986, 6379, 8080, 9000, 9092, 9200, 11211, 15672, 27017,
+    50000, 50070, 7680]
+
+  # CAP-PARAM (T1 telecom control-plane check): the second reachable plane of a
+  # telecom estate, which the enterprise-admin list above does not name. Mirrored
+  # as literal rows in checks/ext_telecom_offsec_asmvm_t1_telecom_control_plane_exposed.sql
+  # (class_key, class label, risk, port). Grouped by class because the
+  # remediation and the risk are per class, not per port.
+  #
+  # Keep all listed classes even when a current source has no observations;
+  # a newly observed core-plane service must become visible to the check.
+  telecom_control_plane_ports:
+    gtp_core:          # must never answer on the public internet
+      risk: 58
+      ports: [2123, 2152, 20001, 3868]
+      rationale: "GTP-C/GTP-U/GTP' and Diameter are the core: GTP-U reaches subscriber data planes (spoofing, injection) and GTP'/NCP carries billing records (CDR exposure)"
+    cpe_management:    # subscriber-edge management plane
+      risk: 56
+      ports: [7547, 8200, 8201]
+      rationale: "CWMP/TR-069 is the CPE fleet management plane; internet-reachable ACS endpoints are credential-brute-forced and used to reconfigure customer premises equipment"
+    signalling:
+      risk: 55
+      ports: [5060, 5061]
+      rationale: "SIP/SIPS exposed to the internet means registration abuse, toll fraud and media interception; SIPS is only acceptable with a trusted certificate chain"
+    timing:
+      risk: 45
+      ports: [123]
+      rationale: "NTP is both a reflection/amplification source and the timing plane for correlation across the estate; monlist-style queries disclose peer lists"
+    resolver:
+      risk: 42
+      ports: [53]
+      rationale: "Open resolvers give disclosure (zone/cache), amplification, and a pivot into internal views"
+    # risk values sit on the band the other checks use (34-60)
+    vpn_anchor:       # expected to answer; the finding is attribution
+      risk: 35
+      ports: [500, 4500]
+      rationale: "IKE / IPsec NAT-T anchors are meant to be internet-reachable; what must hold is attribution to an owner and an explicit allow-list, so this class is reported low and grouped for policy review"
+
+  # CAP-PARAM (T1 transport check): ASM attack-surface-rule categories whose
+  # firings are insecure-transport exposure. Mirrored as a literal IN-list in
+  # checks/ext_telecom_offsec_asmvm_t1_transport_security.sql.
+  insecure_transport_categories:
+    - "Unencrypted Logins and Text Protocols"
+    - "Weak or Insecure Cryptography"
+
+  # CAP-PARAM (T1): CVSS threshold above which a VM finding counts as critical
+  # for the exposed-critical check.
+  vm_critical_severity_threshold: 9.0
+
+  # CAP-PARAM (T1 grouping): the address block an owner can act on. Ownership
+  # disputes are argued per /16, unmanaged blocks per /24.
+  unattributed_prefix_bits: 16
+  unmanaged_prefix_bits: 24
+
+  # T3 gate: the LLM lane may only see candidates that passed the deterministic
+  # evidence gate AND have second-source coverage on the subject address.
+  llm_lane_gate_required: true
+
+  # CAP-PARAM (T5): which reproduction lane settles which candidate class.
+  # Mirrored by the lane CASE in
+  # checks/ext_telecom_offsec_asmvm_t5_asmvm_reproduction_queue.sql.
+  reproduction_lanes:
+    vm_scan: credentialed_scan
+    asm_inferred_cve: banner_reverify_probe
+    asm_service_rule: live_fire_probe_udp_tcp
+    asm_tls_rule: live_fire_probe_tls
+    default: live_fire_probe_generic
+
+  # CAP-PARAM (T7): a candidate batch that leaves more than this many eligible
+  # rows unqueued is treated as a silent truncation.
+  candidate_queue_eligible_backlog_threshold: 1000
+
+  # CAP-PARAM (T7): per-source freshness SLA in days. Carried onto
+  # ext_telecom_offsec_asmvm_check_run.freshness_sla_days at ingest; stale_days is
+  # computed at ingest against reference_ts because date arithmetic is not
+  # portable between the DuckDB engine and the SQLite loopback runner.
+  freshness_sla_days:
+    default: 14
+    cortex_xpanse: 14
+    ivanti_neurons: 14
+
+  # Reproducible sampling seed (deterministic evidence generation).
+  sample_seed: 42

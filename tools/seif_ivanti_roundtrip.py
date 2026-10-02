@@ -16,7 +16,7 @@ per-column statement, so this measures it:
               finding_id or title is empty).
   3. VALIDATE run the shipped validator (seif.tools.validate_seif).
   4. PROJECT  project the SEIF findings back into the pack's
-              ext_telecom_asmvm_vm_finding column set, using ONLY what SEIF
+              ext_telecom_offsec_asmvm_vm_finding column set, using ONLY what SEIF
               carried. Two variants:
                 A (faithful)  Tags column = the export's real Tags column, which
                               is what the converter actually sees. pluginFamily /
@@ -29,7 +29,7 @@ per-column statement, so this measures it:
   5. DIFF     join the projection against the pack's own vm_finding table on
               finding_id and compare ip / title / severity / is_open /
               plugin_family / qid / port, plus CVE coverage
-              (details.Vulnerabilities[].Id vs ext_telecom_asmvm_vm_cve_finding).
+              (details.Vulnerabilities[].Id vs ext_telecom_offsec_asmvm_vm_cve_finding).
 
 Sampling is deterministic (DuckDB USING SAMPLE ... REPEATABLE(seed)).
 
@@ -71,7 +71,7 @@ SEIF_SRC = os.environ.get("SEIF_SRC", "")    # seif source tree (src dir)
 if SEIF_SRC not in sys.path:
     sys.path.insert(0, SEIF_SRC)
 
-# Pack target columns (order = ext_telecom_asmvm_vm_finding DDL order).
+# Pack target columns (order = ext_telecom_offsec_asmvm_vm_finding DDL order).
 VM_FINDING_COLUMNS = [
     "run_id", "engagement_id", "accept_event_id", "finding_id", "ip", "title",
     "qid", "plugin_family", "port", "protocol", "severity", "risk_rating",
@@ -367,7 +367,7 @@ def diff_against_pack(baseline_csv, projected_csv, out):
     res["projected_ips"] = len({r["ip"] for r in rows if r["ip"]})
     # CVE coverage: pack table vs SEIF details.Vulnerabilities
     cve_csv = os.path.join(os.path.dirname(baseline_csv),
-                           "ext_telecom_asmvm_vm_cve_finding.csv")
+                           "ext_telecom_offsec_asmvm_vm_cve_finding.csv")
     if os.path.exists(cve_csv):
         keep, total = 0, 0
         with io.open(cve_csv, encoding="utf-8", newline="") as fh:
@@ -425,12 +425,12 @@ def main():
 
     for variant, seif in (("A", seifA), ("B", seifB)):
         proj_csv = os.path.join(args.out_dir,
-                                "seif_%s_ext_telecom_asmvm_vm_finding.csv" % variant)
+                                "seif_%s_ext_telecom_offsec_asmvm_vm_finding.csv" % variant)
         out["projection_" + variant] = project(seif, proj_csv, variant,
                                                args.lineage_batch)
         out["diff_" + variant] = diff_against_pack(
             os.path.join(args.pack_evidence,
-                         "ext_telecom_asmvm_vm_finding.csv"), proj_csv, out)
+                         "ext_telecom_offsec_asmvm_vm_finding.csv"), proj_csv, out)
 
     with io.open(os.path.join(args.out_dir, "seif_roundtrip_report.json"),
                  "w", encoding="utf-8") as fh:

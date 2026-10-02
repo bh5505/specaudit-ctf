@@ -7,7 +7,7 @@ total: 3
 
 # Alias pattern for finding aliases produced by ctf_run_checks:
 #   finding_alias = "<pack_id>:<check_id>:<finding_key>"
-alias_regex: "^ext_telecom_cyber:ext_telecom_t[1-7]_[a-z_]+:"
+alias_regex: "^ext_telecom_offsec:ext_telecom_offsec_aws_t[1-7]_[a-z_]+:"
 
 # Expected per-technique finding counts
 expected_counts:

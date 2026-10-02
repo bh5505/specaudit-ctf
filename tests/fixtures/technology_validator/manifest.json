@@ -1,0 +1,33 @@
+{
+  "cases": [
+    "aws_s3_public_acl.case.json",
+    "aws_s3_blocked_bpa.case.json",
+    "aws_s3_public_observed.case.json",
+    "aws_s3_blocked_observed.case.json",
+    "aws_s3_wrong_reason.case.json",
+    "aws_s3_owner_unverified.case.json",
+    "aws_ssh_public.case.json",
+    "aws_rdp_ipv6_public.case.json",
+    "aws_ssh_private.case.json",
+    "aws_ssh_wrong_owner.case.json",
+    "aws_ssh_missing_role.case.json",
+    "aws_ssh_wrong_account.case.json",
+    "gcp_public.case.json",
+    "gcp_scoped.case.json",
+    "gcp_conditional.case.json",
+    "gcp_wrong_project.case.json",
+    "gcp_missing_identity.case.json",
+    "gcp_wrong_reason.case.json",
+    "gcp_config_override.case.json",
+    "azure_public.case.json",
+    "azure_private.case.json",
+    "azure_renamed_public.case.json",
+    "azure_deny_priority.case.json",
+    "azure_missing_priority.case.json",
+    "azure_wrong_account.case.json",
+    "azure_missing_identity.case.json",
+    "azure_wrong_reason.case.json",
+    "azure_cloud_override.case.json",
+    "azure_wrong_principal.case.json"
+  ]
+}

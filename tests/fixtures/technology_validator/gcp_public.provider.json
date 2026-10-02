@@ -1,0 +1,19 @@
+{
+  "config": {},
+  "policy": {
+    "bindings": [
+      {
+        "members": [
+          "allUsers"
+        ],
+        "role": "roles/viewer"
+      }
+    ],
+    "etag": "BwU-synthetic-public",
+    "version": 1
+  },
+  "project": {
+    "projectId": "demo-project",
+    "projectNumber": "123456789012"
+  }
+}

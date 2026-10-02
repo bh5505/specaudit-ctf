@@ -43,6 +43,6 @@ not optional: every action that reaches the platform — including `filters` and
 unless the configured platform URL host is inside the armed scope. Blanket
 scopes (`*`, `0.0.0.0/0`, `::/0`) are refused at parse, exactly like the other
 scope-gated arms. Output is the flattened JSON-safe shape the
-`ext_telecom_asmvm` pack consumes as its Ivanti bronze (`assets`/`findings`
+`ext_telecom_offsec` pack consumes as its Ivanti bronze (`assets`/`findings`
 rows), so a downstream `pack_run` can fold the pulled assets/findings into the
 pack's evidence model.
