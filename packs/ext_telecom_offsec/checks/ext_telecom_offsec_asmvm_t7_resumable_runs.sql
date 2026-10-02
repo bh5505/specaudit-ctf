@@ -5,17 +5,14 @@
 -- source_run_id identifies the source ledger row; run_id is the engine scope.
 -- Bound params: ?1 = run_id, ?2 = row limit.
 --
--- INHERITED CHECK: re-expressed from ext_telecom_cyber/checks/ext_telecom_t7_resumable_runs.sql unchanged
--- in logic, retargeted to this pack's own ledger tables (ext_telecom_offsec_asmvm_check_run). The
--- ASM/VM pack owns its evidence/candidate/rule/run ledger so it loads and runs
--- standalone; running it here keeps the process controls (adversarial
--- validation, evidence gates, dedupe, sandboxing, rule corpus, resumability)
--- enforced over the ASM/VM evidence instead of only over the AWS posture pack.
+-- The ASM/VM ledger is scoped separately from AWS process evidence.
 -- Booleans are CAST explicitly so the SQL stays valid under the CSV loopback
 -- runner, which types an all-true/all-false column as INTEGER.
 
 SELECT
-    'asmvm:run:' || cr.source_run_id || ':' || cr.accept_event_id AS finding_key,
+    'asmvm:run:' || CAST(LENGTH(cr.source_run_id) AS VARCHAR) || ':' ||
+        cr.source_run_id || ':' || CAST(LENGTH(cr.accept_event_id) AS VARCHAR) || ':' ||
+        cr.accept_event_id AS finding_key,
     'Interrupted or non-resumable check run: ' || cr.source_run_id AS title,
     1 AS affected_count,
     1 AS exposure_estimate,

@@ -13,6 +13,7 @@
 -- Reasons, one aggregate row each:
 --   observation_without_bridge_coverage            obs pair has no contributing findings at all
 --   bridge_pair_without_observation                contribution with no projected observation
+--   bridge_finding_without_vm_source               exploded finding has no VM source row
 --   legacy_finding_count_disagrees_with_recompute  deprecated alias drift
 --   n_findings_disagrees_with_recompute
 --   n_external_findings_disagrees_with_recompute
@@ -21,6 +22,8 @@
 --   scan_networks_cardinality_mismatch             token count != distinct contributor names
 --         (together with forward membership this makes spurious or duplicate tokens visible;
 --          ordering itself is not asserted - it is a rendering choice, not a fact)
+--   scan_networks_unverifiable_comma_name           a contributor name contains the
+--         unescaped list delimiter, so token membership/cardinality cannot be proved
 --
 -- Portable by construction: no string_agg/group_concat/split; null-safe compares via
 -- `(x <> y OR (x IS NULL) <> (y IS NULL))`. Bound params: ?1 run_id, ?2 row limit.
@@ -33,10 +36,15 @@ WITH contrib AS (
            count(DISTINCT CASE WHEN f.scan_network_name IS NULL
                                     OR trim(f.scan_network_name) = ''
                                THEN b.finding_id END) AS n_unknown,
-           count(DISTINCT nullif(trim(f.scan_network_name), '')) AS n_networks
+           count(DISTINCT CASE WHEN f.finding_id IS NULL
+                               THEN b.finding_id END) AS n_orphan,
+           count(DISTINCT nullif(trim(f.scan_network_name), '')) AS n_networks,
+           max(CASE WHEN instr(coalesce(f.scan_network_name, ''), ',') > 0
+                    THEN 1 ELSE 0 END) AS has_comma_name
     FROM ext_telecom_offsec_asmvm_vm_cve_finding b
     LEFT JOIN ext_telecom_offsec_asmvm_vm_finding f
            ON f.finding_id = b.finding_id AND f.run_id = b.run_id
+          AND f.ip = b.ip
     GROUP BY b.run_id, b.ip, b.cve
 ),
 names AS (
@@ -45,6 +53,7 @@ names AS (
     FROM ext_telecom_offsec_asmvm_vm_cve_finding b
     LEFT JOIN ext_telecom_offsec_asmvm_vm_finding f
            ON f.finding_id = b.finding_id AND f.run_id = b.run_id
+          AND f.ip = b.ip
     WHERE nullif(trim(f.scan_network_name), '') IS NOT NULL
 ),
 gaps AS (
@@ -61,6 +70,12 @@ gaps AS (
     LEFT JOIN ext_telecom_offsec_asmvm_vm_cve_observation o
            ON o.ip = r.ip AND o.cve = r.cve AND o.run_id = r.run_id
     WHERE r.run_id = ?1 AND o.ip IS NULL
+
+    UNION ALL
+    SELECT r.run_id, r.ip, r.cve,
+           'bridge_finding_without_vm_source'
+    FROM contrib r
+    WHERE r.run_id = ?1 AND r.n_orphan > 0
 
     UNION ALL
     SELECT o.run_id, o.ip, o.cve,
@@ -92,11 +107,20 @@ gaps AS (
            OR ((o.n_unknown_context_findings IS NULL) <> (r.n_unknown IS NULL)))
 
     UNION ALL
+    SELECT r.run_id, r.ip, r.cve, 'scan_networks_unverifiable_comma_name'
+    FROM contrib r
+    JOIN ext_telecom_offsec_asmvm_vm_cve_observation o
+         ON o.ip = r.ip AND o.cve = r.cve AND o.run_id = r.run_id
+    WHERE o.run_id = ?1 AND r.has_comma_name = 1
+
+    UNION ALL
     SELECT nm.run_id, nm.ip, nm.cve, 'scan_networks_missing_contributor_token'
     FROM names nm
     JOIN ext_telecom_offsec_asmvm_vm_cve_observation o
          ON o.ip = nm.ip AND o.cve = nm.cve AND o.run_id = nm.run_id
+    JOIN contrib r ON r.ip = nm.ip AND r.cve = nm.cve AND r.run_id = nm.run_id
     WHERE o.run_id = ?1
+      AND r.has_comma_name = 0
       AND instr(',' || coalesce(o.scan_networks, '') || ',',
                 ',' || nm.net_name || ',') = 0
 
@@ -105,6 +129,7 @@ gaps AS (
     FROM ext_telecom_offsec_asmvm_vm_cve_observation o
     JOIN contrib r ON r.ip = o.ip AND r.cve = o.cve AND r.run_id = o.run_id
     WHERE o.run_id = ?1
+      AND r.has_comma_name = 0
       AND CASE WHEN coalesce(o.scan_networks, '') = '' THEN 0
                ELSE length(o.scan_networks)
                     - length(replace(o.scan_networks, ',', '')) + 1 END

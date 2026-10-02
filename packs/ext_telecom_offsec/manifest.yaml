@@ -3,7 +3,7 @@ pack_name: Telecom Offensive Security Audit Pack
 pack_version: 0.1.1-dev
 category: deterministic
 domain: ext_telecom_offsec
-description: Combined AWS posture, ASM/VM reconciliation, and independently validated Technology findings with 41 deterministic T1-T7 checks, 32 ingest mappings, and separate process ledgers.
+description: Combined AWS posture, ASM/VM reconciliation, and independently validated Technology findings with 41 deterministic T1-T7 checks, 34 ingest mappings, and separate process ledgers.
 owner: audit-data-analytics-po
 status: draft
 check:
@@ -27,6 +27,7 @@ input_contract:
   - ext_telecom_offsec_asmvm_cve_observation
   - ext_telecom_offsec_asmvm_vm_asset
   - ext_telecom_offsec_asmvm_vm_finding
+  - ext_telecom_offsec_asmvm_vm_cve_finding
   - ext_telecom_offsec_asmvm_vm_cve_observation
   - ext_telecom_offsec_asmvm_evidence_bundle
   - ext_telecom_offsec_asmvm_finding_candidate
@@ -42,6 +43,8 @@ input_contract:
   - ext_telecom_offsec_aws_check_run
   - ext_telecom_offsec_technology_candidate
   - ext_telecom_offsec_technology_validation
+  - ext_telecom_offsec_technology_inventory_receipt
+  - ext_telecom_offsec_technology_inventory_member
   required_event_types: []
   required_fields: {}
   minimum_rows: {}
@@ -57,6 +60,7 @@ checks:
   depends_on_tables:
   - ext_telecom_offsec_asmvm_vm_finding
   - ext_telecom_offsec_asmvm_asm_vm_surface
+  - ext_telecom_offsec_asmvm_service_endpoint
   severity: critical
   explanation: Flags IPv4 addresses where the vulnerability-management feed reports an open finding with severity
     >= 9.0 AND the ASM feed confirms the address is answering on the internet. Neither source supports the claim
@@ -167,7 +171,8 @@ checks:
   depends_on_tables:
   - ext_telecom_offsec_asmvm_evidence_bundle
   severity: medium
-  explanation: Flags evidence bundles no second reviewer or critic model tried to disprove before findings shipped.
+  explanation: Flags each accepted evidence-bundle event for which no second reviewer or critic model tried to disprove
+    the claim before findings shipped. Reaccepts remain distinct because the ledger provides no trusted supersession order.
 - id: ext_telecom_offsec_asmvm_t2_asmvm_cve_uncorroborated
   name: ASM/VM T2 inferred CVE with no second source
   check_type: deterministic_sql
@@ -285,8 +290,9 @@ checks:
   - ext_telecom_offsec_asmvm_vm_finding
   severity: medium
   explanation: 'Recomputes each vm_cve_observation rollup from the pair''s own contributing bridge rows (count(DISTINCT
-    finding_id), never count(*)) and flags any pair whose projected lineage disagrees with them. A repeated CVE within one source finding can inflate contributor counts unless
-    bridge rows are counted at their distinct (IP, CVE, finding) grain. One aggregate row per reason so drift cannot flood the report.'
+    finding_id), never count(*)) and flags any pair whose projected lineage disagrees with them or whose bridge finding
+    has no VM source row. A repeated CVE within one source finding can inflate contributor counts unless bridge rows
+    are counted at their distinct (IP, CVE, finding) grain. One aggregate row per reason so drift cannot flood the report.'
 - id: ext_telecom_offsec_asmvm_t3_asmvm_bridge_exclusion_reason
   name: ASM/VM T3 explain technique-context bridge exclusions
   check_type: deterministic_sql
@@ -330,13 +336,14 @@ checks:
     survivor (the VM finding, the only source with a finding id, scanner plugin id and scan timestamp). Uncollapsed
     cross-source duplicates double-count exposure and fork any chain built on the pair.
 - id: ext_telecom_offsec_asmvm_t5_sandboxed_reproduction
-  name: ASM/VM T5 live-fire reproduction outside sandbox
+  name: ASM/VM T5 live-fire sandbox isolation failure or unknown state
   check_type: deterministic_sql
   file: checks/ext_telecom_offsec_asmvm_t5_sandboxed_reproduction.sql
   depends_on_tables:
   - ext_telecom_offsec_asmvm_evidence_bundle
   severity: critical
-  explanation: Flags live-fire reproduction that did not run in isolated compute.
+  explanation: Flags each accepted live-fire bundle event with confirmed unsandboxed execution or missing sandbox-isolation
+    evidence. An unknown isolation state is an evidence gap, not proof that reproduction ran outside isolated compute.
 - id: ext_telecom_offsec_asmvm_t5_asmvm_reproduction_queue
   name: ASM/VM T5 reproduction lanes still outstanding
   check_type: deterministic_sql
@@ -376,7 +383,7 @@ checks:
   depends_on_tables:
   - ext_telecom_offsec_asmvm_check_run
   severity: low
-  explanation: Flags interrupted runs and runs whose checkpoint predates their own start.
+  explanation: Flags each accepted source-run event that was interrupted or whose checkpoint predates its own start.
 - id: ext_telecom_offsec_asmvm_t7_asmvm_candidate_backlog
   name: ASM/VM T7 candidate queue backlog and batch truncation
   check_type: deterministic_sql
@@ -401,11 +408,10 @@ checks:
   depends_on_tables:
   - ext_telecom_offsec_asmvm_check_run
   severity: high
-  explanation: 'Flags source runs that completed but are stale: the checkpoint is older than the source''s declared
-    freshness SLA relative to the run''s reference time. This is the failure mode that matters for ASM/VM coverage
-    - the run status is green, so every exposure statement keeps being computed against an out-of-date view of the
-    estate. Freshness arithmetic is computed at ingest (stale_days) because date arithmetic is not portable between
-    the DuckDB and SQLite runners; a missing checkpoint is reported as unknown, never as zero days.'
+  explanation: 'Flags each accepted source-run event that is incomplete, lacks a checkpoint, reference time, measured
+    stale_days, or source SLA, or exceeds that SLA. Completed-but-stale runs can leave every exposure statement based
+    on an out-of-date estate view despite a green run status. Freshness arithmetic is computed at ingest because date
+    arithmetic is not portable between the DuckDB and SQLite runners; unknown measurement is never treated as zero.'
 - id: ext_telecom_offsec_aws_t1_trust_boundary
   name: Ext Telecom T1 trust-boundary completeness
   check_type: deterministic_sql
@@ -425,8 +431,8 @@ checks:
   depends_on_tables:
   - ext_telecom_offsec_aws_evidence_bundle
   severity: medium
-  explanation: Flags evidence bundles that were never adversarially re-verified by a second reviewer, enforcing
-    the finder-never-validates rule (T2) before findings ship.
+  explanation: Flags each accepted evidence-bundle event that was never adversarially re-verified by a second reviewer,
+    enforcing the finder-never-validates rule (T2) before findings ship.
 - id: ext_telecom_offsec_aws_t3_evidence_gate
   name: Ext Telecom T3 deterministic evidence gate
   check_type: deterministic_sql
@@ -446,14 +452,14 @@ checks:
   explanation: Flags duplicate-verdict candidates inside dedupe-hash clusters, surfacing overlaps that must collapse
     before multi-step chaining (T4).
 - id: ext_telecom_offsec_aws_t5_sandboxed_reproduction
-  name: Ext Telecom T5 sandboxed reproduction compliance
+  name: Ext Telecom T5 live-fire sandbox isolation failure or unknown state
   check_type: deterministic_sql
   file: checks/ext_telecom_offsec_aws_t5_sandboxed_reproduction.sql
   depends_on_tables:
   - ext_telecom_offsec_aws_evidence_bundle
   severity: critical
-  explanation: Flags live-fire evidence bundles that were not reproduced in isolated compute, enforcing sandboxed-reproduction
-    with a read-only verifier (T5).
+  explanation: Flags each accepted live-fire bundle event with confirmed unsandboxed execution or missing sandbox-isolation
+    evidence. An unknown isolation state is an evidence gap, not proof that reproduction ran outside isolated compute.
 - id: ext_telecom_offsec_aws_t6_rule_corpus
   name: Ext Telecom T6 rule-corpus generalization gaps
   check_type: deterministic_sql
@@ -471,8 +477,8 @@ checks:
   depends_on_tables:
   - ext_telecom_offsec_aws_check_run
   severity: low
-  explanation: Flags interrupted or non-resumable check runs in the ledger, keeping coverage additive, checkpointed,
-    and diff-able across runs (T7).
+  explanation: Flags each accepted interrupted or non-resumable check-run event in the ledger, keeping coverage additive,
+    checkpointed, and diff-able across runs (T7).
 - id: ext_telecom_offsec_technology_t1_validated_configuration
   name: Technology T1 independently validated cloud configuration
   check_type: deterministic_sql
@@ -485,13 +491,16 @@ checks:
     AWS-NET-010/011, GCP-IAM-001, or AZURE-NET-002. It reports confirmed configuration with the live-reachability
     state explicitly; configured ingress or IAM binding alone never becomes a claim of practical exploitation.
 - id: ext_telecom_offsec_technology_t2_validation_gap
-  name: Technology T2 missing or disputed independent validation
+  name: Technology T2 candidate inventory or independent validation gap
   check_type: deterministic_sql
   file: checks/ext_telecom_offsec_technology_t2_validation_gap.sql
   depends_on_tables:
   - ext_telecom_offsec_technology_candidate
   - ext_telecom_offsec_technology_validation
+  - ext_telecom_offsec_technology_inventory_receipt
+  - ext_telecom_offsec_technology_inventory_member
   severity: high
-  explanation: Flags supported Technology source findings whose validator result is missing, inconclusive,
-    contradicted, or ambiguous. The join binds source run, snapshot, finding, rule, provider, and resource identity;
-    absence cannot be interpreted as a clean validation result.
+  explanation: Reconciles imported Technology candidate identities and counts to the scoped bridge inventory receipt,
+    including a zero-candidate receipt, and flags a missing or incomplete transfer. It also flags supported source
+    findings whose validator result is missing, inconclusive, contradicted, or ambiguous. Candidate validation joins
+    bind source run, snapshot, finding, rule, provider, and resource identity; absence is never a clean disposition.

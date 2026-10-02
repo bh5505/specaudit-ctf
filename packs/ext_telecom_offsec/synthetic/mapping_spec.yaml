@@ -2163,3 +2163,64 @@ mappings:
   - target: receipt_sha256
     aliases: [receipt_sha256]
     required: true
+- silver_table: ext_telecom_offsec_technology_inventory_receipt
+  source_pattern: '*ext_telecom_offsec_technology_inventory_receipt.{csv,xlsx}'
+  sheet_selection: auto
+  required: false
+  columns:
+  - target: validator_project_id
+    aliases: [validator_project_id]
+    required: true
+  - target: validator_engagement_id
+    aliases: [validator_engagement_id]
+    required: true
+  - target: inventory_snapshot_id
+    aliases: [inventory_snapshot_id]
+    required: true
+  - target: inventory_membership_id
+    aliases: [inventory_membership_id]
+    required: true
+  - target: source_inventory_total
+    aliases: [source_inventory_total]
+    required: true
+  - target: expected_eligible_candidates
+    aliases: [expected_eligible_candidates]
+    required: true
+  - target: candidate_identity_sha256
+    aliases: [candidate_identity_sha256]
+    required: true
+- silver_table: ext_telecom_offsec_technology_inventory_member
+  source_pattern: '*ext_telecom_offsec_technology_inventory_member.{csv,xlsx}'
+  sheet_selection: auto
+  required: false
+  columns:
+  - target: validator_project_id
+    aliases: [validator_project_id]
+    required: true
+  - target: validator_engagement_id
+    aliases: [validator_engagement_id]
+    required: true
+  - target: inventory_snapshot_id
+    aliases: [inventory_snapshot_id]
+    required: true
+  - target: finding_id
+    aliases: [finding_id]
+    required: true
+  - target: source_run_id
+    aliases: [source_run_id]
+  - target: rule_id
+    aliases: [rule_id]
+    required: true
+  - target: provider
+    aliases: [provider]
+    required: true
+  - target: resource_uid
+    aliases: [resource_uid]
+  - target: account_id
+    aliases: [account_id]
+  - target: region
+    aliases: [region]
+  - target: severity
+    aliases: [severity]
+  - target: title
+    aliases: [title]

@@ -9,11 +9,13 @@
 -- runner, which types an all-true/all-false column as INTEGER.
 
 SELECT
-    'asmvm:bundle:' || e.bundle_id AS finding_key,
+    'asmvm:bundle:' || CAST(LENGTH(e.bundle_id) AS VARCHAR) || ':' || e.bundle_id || ':' ||
+        CAST(LENGTH(e.accept_event_id) AS VARCHAR) || ':' || e.accept_event_id AS finding_key,
     'Evidence bundle missing adversarial re-verification: ' || e.bundle_id AS title,
     1 AS affected_count,
     1 AS exposure_estimate,
-    e.bundle_id || ' / ' || COALESCE(e.project_id, '') || ' / ' || COALESCE(e.source_lane, '') AS record_locator,
+    e.bundle_id || ' / ' || e.accept_event_id || ' / ' ||
+        COALESCE(e.project_id, '') || ' / ' || COALESCE(e.source_lane, '') AS record_locator,
     'has_report=' || CASE WHEN COALESCE(CAST(e.has_report AS BOOLEAN), false) THEN 'true' ELSE 'false' END ||
     '; has_receipt=' || CASE WHEN COALESCE(CAST(e.has_receipt AS BOOLEAN), false) THEN 'true' ELSE 'false' END ||
     '; has_live_fire=' || CASE WHEN COALESCE(CAST(e.has_live_fire AS BOOLEAN), false) THEN 'true' ELSE 'false' END ||

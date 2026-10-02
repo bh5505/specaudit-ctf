@@ -221,6 +221,14 @@ file_patterns:
   filename_regex: (?i)^.*ext_telecom_offsec_technology_validation\.(csv|xlsx)$
   filename_keywords: [offsec, technology, validation]
   required_columns: [attempt_id, finding_id, verdict]
+- silver_table: ext_telecom_offsec_technology_inventory_receipt
+  filename_regex: (?i)^.*ext_telecom_offsec_technology_inventory_receipt\.(csv|xlsx)$
+  filename_keywords: [offsec, technology, inventory, receipt]
+  required_columns: [inventory_snapshot_id, expected_eligible_candidates, candidate_identity_sha256]
+- silver_table: ext_telecom_offsec_technology_inventory_member
+  filename_regex: (?i)^.*ext_telecom_offsec_technology_inventory_member\.(csv|xlsx)$
+  filename_keywords: [offsec, technology, inventory, member]
+  required_columns: [inventory_snapshot_id, finding_id, rule_id]
 thresholds:
   stage_b_trigger_confidence: 0.7
   auto_accept_confidence: 0.85

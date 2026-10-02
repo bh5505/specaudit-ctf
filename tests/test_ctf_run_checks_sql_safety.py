@@ -109,6 +109,11 @@ def _product_t7_sql(engine):
     return sql
 
 
+def _event_key(source_id, accept_event_id):
+    return (f"run:{len(source_id)}:{source_id}:"
+            f"{len(accept_event_id)}:{accept_event_id}")
+
+
 @pytest.mark.parametrize("engine", ["sqlite", "duckdb"])
 def test_declared_value_map_normalizes_mixed_case_status_for_real_t7(engine):
     """Noncanonical status text must normalize via the DECLARED value_map.
@@ -168,9 +173,9 @@ def test_declared_value_map_normalizes_mixed_case_status_for_real_t7(engine):
         sql = _product_t7_sql(engine)
         findings = connection.execute(sql, ["execution-current", 100]).fetchall()
         assert {row[0] for row in findings} == {
-            "run:src-mixed:%s" % runner.ZERO_ACCEPT_EVENT_ID,
-            "run:src-padded:%s" % runner.ZERO_ACCEPT_EVENT_ID,
-            "run:src-canon:%s" % runner.ZERO_ACCEPT_EVENT_ID,
+            _event_key("src-mixed", runner.ZERO_ACCEPT_EVENT_ID),
+            _event_key("src-padded", runner.ZERO_ACCEPT_EVENT_ID),
+            _event_key("src-canon", runner.ZERO_ACCEPT_EVENT_ID),
         }
         assert all(row[-2] == "execution-current" for row in findings)
         assert connection.execute(sql, ["execution-sibling", 100]).fetchall() == []
@@ -300,8 +305,8 @@ def test_product_ledger_mapping_preserves_source_identity_and_binds_t7(
             sql = sql.replace("?1", "?").replace("?2", "?")
         rows = connection.execute(sql, ["execution-current", 100]).fetchall()
         assert {row[0] for row in rows} == {
-            f"run:source-one:{runner.ZERO_ACCEPT_EVENT_ID}",
-            f"run:source-two:{runner.ZERO_ACCEPT_EVENT_ID}",
+            _event_key("source-one", runner.ZERO_ACCEPT_EVENT_ID),
+            _event_key("source-two", runner.ZERO_ACCEPT_EVENT_ID),
         }
         assert all(row[-2] == "execution-current" for row in rows)
         assert connection.execute(sql, ["execution-sibling", 100]).fetchall() == []

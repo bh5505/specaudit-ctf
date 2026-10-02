@@ -4,11 +4,13 @@
 -- ship. Bound params: ?1 = run_id, ?2 = row limit.
 
 SELECT
-    'bundle:' || e.bundle_id AS finding_key,
+    'bundle:' || CAST(LENGTH(e.bundle_id) AS VARCHAR) || ':' || e.bundle_id || ':' ||
+        CAST(LENGTH(e.accept_event_id) AS VARCHAR) || ':' || e.accept_event_id AS finding_key,
     'Evidence bundle missing adversarial re-verification: ' || e.bundle_id AS title,
     1 AS affected_count,
     1 AS exposure_estimate,
-    e.bundle_id || ' / ' || COALESCE(e.project_id, '') || ' / ' || COALESCE(e.source_lane, '') AS record_locator,
+    e.bundle_id || ' / ' || e.accept_event_id || ' / ' ||
+        COALESCE(e.project_id, '') || ' / ' || COALESCE(e.source_lane, '') AS record_locator,
     'has_report=' || CAST(COALESCE(e.has_report, false) AS VARCHAR) ||
     '; has_receipt=' || CAST(COALESCE(e.has_receipt, false) AS VARCHAR) ||
     '; has_live_fire=' || CAST(COALESCE(e.has_live_fire, false) AS VARCHAR) ||

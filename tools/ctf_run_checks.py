@@ -595,7 +595,7 @@ def prepare_accept_lineage(headers, rows, run_id, *,
 def stamp_accept_lineage(conn, table, headers, run_id, *, engine=None):
     """Stamp ambient lineage.
 
-    By default, overwrite run_id/engagement_id/accept_event_id even when
+    Overwrite run_id/engagement_id/accept_event_id even when
     imported values exist; source_run_id remains untouched. The current
     product's checks bind this stamped engine run_id.
 
@@ -966,27 +966,43 @@ def _read_csv_type_arg(ddl_types, table, headers):
     return ", types={%s}" % ", ".join(pairs)
 
 
-def load_evidence_native_csv(conn, evidence_dir, mapping, ddl_columns, ddl_types=None):
+def load_evidence_native_csv(conn, evidence_dir, mapping, ddl_columns, run_id,
+                             ddl_types=None):
     """DuckDB-native insertion into the real migration-created tables.
 
     Only for evidence whose headers already name real pack columns - mapping
     aliases and value maps are NOT applied here, which is verified per table by
     _require_declared_headers. The explicit target column list preserves the
-    declared column-subset contract while leaving constraints intact.
+    declared column-subset contract. Ambient lineage is supplied in the SELECT,
+    before constraints are enforced, without materializing CSV rows in Python.
     """
     loaded = []
     for csv_path in sorted(evidence_dir.glob("*.csv")):
         table = _table_for(mapping, csv_path.name)
         headers = _read_csv_header(csv_path)
         _require_declared_headers(ddl_columns, table, headers, csv_path.name)
+        lineage = {
+            column: value for column, value in (
+                ("run_id", run_id),
+                ("engagement_id", ENGAGEMENT_ID),
+                ("accept_event_id", ZERO_ACCEPT_EVENT_ID),
+            ) if column in ddl_columns[table]
+        }
+        insert_columns = headers + [column for column in lineage
+                                    if column not in headers]
+        select_columns = ["?" if column in lineage else _quote_identifier(column)
+                          for column in insert_columns]
+        parameters = [lineage[column] for column in insert_columns
+                      if column in lineage]
         try:
             conn.execute(
                 "INSERT INTO %s (%s) SELECT %s FROM read_csv('%s', header=true%s)"
                 % (_quote_identifier(table),
-                   ", ".join(_quote_identifier(header) for header in headers),
-                   ", ".join(_quote_identifier(header) for header in headers),
+                   ", ".join(_quote_identifier(column) for column in insert_columns),
+                   ", ".join(select_columns),
                    csv_path.as_posix().replace("'", "''"),
-                   _read_csv_type_arg(ddl_types, table, headers)))
+                   _read_csv_type_arg(ddl_types, table, headers)),
+                parameters)
         except Exception as exc:
             raise RunnerError(
                 "evidence load failed for table %s (constraint/type error: %s)"
@@ -1036,14 +1052,7 @@ def run(pack_root, evidence_dir, out_dir, db_choice, limit, run_id,
     ddl_columns = load_ddl_columns(pack_root)
     if fast_csv:
         loaded_tables = load_evidence_native_csv(conn, evidence_dir, mapping,
-                                                ddl_columns, ddl_types)
-        for table in loaded_tables:
-            headers = [r[0] for r in conn.execute(
-                "DESCRIBE %s" % _quote_identifier(table)).fetchall()]
-            stamp_accept_lineage(
-                conn, table, headers, run_id,
-                engine=engine,
-            )
+                                                ddl_columns, run_id, ddl_types)
 
     for csv_path in ([] if fast_csv else csv_files):
         with open(csv_path, "r", encoding="utf-8", newline="") as fh:

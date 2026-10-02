@@ -6,7 +6,8 @@
 -- Bound params: ?1 = run_id, ?2 = row limit.
 
 SELECT
-    'run:' || cr.source_run_id || ':' || cr.accept_event_id AS finding_key,
+    'run:' || CAST(LENGTH(cr.source_run_id) AS VARCHAR) || ':' || cr.source_run_id || ':' ||
+        CAST(LENGTH(cr.accept_event_id) AS VARCHAR) || ':' || cr.accept_event_id AS finding_key,
     'Interrupted or non-resumable check run: ' || cr.source_run_id AS title,
     1 AS affected_count,
     1 AS exposure_estimate,

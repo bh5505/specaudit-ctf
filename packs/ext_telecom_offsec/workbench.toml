@@ -99,12 +99,12 @@ desc_blocked = "No AWS process evidence is loaded."
 
 [[contributes.readiness_capabilities]]
 id = "ext-telecom-offsec-technology-validation-loaded"
-title = "Technology finding and validator evidence loaded"
-required_tables = ["ext_telecom_offsec_technology_candidate", "ext_telecom_offsec_technology_validation"]
-gating_tables = ["ext_telecom_offsec_technology_candidate"]
-desc_ready = "A complete Technology candidate inventory and independent validator results are loaded."
-desc_partial = "Technology candidates are loaded but validator results are incomplete; inspect the T2 validation-gap check."
-desc_blocked = "No Technology validator candidate inventory is loaded."
+title = "Technology inventory receipt and validator evidence imported"
+required_tables = ["ext_telecom_offsec_technology_candidate", "ext_telecom_offsec_technology_validation", "ext_telecom_offsec_technology_inventory_receipt", "ext_telecom_offsec_technology_inventory_member"]
+gating_tables = ["ext_telecom_offsec_technology_inventory_receipt"]
+desc_ready = "Technology transfer tables are accepted; T2 reconciles inventory membership and counts, then reports validator gaps."
+desc_partial = "A scoped inventory receipt is accepted but some transfer tables are absent or empty; inspect the T2 inventory and validation gaps."
+desc_blocked = "No scoped Technology inventory receipt is accepted; import the bridge receipt before interpreting validation coverage."
 
 [contributes.deliverables]
 workpaper_prompt_file = "deliverables/workpaper_prompt.md"

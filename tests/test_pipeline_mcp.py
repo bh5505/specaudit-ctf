@@ -6,6 +6,7 @@ Covers the two new surface tools wired into extension/mcp_server.py:
 human-validation-ready report). The backend is extension/pipeline.py, which
 imports the durable tools/demo_* cores.
 """
+import hashlib
 import json
 import tempfile
 from pathlib import Path
@@ -31,6 +32,17 @@ def _synthetic_pack_evidence(root: Path, *, complete: bool = True,
         required = ctf_run_checks.load_manifest(PACK_ROOT)["input_contract"]["required_tables"]
         for table in required:
             (evidence / f"{table}.csv").write_text("run_id\n", encoding="utf-8")
+        empty_members = hashlib.sha256(
+            b"ext_telecom_offsec.technology_inventory_members.v1\0"
+        ).hexdigest()
+        (evidence / "ext_telecom_offsec_technology_inventory_receipt.csv").write_text(
+            "validator_project_id,validator_engagement_id,inventory_snapshot_id,"
+            "inventory_membership_id,source_inventory_total,"
+            "expected_eligible_candidates,candidate_identity_sha256\n"
+            f"synthetic-project,{ctf_run_checks.ENGAGEMENT_ID},{'a' * 64},"
+            f"00000000-0000-0000-0000-000000000001,0,0,{empty_members}\n",
+            encoding="utf-8",
+        )
     (evidence / "ext_telecom_offsec_aws_s3_bucket.csv").write_text(
         "bucket_name,account_id,region,public_access_block_enabled,"
         "policy_allows_anonymous,run_id,engagement_id\n"
@@ -305,6 +317,40 @@ def test_pack_run_minimal_via_scenario(db, fast_csv):
     assert rep["findings"][0]["finding_alias"].startswith(
         "ext_telecom_offsec:" + AWS_T1 + ":bucket:synthetic-offsec-bucket"
     )
+
+
+@pytest.mark.parametrize("csv_body", [
+    "source_run_id\nsource-original\n",
+    ("source_run_id,run_id,engagement_id,accept_event_id\n"
+     "source-original,sibling-run,sibling-engagement,"
+     "11111111-1111-1111-1111-111111111111\n"),
+])
+def test_native_csv_stamps_lineage_before_constrained_insert(tmp_path, csv_body):
+    """Absent or stale CSV lineage cannot fail or control the accepted scope."""
+    pytest.importorskip("duckdb")
+    (tmp_path / "native_lineage.csv").write_text(csv_body, encoding="utf-8")
+    conn, _ = ctf_run_checks.open_engine("duckdb")
+    try:
+        conn.execute(
+            "CREATE TABLE native_lineage ("
+            "source_run_id VARCHAR NOT NULL, run_id VARCHAR NOT NULL, "
+            "engagement_id VARCHAR NOT NULL, accept_event_id VARCHAR NOT NULL)"
+        )
+        columns = {"source_run_id", "run_id", "engagement_id", "accept_event_id"}
+        loaded = ctf_run_checks.load_evidence_native_csv(
+            conn, tmp_path, {}, {"native_lineage": columns}, "execution-current",
+            {"native_lineage": {column: "VARCHAR" for column in columns}},
+        )
+        assert loaded == ["native_lineage"]
+        assert conn.execute(
+            "SELECT source_run_id, run_id, engagement_id, accept_event_id "
+            "FROM native_lineage"
+        ).fetchall() == [(
+            "source-original", "execution-current", ctf_run_checks.ENGAGEMENT_ID,
+            ctf_run_checks.ZERO_ACCEPT_EVENT_ID,
+        )]
+    finally:
+        conn.close()
 
 
 def test_mcp_tools_list_exposes_pipeline():

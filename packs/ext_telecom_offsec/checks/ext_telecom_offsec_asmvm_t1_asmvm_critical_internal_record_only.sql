@@ -18,6 +18,8 @@
 -- explicit ORDER BY (plain string_agg honors it on DuckDB and SQLite alike);
 -- GROUP_CONCAT(DISTINCT ...) left input order to engine parallelism and made
 -- report details irreproducible between identical-evidence runs.
+-- Hex normalization strips ASCII space, HT, LF, CR, VT, and FF, so names
+-- containing only those bytes remain unknown in both SQL engines.
 WITH network_lists AS (
     SELECT x.run_id, x.ip,
            string_agg(x.v, ',' ORDER BY x.v) AS networks
@@ -30,7 +32,7 @@ WITH network_lists AS (
         FROM ext_telecom_offsec_asmvm_vm_finding f
         WHERE CAST(f.is_open AS BOOLEAN)
           AND f.severity >= 9.0
-          AND f.scan_network_name IS NOT NULL
+          AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(HEX(CAST(f.scan_network_name AS VARCHAR)), '20', ''), '09', ''), '0A', ''), '0D', ''), '0B', ''), '0C', '') <> ''
           AND LOWER(CAST(f.scan_network_name AS VARCHAR)) NOT LIKE '%external%'
     ) x
     GROUP BY x.run_id, x.ip
@@ -38,14 +40,14 @@ WITH network_lists AS (
 SELECT
     'asmvm:critical-internal-record-only:' || f.ip    AS finding_key,
     'Internet-active IP with internal-network critical record: ' || f.ip AS title,
-    COUNT(*)                                         AS affected_count,
+    COUNT(DISTINCT f.finding_id)                     AS affected_count,
     CAST(COALESCE(MAX(s.asm_exposed_services), 0) AS BIGINT) AS exposure_estimate,
     'vm:asset:' || f.ip || ' + asm:ip:' || f.ip      AS record_locator,
-    'open_critical_internal_records=' || CAST(COUNT(*) AS VARCHAR) ||
+    'open_critical_internal_records=' || CAST(COUNT(DISTINCT f.finding_id) AS VARCHAR) ||
     '; max_severity=' || CAST(ROUND(MAX(f.severity), 2) AS VARCHAR) ||
     '; finding_networks=' || COALESCE(MAX(n.networks), 'unknown') ||
     '; portless_contributing_findings=' ||
-        CAST(SUM(CASE WHEN f.port IS NULL THEN 1 ELSE 0 END) AS VARCHAR) ||
+        CAST(COUNT(DISTINCT CASE WHEN f.port IS NULL THEN f.finding_id END) AS VARCHAR) ||
     '; exposed_services=' || CAST(COALESCE(MAX(s.asm_exposed_services), 0) AS VARCHAR) ||
     '; validation=external_scan_or_service_corroboration_required' AS details,
     f.run_id                                         AS run_id,
@@ -67,7 +69,7 @@ WHERE f.run_id = ?1
   -- whose producing network is unknown proves nothing either way, and reading
   -- NULL as "internal" would let missing provenance masquerade as a qualified
   -- result. This matters whenever scan-context evidence is missing.
-  AND f.scan_network_name IS NOT NULL
+  AND REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(HEX(CAST(f.scan_network_name AS VARCHAR)), '20', ''), '09', ''), '0A', ''), '0D', ''), '0B', ''), '0C', '') <> ''
   AND LOWER(f.scan_network_name) NOT LIKE '%external%'
   AND NOT EXISTS (
       SELECT 1

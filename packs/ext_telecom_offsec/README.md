@@ -6,7 +6,7 @@ reconciliation, and receipt-backed Technology validation under one pack identity
 The product pack in AuditPack is the
 authoritative source for these declarations.
 
-The mirror includes the 41-check manifest, mappings, classifier hints, migrations,
+The mirror includes the 41-check manifest, 34 mappings, classifier hints, migrations,
 checks, audit program, and workpaper declarations needed for local loopback
 validation. It contains no customer exports, live target list, credentials, or
 authority to probe a system. CTF action admission remains governed by
@@ -30,9 +30,13 @@ The evidence directory must include every table in
 `manifest.yaml`'s `input_contract.required_tables`; a header-only CSV records
 an observed empty source. The AuditPack ASM/VM builder derives that domain's
 raw-source tables but does not manufacture independent service observations.
-Supply those observations, AWS posture, and Technology candidate/validation
-sources separately for a complete run. Missing source files abort before
+Supply any independent service observations collected, along with AWS posture
+and the Technology candidate,
+validation, inventory receipt, and expected-member sources separately for a
+complete run. Missing required source files abort before
 report generation.
+A Technology snapshot with zero eligible candidates still needs a scoped
+inventory receipt row; a header-only receipt produces a T2 coverage gap.
 
 New reports use the `ext_telecom_offsec` pack ID and renamed check IDs. Old
 pack IDs and aliases are not supported by this mirror.

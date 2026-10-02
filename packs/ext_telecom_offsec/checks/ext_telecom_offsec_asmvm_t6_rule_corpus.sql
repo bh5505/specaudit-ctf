@@ -3,13 +3,6 @@
 -- resolve to an ACTIVE generalized rule, i.e. exploratory gaps that have not
 -- compounded into detection/prevention coverage.
 -- Bound params: ?1 = run_id, ?2 = row limit.
---
--- INHERITED CHECK: re-expressed from ext_telecom_cyber/checks/ext_telecom_t6_rule_corpus.sql unchanged
--- in logic, retargeted to this pack's own ledger tables (ext_telecom_offsec_asmvm_finding_candidate + ext_telecom_offsec_asmvm_rule). The
--- ASM/VM pack owns its evidence/candidate/rule/run ledger so it loads and runs
--- standalone; running it here keeps the process controls (adversarial
--- validation, evidence gates, dedupe, sandboxing, rule corpus, resumability)
--- enforced over the ASM/VM evidence instead of only over the AWS posture pack.
 -- Booleans are CAST explicitly so the SQL stays valid under the CSV loopback
 -- runner, which types an all-true/all-false column as INTEGER.
 

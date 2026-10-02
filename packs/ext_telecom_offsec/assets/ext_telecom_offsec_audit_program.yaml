@@ -374,17 +374,17 @@ controls:
     expected_result: Each reported validation identifies its source finding and receipt. A configured ingress rule or public
       binding is never described as practically reachable without independent observation.
 - control_id: OFFSEC-TECH-T2
-  title: Independent validation coverage and contradiction handling
-  objective: Expose selected Technology findings lacking a complete validator result, as well as results that contradict
-    the source claim or cannot determine configuration or S3 public reachability.
-  risk: Treating a missing, ambiguous, or inconclusive probe as a clean finding disposition hides unchecked cloud exposure.
+  title: Technology inventory completeness and independent validation gaps
+  objective: Reconcile the imported candidate population to its scoped bridge receipt and expected identities, then expose
+    selected findings lacking a complete validator result or showing a contradictory or unknown configuration outcome.
+  risk: A partial candidate import or a missing, ambiguous, or inconclusive probe can hide unchecked cloud exposure.
   framework_refs:
   - NIST CSF 2.0 ID.RA-05, GV.OV-03
   pack_checks:
   - ext_telecom_offsec_technology_t2_validation_gap
   test_steps:
   - step_id: OFFSEC-TECH-T2-S1
-    procedure: Reconcile the complete eligible validator inventory to one current result per finding and inspect every
-      missing, contradictory, or unknown outcome before releasing the workpaper.
-    expected_result: Every unresolved source finding remains visible with its source run and inventory snapshot; no
-      missing result is treated as confirmed safe.
+    procedure: Compare each scoped inventory receipt's expected count and member identities to the imported candidate
+      rows, including a zero-eligible snapshot; then inspect every missing, contradictory, or unknown validator outcome.
+    expected_result: A missing receipt, count mismatch, or substituted candidate is a distinct coverage gap. Every
+      unresolved source finding remains visible; no missing result is treated as confirmed safe.
