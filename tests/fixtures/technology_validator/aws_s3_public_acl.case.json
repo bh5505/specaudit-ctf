@@ -9,11 +9,19 @@
     "resource_uid": "arn:aws:s3:::ctf-synthetic-bucket",
     "account_id": "000000000000",
     "region": "us-east-1",
-    "details": {"reason": "confirmed_public_exposure"},
+    "details": {
+      "details": {
+        "reason": "confirmed_public_exposure"
+      },
+      "account_id": "000000000000",
+      "region": "us-east-1"
+    },
     "authorization": {
       "aws_read_role": true,
       "account_id": "000000000000",
-      "regions": ["us-east-1"]
+      "regions": [
+        "us-east-1"
+      ]
     }
   },
   "expect": {
@@ -23,9 +31,30 @@
     "reachability_status": "unknown",
     "reason_code": "public_acl",
     "planned_argv": [
-      ["s3api", "get-public-access-block", "--bucket", "ctf-synthetic-bucket", "--expected-bucket-owner", "000000000000"],
-      ["s3api", "get-bucket-acl", "--bucket", "ctf-synthetic-bucket", "--expected-bucket-owner", "000000000000"],
-      ["s3api", "get-bucket-policy", "--bucket", "ctf-synthetic-bucket", "--expected-bucket-owner", "000000000000"]
+      [
+        "s3api",
+        "get-public-access-block",
+        "--bucket",
+        "ctf-synthetic-bucket",
+        "--expected-bucket-owner",
+        "000000000000"
+      ],
+      [
+        "s3api",
+        "get-bucket-acl",
+        "--bucket",
+        "ctf-synthetic-bucket",
+        "--expected-bucket-owner",
+        "000000000000"
+      ],
+      [
+        "s3api",
+        "get-bucket-policy",
+        "--bucket",
+        "ctf-synthetic-bucket",
+        "--expected-bucket-owner",
+        "000000000000"
+      ]
     ]
   }
 }

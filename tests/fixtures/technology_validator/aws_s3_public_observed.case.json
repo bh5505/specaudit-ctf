@@ -9,11 +9,19 @@
     "resource_uid": "arn:aws:s3:::ctf-synthetic-bucket",
     "account_id": "000000000000",
     "region": "us-east-1",
-    "details": {"reason": "confirmed_public_exposure"},
+    "details": {
+      "details": {
+        "reason": "confirmed_public_exposure"
+      },
+      "account_id": "000000000000",
+      "region": "us-east-1"
+    },
     "authorization": {
       "aws_read_role": true,
       "account_id": "000000000000",
-      "regions": ["us-east-1"]
+      "regions": [
+        "us-east-1"
+      ]
     }
   },
   "expect": {
@@ -24,11 +32,57 @@
     "verdict": "CONFIRMED_REAL_EXPLOITABLE",
     "reason_code": "public_acl",
     "planned_argv": [
-      ["s3api", "get-public-access-block", "--bucket", "ctf-synthetic-bucket", "--expected-bucket-owner", "000000000000"],
-      ["s3api", "get-bucket-acl", "--bucket", "ctf-synthetic-bucket", "--expected-bucket-owner", "000000000000"],
-      ["s3api", "get-bucket-policy", "--bucket", "ctf-synthetic-bucket", "--expected-bucket-owner", "000000000000"],
-      ["s3", "ls", "s3://ctf-synthetic-bucket", "--no-sign-request", "--region", "us-east-1"],
-      ["curl", "-q", "--proxy", "", "--noproxy", "*", "--proto", "=https", "-s", "-o", "/dev/null", "-w", "%{http_code}", "-I", "-m", "25", "https://ctf-synthetic-bucket.s3.amazonaws.com"]
+      [
+        "s3api",
+        "get-public-access-block",
+        "--bucket",
+        "ctf-synthetic-bucket",
+        "--expected-bucket-owner",
+        "000000000000"
+      ],
+      [
+        "s3api",
+        "get-bucket-acl",
+        "--bucket",
+        "ctf-synthetic-bucket",
+        "--expected-bucket-owner",
+        "000000000000"
+      ],
+      [
+        "s3api",
+        "get-bucket-policy",
+        "--bucket",
+        "ctf-synthetic-bucket",
+        "--expected-bucket-owner",
+        "000000000000"
+      ],
+      [
+        "s3",
+        "ls",
+        "s3://ctf-synthetic-bucket",
+        "--no-sign-request",
+        "--region",
+        "us-east-1"
+      ],
+      [
+        "curl",
+        "-q",
+        "--proxy",
+        "",
+        "--noproxy",
+        "*",
+        "--proto",
+        "=https",
+        "-s",
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}",
+        "-I",
+        "-m",
+        "25",
+        "https://ctf-synthetic-bucket.s3.amazonaws.com"
+      ]
     ]
   }
 }

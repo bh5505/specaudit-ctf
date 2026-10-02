@@ -9,11 +9,19 @@
     "resource_uid": "arn:aws:s3:::ctf-synthetic-bucket",
     "account_id": "000000000000",
     "region": "us-east-1",
-    "details": {"reason": "confirmed_public_exposure"},
+    "details": {
+      "details": {
+        "reason": "confirmed_public_exposure"
+      },
+      "account_id": "000000000000",
+      "region": "us-east-1"
+    },
     "authorization": {
       "aws_read_role": true,
       "account_id": "000000000000",
-      "regions": ["us-east-1"]
+      "regions": [
+        "us-east-1"
+      ]
     }
   },
   "expect": {

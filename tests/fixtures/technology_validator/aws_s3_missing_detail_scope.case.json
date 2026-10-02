@@ -1,10 +1,10 @@
 {
   "synthetic": true,
-  "response_file": "aws_s3_owner_unverified.provider.json",
+  "response_file": "aws_s3_acl_public.json",
   "request": {
     "schema": "specaudit.validator.technology-fixture.v1",
     "provider": "aws",
-    "finding_id": "ctf-aws-s3-owner-unverified",
+    "finding_id": "ctf-aws-s3-missing-detail-scope",
     "rule_id": "AWS-NET-001",
     "resource_uid": "arn:aws:s3:::ctf-synthetic-bucket",
     "account_id": "000000000000",
@@ -12,9 +12,7 @@
     "details": {
       "details": {
         "reason": "confirmed_public_exposure"
-      },
-      "account_id": "000000000000",
-      "region": "us-east-1"
+      }
     },
     "authorization": {
       "aws_read_role": true,
@@ -25,11 +23,13 @@
     }
   },
   "expect": {
-    "finding_id": "ctf-aws-s3-owner-unverified",
+    "finding_id": "ctf-aws-s3-missing-detail-scope",
     "rule_id": "AWS-NET-001",
     "configuration_status": "unknown",
-    "reachability_status": "observed",
-    "verdict": "INCONCLUSIVE_NO_LIVE_PATH",
-    "reason_code": "bucket_owner_unverified"
-  }
+    "reachability_status": "unknown",
+    "verdict": "INCONCLUSIVE",
+    "reason_code": "account_scope_incomplete",
+    "planned_argv": []
+  },
+  "expect_no_plan": true
 }

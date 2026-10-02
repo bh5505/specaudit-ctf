@@ -1,10 +1,10 @@
 {
   "synthetic": true,
-  "response_file": "aws_sg_private.json",
+  "response_file": "aws_sg_public.json",
   "request": {
     "schema": "specaudit.validator.technology-fixture.v1",
     "provider": "aws",
-    "finding_id": "ctf-aws-ssh-private",
+    "finding_id": "ctf-aws-ssh-wrong-detail-region",
     "rule_id": "AWS-NET-010",
     "resource_uid": "arn:aws:ec2:us-east-1:000000000000:security-group/sg-0123456789abcdef0",
     "account_id": "000000000000",
@@ -19,14 +19,17 @@
     "details": {
       "details": {},
       "account_id": "000000000000",
-      "region": "us-east-1"
+      "region": "us-west-2"
     }
   },
   "expect": {
-    "finding_id": "ctf-aws-ssh-private",
+    "finding_id": "ctf-aws-ssh-wrong-detail-region",
     "rule_id": "AWS-NET-010",
-    "configuration_status": "refuted",
+    "configuration_status": "unknown",
     "reachability_status": "unknown",
-    "reason_code": "configured_ingress_refuted"
-  }
+    "verdict": "INCONCLUSIVE",
+    "reason_code": "region_scope_mismatch",
+    "planned_argv": []
+  },
+  "expect_no_plan": true
 }

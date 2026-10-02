@@ -12,7 +12,14 @@
     "authorization": {
       "aws_read_role": false,
       "account_id": "000000000000",
-      "regions": ["us-east-1"]
+      "regions": [
+        "us-east-1"
+      ]
+    },
+    "details": {
+      "details": {},
+      "account_id": "000000000000",
+      "region": "us-east-1"
     }
   },
   "expect": {
