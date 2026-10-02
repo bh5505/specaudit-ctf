@@ -18,7 +18,7 @@
     "projectNumber": "123456789012"
   },
   "bucket": {
-    "name": "demo-bucket",
+    "name": "other-bucket",
     "projectNumber": "123456789012"
   }
 }

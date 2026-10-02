@@ -11,7 +11,7 @@
     ],
     "etag": "BwU-synthetic-public",
     "version": 1,
-    "resourceId": "projects/_/buckets/demo-bucket"
+    "resourceId": "projects/_/buckets/foreign-bucket"
   },
   "project": {
     "projectId": "demo-project",

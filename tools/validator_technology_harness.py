@@ -34,6 +34,8 @@ PREFLIGHT_REFUSAL_REASONS = {
 PROVIDER_IDENTITY_MISMATCH_REASONS = {
     "group_identity_mismatch",
     "project_identity_mismatch",
+    "bucket_identity_mismatch",
+    "bucket_policy_identity_mismatch",
     "subscription_identity_mismatch",
     "nsg_identity_mismatch",
 }

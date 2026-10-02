@@ -140,10 +140,14 @@ still appear when the opposite side has rows.
 
 Alert source keys use the accepted alert's vendor ID. Conflicting accepted
 vendor IDs remain uncertain, with their observed IDs as possible keys.
-The over-queue lower bound gives each possible source and each known candidate
-at most one unit of support. Candidates with unknown keys use only remaining
-possible source capacity, so a NULL key or overlapping ambiguous alert keys
-cannot conceal an extra queued candidate.
+Known alert sources with different internal IDs but the same vendor ID and IP
+count as one builder-grain source. The over-queue lower bound gives each
+possible source and each known key at most one unit of support. Candidates
+with unknown keys use only remaining possible source capacity and must meet
+the required VM candidate ID. Pairwise vendor-key shortages can establish a
+definite over-queue. Larger overlapping key sets may leave additional excess
+uncounted; `matching_bound_incomplete=1` makes these rows non-clean even when
+`over_queued=0`. The reported over-queue count is a conservative lower bound.
 For VM critical findings, a corroborated CVE pair excludes the finding
 definitively only when all three pair components share its non-default accept
 event. Vendor observation dates cannot establish the order of accept events;
@@ -154,8 +158,9 @@ filename and mirrors the shipped query's logic and complete output.
 `sql/t7_asmvm_candidate_backlog.materialised.sql` explicitly materialises
 reused source and queue identity sets for plan comparison. The parity test
 compares complete rows under SQLite and DuckDB for repeated accepts, alert
-vendor IDs and conflicts, queue-capacity overlap, wrong IDs, moved VM findings,
-and known or unknown pair times. No performance result is claimed for these
+vendor IDs and aliases, pairwise Hall shortages, larger unresolved matching
+graphs, wrong IDs including missing keys, moved VM findings, and known or
+unknown pair times. No performance result is claimed for these
 revised plans; run
 `check_probe.py` on a representative typed corpus before using either one for
 performance decisions.

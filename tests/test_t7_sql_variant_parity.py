@@ -307,6 +307,96 @@ def test_overlapping_ambiguous_alert_keys_do_not_multiply_one_candidate(db):
     assert row[7] == 34
 
 
+def test_known_alert_aliases_share_vendor_ip_source(db):
+    for internal in ("alias-a", "alias-b"):
+        insert(db, "ext_telecom_offsec_asmvm_alert",
+               alert_id=internal, vendor_alert_id="17",
+               is_active_state=True, severity="High")
+        insert(db, "ext_telecom_offsec_asmvm_alert_endpoint",
+               alert_endpoint_id=f"{internal}|192.0.2.1", alert_id=internal,
+               ip="192.0.2.1", is_active_state=True, severity="High")
+    insert(db, "ext_telecom_offsec_asmvm_finding_candidate",
+           candidate_id="known-17", check_id="asm.alert.high_active",
+           finding_key="xpanse:alert:17:ip:192.0.2.1")
+    row = checked_rows(db)["asm.alert.high_active"]
+    assert_details(row, eligible=1, queued=1, backlog=0, over_queued=0,
+                   matching_bound_incomplete=0)
+    assert row[7] == 20
+
+    insert(db, "ext_telecom_offsec_asmvm_finding_candidate",
+           candidate_id="duplicate-17", check_id="asm.alert.high_active",
+           finding_key="xpanse:alert:17:ip:192.0.2.1")
+    row = checked_rows(db)["asm.alert.high_active"]
+    assert_details(row, eligible=1, queued=2, backlog=0, over_queued=1)
+    assert row[7] == 34
+
+
+def test_unknown_key_with_wrong_vm_candidate_id_is_unsupported(db):
+    insert(db, "ext_telecom_offsec_asmvm_vm_finding",
+           finding_id="real", ip="192.0.2.1", is_open=True, severity=9.8)
+    insert(db, "ext_telecom_offsec_asmvm_asm_vm_surface",
+           ip="192.0.2.1", has_active_service=True)
+    insert(db, "ext_telecom_offsec_asmvm_finding_candidate",
+           candidate_id="arbitrary", check_id="vm.scan.critical_open_exposed",
+           finding_key=None)
+    row = checked_rows(db)["vm.scan.critical_open_exposed"]
+    assert_details(row, eligible=1, queued=1, backlog=1, over_queued=1,
+                   queue_identity_unknown=1, matching_bound_incomplete=0)
+    assert row[7] == 34
+
+
+def add_conflicted_alert(db, internal: str, vendors: tuple[str, ...]) -> None:
+    for vendor in vendors:
+        insert(db, "ext_telecom_offsec_asmvm_alert", accept=f"accept-{vendor}",
+               alert_id=internal, vendor_alert_id=vendor,
+               is_active_state=True, severity="High")
+    insert(db, "ext_telecom_offsec_asmvm_alert_endpoint",
+           accept="accept-endpoint",
+           alert_endpoint_id=f"{internal}|192.0.2.1", alert_id=internal,
+           ip="192.0.2.1", is_active_state=True, severity="High")
+
+
+@pytest.mark.parametrize("vendor_sets, candidate_vendors", [
+    ((("17", "18"), ("17", "18"), ("19", "20")),
+     ("17", "19", "20")),
+    ((("17", "18"), ("17", "19"), ("17", "20")),
+     ("17", "18", "18")),
+])
+def test_three_source_hall_deficit_is_definite(db, vendor_sets,
+                                                candidate_vendors):
+    for index, vendors in enumerate(vendor_sets):
+        add_conflicted_alert(db, f"internal-{index}", vendors)
+    for index, vendor in enumerate(candidate_vendors):
+        insert(db, "ext_telecom_offsec_asmvm_finding_candidate",
+               accept="accept-queue", candidate_id=f"queued-{index}",
+               check_id="asm.alert.high_active",
+               finding_key=f"xpanse:alert:{vendor}:ip:192.0.2.1")
+    row = checked_rows(db)["asm.alert.high_active"]
+    assert_details(row, eligible=0, possible_eligible=3, queued=3,
+                   backlog=0, over_queued=1, matching_bound_incomplete=1)
+    assert row[7] == 34
+
+
+def test_larger_hall_subset_is_explicitly_unresolved(db):
+    # Pair subsets have adequate capacity, but keys 17/18/19 together can
+    # use only the first two of five source units. A loose lower bound is not
+    # a clean result.
+    vendor_sets = (("17", "18", "19"), ("17", "18", "19"),
+                   ("20", "21", "22"), ("20", "21", "22"),
+                   ("20", "21", "22"))
+    for index, vendors in enumerate(vendor_sets):
+        add_conflicted_alert(db, f"internal-{index}", vendors)
+    for vendor in ("17", "18", "19", "20", "21"):
+        insert(db, "ext_telecom_offsec_asmvm_finding_candidate",
+               accept="accept-queue", candidate_id=f"queued-{vendor}",
+               check_id="asm.alert.high_active",
+               finding_key=f"xpanse:alert:{vendor}:ip:192.0.2.1")
+    row = checked_rows(db)["asm.alert.high_active"]
+    assert_details(row, eligible=0, possible_eligible=5, queued=5,
+                   backlog=0, over_queued=0, matching_bound_incomplete=1)
+    assert row[7] == 26
+
+
 def test_unknown_pair_times_bound_possible_vm_backlog(db):
     insert(db, "ext_telecom_offsec_asmvm_vm_finding",
            finding_id="unknown", ip="192.0.2.20", is_open=True,

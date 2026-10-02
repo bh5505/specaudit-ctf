@@ -5,7 +5,7 @@
     "provider": "gcp",
     "finding_id": "ctf-gcp-missing-inventory-scope",
     "rule_id": "GCP-IAM-001",
-    "resource_uid": "//cloudresourcemanager.googleapis.com/projects/demo-project",
+    "resource_uid": "//storage.googleapis.com/demo-bucket",
     "details": {
       "account_id": "123456789012",
       "details": {}

@@ -10,14 +10,19 @@
         "members": [
           "allUsers"
         ],
-        "role": "roles/viewer"
+        "role": "roles/storage.objectViewer"
       }
     ],
     "etag": "BwU-synthetic-public",
-    "version": 1
+    "version": 1,
+    "resourceId": "projects/_/buckets/demo-bucket"
   },
   "project": {
     "projectId": "demo-project",
+    "projectNumber": "123456789012"
+  },
+  "bucket": {
+    "name": "demo-bucket",
     "projectNumber": "123456789012"
   }
 }

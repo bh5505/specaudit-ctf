@@ -98,7 +98,7 @@ python3 tools/validator_technology_harness.py --validator-bin /absolute/path/to/
 
 The cases cover S3 public ACL versus full Block Public Access (`AWS-NET-001`),
 public and private security-group SSH/RDP ingress including IPv6
-(`AWS-NET-010/011`), project IAM public and scoped bindings (`GCP-IAM-001`),
+(`AWS-NET-010/011`), bucket IAM public and scoped bindings (`GCP-IAM-001`),
 and NSG management ingress with deny/priority uncertainty (`AZURE-NET-002`).
 They also check missing or mismatched authorization, provider identity, and
 claim identity. The harness uses the validator's production parsers and

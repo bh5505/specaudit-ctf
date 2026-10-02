@@ -3,15 +3,13 @@
   "request": {
     "schema": "specaudit.validator.technology-fixture.v1",
     "provider": "gcp",
-    "finding_id": "ctf-gcp-config-override",
+    "finding_id": "ctf-gcp-malformed-bucket-uid",
     "rule_id": "GCP-IAM-001",
-    "resource_uid": "//storage.googleapis.com/demo-bucket",
+    "resource_uid": "//storage.googleapis.com/demo-bucket/objects/not-a-bucket",
     "account_id": "123456789012",
     "details": {
       "account_id": "123456789012",
-      "details": {
-        "reason": "configured_public_iam_binding"
-      }
+      "details": {}
     },
     "authorization": {
       "project_id": "demo-project",
@@ -20,11 +18,13 @@
     }
   },
   "expect": {
-    "finding_id": "ctf-gcp-config-override",
+    "finding_id": "ctf-gcp-malformed-bucket-uid",
     "rule_id": "GCP-IAM-001",
     "configuration_status": "unknown",
     "reachability_status": "unknown",
-    "reason_code": "gcp_config_override"
+    "reason_code": "candidate_scope_mismatch",
+    "planned_argv": []
   },
-  "response_file": "gcp_override.provider.json"
+  "response_file": "gcp_public.provider.json",
+  "expect_no_plan": true
 }

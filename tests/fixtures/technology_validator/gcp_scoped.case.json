@@ -5,7 +5,7 @@
     "provider": "gcp",
     "finding_id": "ctf-gcp-scoped-member",
     "rule_id": "GCP-IAM-001",
-    "resource_uid": "//cloudresourcemanager.googleapis.com/projects/demo-project",
+    "resource_uid": "//storage.googleapis.com/demo-bucket",
     "account_id": "123456789012",
     "details": {
       "account_id": "123456789012",
@@ -22,7 +22,7 @@
     "rule_id": "GCP-IAM-001",
     "configuration_status": "refuted",
     "reachability_status": "unknown",
-    "reason_code": "public_project_binding_absent"
+    "reason_code": "public_bucket_binding_absent"
   },
   "response_file": "gcp_scoped.provider.json"
 }

@@ -5,12 +5,12 @@
     "provider": "gcp",
     "finding_id": "ctf-gcp-wrong-project",
     "rule_id": "GCP-IAM-001",
-    "resource_uid": "//cloudresourcemanager.googleapis.com/projects/demo-project",
+    "resource_uid": "//storage.googleapis.com/demo-bucket",
     "account_id": "123456789012",
     "details": {
       "account_id": "123456789012",
       "details": {
-        "reason": "configured_public_project_iam_binding"
+        "reason": "configured_public_iam_binding"
       }
     },
     "authorization": {

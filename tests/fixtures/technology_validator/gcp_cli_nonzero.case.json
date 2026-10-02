@@ -5,7 +5,7 @@
     "provider": "gcp",
     "finding_id": "ctf-gcp-cli-nonzero",
     "rule_id": "GCP-IAM-001",
-    "resource_uid": "//cloudresourcemanager.googleapis.com/projects/demo-project",
+    "resource_uid": "//storage.googleapis.com/demo-bucket",
     "account_id": "123456789012",
     "details": {
       "account_id": "123456789012",
@@ -44,9 +44,21 @@
         "--quiet"
       ],
       [
-        "projects",
+        "storage",
+        "buckets",
+        "describe",
+        "gs://demo-bucket",
+        "--raw",
+        "--format=json",
+        "--project=demo-project",
+        "--account=validator@example.test",
+        "--quiet"
+      ],
+      [
+        "storage",
+        "buckets",
         "get-iam-policy",
-        "demo-project",
+        "gs://demo-bucket",
         "--format=json",
         "--project=demo-project",
         "--account=validator@example.test",

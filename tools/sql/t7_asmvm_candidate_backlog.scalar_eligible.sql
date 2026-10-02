@@ -80,6 +80,13 @@ alert_possible_keys AS (
     WHERE s.source_identity_unknown = 1
       AND NULLIF(TRIM(a.vendor_alert_id), '') IS NOT NULL
 ),
+known_alert_source AS (
+    -- Builder candidate identity is vendor ID plus endpoint IP. Multiple
+    -- internal alert IDs with that same identity are one logical source.
+    SELECT DISTINCT vendor_alert_id, ip
+    FROM alert_source
+    WHERE source_identity_unknown = 0
+),
 asm_pair_times AS (
     SELECT ip, cve, MAX(first_observed_ts) AS latest_first_observed,
            MAX(CASE WHEN first_observed_ts IS NULL THEN 1 ELSE 0 END)
@@ -173,11 +180,13 @@ source_identities AS (
     FROM critical_source_rows GROUP BY finding_id
     UNION ALL
     SELECT 'asm.alert.high_active',
-           CASE WHEN vendor_alert_id IS NULL THEN NULL
-                ELSE 'xpanse:alert:' || vendor_alert_id || ':ip:' || ip END,
-           NULL, CASE WHEN source_identity_unknown = 1 THEN 0 ELSE 1 END,
-           1, 0, 0, engagement_id, alert_id, ip, source_identity_unknown
-    FROM alert_source
+           'xpanse:alert:' || vendor_alert_id || ':ip:' || ip,
+           NULL, 1, 1, 0, 0, NULL, NULL, ip, 0
+    FROM known_alert_source
+    UNION ALL
+    SELECT 'asm.alert.high_active', NULL,
+           NULL, 0, 1, 0, 0, engagement_id, alert_id, ip, 1
+    FROM alert_source WHERE source_identity_unknown = 1
     UNION ALL
     SELECT 'asm.inferred_cve', 'xpanse:cve:' || cve || ':ip:' || ip,
            NULL, 1, 1, 0, 0, NULL, NULL, NULL, 0 FROM corroborated_pair
@@ -216,11 +225,20 @@ source_with_queue AS (
                       AND c.finding_key = s.source_key
                       AND (s.required_candidate_id IS NULL
                            OR c.candidate_id = s.required_candidate_id))
-                THEN 1 ELSE 0 END END AS definitely_queued
+                THEN 1 ELSE 0 END END AS definitely_queued,
+           CASE WHEN EXISTS (
+               SELECT 1 FROM candidate_queue c
+               WHERE c.check_id = s.producer AND c.key_consistent = 0
+                 AND (s.required_candidate_id IS NULL
+                      OR c.candidate_id = s.required_candidate_id))
+                THEN 1 ELSE 0 END AS unknown_queued
     FROM source_identities s
 ),
 known_candidate_support AS (
-    SELECT c.check_id AS producer, COUNT(*) AS possibly_supported_candidates
+    -- One stable finding_key has capacity for one logical source, even if
+    -- distinct queued candidate IDs claim the same key.
+    SELECT c.check_id AS producer,
+           COUNT(DISTINCT c.finding_key) AS possibly_supported_candidates
     FROM candidate_queue c
     WHERE c.key_consistent = 1 AND EXISTS (
         SELECT 1 FROM source_identities s
@@ -234,6 +252,49 @@ known_candidate_support AS (
           AND (s.required_candidate_id IS NULL
                OR c.candidate_id = s.required_candidate_id))
     GROUP BY c.check_id
+),
+unknown_candidate_support AS (
+    SELECT c.check_id AS producer,
+           COUNT(*) AS possibly_supported_unknown_candidates
+    FROM candidate_queue c
+    WHERE c.key_consistent = 0 AND EXISTS (
+        SELECT 1 FROM source_identities s
+        WHERE s.producer = c.check_id AND s.possible_eligible = 1
+          AND (s.required_candidate_id IS NULL
+               OR c.candidate_id = s.required_candidate_id))
+    GROUP BY c.check_id
+),
+alert_key_pairs AS (
+    -- Pair subsets expose a definite shortage when two accepted vendor keys
+    -- can only belong to one conflicted endpoint.
+    SELECT DISTINCT k1.source_key AS key1, k2.source_key AS key2
+    FROM alert_possible_keys k1
+    JOIN alert_possible_keys k2
+      ON k2.engagement_id = k1.engagement_id AND k2.alert_id = k1.alert_id
+     AND k2.ip = k1.ip AND k1.source_key < k2.source_key
+    WHERE EXISTS (
+        SELECT 1 FROM candidate_queue c
+        WHERE c.check_id = 'asm.alert.high_active'
+          AND c.key_consistent = 1 AND c.finding_key = k1.source_key)
+      AND EXISTS (
+        SELECT 1 FROM candidate_queue c
+        WHERE c.check_id = 'asm.alert.high_active'
+          AND c.key_consistent = 1 AND c.finding_key = k2.source_key)
+),
+alert_pair_deficit AS (
+    SELECT CASE WHEN EXISTS (
+        SELECT 1 FROM alert_key_pairs p
+        WHERE (SELECT COUNT(*) FROM source_identities s
+               WHERE s.producer = 'asm.alert.high_active'
+                 AND s.possible_eligible = 1
+                 AND (s.source_key IN (p.key1, p.key2)
+                      OR (s.source_identity_unknown = 1 AND EXISTS (
+                          SELECT 1 FROM alert_possible_keys k
+                          WHERE k.engagement_id = s.source_engagement_id
+                            AND k.alert_id = s.source_alert_id
+                            AND k.ip = s.source_ip
+                            AND k.source_key IN (p.key1, p.key2))))) = 1)
+        THEN 1 ELSE 0 END AS pair_deficit
 ),
 source_totals AS (
     SELECT producer,
@@ -249,6 +310,9 @@ source_totals AS (
                AS definitely_supported_queue,
            SUM(CASE WHEN possible_eligible = 1 AND queued = 1 THEN 1 ELSE 0 END)
                AS possibly_supported_queue,
+           SUM(CASE WHEN definite_eligible = 1 AND queued = 0
+                         AND unknown_queued = 0 THEN 1 ELSE 0 END)
+               AS required_identity_backlog,
            SUM(later_pair_source_seen) AS later_pair_source_seen,
            SUM(pair_source_time_unknown) AS pair_source_time_unknown,
            SUM(source_identity_unknown) AS source_identity_unknown
@@ -279,9 +343,17 @@ eligible AS (
            COALESCE(s.possibly_supported_queue, 0) AS possibly_supported_queue,
            COALESCE(k.possibly_supported_candidates, 0)
                AS possibly_supported_candidates,
+           COALESCE(u.possibly_supported_unknown_candidates, 0)
+               AS possibly_supported_unknown_candidates,
+           CASE WHEN p.producer = 'asm.alert.high_active'
+                THEN (SELECT pair_deficit FROM alert_pair_deficit)
+                ELSE 0 END AS alert_pair_deficit,
+           COALESCE(s.required_identity_backlog, 0) AS required_identity_backlog,
            COALESCE(s.later_pair_source_seen, 0) AS later_pair_source_seen,
            COALESCE(s.pair_source_time_unknown, 0) AS pair_source_time_unknown,
            COALESCE(s.source_identity_unknown, 0) AS source_identity_unknown,
+           CASE WHEN COALESCE(s.source_identity_unknown, 0) > 0
+                THEN 1 ELSE 0 END AS matching_bound_incomplete,
            COALESCE(q.queued, 0) AS queued,
            COALESCE(q.pending_seen, 0) AS pending_seen,
            COALESCE(q.duplicate_seen, 0) AS duplicate_seen,
@@ -298,31 +370,43 @@ eligible AS (
     LEFT JOIN source_totals s ON s.producer = p.producer
     LEFT JOIN queue_totals q ON q.producer = p.producer
     LEFT JOIN known_candidate_support k ON k.producer = p.producer
+    LEFT JOIN unknown_candidate_support u ON u.producer = p.producer
 ),
-bounds AS (
+known_bounds AS (
     SELECT e.*,
            CASE WHEN e.possibly_supported_queue < e.possibly_supported_candidates
                 THEN e.possibly_supported_queue
-                ELSE e.possibly_supported_candidates END AS known_possible_support,
-           CASE WHEN e.backlog > e.queue_identity_unknown
-                THEN e.backlog - e.queue_identity_unknown ELSE 0 END
+                ELSE e.possibly_supported_candidates END AS raw_known_support,
+           CASE WHEN e.producer = 'vm.scan.critical_open_exposed'
+                THEN e.required_identity_backlog
+                WHEN e.backlog > e.possibly_supported_unknown_candidates
+                THEN e.backlog - e.possibly_supported_unknown_candidates
+                ELSE 0 END
                 AS definite_backlog
     FROM eligible e
 ),
+bounds AS (
+    SELECT k.*,
+           CASE WHEN k.raw_known_support >
+                         k.possibly_supported_candidates - k.alert_pair_deficit
+                THEN k.possibly_supported_candidates - k.alert_pair_deficit
+                ELSE k.raw_known_support END AS known_possible_support
+    FROM known_bounds k
+),
 assessed AS (
     SELECT b.*,
-           -- Count at most one known candidate per source and one source per
-           -- known candidate. Unknown-key rows use only the remaining source
-           -- capacity; possible_backlog is not unused capacity.
+           -- Known keys and source units each have capacity one. Unknown-key
+           -- rows must satisfy any required candidate ID and use only the
+           -- remaining possible source capacity.
            CASE WHEN b.queued > b.known_possible_support +
-                     CASE WHEN b.queue_identity_unknown <
+                     CASE WHEN b.possibly_supported_unknown_candidates <
                                    b.possible_eligible_rows - b.known_possible_support
-                          THEN b.queue_identity_unknown
+                          THEN b.possibly_supported_unknown_candidates
                           ELSE b.possible_eligible_rows - b.known_possible_support END
                 THEN b.queued - b.known_possible_support -
-                     CASE WHEN b.queue_identity_unknown <
+                     CASE WHEN b.possibly_supported_unknown_candidates <
                                    b.possible_eligible_rows - b.known_possible_support
-                          THEN b.queue_identity_unknown
+                          THEN b.possibly_supported_unknown_candidates
                           ELSE b.possible_eligible_rows - b.known_possible_support END
                 ELSE 0 END AS definite_over_queued
     FROM bounds b
@@ -345,6 +429,8 @@ SELECT
     '; pair_source_time_unknown=' || CAST(e.pair_source_time_unknown AS VARCHAR) ||
     '; queue_identity_unknown=' || CAST(e.queue_identity_unknown AS VARCHAR) ||
     '; source_identity_unknown=' || CAST(e.source_identity_unknown AS VARCHAR) ||
+    '; matching_bound_incomplete=' ||
+        CAST(e.matching_bound_incomplete AS VARCHAR) ||
     '; pending_seen=' || CAST(e.pending_seen AS VARCHAR) ||
     '; duplicate_seen=' || CAST(e.duplicate_seen AS VARCHAR) ||
     '; confirmed_seen=' || CAST(e.confirmed_seen AS VARCHAR) ||
@@ -359,7 +445,7 @@ SELECT
          WHEN e.definite_backlog > 0 OR e.possible_eligible_rows > e.eligible_rows
            OR e.queued > e.definitely_supported_queue
            OR e.queue_identity_unknown > 0
-           OR e.source_identity_unknown > 0 THEN 26
+           OR e.matching_bound_incomplete > 0 THEN 26
          ELSE 20 END AS risk_score
 FROM assessed e
 WHERE e.possible_eligible_rows > 0 OR e.queued > 0
