@@ -120,6 +120,13 @@ cache or browser/screenshot surface is shipped.
 
 ## Coverage catalog
 
+CLI arms cap combined stdout and stderr bytes during execution and refuse a
+truncated result. The bounded runner requires POSIX process groups and refuses
+to launch on unsupported platforms. It kills same-group descendants on cap,
+timeout, and normal completion, including children retaining pipe handles.
+Processes deliberately detached into a new session are outside that cleanup
+guarantee; this runner is an output budget, not an operating-system sandbox.
+
 `coverage.yaml` classifies each surveyed product as:
 
 - `head` — alternative agent or CLI head

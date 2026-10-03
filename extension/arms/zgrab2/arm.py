@@ -12,6 +12,7 @@ from ...contract import (
     NotInstalledError,
     Result,
 )
+from ..bounded_capture import run_bounded
 from ..dispatch import authorize, load_scope, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
@@ -117,15 +118,11 @@ class Zgrab2Arm:
             )
         log_dispatch(ARM_ID, action, scope, auth_target)
         try:
-            proc = subprocess.run(
+            proc, overflowed = run_bounded(
                 argv_for(binary, module, port),
                 input=f"{stdin_host}\n",
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                maximum=MAX_OUTPUT_CHARS,
                 timeout=self.timeout,
-                check=False,
             )
         except subprocess.TimeoutExpired:
             return Result(
@@ -143,6 +140,9 @@ class Zgrab2Arm:
                 output=None,
                 error=redact(str(exc)),
             )
+        if overflowed:
+            return Result(ok=False, arm_id=spec.id, action=action, output=None,
+                          error="subprocess output exceeded capture cap")
         output: Any = _parse_output(proc.stdout)
         stamped = {"dispatch": stamp(scope, auth_target), "output": output}
         if proc.returncode != 0:

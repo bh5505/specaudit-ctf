@@ -1,19 +1,19 @@
-"""Durable governed pipeline: pack findings -> prioritized targets with threat
-models + attack chains (the specaudit-ctf MCP-surface orchestration).
+"""Operator-side pipeline: pack findings -> prioritized targets with threat
+models + attack chains.
 
-specaudit-ctf *is* the MCP surface. The ``tools/*.py`` scripts are the backend
-logic; this module wires their durable cores behind a small set of stable MCP
-surface tools so an agent drives the end-to-end loop through MCP surfaces, not
-ad-hoc bash guessing at CLI shapes.
+The ``tools/*.py`` scripts provide durable cores. This module composes them
+for an operator with approved evidence and report paths. It is not an MCP tool:
+attached callers use the four-tool admitted MCP surface, while filesystem
+custody and pack/report destinations remain operator decisions.
 
-The governed end-to-end path (every step is an MCP surface tool):
+The end-to-end path:
 
     step 1   invoke <recon/enrich arm>          seed = top-level domains + a
              asset-recon, gti, vulnify, zdns,   description of the target
              zgrab2, httpprobe, nmap, ...       environment -> assets + intel
-    step 2   pack_run                          ext_telecom_offsec over evidence
+    step 2   operator pack_run                 ext_telecom_offsec over evidence
                                                  -> report.json (findings)
-    step 3   prioritize_targets                report -> prioritized target list
+    step 3   operator prioritize_targets       report -> prioritized target list
                                                  with threat models + attack
                                                  chains (HUMAN VALIDATION GATE
                                                  deliverable for red-team review)
@@ -21,11 +21,13 @@ The governed end-to-end path (every step is an MCP surface tool):
              nmap, zgrab2, httpprobe,          of the human-validated targets
              snmp_readtier, ike_readtier, ...
 
-Only steps 2 and 3 are new surface tools; steps 1 and 4 already exist as the
-``invoke`` arm surface. The cores imported here are the same deterministic
-logic the ``tools/demo_*`` CLIs call -- this module is the governed caller.
+Steps 1 and 4 use the admitted ``invoke`` arm surface. The operator runs
+steps 2 and 3 after validating local evidence, custody and output paths. The
+cores imported here are the same deterministic logic the ``tools/demo_*`` CLIs
+call.
 
-Pure-stdlib; sqlite is the default pack engine so the surface needs no duckdb.
+Pure-stdlib; sqlite is the default pack engine, so the operator need not install
+duckdb for the basic workflow.
 """
 from __future__ import annotations
 
@@ -148,10 +150,10 @@ def pack_run(
     run_id: str | None = None,
     fast_csv: bool = False,
 ) -> dict:
-    """Run an ext_telecom_offsec pack over an evidence dir (governed step 2).
+    """Run an ext_telecom_offsec pack over operator-approved evidence.
 
     Wraps ``tools/ctf_run_checks.run()`` (the durable runner) and returns both
-    the parsed report and the report.json path, so the next surface step
+    the parsed report and the report.json path, so the next operator step
     (``prioritize_targets``) consumes a stable, discoverable artifact rather
     than guessing at output locations.
     """
@@ -218,8 +220,7 @@ def _pairing_stage(evidence_dir: str | None, focus_ips: list[str]) -> dict:
     except Exception as exc:  # noqa: BLE001 - any pairing failure degrades, never crashes
         # A malformed base table, a DuckDB type/cast error, or any other core
         # failure must degrade to an explicit incomplete marker: crashing here
-        # would take prioritize_targets down with it, and the MCP surface only
-        # translates ValueError/RuntimeError into a tool error.
+        # would abort the operator's prioritization run.
         return {"available": False, "reason": f"G3 pairing failed: {exc}"}
     by_ip: dict[str, list[dict]] = {}
     for pair in pairs:

@@ -399,7 +399,7 @@ def test_v2_registry_is_frozen_ordered_and_does_not_expand_public_dispatch() -> 
         "rubeus.telemetry",
         "gpohound.policy",
     )
-    assert TOOLS == ("list", "describe", "invoke", "run_range", "pack_run", "prioritize_targets")
+    assert TOOLS == ("list", "describe", "invoke", "run_range")
     assert len(INVOKE_PROFILES) == 218
     assert len(PR97_ARM_IDS) == 14
     assert sum(

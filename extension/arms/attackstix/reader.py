@@ -10,10 +10,20 @@ comparable across bundles.
 from __future__ import annotations
 
 import json
+import os
+import stat
 from dataclasses import dataclass, field
 from typing import Any
 
-from .policy import DESCRIPTION_CHARS
+from .policy import DESCRIPTION_CHARS, MAX_BUNDLE_BYTES
+
+# These limits apply before json.loads builds a Python object graph. The
+# byte cap alone does not bound a tiny JSON document made of millions of
+# empty containers or an excessively deep tree.
+MAX_JSON_DEPTH = 64
+MAX_JSON_CONTAINERS = 500_000
+MAX_JSON_SEPARATORS = 2_000_000
+MAX_BUNDLE_OBJECTS = 100_000
 
 # Verified against the official mitreattack-python constants
 # (mitreattack/constants.py, MITRE_ATTACK_ID_SOURCE_NAMES): the ATT&CK
@@ -48,8 +58,18 @@ class Subject:
 def load_bundle(path: Any) -> dict[str, Any]:
     """Parse and index a local STIX 2.1 bundle file."""
     try:
-        with open(path, "rb") as handle:
-            raw = handle.read()
+        # Open once, without following a swapped symlink or blocking on a
+        # FIFO, then validate the descriptor actually being read.
+        nonblocking = getattr(os, "O_NONBLOCK", None)
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        if nonblocking is None or nofollow is None:
+            raise BundleError("bundle reader requires no-follow and nonblocking file opens")
+        flags = os.O_RDONLY | nonblocking | nofollow
+        descriptor = os.open(path, flags)
+        with os.fdopen(descriptor, "rb") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise BundleError("bundle must be a regular file")
+            raw = handle.read(MAX_BUNDLE_BYTES + 1)
     except OSError as exc:
         raise BundleError(f"bundle could not be read: {exc}") from exc
     return load_bundle_bytes(raw)
@@ -57,6 +77,9 @@ def load_bundle(path: Any) -> dict[str, Any]:
 
 def load_bundle_bytes(raw: bytes) -> dict[str, Any]:
     """Parse and index one immutable bundle byte snapshot."""
+    if len(raw) > MAX_BUNDLE_BYTES:
+        raise BundleError(f"bundle exceeds the {MAX_BUNDLE_BYTES} byte read cap")
+    _check_json_structure(raw)
     try:
         # Strict decode: a bundle with invalid UTF-8 is corrupted data,
         # not content to silently U+FFFD-replace (sweep 9, bot finding).
@@ -65,13 +88,15 @@ def load_bundle_bytes(raw: bytes) -> dict[str, Any]:
         raise BundleError(f"bundle is not valid UTF-8: {exc}") from exc
     try:
         data = json.loads(text)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, RecursionError) as exc:
         raise BundleError(f"bundle is not valid JSON: {exc}") from exc
     if not isinstance(data, dict) or data.get("type") != "bundle":
         raise BundleError("bundle must be a STIX object with type 'bundle'")
     objects = data.get("objects")
     if not isinstance(objects, list):
         raise BundleError("bundle must carry an objects list")
+    if len(objects) > MAX_BUNDLE_OBJECTS:
+        raise BundleError(f"bundle exceeds the {MAX_BUNDLE_OBJECTS} object cap")
 
     subjects: list[Subject] = []
     by_id: dict[str, dict[str, Any]] = {}
@@ -103,6 +128,47 @@ def load_bundle_bytes(raw: bytes) -> dict[str, Any]:
         "by_id": by_id,
         "relationships": relationships,
     }
+
+
+def _check_json_structure(raw: bytes) -> None:
+    """Bound container allocation and nesting without interpreting JSON.
+
+    JSON punctuation is ASCII, so scanning bytes is enough here. Escaped
+    quotes and brackets inside strings are ignored; json.loads still owns
+    syntax validation after this resource check.
+    """
+    in_string = False
+    escaped = False
+    depth = 0
+    containers = 0
+    separators = 0
+    for byte in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif byte == 0x5C:  # backslash
+                escaped = True
+            elif byte == 0x22:  # quote
+                in_string = False
+        elif byte == 0x22:
+            in_string = True
+        elif byte in (0x7B, 0x5B):  # { [
+            depth += 1
+            containers += 1
+            if depth > MAX_JSON_DEPTH:
+                raise BundleError(f"bundle exceeds the {MAX_JSON_DEPTH} JSON depth cap")
+            if containers > MAX_JSON_CONTAINERS:
+                raise BundleError(
+                    f"bundle exceeds the {MAX_JSON_CONTAINERS} JSON container cap"
+                )
+        elif byte in (0x7D, 0x5D):  # } ]
+            depth -= 1
+        elif byte in (0x2C, 0x3A):  # , :
+            separators += 1
+            if separators > MAX_JSON_SEPARATORS:
+                raise BundleError(
+                    f"bundle exceeds the {MAX_JSON_SEPARATORS} JSON separator cap"
+                )
 
 
 def _subject_from(row: dict[str, Any]) -> Subject | None:

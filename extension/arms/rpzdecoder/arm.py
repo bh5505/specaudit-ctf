@@ -22,6 +22,7 @@ from ...contract import (
     NotInstalledError,
     Result,
 )
+from ..bounded_capture import run_bounded
 from ..dispatch import authorize, log_dispatch, stamp
 from ..mcp_client import redact
 from . import decoder
@@ -259,30 +260,28 @@ class RpzDecoderArm:
                 outdir.mkdir(parents=True, exist_ok=True)
                 raw_path = outdir / "zone-axfr.txt"
                 with raw_path.open("wb") as handle:
-                    proc = subprocess.run(
+                    proc, overflowed = run_bounded(
                         cmd,
-                        stdout=handle,
-                        stderr=subprocess.PIPE,
-                        stdin=subprocess.DEVNULL,
+                        stdout_file=handle,
+                        maximum=MAX_DUMP_BYTES,
+                        stderr_maximum=MAX_OUTPUT_CHARS,
                         timeout=self.timeout,
-                        check=False,
                     )
-                stderr_text = (proc.stderr or b"").decode("utf-8", errors="replace")
+                if overflowed:
+                    return _fail(spec, action, "dig output exceeded capture cap")
+                stderr_text = proc.stderr or ""
                 try:
                     dump_bytes = raw_path.read_bytes()
                 except OSError as exc:
                     return _fail(spec, action, f"transfer unreadable: {exc}")
             else:
-                proc = subprocess.run(
+                proc, overflowed = run_bounded(
                     cmd,
-                    capture_output=True,
-                    stdin=subprocess.DEVNULL,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
+                    maximum=MAX_OUTPUT_CHARS,
                     timeout=self.timeout,
-                    check=False,
                 )
+                if overflowed:
+                    return _fail(spec, action, "dig output exceeded capture cap")
                 stdout_text = proc.stdout or ""
                 stderr_text = proc.stderr or ""
         except subprocess.TimeoutExpired:

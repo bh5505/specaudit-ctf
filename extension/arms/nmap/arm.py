@@ -11,6 +11,7 @@ from ...contract import (
     NotInstalledError,
     Result,
 )
+from ..bounded_capture import run_bounded
 from ..dispatch import authorize, load_scope, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
@@ -109,15 +110,10 @@ class NmapArm:
             )
         log_dispatch(ARM_ID, action, scope, target)
         try:
-            proc = subprocess.run(
+            proc, overflowed = run_bounded(
                 argv_for(binary, target, mode, ports),
-                capture_output=True,
-                stdin=subprocess.DEVNULL,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                maximum=MAX_OUTPUT_CHARS,
                 timeout=self.timeout,
-                check=False,
             )
         except subprocess.TimeoutExpired:
             return Result(
@@ -135,6 +131,9 @@ class NmapArm:
                 output=None,
                 error=redact(str(exc)),
             )
+        if overflowed:
+            return Result(ok=False, arm_id=spec.id, action=action, output=None,
+                          error="subprocess output exceeded capture cap")
         output = _parse_output(proc.stdout)
         stamped = {"dispatch": stamp(scope, target), "output": output}
         if proc.returncode != 0:

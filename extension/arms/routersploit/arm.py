@@ -13,6 +13,7 @@ from ...contract import (
     NotInstalledError,
     Result,
 )
+from ..bounded_capture import run_bounded
 from ..dispatch import authorize, load_scope, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
@@ -128,16 +129,11 @@ class RoutersploitArm:
         try:
             # rsf.py opens routersploit.log in cwd; keep it off the clone.
             with tempfile.TemporaryDirectory() as tmp:
-                proc = subprocess.run(
+                proc, overflowed = run_bounded(
                     cmd,
                     cwd=tmp,
-                    capture_output=True,
-                    stdin=subprocess.DEVNULL,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
+                    maximum=MAX_OUTPUT_CHARS,
                     timeout=self.timeout,
-                    check=False,
                 )
         except subprocess.TimeoutExpired:
             return Result(
@@ -155,6 +151,9 @@ class RoutersploitArm:
                 output=None,
                 error=redact(str(exc)),
             )
+        if overflowed:
+            return Result(ok=False, arm_id=spec.id, action=action, output=None,
+                          error="subprocess output exceeded capture cap")
         output: Any = _parse_output(proc.stdout)
         stamped = {"dispatch": stamp(scope, target), "output": output}
         if proc.returncode != 0:

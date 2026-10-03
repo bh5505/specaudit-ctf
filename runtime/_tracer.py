@@ -22,7 +22,7 @@ its ``sys.modules`` classification stays per-invocation truth:
   ``initialize`` request, the ``notifications/initialized`` notice, and
   a ``tools/list`` request, then EOF. The server must answer both
   requests with valid JSON-RPC results — initialize echoing a supported
-  protocol revision and tools/list naming exactly the six advertised
+  protocol revision and tools/list naming exactly the four advertised
   tools — and exit 0 on EOF. Anything else is a tracer failure.
 
 - ``asset-recon-worker`` exercises the isolated worker entrypoint with
@@ -85,9 +85,8 @@ def classify(name: str) -> str | None:
         return "yaml"
     if top == "extension":
         return "extension"
-    # First-party durable producer logic (tools/demo_* cores, the pack runner)
-    # is imported by extension/pipeline.py as the MCP-surface backend, so the
-    # sealed mcp_server invocation now genuinely requires it in the bundle.
+    # First-party durable producer logic can be imported by an explicit
+    # trusted invocation; only modules actually traced enter the closure.
     if top == "tools":
         return "extension"
     if top in sys.stdlib_module_names:

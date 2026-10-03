@@ -355,8 +355,6 @@ def test_stdio_subprocess_session_parity() -> None:
         "describe",
         "invoke",
         "run_range",
-        "pack_run",
-        "prioritize_targets",
     ]
     invoked = next(m for m in messages if m["id"] == 3)
     assert invoked["result"]["isError"] is False
