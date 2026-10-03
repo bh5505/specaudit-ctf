@@ -1,0 +1,80 @@
+{
+  "schema": "specaudit.review-evidence.v1",
+  "evidence": [
+    {
+      "id": "architecture",
+      "producer": "original synthetic fixture 0.4",
+      "version": "0.4",
+      "captured_at": "2026-09-20T10:05:00Z",
+      "subject": "Harbor Notes 0.4 design",
+      "scope": "BLUE synthetic workspace, fixture interval 09:59\u201310:03 UTC",
+      "custody": "bundled immutable teaching fixture",
+      "data_class": "synthetic",
+      "transformations": "none",
+      "limitations": "Declared design, not proof of enforcement",
+      "kind": "declared",
+      "file": "evidence/architecture.json",
+      "sha256": "81ae01b74fcf7328f5df065a18243fb89901ff03532c01a1c49ea6bb766b0cde"
+    },
+    {
+      "id": "gateway",
+      "producer": "original synthetic fixture 0.4",
+      "version": "0.4",
+      "captured_at": "2026-09-20T10:05:00Z",
+      "subject": "three events in BLUE fixture",
+      "scope": "BLUE synthetic workspace, fixture interval 09:59\u201310:03 UTC",
+      "custody": "bundled immutable teaching fixture",
+      "data_class": "synthetic",
+      "transformations": "none",
+      "limitations": "Only gateway events shown; no full action history",
+      "kind": "observed",
+      "file": "evidence/gateway.json",
+      "sha256": "908e8c5b3c1ebb7d2c8a111d6e5b375e8c080c08417387063760baaf213a49c5"
+    },
+    {
+      "id": "note",
+      "producer": "original synthetic fixture 0.4",
+      "version": "0.4",
+      "captured_at": "2026-09-20T10:05:00Z",
+      "subject": "BLUE/N-7 content",
+      "scope": "BLUE synthetic workspace, fixture interval 09:59\u201310:03 UTC",
+      "custody": "bundled immutable teaching fixture",
+      "data_class": "synthetic",
+      "transformations": "none",
+      "limitations": "Content is untrusted external collaborator data",
+      "kind": "observed",
+      "file": "evidence/note.json",
+      "sha256": "b8fa66df08ac133f8815e6516d10c174d352d041938f50bd69c49c3bacca3689"
+    },
+    {
+      "id": "draft",
+      "producer": "original synthetic fixture 0.4",
+      "version": "0.4",
+      "captured_at": "2026-09-20T10:05:00Z",
+      "subject": "draft-8 content",
+      "scope": "BLUE synthetic workspace, fixture interval 09:59\u201310:03 UTC",
+      "custody": "bundled immutable teaching fixture",
+      "data_class": "synthetic",
+      "transformations": "none",
+      "limitations": "Draft does not prove delivery or export",
+      "kind": "observed",
+      "file": "evidence/draft.json",
+      "sha256": "2ae9792d38e0d85fdfe3fbc6a686f73ee7d4600bb03d66e5c26431a290fb14b1"
+    },
+    {
+      "id": "telemetry-gap",
+      "producer": "original synthetic fixture 0.4",
+      "version": "0.4",
+      "captured_at": "2026-09-20T10:05:00Z",
+      "subject": "outbound-message ledger query",
+      "scope": "BLUE synthetic workspace, fixture interval 09:59\u201310:03 UTC",
+      "custody": "bundled immutable teaching fixture",
+      "data_class": "synthetic",
+      "transformations": "none",
+      "limitations": "Unavailable source; no negative conclusion",
+      "kind": "observed",
+      "file": "evidence/telemetry-gap.json",
+      "sha256": "4768ba96d690d620e0648de6a7143078b750e601cdcde1a3b65f4aedd7f75227"
+    }
+  ]
+}

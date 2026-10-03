@@ -1,0 +1,34 @@
+{
+  "schema": "specaudit.k8scout-capture.v1",
+  "source_revision": "031c8bc4fc6579aab9d1df2e781697968028a427",
+  "sha256": "209204697f44b41910a1cd259979b9d42aaf59f4554ee5ce83068b4a6394c7ae",
+  "producer": "original synthetic k8scout-shaped fixture 0.1",
+  "captured_at": "2026-09-21T10:05:00Z",
+  "subject": "system:serviceaccount:blue:reviewer",
+  "scope": "synthetic blue/red namespaces only; no cluster contacted",
+  "limitations": "SSAR set incomplete: no red secret get check; graph edge is tool inference, no actual secret read",
+  "ssar_complete": false,
+  "test_cases": [
+    {
+      "id": "blue-secret-read",
+      "verb": "get",
+      "resource": "secrets",
+      "namespace": "blue",
+      "binding_node": "rb:blue:read-binding"
+    },
+    {
+      "id": "red-binding-create",
+      "verb": "create",
+      "resource": "rolebindings",
+      "namespace": "red",
+      "binding_node": "rb:red:admin-binding"
+    },
+    {
+      "id": "red-secret-read-unknown",
+      "verb": "get",
+      "resource": "secrets",
+      "namespace": "red",
+      "binding_node": "rb:red:admin-binding"
+    }
+  ]
+}

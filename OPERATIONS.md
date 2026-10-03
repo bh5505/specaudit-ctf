@@ -96,6 +96,24 @@ not authorize a newly discovered tool or target. For telecom interconnect work,
 remote signalling tests require the relevant operator/partner roles and consent;
 course ownership alone is not sufficient.
 
+## Offline learning and optional ranking
+
+The [learning CLI](docs/offline-learning-workflows.md) processes local
+synthetic or operator-supplied captured files outside `extension.invoke` and
+the MCP action catalog. Run its `graph`, `k8s`, `review`, `agent`, and
+`detection` cases as E1 with no real credentials or target contact. Preserve
+the raw file, external digest/capture record, producer/version, scope, time,
+sanitization and custody; a matching caller-supplied hash alone is not
+authenticity. Distribute learner packets separately from instructor material.
+
+`learning triage import` is offline. `learning triage rank` is different: it
+can invoke a caller-supplied SiftRank binary and call a selected model
+provider. Before opting in, the operator must authorize that executable,
+endpoint, input disclosure, credentials, egress, time and monetary budget,
+and enforce spend/egress containment externally. The CLI's executable hash,
+process timeout and output limits do not cap provider charges. No rank or
+model score promotes an evidence record or a finding.
+
 ## Asset reconnaissance boundary
 
 For `asset-recon`, apply the [capability procedure](docs/scope-recon.md#actions-and-authority)

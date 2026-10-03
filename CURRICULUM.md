@@ -124,20 +124,20 @@ This table shows the honest relationship between shipped anchors and the full
 target curriculum. “Design-ready” means a blueprint exists below; it does not
 mean a runnable package exists.
 
-| Program area | Current shipped anchor | Target content status |
+| Program area | Current anchor, including E1 pilots | Target content status |
 |---|---|---|
 | `FND-01`–`03` safety, architecture and evidence | Tracks A, C and D; current runtime and grading boundaries | Design-ready as a coherent foundation sequence |
-| `AUD-01`–`04` engagement, controls, findings and workpapers | Correspondence, exact grading and the asset-recon human worksheet supply bounded evidence practice | Design-ready through T01; no complete audit-engagement package ships |
+| `AUD-01`–`04` engagement, controls, findings and workpapers | Correspondence, exact grading, asset-recon worksheet and an implemented E1 threat-model workpaper pilot supply bounded evidence practice | Formal T01 assessment remains design-ready; no complete audit-engagement package ships |
 | `CYB-01` asset/network/configuration | `lab-net-01`, `lab-edge-01`, telecom/AWS exposure cases and asset-recon association worksheet | Design-ready through T02/T08; target domain is broader |
 | `CYB-02` identity and access | `telecom-aws-03` identity-path precursor | Design-ready through T05; AD/GPO/consent assets do not ship |
 | `CYB-03` cloud and platform | Telecom/AWS sequence; local Checkov/range surfaces under current gates | Design-ready through T02/T08; no live cloud implied |
 | `CYB-04` web/API/mobile/software | `lab-web-01`, `lab-code-01`; current Semgrep/ZAP/Burp surfaces under their gates | Design-ready through T06; full SDLC/API/mobile content remains proposed |
 | `CYB-05` vulnerability/exposure | Asset/version and near-miss reasoning in existing fixtures | Design-ready through T03; frozen vulnerability corpus does not ship |
-| `CYB-06` detection/IR/DFIR | `telecom-aws-05/-06` and captured grading evidence | Design-ready through T04; recorded telemetry and forensic corpus do not ship |
+| `CYB-06` detection/IR/DFIR | `telecom-aws-05/-06` plus an implemented E1 synthetic technique-to-detection stage grader | Formal T04 assessment remains design-ready; independently captured telemetry and forensic corpus do not ship |
 | `CYB-07` threat-informed validation | `lab-knowledge-01`; Caldera and Metasploit **listing** exercises | Proposed beyond current mapping/listing practice; no emulation execution claim |
 | `CYB-08` data/privacy/cryptography | Evidence-custody boundaries only | Proposed |
 | `CYB-09` third-party/supply chain | Source-pinning/admission concepts and shared-service attribution in the asset-recon worksheet | Proposed beyond these bounded anchors |
-| `CYB-10` AI/agent/MCP assurance | Track D and current head/MCP boundaries | Design-ready through T07; external agent resources are not bundled |
+| `CYB-10` AI/agent/MCP assurance | Track D, current head/MCP boundaries and an implemented E1 simulated agent-tool trace grader | Formal T07 assessment remains design-ready; external agent resources are not bundled |
 | `CYB-11` governance/monitoring | Support tiers, admission and promotion discipline | Proposed as an assurance module |
 | `TEL-01`–`09` telecom specialization | Telecom/AWS framing and `lab-edge-01` only | Design-ready through the blueprints below; new governed cases are not shipped |
 | `CAP-IA` internal-audit capstone | `telecom-aws-06` is a technical chain precursor | Design-ready outcome; full engagement package not shipped |

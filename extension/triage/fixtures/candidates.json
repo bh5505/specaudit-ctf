@@ -1,0 +1,32 @@
+[
+  {
+    "id": "C01",
+    "text": "The exercise scope lists a test account and a fixed synthetic region.",
+    "source": "packet/c01"
+  },
+  {
+    "id": "C02",
+    "text": "A role policy permits administrator escalation but an organization deny and untested session condition remain.",
+    "source": "packet/c02"
+  },
+  {
+    "id": "C03",
+    "text": "A dashboard says all controls passed without an underlying event or artifact.",
+    "source": "packet/c03"
+  },
+  {
+    "id": "C04",
+    "text": "The test event is observed in a retained signed trace, with a matching timestamp and bounded scope.",
+    "source": "packet/c04"
+  },
+  {
+    "id": "C05",
+    "text": "A rule exists in the repository but telemetry from the sensor is missing.",
+    "source": "packet/c05"
+  },
+  {
+    "id": "C06",
+    "text": "The synthetic asset inventory has a cosmetic display label.",
+    "source": "packet/c06"
+  }
+]
