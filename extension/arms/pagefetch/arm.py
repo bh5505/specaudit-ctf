@@ -13,6 +13,7 @@ from ...contract import (
     NotInstalledError,
     Result,
 )
+from ..bounded_capture import run_bounded
 from ..dispatch import authorize, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
@@ -94,15 +95,11 @@ class PageFetchArm:
             # detectify/page-fetch main.go 2026-09-05): no URL flag, no
             # positional, argv URLs silently ignored. The validated
             # URL is the single stdin line — the zgrab2 pattern.
-            proc = subprocess.run(
+            proc, overflowed = run_bounded(
                 cmd,
                 input=f"{target}\n",
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                maximum=MAX_OUTPUT_CHARS,
                 timeout=self.timeout,
-                check=False,
             )
         except subprocess.TimeoutExpired:
             return Result(
@@ -120,6 +117,9 @@ class PageFetchArm:
                 output=None,
                 error=redact(str(exc)),
             )
+        if overflowed:
+            return Result(ok=False, arm_id=spec.id, action=action, output=None,
+                          error="subprocess output exceeded capture cap")
         output: Any = _parse_output(proc.stdout)
         if dispatch and scope is not None:
             output = {"dispatch": stamp(scope, target), "output": output}

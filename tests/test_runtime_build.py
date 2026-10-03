@@ -974,8 +974,7 @@ def test_validate_mcp_exchange_rejects_contract_violations() -> None:
         '"capabilities":{},"serverInfo":{"name":"x","version":"0"}}}\n'
         '{"jsonrpc":"2.0","id":2,"result":{"tools":['
         '{"name":"list"},{"name":"describe"},{"name":"invoke"},'
-        '{"name":"run_range"},{"name":"pack_run"},'
-        '{"name":"prioritize_targets"}]}}\n'
+        '{"name":"run_range"}]}}\n'
     )
     _tracer.validate_mcp_exchange(good)
     bad_exchanges = [
@@ -1023,8 +1022,7 @@ def test_smoke_mcp_fail_closed_on_bad_child_behavior(
         '{"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2025-11-25"}}\n'
         '{"jsonrpc":"2.0","id":2,"result":{"tools":['
         '{"name":"list"},{"name":"describe"},{"name":"invoke"},'
-        '{"name":"run_range"},{"name":"pack_run"},'
-        '{"name":"prioritize_targets"}]}}\n'
+        '{"name":"run_range"}]}}\n'
     )
     monkeypatch.setattr(
         build.subprocess,

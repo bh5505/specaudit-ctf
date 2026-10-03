@@ -63,6 +63,13 @@ def parse_scope(raw: str | None) -> tuple[Scope | None, str | None]:
                 "targets instead",
             )
         if "://" in item:
+            try:
+                uri = urllib_parse.urlparse(item)
+                if not uri.scheme or not uri.hostname or uri.username is not None:
+                    raise ValueError("invalid URI authority")
+                _effective_port(uri)
+            except ValueError:
+                return None, f"dispatch scope item is not a valid URI: {item!r}"
             prefixes.append(item.rstrip("/"))
             continue
         if _looks_like_cidr_or_ip(item):
@@ -115,13 +122,20 @@ def target_in_scope(target: str, scope: Scope) -> bool:
         # URL forms) are out of scope by construction — containment is
         # False, never an unhandled crash on the security seam.
         return False
-    host = (parsed.hostname or "").lower().rstrip(".")
+    try:
+        host = (parsed.hostname or "").lower().rstrip(".")
+        port = _effective_port(parsed)
+    except ValueError:
+        return False
+    if parsed.username is not None or parsed.password is not None:
+        return False
     path = (parsed.path or "") + (("?" + parsed.query) if parsed.query else "")
     if not host:
         return False
     for prefix in scope.uri_prefixes:
         head = urllib_parse.urlparse(prefix)
-        if host == (head.hostname or "").lower().rstrip("."):
+        if (host == (head.hostname or "").lower().rstrip(".")
+                and port == _effective_port(head)):
             # Scheme must match too: an https prefix must not authorize
             # plain-http targets on the same host.
             if head.scheme and head.scheme != parsed.scheme:
@@ -154,6 +168,15 @@ def target_in_scope(target: str, scope: Scope) -> bool:
             if host == allowed:
                 return True
     return False
+
+
+def _effective_port(uri: urllib_parse.ParseResult) -> int | None:
+    """Compare URI authorities with their scheme's implicit HTTP port."""
+    if uri.port is not None:
+        if uri.port == 0:
+            raise ValueError("port zero is not a service port")
+        return uri.port
+    return {"http": 80, "https": 443}.get(uri.scheme.lower())
 
 
 def load_scope(env_name: str) -> tuple[Scope | None, str | None]:

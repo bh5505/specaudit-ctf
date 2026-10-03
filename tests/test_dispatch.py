@@ -192,6 +192,40 @@ def test_uri_prefix_scheme_and_boundary() -> None:
     assert target_in_scope("http://api.lab.internal/v1/x", scope) is False
 
 
+def test_uri_prefix_port_is_bound_to_authorized_authority() -> None:
+    scope = _scope("https://api.lab.internal:8443/v1")
+    assert target_in_scope("https://api.lab.internal:8443/v1/scan", scope)
+    assert not target_in_scope("https://api.lab.internal/v1/scan", scope)
+    assert not target_in_scope("https://api.lab.internal:9443/v1/scan", scope)
+
+    default = _scope("https://api.lab.internal/v1")
+    assert target_in_scope("https://api.lab.internal:443/v1/scan", default)
+    assert not target_in_scope("https://api.lab.internal:8443/v1/scan", default)
+    # Explicit host and network scopes continue to permit any port.
+    assert target_in_scope("https://api.lab.internal:8443/v1", _scope("api.lab.internal"))
+
+
+def test_invalid_uri_ports_fail_closed() -> None:
+    for raw in (
+        "https://api.lab.internal:bogus/v1",
+        "https://api.lab.internal:99999/v1",
+        "https://api.lab.internal:0/v1",
+    ):
+        scope, refusal = parse_scope(raw)
+        assert scope is None and "valid URI" in refusal
+    assert not target_in_scope("https://api.lab.internal:bogus/v1", _scope("api.lab.internal"))
+    assert not target_in_scope("https://api.lab.internal:0/v1", _scope("api.lab.internal"))
+
+
+def test_uri_target_userinfo_refused_even_for_authorized_host() -> None:
+    assert not target_in_scope(
+        "https://attacker@api.lab.internal/v1", _scope("https://api.lab.internal/v1")
+    )
+    assert not target_in_scope(
+        "https://attacker:secret@api.lab.internal/v1", _scope("api.lab.internal")
+    )
+
+
 def test_scope_hostname_syntax() -> None:
     for bad in ("-lead.lab", "trail-", ".lead.lab", "trail.lab.", "dou..ble"):
         scope, refusal = parse_scope(bad)
