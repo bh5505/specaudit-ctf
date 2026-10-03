@@ -51,12 +51,22 @@ the corresponding labs or integrations ship.
 | Challenge user or author: shipped inventory, exact grading and authoring contract | [Challenges](challenges/README.md) |
 | Reconnaissance operator or learner: association evidence, exclusions and bounded observations | [Asset reconnaissance](docs/scope-recon.md) |
 | Repository maintainer: partial PR 97 governance register and fail-closed integrity checker | [Governance register](governance/README.md) |
+| Learner, reviewer or operator: executable offline graph, workpaper, agent, detection and triage pilots | [Offline learning workflows](docs/offline-learning-workflows.md) |
 
 The [program research register](PROGRAM.md#candidate-register-42-unique-candidates)
 contains 42 unique candidates and 12 supplemental methodology/corpus families.
 They are **research inputs**, not runtime inventory: none becomes bundled,
 admitted, installed, licensed, validated or maintained by being listed. The
 register stays separate from `extension/coverage.yaml` and the runtime catalog.
+
+The [offline learning workflows](docs/offline-learning-workflows.md) provide a
+separate `python -m learning` CLI for six bounded, offline-by-default E1
+import/review and self-study workflows. The opt-in `triage rank` command can
+call a provider under separate operator authority. The threat-model, agent,
+detection and Kubernetes exercises are executable now; formal assessment
+promotion remains separate.
+The graph and SiftRank readers are research import surfaces. They do not add
+an arm or change `invoke`, MCP, source admission or fixture grading.
 
 ## Install
 

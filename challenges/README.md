@@ -35,6 +35,20 @@ stages composing discovery, exposure, and chain reasoning into one
 deliverable. Solutions are included (`solution/`) — the exercises are
 about producing and defending the deliverables, not about guessing.
 
+Four additional **implemented executable self-study pilots** live alongside
+the 13 shipped exact-coverage challenges: [threat-model review](lab-review-01-threat-model/learner/README.md)
+checks a hashed evidence workpaper's structure and leaves conclusions to a
+human reviewer; [agent tool authority](lab-agent-01-tool-boundary/README.md)
+grades a deterministic simulated tool-event trace;
+[technique-to-detection](lab-detect-01-technique-chain/README.md) grades five
+linked synthetic stages and retest effectiveness; and
+[Kubernetes RBAC paths](../k8s_path_evidence/fixture/README.md) evaluates a pinned
+captured-report shape against service-account and permission prerequisites.
+They use
+[`python -m learning`](../docs/offline-learning-workflows.md), not
+`score --grade`, and require the authoring-contract reviews and protected
+delivery before formal promotion.
+
 ## Correspondence contract (all challenges)
 
 Every finding you ship must trace to exactly one planted violation in the
@@ -78,9 +92,12 @@ failures. See `score/grading.py` for the semantics.
 
 ## Proposed workpaper alongside the graded finding set
 
-**Proposed, not shipped.** Nothing below changes the grading above:
+**Proposed for the shipped exact-grading challenges.** The design-ready
+threat-model pilot has a structural workpaper validator and a human rubric;
+nothing below changes the grading above:
 exact coverage stays the machine verdict, `score/grading.py` stays the
-semantics, and no challenge ships a workpaper contract today.
+semantics, and none of the 13 shipped exact-coverage challenges has a
+workpaper contract today.
 
 The proposal is a second, human-reviewed deliverable next to
 `my-findings.json`: a short workpaper stating the criterion and subject,

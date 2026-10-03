@@ -1,0 +1,1 @@
+{"collector":"outbound-message ledger","query":"2026-09-20T09:59:00Z/2026-09-20T10:03:00Z","status":"unavailable","reason":"fixture intentionally omits the ledger","note":"Absence of a send event in the gateway extract does not establish that no other channel sent a message."}

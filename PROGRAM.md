@@ -130,6 +130,19 @@ and module blueprints. Current runnable coverage is deliberately partial. Empty
 or design-ready areas are program truth, not an invitation to overclaim the
 existing telecom/AWS rehearsal as a complete telecom stack.
 
+## Offline evidence learning pilots
+
+The [offline learning workflow pilots](docs/offline-learning-workflows.md)
+implement a bounded T01/T04/T07 self-study and import layer: a structural
+threat-model workpaper check, deterministic agent-tool event grading,
+technique-to-detection stage grading, source-declared RAGE/k8scout graph
+review, and captured ranking triage. Their executable mechanics do not satisfy
+formal challenge promotion, trusted-observation admission, human audit
+judgment, or demonstrated live control effectiveness. The
+[source decision](docs/source-decisions-2026-10-03.md) pins selected methods
+and rights separately from runtime support. Source-shaped synthetic graphs
+and rankings do not attest an actual collector or model run.
+
 ## Asset-association evidence practice
 
 The [asset reconnaissance capability](docs/scope-recon.md) provides a bounded

@@ -1,0 +1,11 @@
+{
+  "upstream_revision": "03e7afe3289a204ea3dcc51613cea91877a651de",
+  "input_sha256": "ef2612f20d17081eed25fe933490277c61c3cc5312b06568a715cd88ac4804dd",
+  "ranking_sha256": "f13de5f6e8ce8c4005bb57cb9a72c4fe983c191762a04496cda5cea6d3d9ec0e",
+  "prompt_sha256": "819e18828a9be08a48595ceebc9d397d146a22d95558b5315bbad9b483df63d6",
+  "run_id": "synthetic-format-fixture-01",
+  "captured_at": "2026-10-03T00:00:00Z",
+  "provider": "synthetic-fixture",
+  "model": "none",
+  "custody_ref": "test-only:siftrank-format"
+}

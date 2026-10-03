@@ -43,7 +43,7 @@ Homepage = "https://github.com/bh5505/specaudit-ctf"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["extension*"]
+include = ["extension*", "learning*", "graph_evidence*", "review_workpaper*", "k8s_path_evidence*"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
@@ -62,3 +62,8 @@ extension = [
     "*/input/*",
 ]
 "extension.arms.assetrecon" = ["fixtures/*.json"]
+"extension.triage" = ["fixtures/*.json"]
+"learning" = ["data/detection/*.json"]
+"graph_evidence" = ["fixtures/*.ndjson"]
+"review_workpaper" = ["packet/*.md", "packet/*.json", "packet/evidence/*.json"]
+"k8s_path_evidence" = ["fixture/*.json", "fixture/*.md", "README.md"]
