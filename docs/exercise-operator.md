@@ -1,4 +1,7 @@
-# Shipped challenge operator CLI
+# Challenge packet and grading API reference
+
+Start new operations with the [unified operator console](operations-console.md).
+This page documents the underlying compatibility API and its data contracts.
 
 The installed package exposes an operator-only command for the 13 shipped
 exact-coverage challenges. It is not an extension arm or MCP tool. Run it in

@@ -1,5 +1,9 @@
 # Curriculum — evidence-led cybersecurity audit practice
 
+For execution, use the [operator console](docs/operations-console.md). This
+document is a planning and assessment reference; the console inventory identifies
+which scenarios and capabilities are runnable.
+
 This curriculum serves two truths at once. Tracks A–D and the challenge assets
 listed below are **shipped** in this repository. The larger module map and
 T01–T08 seed packs define the learning program being built; unless explicitly

@@ -1,0 +1,4 @@
+[
+  {"policy_id":"SYN-GPO-01","name":"Fabricated active policy","status":"active","links":[{"ou":"OU=Lab,DC=example,DC=test","enforced":true}],"filters":{"security":[],"wmi":[]},"settings":{"password_policy":{"min_length":14}}},
+  {"policy_id":"SYN-GPO-02","name":"Fabricated disabled policy","status":"disabled","links":[],"filters":{},"settings":{}}
+]

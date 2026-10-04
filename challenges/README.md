@@ -1,5 +1,9 @@
 # Challenges — synthetic rehearsal exercises
 
+Use the [operator console](../docs/operations-console.md) to prepare packets,
+execute synthetic operations, verify retained evidence and grade submissions.
+The challenge-specific pages below define evidence and assessment contracts.
+
 Each challenge is a self-contained teaching exercise against this
 repository's real surface: the catalog, the CLI, the stdio MCP server, and
 the synthetic range fixtures. The teaching path needs only **Python 3.11+

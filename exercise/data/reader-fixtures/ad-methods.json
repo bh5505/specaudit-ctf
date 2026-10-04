@@ -1,0 +1,4 @@
+{"techniques":[
+  {"technique_id":"SYN-AD-01","name":"Fabricated ticket review","category":"credential","prerequisites":["test identity exists"],"observed_facts":["test ticket event"],"inference":"Review ticket context; no compromise conclusion","mitre_mapping":"T1558"},
+  {"technique_id":"SYN-AD-02","name":"Fabricated denied request","category":"credential","prerequisites":["replication rights"],"observed_facts":["request denied"],"inference":"Prerequisite not shown","mitre_mapping":"T1003"}
+]}

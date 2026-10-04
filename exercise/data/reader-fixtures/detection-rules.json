@@ -1,0 +1,4 @@
+[
+  {"rule_id":"SYN-R-01","name":"Synthetic public access audit","severity":"high","category":"cloud"},
+  {"rule_id":"SYN-R-02","name":"Synthetic private access audit","severity":"low","category":"cloud"}
+]

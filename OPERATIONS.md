@@ -1,10 +1,11 @@
 # Operations — safe exercise environments and evidence custody
 
-This guide defines the operator boundary for delivering the
-[curriculum](CURRICULUM.md). It does not arm any action. Current command,
-catalog and policy truth remains in [README.md](README.md) and
-[extension/README.md](extension/README.md); per-arm caveats override a generic
-example here.
+Use the [operator console procedure](docs/operations-console.md) for the
+single synthetic-range execution workflow: inventory, plan, run, status,
+report, packet preparation and grading. This policy defines the authority,
+containment and custody surrounding that workflow. The lower-level
+[adapter contracts](extension/README.md) remain authoritative for external
+integrations and action-specific scope.
 
 The operator owns environment selection, authorization checks, containment,
 identities, secrets, data handling, monitoring, stop, reset, cleanup and
@@ -350,8 +351,9 @@ module can be delivered again.
 
 For this checkout:
 
-- inspect `python -m extension list`, `describe` and `availability` plus the
-  [per-arm caveats](extension/README.md) before use;
+- start with `python -m exercise inventory` and `plan` for scenario coverage,
+  dependencies and exact actions; use the [adapter reference](extension/README.md)
+  when operating a separate external integration;
 - preserve fail-closed unknown/action/tier behavior and action-specific scope
   gates;
 - treat `transport_ok` as informational and `degraded`/`failed` as real

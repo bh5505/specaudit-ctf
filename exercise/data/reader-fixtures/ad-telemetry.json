@@ -1,0 +1,4 @@
+[
+  {"event_id":"SYN-E-01","category":"kerberos","description":"Fabricated unusual ticket event","severity":"medium","indicators":[{"type":"ticket_kind","value":"[REDACTED]"}]},
+  {"event_id":"SYN-E-02","category":"ldap","description":"Fabricated normal directory query","severity":"low","indicators":[{"type":"query_kind","value":"[REDACTED]"}]}
+]

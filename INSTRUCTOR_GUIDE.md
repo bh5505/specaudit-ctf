@@ -1,5 +1,9 @@
 # Instructor guide — design, delivery and assessment
 
+For execution, use the [operator console](docs/operations-console.md). This
+document is a planning and assessment reference; the console inventory identifies
+which scenarios and capabilities are runnable.
+
 This guide is for instructors, exercise directors and challenge authors using
 the [SpecAudit-CTF curriculum](CURRICULUM.md). It describes a complete delivery
 and quality system. It does not make proposed modules runnable, admit an

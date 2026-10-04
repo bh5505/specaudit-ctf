@@ -1,716 +1,132 @@
 # specaudit-ctf
 
+Operate synthetic security scenarios through **`python -m exercise`**. One
+console inventories capabilities, prepares an operation, executes admitted
+adapters against packaged synthetic inputs, retains evidence, and verifies
+results. Challenge preparation and submission grading use the same console.
+
+## Start an operation
+
+Install with Python 3.11+ in a virtual environment:
+
+```sh
+pip install .
+python -m exercise inventory
+python -m exercise plan --out operation-plan.json
+python -m exercise run --plan operation-plan.json --out operation-001
+python -m exercise status operation-001
+python -m exercise report operation-001
+```
+
+Use fresh plan/output paths. The default operation uses local synthetic range
+inputs and does not require cloud credentials, a model provider, an external
+scanner, or the WSL lab. Read the [operator console procedure](docs/operations-console.md)
+for selecting scenarios, editing inputs, interpreting assessments, and retaining
+or grading results. The inventory identifies capabilities that need separate
+software or target infrastructure; selecting a supported local scenario does
+not silently enable those dependencies.
+
+## Operator workflow
+
+| Task | Canonical interface |
+|---|---|
+| Discover available scenarios, adapters and challenge lanes | `python -m exercise inventory` |
+| Inspect and save the intended operation | `python -m exercise plan` |
+| Execute and retain per-step evidence | `python -m exercise run` |
+| Verify a saved operation | `python -m exercise status` |
+| Inspect verified assessments and failures | `python -m exercise report` |
+| Export a challenge packet | `python -m exercise prepare` |
+| Grade a submitted finding set | `python -m exercise grade` |
+
+Execution completion, assessment findings, and a participant's grade are
+separate results. A completed adapter can report a vulnerability, a blocked
+path, or a detection gap. The operation report preserves those results rather
+than treating successful execution as a clean security assessment.
+
 ## Overview
 
-- **Arms**: 49 specialized adapters. No row is held (the HTTP-MCP
-  held set closed 2026-09-04; the tier remains enforced for any
-  future held row); the burp-mcp, google-mcp-security, semgrep-mcp,
-  prowler-mcp, and metasploit-mcp rows are research integrations on
-  the hardened transport or the first-party CLI (prowler: exact-name
-  read admissions over the union endpoint policy - 43 source-pinned
-  reads, mutating tools exactly blocked; metasploit: listing reads admitted,
-  execution tools admitted as R1 network-egress dispatch profiles
-  behind METASPLOIT_DISPATCH_SCOPE); remaining
-  arm rows are research except the agent-wiz read tier
-  (`agent-wiz.list_tools`), the sole maintained capability (X5-PROMOTE).
-  A specialized handler is
-  required; curated arms never ride a generic transport. `curated` is a
-  deprecated compatibility flag and does not mean maintained.
-- **Legs / methodologies**: 19 methodology-only catalog rows
-  (curriculum, spec, teach-only). They are not adapters.
-- **Heads**: attach profiles for Claude Code CLI, Codex CLI, and
-  other agent CLIs.
-- **Range**: synthetic fixtures (`live_aws: false`). No live cloud.
+The underlying extension contains 49 adapters and 19 methodology-only catalog
+entries. Its admission, scope and support-tier contracts continue to apply.
+The console's synthetic execution coverage describes what can run now; a
+catalog support tier describes the underlying integration's maintenance and
+validation status. `inventory` makes these distinctions visible alongside the
+runnable scenarios instead of requiring an operator to assemble several CLIs.
+See [adapter contracts](extension/README.md) for lower-level integration details.
 
-`extension/coverage.yaml` classifies the landscape survey (68 ids). It is a
-**survey map**, not a ship list: a row is not
-a promise that an adapter exists. Every row has a support tier
-(`research` | `experimental` | `maintained` | `held`). In this cut
-every arm row is curated (49 handlers) and every methodology-only
-row stays uncurated (19). `curated` is not `maintained`.
+## Documentation map
 
-Per-arm caveats (composite egress, exploitation, LLM spend, source
-mutation): [extension/README.md](extension/README.md).
+- [Operator console](docs/operations-console.md): the executable synthetic-range procedure.
+- [Operations policy](OPERATIONS.md): environment selection, authority, containment and custody.
+- [Challenges](challenges/README.md): finding contracts and challenge-specific evidence.
+- [Extension reference](extension/README.md): adapter actions, MCP and source limitations.
+- [Lab reference](lab/README.md): optional WSL targets and separately installed upstream tools.
 
 ## Learning program
 
-The shipped runtime and challenges are the first usable layer of a larger,
-evidence-led cybersecurity audit learning program. The program connects
-technical validation to internal-audit workpapers and extends the target
-curriculum across general cybersecurity and telecom—from subscriber identity,
-5G core and interconnect through RAN, telco cloud, network APIs, fraud and
-resilience. That target coverage is documented honestly; it does not imply that
-the corresponding labs or integrations ship.
-
-| Reader | Living guide |
-|---|---|
-| Everyone: architecture, status, sources and research register | [Program](PROGRAM.md) |
-| Trainee: pathways, shipped A–D, full module map and proposed seed packs | [Curriculum](CURRICULUM.md) |
-| Instructor or challenge author: delivery, grading, calibration and maintenance | [Instructor guide](INSTRUCTOR_GUIDE.md) |
-| Operator: authorization, environment tiers, containment, custody and cleanup | [Operations](OPERATIONS.md) |
-| Challenge user or author: shipped inventory, exact grading and authoring contract | [Challenges](challenges/README.md) |
-| Reconnaissance operator or learner: association evidence, exclusions and bounded observations | [Asset reconnaissance](docs/scope-recon.md) |
-| Repository maintainer: partial PR 97 governance register and fail-closed integrity checker | [Governance register](governance/README.md) |
-| Learner, reviewer or operator: executable offline graph, workpaper, agent, detection and triage pilots | [Offline learning workflows](docs/offline-learning-workflows.md) |
-
-The [program research register](PROGRAM.md#candidate-register-42-unique-candidates)
-contains 42 unique candidates and 12 supplemental methodology/corpus families.
-They are **research inputs**, not runtime inventory: none becomes bundled,
-admitted, installed, licensed, validated or maintained by being listed. The
-register stays separate from `extension/coverage.yaml` and the runtime catalog.
-
-The [shipped challenge operator CLI](docs/exercise-operator.md) inventories the 13 exact-coverage tracks, prepares seven fixture-backed learner packets with answer material excluded, rehearses the full synthetic range without arms, and grades submissions on the operator side from an installed wheel. It does not launch live-service lanes or attest evidence truth.
-
-The [offline learning workflows](docs/offline-learning-workflows.md) provide a
-`python -m learning` CLI for six bounded, offline-by-default E1
-import/review and self-study workflows. The opt-in `triage rank` command can
-call a provider under separate operator authority. The threat-model, agent,
-detection and Kubernetes exercises are executable now; formal assessment
-promotion remains separate.
-The `learning-operator` research arm exposes these six offline reviews through
-`invoke` with inline evidence only. Its local request-file command supports
-larger packets; see [the operator guide](docs/operator-learning-arm.md). This
-does not change source admission or fixture grading.
+[Program](PROGRAM.md), [curriculum](CURRICULUM.md), and the
+[instructor guide](INSTRUCTOR_GUIDE.md) describe learning objectives, assessment
+roles and future coverage. They are reference material for designing exercises;
+the operator console and its inventory define the executable workflow.
+Historical candidate surveys and proposed modules do not add runtime capability.
 
 ## Install
 
-Python 3.11 or later.
+`pip install .` installs the operator console and its packaged synthetic data.
+For development, use `pip install -e ".[dev]"` or
+`pip install -r requirements-dev.txt`. The established `extension`, `learning`,
+`exercise_operator`, `score`, and legacy `exercise --flags` interfaces remain
+available for compatibility and specialized integrations. New operator runs
+start with the console above; the sections below document lower-level contracts.
 
-```text
-pip install -e ".[dev]"
-```
+## Integration reference
 
-or:
-
-```text
-pip install -r requirements-dev.txt
-```
-
-`requirements-dev.txt` mirrors `[project]` plus
-`[project.optional-dependencies] dev` in `pyproject.toml`. There is
-no console script; operators use `python -m extension`.
+The low-level contracts live in the [extension CLI reference](docs/extension-cli-reference.md).
+Existing section links below remain available for integrations.
 
 ## Validator runtime
 
-The X3 runtime builder produces a real, relocatable Linux x86-64 GNU CPython
-bundle for the validator-owned `agent-wiz.list_tools` path. Fetching locked
-inputs is explicit; assembly, verification, archive round-trip, and Mode-A
-smoke are offline. Generated runtimes are not committed. See
-[runtime/README.md](runtime/README.md) for the lock, reproducibility,
-installation, rotation, and rollback contract.
-
-### Technology validator fixture harness
-
-The [technology fixtures](tests/fixtures/technology_validator/README.md)
-exercise the validator's `--evaluate-technology-fixture` interface with
-synthetic AWS, GCP, and Azure provider responses. From this checkout, pass the
-absolute path to a compiled validator binary:
-
-```text
-python3 tools/validator_technology_harness.py --validator-bin /absolute/path/to/validator-binary
-```
-
-The cases cover S3 public ACL versus full Block Public Access (`AWS-NET-001`),
-public and private security-group SSH/RDP ingress including IPv6
-(`AWS-NET-010/011`), bucket IAM public and scoped bindings (`GCP-IAM-001`),
-and NSG management ingress with deny/priority uncertainty (`AZURE-NET-002`).
-They also check missing or mismatched authorization, provider identity, and
-claim identity. The harness uses the validator's production parsers and
-evaluators with synthetic transport replies. It does not use live cloud
-credentials or contact a cloud account. Live, authorized cloud validation
-belongs to AuditPack's validator run-validation path. A fixture configuration
-result is not proof of workload reachability. S3 cases separately feed synthetic
-anonymous list and HTTP results through the validator's reachability classifier;
-all other cases leave reachability unknown.
+See [Validator runtime](docs/extension-cli-reference.md#validator-runtime).
 
 ## CLI
 
-From the repository root:
-
-```text
-python -m extension list
-python -m extension describe <id>
-python -m extension invoke <id> <action> ['{"k":"v"}'] [--attempt-id attempt-<hex>] [--artifact-dir ABSOLUTE_DIR]
-```
-
-Examples:
-
-```text
-python -m extension describe burp-mcp
-python -m extension describe checkov
-python -m extension invoke agent-wiz list_tools
-```
-
-- `list`: catalog entries (catalog JSON)
-- `describe <id>`: one catalog row (catalog JSON)
-- `invoke <id> <action> [args]`: fail-closed tool call (optional JSON object).
-  Stdout is `specaudit.ctf.execution-result.v1`. Process exit 0 is not
-  `complete`. `transport_ok` is informational: it means the tool
-  invocation/response transport succeeded, not that artifact custody
-  succeeded. A zero-step pre-invocation refusal reports no touched scope and
-  `none` effects. If an entered arm throws, the failed envelope instead
-  reports the admitted profile's touched scope and side effects as conservative
-  bounds, with an explicit partial-or-unknown-effects limitation; those fields
-  are not proof that every declared effect occurred.
-  Optional `--attempt-id attempt-<64 lowercase hex>` is echoed
-  on every structurally valid result for that attempt. Optional
-  `--artifact-dir ABSOLUTE_DIR` is a validator-owned response channel
-  (not profile `local-write`): it requires a valid attempt id and a
-  fresh empty per-attempt Unix directory that already exists and is not
-  a symlink. The producer binds that directory before dispatch and writes
-  claimed artifact bytes under a digest-derived name relative to the
-  bound descriptor. Mode A artifact custody is Unix-only. Malformed
-  attempt ids, invalid or non-empty artifact directories, and unsupported
-  Mode-A platforms fail before execution and may report only on stderr
-  (no result envelope). Omit both flags for Mode B (portable; no
-  `attempt_id`, no artifact files).
-
-X2-PUB admits explicit in-process `list_tools` profiles for the static-policy
-arms registered in `extension/invoke_profiles.py`. Those profiles read
-repository-owned policy metadata, do not spawn an upstream binary, and remain
-`synthetic_only: true`. Separate R0 action profiles cover the four
-`attack-stix-data` lookups and the 38 actions supplied by the 14
-research-candidate readers. Those actions read operator-supplied local files or
-directories without a subprocess or network call; their manifests are
-`synthetic_only: false` because read-only local data can still be real data.
-Their exact actions and candidate-specific limitations are in
-[extension/README.md](extension/README.md). The `learning-operator` adds six
-offline inline-evidence assessments plus a synthetic sample action; real
-captured inputs keep `synthetic_only: false`. Every other CLI invoke action is
-refused before `Extension.invoke` until it has authoritative per-action safety,
-scope, side-effect, budget, cleanup, and tool-version metadata.
-
-The current v1 profiles carry a static policy URI in `touched_scope`; they do
-not dynamically bind the caller-selected path. That is a known manifest and
-governance limitation, so the scope field is not evidence of which file was
-read. The arm's bounded input checks and returned content digest remain
-necessary. An opt-in observation sidecar now binds four exact singleton
-reader slices to their raw and result bytes without weakening or changing the
-static admission registry.
-
-### Opt-in trusted-observation slice
-
-`extension.observations` implements deliberately narrow EVID-01 mechanisms. A
-trusted validator can create the byte-compatible v1 admission/observation pair
-for one `vulnify.lookup` CVE record, or the closed v2 pair for exactly one
-`security-detections-mcp.get_rule` rule or `rubeus.telemetry` event, or the
-closed v3 pair for one `gpohound.policy` record. Derivation requires a
-reason-free semantic-`complete` envelope with a matching non-null
-attempt id, one matching `policy-report` artifact, its exact canonical Mode-A
-bytes, and the exact raw source bytes. The verifier re-parses those bytes with
-the selected arm's normalization contract and binds the admission, envelope,
-policy report, source digest/length, record-set digest, source revision/time,
-subject, scope, producer revision, and validity window.
-
-This is a pure API, not a CLI or MCP tool, and `extension` does not import it by
-default. It changes no manifest, action, trace, challenge, grading, finding, or
-governance state. The registry contains exactly those four singleton
-profiles. All records are classified `declared` and applicability is always
-`not-assessed`; rule deployment/effectiveness, event authenticity/time, and
-compromise remain explicitly unestablished. A GPO policy record does not prove
-policy application, effective access, filter applicability, item-level
-targeting, or conflict resolution. There is no default source or revision: the
-current R01, R08, R36 and R43 research mappings have no selected
-source revision or rights clearance and cannot mint an admission by themselves.
-
-The trusted caller must already hold the source bytes, attest that the result
-artifact came from the validator-owned Mode-A channel, and retain observation
-ids for replay rejection. Execution-result v1 also permits an attempt id
-without an artifact directory, so the sidecar records
-`validator-attested-mode-a`; it cannot independently prove the filesystem
-channel, admission authorship, or pre-existence. JSON hashes provide binding,
-not signatures. See [the extension contract](extension/README.md#opt-in-trusted-observations),
-[operator procedure](OPERATIONS.md#opt-in-source-declared-observation-slices),
-the closed v1 [source-admission](extension/schema/source-admission.v1.schema.json)
-and [trusted-observation](extension/schema/trusted-observation.v1.schema.json),
-and the separate v2 [source-admission](extension/schema/source-admission.v2.schema.json)
-and [trusted-observation](extension/schema/trusted-observation.v2.schema.json),
-and the v3 [source-admission](extension/schema/source-admission.v3.schema.json)
-and [trusted-observation](extension/schema/trusted-observation.v3.schema.json)
-schemas.
-
-Dispatch-class admission (2026-09-01, continued through 2026-09-05) adds
-exactly sixteen scope-gated profiles — `nmap.scan`, `zaproxy.ascan_scan`,
-`zaproxy.spider_scan`, `zgrab2.scan`, `wapiti.scan`, `zdns.lookup`,
-`pyrit.scan`, `routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`,
-`commix.scan`, `semgrep-mcp.semgrep_scan`, `vuls.scan`, and the
-`stratus-red-team` technique-lifecycle set (`warmup`, `detonate`,
-`revert`) —
-carrying honest manifest truth: safety class **R1**, declared side
-effects (`subprocess`+`network-egress` for the CLI arms;
-`network-egress` for the ZAP API; `subprocess` only for the local
-`semgrep_scan`, whose arming/containment gate is `SEMGREP_SCAN_ROOT`
-rather than a network target scope), `default_off` with `approval_ref`
-naming the operator's arming gate and `roe_ref` naming the
-dispatch doctrine, and `synthetic_only: false` (the operator arms a real
-lab target or scan root). Admission is metadata, not authority: each arm's own scope
-gate, audit line, and stamp remain the enforcement point, and an unarmed
-or out-of-scope dispatch is a typed evaluated failure — never an
-all-clear. Six admitted actions deserve their caveats read aloud:
-`pyrit.scan` spends model tokens on the operator-configured endpoints
-(the manifest's `network-egress` names the transport, not the spend);
-`routersploit.run` **always executes the module** upstream — there is
-no check-only path; `osmedeus.scan` composes many external tools whose
-egress is not bounded by the named target (the operator arming the
-scope accepts that composite egress); `vuls.scan`'s scope gate arms
-the scan **action** — the scanned hosts come from vuls's own config
-discovery (`config.toml` at the invoke working directory), so the
-audit line records the target as unknown and the armed config is what
-bounds the scan; the `stratus-red-team` lifecycle actions act
-**cloud-side on the operator's own account** — the scope gate
-binds the technique ID (the armed scope must literally name the
-technique being lifecycle-managed; anything else is an evaluated
-failure), and
-detonation spends real cloud resources (warmup/revert provision and
-tear down technique prerequisites); `page-fetch.fetch` scope-checks
-**only the initial URL** — redirects, the name's resolution at fetch
-time, and rendering-time subresources are not re-checked, so an armed
-scope must be considered reachable from anything its hosts redirect or
-reference to (including metadata IPs), the fetcher may write browser
-state in its default location, and the Result stamp records the armed
-target, not the effective egress set. `wapiti`, `zdns`, and `commix` have
-no read-only mode upstream — the dispatch action is the arm's whole
-surface; `sniper` stays deliberately unadmitted (root-only community
-binary, phones home when armed, unbounded sub-tool egress).
-
-Unknown ids, unmanifested actions, methodology-only rows, heads, held arms,
-non-curated arms, and uninstalled curated arms are hard errors. Do not invent
-a fallback. `list` / `describe` include `tier`.
-
-`invoke <id> list_tools` returns static JSON (no binary spawn) on
-policy surfaces that implement it. No row is currently
-held; a future held row would be refused at catalog `invoke` even if
-a binary or endpoint is configured. `burp-mcp` (loopback reads),
-`google-mcp-security` (lookups), `semgrep-mcp` (CLI scans + reads),
-and `metasploit-mcp` (listing reads over the operator-run loopback
-SSE server; execution tools admitted as R1 network-egress dispatch
-profiles behind METASPLOIT_DISPATCH_SCOPE)
-are admitted research integrations invocable through CLI/MCP `invoke`;
-`prowler-mcp` is research with exact-name read admissions
-(`list_tools` + 43 read lookups pinned from the first-party OSS
-server source, over the union endpoint policy: operator-fronted
-https or literal-loopback http for the first-party local server) -
-the 18 mutating tools and the hosted-only `prowler_cloud_`
-namespace stay exactly blocked. Pyrit scenario discovery is a
-separate `list_scenarios` action, which runs `pyrit_scan
---list-scenarios`. Original fixed-argv CLIs (checkov, garak,
-mitreattack-python, wapiti, commix, zdns, vuls, stratus-red-team,
-osmedeus, page-fetch) have no `list_tools`; their actions are in `describe` and
-[extension/README.md](extension/README.md).
+See [CLI](docs/extension-cli-reference.md#cli).
 
 ## MCP
 
-Stdio server, **four tools only**: `list`, `describe`, `invoke`,
-`run_range`. Do not add inventory, paging, or writeback.
-
-```text
-python -m extension.mcp_server
-```
-
-That import is only safe when the process cwd is this clone. Heads
-should spawn the launcher so import does not depend on cwd:
-
-```text
-python extension/heads/claude-code/launch_mcp.py
-python extension/heads/codex-cli/launch_mcp.py
-```
-
-A relocated launcher needs `SPECAUDIT_CTF_ROOT` set to this clone
-root.
-
-The shipped cap is four tools, including `run_range`. `run_range` is
-the named exception to the original three-tool / "no new tools"
-doctrine: synthetic, seed-stable fixtures, no path arguments,
-curated `arm_ids` only, no `--out` report writes over MCP (`--out`
-stays CLI-only; an explicitly supplied `artifact_dir` writes
-digest-named custody artifacts). Cite it as a boundary, not a precedent.
-
-X4-PUB transport contract:
-
-- `invoke` and `run_range` return the same
-  `specaudit.ctf.execution-result.v1` envelopes as the CLI JSON
-  output for the same logical request (timestamps differ per run);
-  both transports share one dispatch, and
-  `tests/goldens/transport-parity/matrix.json` is the frozen parity
-  matrix.
-- `isError` on a tool result mirrors the CLI process exit code
-  (nonzero exit = `isError: true`). It is a transport signal; the
-  verdict vocabulary (`complete` / `degraded` / `failed`) lives in
-  the envelope status only.
-- Optional `attempt_id` / `artifact_dir` tool arguments carry the
-  same Mode A contract as `--attempt-id` / `--artifact-dir`
-  (invalid forms are JSON-RPC `-32602`, never an envelope).
-- Framing is newline-delimited JSON per the MCP stdio transport
-  (spec revision 2025-11-25); legacy Content-Length input is
-  rejected as a parse error, messages are capped at 1 MiB, and the
-  initialize handshake echoes a supported requested protocol version
-  or answers with the latest supported one.
+See [MCP](docs/extension-cli-reference.md#mcp).
 
 ## Heads
 
-Attach profiles:
-
-- [extension/heads/claude-code.md](extension/heads/claude-code.md)
-- [extension/heads/codex-cli.md](extension/heads/codex-cli.md)
-- [extension/heads/other-agent-cli.md](extension/heads/other-agent-cli.md)
-
-The exercise runner's real-head mode can also drive claude-code,
-codex-cli, and qwen-code headless - default-off, per-head armed via
-`EXERCISE_HEAD_*_CMD` (see `exercise/real_head.py`).
-
-Claude Code CLI, from this clone:
-
-```text
-claude mcp add --scope project --transport stdio specaudit-ctf -- python extension/heads/claude-code/launch_mcp.py
-```
-
-Codex CLI, project `.codex/config.toml` in this clone:
-
-```toml
-[mcp_servers.specaudit-ctf]
-command = "python"
-args = ["extension/heads/codex-cli/launch_mcp.py"]
-cwd = "."
-```
-
-Another agent CLI or a validation client can wrap the same three CLI
-subcommands, `python -m extension.range`, or the same stdio MCP
-process. This tree does not ship a third named head profile.
-
-### Headless attempts (the exercise head lane)
-
-An agent attempting a challenge is graded on SERVER-SIDE evidence,
-never on its self-report: the stdio MCP server is this repo's own
-process, and when the trace env is set it records every `tools/call`
-(tool, redacted bounded arguments, bounded result summary with
-`isError`) into an attempt trace — ndjson, HMAC-SHA256 digest-chained,
-closed on clean shutdown. The agent never writes the trace, and the
-key never sits beside it.
-
-Env (all three reach the MCP SERVER process — per head recipes below):
-
-| Variable | Meaning |
-|---|---|
-| `SPECAUDIT_CTF_MCP_TRACE` | trace file path (attempt dir; outside the clone) |
-| `SPECAUDIT_CTF_MCP_TRACE_KEY` | 64-hex chain key, grading side only |
-| `SPECAUDIT_CTF_MCP_TRACE_ATTEMPT` | optional 64-hex attempt id stamped in every record |
-
-Grading (`exercise/attempt.py`): the trace must verify (chain intact,
-close record present — a crashed or truncated attempt is never
-gradable) and must contain at least one `tools/call`; then the found
-document grades found-vs-expected as usual, and every hit is demoted
-to `unverified` unless the trace shows a successful call covering the
-finding's fixtures. The only coverage source is a successful
-`run_range` and the fixture roster the server itself recorded —
-trusted handler evidence; `invoke` arguments are the agent's own
-strings and grant nothing, nor do `list`/`describe` reconnaissance.
-Passing requires
-zero unverified hits. This is a claim-without-evidence tripwire, not
-proof of investigative depth.
-
-Three ways to run the lane:
-
-```text
-# hermetic: the deterministic fake head (scripted stdio-MCP client)
-python -m exercise --head fake --head-execute \
-  --attempt-dir /tmp/attempt \
-  --expected challenges/<challenge>/artifacts/expected-findings.json
-
-# real head, runner-driven: the runner spawns the named agent CLI
-# headless and grades the server-side trace — only when the operator
-# armed that head on this host and supplied the attempt prompt
-export EXERCISE_HEAD_CLAUDE_CODE_CMD=/usr/local/bin/claude   # or EXERCISE_HEAD_CODEX_CLI_CMD
-python -m exercise --head claude-code --head-execute \
-  --attempt-prompt prompts/challenge-02.txt \
-  --attempt-dir /tmp/attempt \
-  --expected challenges/<challenge>/artifacts/expected-findings.json
-
-# real head, out-of-band: run the agent CLI yourself against the
-# attached server (recipes in the head docs), drop its found.json into
-# the attempt dir, then grade
-python -m exercise --attempt-dir /tmp/attempt \
-  --expected challenges/<challenge>/artifacts/expected-findings.json
-```
-
-Real-head execution follows the harness's standing arming discipline:
-default-off (an unarmed host refuses — the fake head is the only
-`--head-execute` driver there, so CI and hermetic tests never spawn an
-agent CLI), operator-armed per head (the `EXERCISE_HEAD_*_CMD` env
-names the binary; the runner composes the headless incantation, wires
-the trace env to the MCP server per CLI, and audits the spawn/reap on
-stderr), and evidence stays server-side (the graded lane comes from
-the HMAC-chained trace and the attempt grader; the report records the
-prompt's hash, the argv with the prompt elided, exit code, and
-duration — never the trace key or the prompt text). Codex hosts
-additionally need the user-global `~/.codex/config.toml` to allowlist
-the three `SPECAUDIT_CTF_MCP_TRACE*` vars for the
-`specaudit-ctf` server — the runner preflights this and refuses
-before spawning.
-
-A failed attempt fails the exercise run (readiness probing stays
-non-gating). The fake head (`python -m exercise.fake_head`, personas
-`competent` / `blind-zero` / `blind-irrelevant`) is the lane's
-hermetic proof and regression harness: no agent CLI, no API keys, no
-spend.
-
-### The rehearsal battery
-
-`python -m exercise --battery` runs the default multi-arm composition
-(`exercise/battery.py`), one member per exercise domain: `checkov.scan`
-(the offline IaC scan contained by construction to the packaged
-synthetic range), `semgrep-mcp.semgrep_scan` with a shipped inline rule
-pack against planted fixture code under `SEMGREP_SCAN_ROOT`,
-`attack-stix-data.technique` (an exact ATT&CK lookup over the shipped
-demo bundle — the knowledge/reasoning member, contained by
-construction), and the dual-gated target-facing pair `wapiti.scan`
-(web/DAST, `http://{target}:8080/`) and `nmap.scan` (network,
-single host). Target-facing members are template members: the runner
-fills `{target}` from `LAB_TARGET_HOST` (a bare host/IP) and dispatches
-only when their arming scope env (`WAPITI_DISPATCH_SCOPE` /
-`NMAP_DISPATCH_SCOPE`) is set too — the scope env authorizes; it is
-never the source of the target. Members are skipped honestly when
-their binary is absent or an arming/target env is unset (the run
-degrades); a member that runs and fails — including a scope or URL
-refusal — fails the run. zgrab2 stays a lab opt-in through explicit
-`--arms` (it needs a per-run module choice). The unarmed/explicit
-contrast is pinned by tests: the same request that skips under
-`--battery` fails under `--arms`.
+See [Heads](docs/extension-cli-reference.md#heads).
 
 ## Range
 
-```text
-python -m extension.range
-python -m extension.range --out range-result.json --seed 123
-python -m extension.range --arm-ids "" --seed 7
-python -m extension.range --attempt-id attempt-<hex> --artifact-dir ABSOLUTE_DIR
-```
-
-Fixtures `tf_s3_public_access` and `tf_iam_open` are synthetic. CLI
-stdout and `--out` are `specaudit.ctf.execution-result.v1`. Mode A
-(`--artifact-dir`) emits the envelope only on stdout: `--out` combined
-with `--artifact-dir` is rejected before range execution and may report
-only on stderr. The artifact directory must be a fresh empty private
-per-attempt Unix directory; the producer binds it before dispatch.
-Process exit 0 if and only if the outer envelope `status` is
-`complete`; inner `ok` does not decide it. `transport_ok` is
-informational: it means the tool invocation/response transport
-succeeded, not that artifact custody succeeded. Library `run_range()`
-still returns seed-stable `range.lifecycle.v3` with
-`live_aws: false`. The inner lifecycle document is coverage input and
-a `range-report` artifact digest, not a second all-clear: inner `ok`
-is not the outer status. `--seed` applies to that inner run. Document
-and fixture `status` is `complete`, `degraded`, or `failed`;
-compatibility `ok` is true only when `status` is `complete`. A skipped
-or erroring arm cannot be `complete`. Omit `arm_ids` (auto-discover) to
-treat curated arms as optional (`degraded` on skip/error). Explicit
-non-empty `arm_ids` are required (`failed` on skip/error). Explicit
-empty `arm_ids=()` has no arms and may be `complete` when lifecycle
-matches. Lifecycle `matched_expected` is independent — a match cannot
-hide an arm skip/error. Default CLI omits `arm_ids` (auto-discover) and
-may exit 1 with a valid degraded execution-result envelope. MCP
-JSON-RPC success is transport-only; the MCP content document is still
-`range.lifecycle.v3`.
+See [Range](docs/extension-cli-reference.md#range).
 
 ## Scoring runs
 
-`python -m score` grades one or more `specaudit.ctf.execution-result.v1`
-envelope files (CLI stdout captures, `--out` files) and answers
-`passed` with per-gate detail:
-
-```text
-python -m score range-result.json
-python -m score run1.json run2.json --rubric score/rubrics/rehearsal.yaml
-```
-
-Two rules are structural. **Transport success is never a verdict**:
-`transport_ok` is echoed per envelope, labelled informational, and
-participates in no pass decision. **A skipped or failed required arm is
-never success**: the `required_arms_complete` gate fails closed on it.
-The nine gates (`envelope_valid`, `status_complete`,
-`required_arms_complete`, `owned_evidence`, `limitations_empty`,
-`cleanup_proven`, `budget_respected`, `scope_contained`,
-`approval_present`) are thin projections over the repository's own
-envelope parser — the scorer never reimplements envelope semantics,
-never reads inner range lifecycle documents, and never follows
-artifact digests to disk. A strict optional rubric can require
-capabilities and explicitly allow named envelopes to pass **as
-degraded** (waiving exactly the status/limitations gates for them);
-evidence, cleanup, budget, scope, approval, and required-arm gates are
-never waivable. Exit codes: `0` passed, `1` scored-but-failed
-(including unreadable/invalid envelope files, scored as failed
-entries), `2` usage errors. The score document on stdout is valid JSON
-for both `0` and `1` — CI can gate on either. The package is a
-checkout teaching-path deliverable (outside the sealed `extension`
-surface; not in the wheel build).
-
-A companion drift guard, `python -m score.drift`, cross-references
-every shared verdict vocabulary (status, side effects, safety class,
-tier, kind, protocols, cleanup proof) between the versioned JSON schemas and the enforcing code
-constants, failing closed and naming what each side is missing — a
-repository self-check, never a live-engagement gate.
+See [Scoring runs](docs/extension-cli-reference.md#scoring-runs).
 
 ## Web testing (DAST) role
 
-The first-class web/DAST lane is the **zaproxy** arm: Zed Attack
-Proxy's native JSON API is a first-party automation surface and the
-free edition needs no license for it. Read tier covers the exact
-`/JSON/*/view/` allowlist (`sites`, alerts, messages, spider and
-active-scan status **and results**); `ascan_scan`/`spider_scan` are
-dispatch-class and stay refused until `ZAP_DISPATCH_SCOPE` names the
-target. Passive findings surface through `alerts`/`alerts_summary`
-without any dispatch.
-
-**Burp** (`burp-mcp`) is a research-tier, fully usable SSE integration:
-PortSwigger's official MCP Server BApp on the free Community Edition
-admits proxy/WebSocket history (including the regex filter variants),
-codec, Organizer, config-export, scanner-issue (Pro), Collaborator
-interaction (Pro), and random-text reads as catalog capabilities - the
-full read surface re-verified from source 2026-09-06, no edition
-gating anywhere (a tool the connected Burp does not list is refused as
-unavailable, which is the server's own surface; active requests, UI
-mutations, config writes, and the live-editor read stay blocked). The
-BApp's MCP server auto-starts with Burp once installed (enabled
-defaults true and persists - verified from source), so staging is
-install-once-then-launch. The arm rides the hardened shared transport:
-endpoint policy is literal-loopback only (`BURP_MCP_ENDPOINT` must name
-`127.0.0.1` or `[::1]`) and the client sends no credential. Community
-Edition has no usable built-in REST API and no project-file persistence,
-so the honest CE automation story is the official BApp above; for the
-first-class DAST role use `zaproxy` for driven web testing.
+See [Web testing (DAST) role](docs/extension-cli-reference.md#web-testing-dast-role).
 
 ## On Kali
 
-The suite is OS-agnostic Python; Kali contributes **binaries and
-endpoints**, and `python -m extension availability` is the one-command
-answer to "what lights up on this host":
-
-```text
-python -m extension availability
-```
-
-It prints a read-only report — host profile (Kali is detected via the
-canonical `/etc/os-release` `ID=kali`), the `*_DISPATCH_SCOPE` env vars
-currently armed, and one row per curated arm: tier, held flag, and
-whether the arm's own install probe resolves a binary/endpoint. Nothing
-is invoked.
-
-Install on Kali (PEP 668 blocks system pip; use a venv or pipx):
-
-```text
-sudo apt update && sudo apt install -y python3-venv nmap
-python3 -m venv ~/.venvs/ctf && ~/.venvs/ctf/bin/pip install -e .
-~/.venvs/ctf/bin/python -m extension availability
-```
-
-What Kali gives you out of the box (default amd64 image):
-`nmap` ships in `kali-linux-headless` (every default image) and
-`burpsuite` (Community-grade) ships in `kali-tools-top10`. For the
-first-class DAST lane install `zaproxy` (`sudo apt install zaproxy`)
-and start ZAP with its API enabled, then point `ZAP_API_ENDPOINT` at
-it. `zgrab2` is not packaged by Kali — install it separately
-(`lab/install-zgrab2.sh` builds a pinned upstream tag into the dev
-instance) or leave the row dark. Among the dispatch-admitted CLI
-arms, `wapiti` and
-`routersploit` ship in Kali's tool metapackages; `zdns` and `osmedeus`
-are not packaged (install separately). One naming trap: Kali once
-shipped an unrelated WPA-PSK cracker also called `pyrit` — the AI
-red-team framework here is Microsoft's PyRIT (`pyrit_scan`, installed
-as a Python package), not that tool. Every dispatch-class action still
-requires its explicit `*_DISPATCH_SCOPE`; installing a binary never
-arms anything by itself.
+See [On Kali](docs/extension-cli-reference.md#on-kali).
 
 ## Remote-read admission
 
-Read-tier capabilities that egress to an operator-configured remote
-endpoint (for example the `google-mcp-security` lookups) are admitted
-with the dispatch-class grammar but a read doctrine: safety class R1,
-`network-egress` side effects, default-off, and the endpoint
-environment variable (`GTI_MCP_ENDPOINT`) as the operator's arming
-decision — the remote-read analog of the dispatch scope envs
-(`operator://endpoint/<ENV>`). The arm's own allowlist and the
-hardened transport (https-only, DNS-pinned, Origin-pinned, no ambient
-credentials) remain the enforcement points; mutating upstream tools
-stay off the allowlist and are refused fail-closed.
+See [Remote-read admission](docs/extension-cli-reference.md#remote-read-admission).
 
 ## Dispatch doctrine
 
-Read-only (or unarmed-default) is the first tier. Dispatch-class
-actions — exploit run, scan launch, detonate, live DNS, page fetch,
-AI/process, source mutation — are refused until the operator sets
-`<ARM>_DISPATCH_SCOPE` to **explicit** CIDRs, IPs, hostnames, or URI
-prefixes.
-
-- Blanket scopes (`*`, `0.0.0.0/0`, `::/0`, prefixlen-0) are refused.
-- Every allowed dispatch writes `[dispatch] <iso> arm=… action=…
-  scope=… target=…` to stderr and stamps the Result.
-- Path-scoped arms (`deepsec`, `vvah`, `ai-deep-sast`, `agent-wiz`):
-  set `FOO_DISPATCH_SCOPE=localhost` (any explicit non-blanket
-  hostname/CIDR/URI). Containment is `FOO_SCAN_ROOT`. **Do not put a
-  repo path in the scope env** — `parse_scope` refuses it as not a
-  CIDR, IP, hostname, or URI.
-
-Dispatch remains unarmed by default. Executable arms need their documented
-binary/endpoint configuration and action gate. The in-process `asset-recon`
-arm needs no binary for offline work; provider collection and target probing
-have separate explicit grants described in the [capability guide](docs/scope-recon.md).
-
-Shared gate: `extension/arms/dispatch.py`. Caveats:
-[extension/README.md](extension/README.md).
+See [Dispatch doctrine](docs/extension-cli-reference.md#dispatch-doctrine).
 
 ## Environment variables
 
-| Env | Arm | Role |
-| --- | --- | --- |
-| `SPECAUDIT_CTF_ROOT` | launchers | clone root when a head launcher is relocated |
-| `ASSET_RECON_PROVIDERS` | asset-recon | explicit provider grants for live evidence collection; not target-probe authority |
-| `ASSET_RECON_PROBE_SCOPE` | asset-recon | independently armed explicit-target probe scope; delegated scanner methods also require their existing arm scopes |
-| `CERTSPOTTER_TOKEN` / `SHODAN_API_KEY` | asset-recon | optional Cert Spotter authentication / required Shodan credential; neither substitutes for provider grants |
-| `BURP_MCP_ENDPOINT` | burp-mcp | HTTP+SSE MCP URL |
-| `SEMGREP_MCP_ENDPOINT` | semgrep-mcp | streamable-HTTP MCP URL |
-| `CHECKOV_BIN` / `CHECKOV_SCAN_ROOT` | checkov | binary (or PATH); scan root **inside** the packaged range |
-| `PROWLER_MCP_ENDPOINT` | prowler-mcp | streamable-HTTP MCP URL (https for self-hosted remote, or `http://127.0.0.1:8000/mcp` for the first-party local server; include the `/mcp` path) |
-| `GARAK_BIN` / `GARAK_TARGET` / `GARAK_REPORT_DIR` | garak | binary; required target binding; JSONL report dir |
-| `ZAP_API_ENDPOINT` / `ZAP_API_KEY` / `ZAP_DISPATCH_SCOPE` | zaproxy | native API base URL; optional API key; host-scoped dispatch |
-| `WAPITI_BIN` / `WAPITI_DISPATCH_SCOPE` | wapiti | binary; host-scoped dispatch |
-| `COMMIX_BIN` / `COMMIX_DISPATCH_SCOPE` | commix | binary; host-scoped dispatch |
-| `MITREATTACK_BIN` | mitreattack-python | `attack-to-excel` binary (or PATH) |
-| `VULS_BIN` / `VULS_DISPATCH_SCOPE` | vuls | binary; scope-presence dispatch (`scan`) |
-| `STRATUS_BIN` / `STRATUS_DISPATCH_SCOPE` | stratus-red-team | binary; technique-bound dispatch |
-| `OSMEDEUS_BIN` / `OSMEDEUS_DISPATCH_SCOPE` | osmedeus | binary; host-scoped dispatch |
-| `ZDNS_BIN` / `ZDNS_DISPATCH_SCOPE` | zdns | binary; host-scoped lookup |
-| `PAGE_FETCH_BIN` / `PAGE_FETCH_DISPATCH_SCOPE` | page-fetch | binary; URI-scoped fetch |
-| `CALDERA_ENDPOINT` / `CALDERA_API_KEY` / `CALDERA_DISPATCH_SCOPE` | caldera | REST base URL; API key; operation dispatch |
-| `GTI_MCP_ENDPOINT` | google-mcp-security | GTI MCP URL (read-only lookups; no dispatch tier) |
-| `IVANTI_CONFIG` / `IVANTI_URL` / `IVANTI_API_VER` / `IVANTI_CLIENT_ID` / `IVANTI_API_KEY` / `IVANTI_SCOPE` | ivanti | platform INI path (or env: base URL, API version, client id, live key); `IVANTI_SCOPE` is **mandatory** host-scoped platform admission — every action that reaches the platform (`search`/`export`/`filters`/`fields`) is refused before any request unless the effective platform URL host is inside it |
-| `METASPLOIT_MCP_ENDPOINT` / `METASPLOIT_DISPATCH_SCOPE` | metasploit-mcp | SSE MCP URL; host/session-scoped execution |
-| `ROUTERSPLOIT_BIN` / `ROUTERSPLOIT_DISPATCH_SCOPE` | routersploit | binary; host-scoped `run` |
-| `SNIPER_BIN` / `SNIPER_DISPATCH_SCOPE` | sniper | binary; host-scoped `scan` |
-| `ZGRAB2_BIN` / `ZGRAB2_DISPATCH_SCOPE` | zgrab2 | binary; host-scoped stdin scan |
-| `NMAP_BIN` / `NMAP_DISPATCH_SCOPE` | nmap | binary; single-host `scan` (closed flags, XML on stdout) |
-| `DARK_MOON_BIN` / `DARK_MOON_DISPATCH_SCOPE` | dark-moon | shell launcher; host-scoped `campaign`/`run` |
-| `PYRIT_BIN` / `PYRIT_DISPATCH_SCOPE` | pyrit | `pyrit_scan`; host/URL-scoped `scan` |
-| `DEEPSEC_BIN` / `DEEPSEC_SCAN_ROOT` / `DEEPSEC_DISPATCH_SCOPE` | deepsec | real `deepsec` binary (**not** npx/pnpm/npm/yarn); workspace dir with config (cwd); arm `DEEPSEC_DISPATCH_SCOPE=localhost` |
-| `VVAH_BIN` / `VVAH_SCAN_ROOT` / `VVAH_DISPATCH_SCOPE` / `VVAH_ALLOW_REMEDIATE` | vvah | binary; path root (cwd); arm `VVAH_DISPATCH_SCOPE=localhost`; S10 extra gate `=1` |
-| `AI_DEEP_SAST_BIN` / `AI_DEEP_SAST_DEEPSCAN_BIN` / `AI_DEEP_SAST_SCAN_ROOT` / `AI_DEEP_SAST_DISPATCH_SCOPE` / `AI_DEEP_SAST_SEMGREP_CONFIG` | ai-deep-sast | binaries; path root (cwd); local ruleset inside the root; arm `AI_DEEP_SAST_DISPATCH_SCOPE=localhost` |
-| `AGENT_WIZ_BIN` / `AGENT_WIZ_SCAN_ROOT` / `AGENT_WIZ_DISPATCH_SCOPE` | agent-wiz | binary; path root (cwd); arm `AGENT_WIZ_DISPATCH_SCOPE=localhost` |
-| `OPENAI_API_KEY` | agent-wiz | required for `analyze`; presence-checked, never logged |
-
-Missing `*_BIN` **and** missing PATH → executable actions are unavailable.
-For `agent-wiz`, the bundled metadata-only `list_tools` exception remains
-available while `extract`, `visualize`, and `analyze` raise `NotInstalled` at
-the arm/Extension layer. A binary on PATH without `*_BIN` installs executable
-actions where that arm supports the checkov/wapiti pattern.
-Path-scoped `*_DISPATCH_SCOPE` is a dummy explicit hostname
-(`localhost`); putting a filesystem path there is refused.
+See [Environment variables](docs/extension-cli-reference.md#environment-variables).
 
 ## Develop
 
-```text
-python -m pip install -e ".[dev]"
-python -m pytest tests/ -q
-```
-
-Tests are hermetic. They do not need a live scanner or a live cloud
-account.
-
-Operator detail: [extension/README.md](extension/README.md).
+See [Develop](docs/extension-cli-reference.md#develop).

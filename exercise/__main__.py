@@ -1,4 +1,4 @@
-"""``python -m exercise`` — compose a full rehearsal run (see runner.py)."""
+"""``python -m exercise`` — operator console; legacy flag runner remains available."""
 
 from __future__ import annotations
 
@@ -12,6 +12,15 @@ from .runner import ExerciseError, run_exercise
 
 
 def main(argv: Sequence[str] | None = None) -> int:
+    arguments = list(argv) if argv is not None else sys.argv[1:]
+    if not arguments or arguments[0] in {"-h", "--help"}:
+        from .operations import main as operator_main
+
+        return operator_main(["--help"])
+    if arguments and arguments[0] in {"inventory", "plan", "run", "status", "report", "prepare", "grade"}:
+        from .operations import main as operator_main
+
+        return operator_main(arguments)
     parser = argparse.ArgumentParser(
         prog="exercise",
         description=(

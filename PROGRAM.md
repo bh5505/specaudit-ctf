@@ -1,5 +1,9 @@
 # Program — evidence-led cybersecurity audit learning
 
+For execution, use the [operator console](docs/operations-console.md). This
+document is a planning and assessment reference; the console inventory identifies
+which scenarios and capabilities are runnable.
+
 This is the single living architecture for the learning program: what the
 repository teaches now, what a complete internal-audit and telecom
 cybersecurity curriculum must cover, and what has to be true before new

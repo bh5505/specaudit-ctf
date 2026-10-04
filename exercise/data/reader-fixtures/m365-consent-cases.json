@@ -1,0 +1,4 @@
+[
+  {"case_id":"SYN-C-01","name":"Fabricated broad consent","description":"Synthetic consent request","risk_level":"high","consent_flow":{"user_action":"approved in simulation","app_permissions":["Mail.Read"]},"data_access":{"mailbox_count":1,"files_accessed":0},"permissions":["Mail.Read","User.Read"],"risk_assessment":"Simulated broad read grant; no live tenant evidence"},
+  {"case_id":"SYN-C-02","name":"Fabricated limited consent","description":"Synthetic limited request","risk_level":"low","consent_flow":{},"data_access":{},"permissions":[],"risk_assessment":"No permissions in this fictional case"}
+]

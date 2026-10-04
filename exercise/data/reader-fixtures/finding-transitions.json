@@ -1,0 +1,4 @@
+[
+  {"finding_id":"SYN-F-01","title":"Fabricated open finding","status":"open","severity":"high","transitions":[{"from":"new","to":"open","actor":"lab-reviewer","reason":"synthetic review","ts":"2026-01-01T10:00:00Z"}]},
+  {"finding_id":"SYN-F-02","title":"Fabricated resolved finding","status":"resolved","severity":"low","transitions":[{"from":"new","to":"open","actor":"lab-reviewer","reason":"synthetic review","ts":"2026-01-01T10:00:00Z"},{"from":"open","to":"resolved","actor":"lab-reviewer","reason":"synthetic resolution","ts":"2026-01-02T10:00:00Z"}]}
+]

@@ -1,0 +1,4 @@
+{"techniques":[
+  {"technique_id":"SYN-T-01","name":"Public sample bucket","platform":"aws","severity":"high","executor":"echo inert-public-example"},
+  {"technique_id":"SYN-T-02","name":"Blocked sample bucket","platform":"aws","severity":"low","executor":"echo inert-blocked-example"}
+]}

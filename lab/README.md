@@ -1,5 +1,9 @@
 # Lab: WSL Kali dev/test instance + ephemeral target host
 
+The [operator console](../docs/operations-console.md) runs the packaged synthetic
+scenarios without this WSL environment. This page covers optional external-tool
+and target infrastructure; it is not the default operator setup.
+
 Local, single-host lab tooling for developing and testing this suite
 against a real Kali instance and a real (inert) target host. Everything
 machine-specific lives in environment variables or `lab/local.conf`

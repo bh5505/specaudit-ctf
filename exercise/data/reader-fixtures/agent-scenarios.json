@@ -1,0 +1,4 @@
+{"scenarios":[
+  {"id":"SYN-A-01","name":"Unsafe synthetic request","findings":[{"type":"input-validation","path":"/demo/unsafe"}]},
+  {"id":"SYN-A-02","name":"Clean synthetic request","findings":[]}
+]}

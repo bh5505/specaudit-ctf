@@ -1,0 +1,4 @@
+[
+  {"path_id":"SYN-PATH-01","source":"LAB-A","target":"LAB-C","length":3,"risk_score":8.0,"nodes":["LAB-A","LAB-B","LAB-C"],"edges":[{"from":"LAB-A","to":"LAB-B"},{"from":"LAB-B","to":"LAB-C"}],"datasource":"synthetic-export"},
+  {"path_id":"SYN-PATH-02","source":"LAB-A","target":"LAB-D","length":2,"risk_score":2.0,"nodes":["LAB-A","LAB-D"],"edges":[{"from":"LAB-A","to":"LAB-D"}],"datasource":null}
+]

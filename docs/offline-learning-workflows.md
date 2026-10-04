@@ -1,4 +1,7 @@
-# Offline evidence learning workflows
+# Evidence workflow API reference
+
+Start new operations with the [unified operator console](operations-console.md).
+This page documents the underlying compatibility API and its data contracts.
 
 These importable Python workflows are bounded learning and evidence-review
 pilots. Install with Python 3.11+ (`pip install -e '.[dev]'` for tests) and use

@@ -1,4 +1,7 @@
-# Offline learning operator arm
+# Learning-operator arm API reference
+
+Start new operations with the [unified operator console](operations-console.md).
+This page documents the underlying compatibility API and its data contracts.
 
 `learning-operator` is a research-tier, first-party operator adapter for six
 PR4 evidence/exercise workflows. It calls the same bounded evaluators as the

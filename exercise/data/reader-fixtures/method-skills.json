@@ -1,0 +1,4 @@
+{"skills":[
+  {"skill_id":"SYN-S-01","name":"Trace synthetic permission","category":"cloud","description":"Compare an explicitly configured branch and a blocked branch.","tool_mapping":"offline-graph","steps":["read fixture","record limitations"]},
+  {"skill_id":"SYN-S-02","name":"Review synthetic telemetry","category":"identity","description":"An event description does not authenticate an actor.","tool_mapping":"offline-ledger","steps":["read record","preserve unknown"]}
+]}

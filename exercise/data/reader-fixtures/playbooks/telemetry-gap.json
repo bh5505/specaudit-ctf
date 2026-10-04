@@ -1,0 +1,1 @@
+{"name":"Synthetic telemetry gap","rules":[{"rule_id":"SYN-P-02","name":"Absent source requires review","category":"cloud","severity":"medium"}]}
