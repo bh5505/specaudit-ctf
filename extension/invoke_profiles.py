@@ -648,7 +648,8 @@ INVOKE_PROFILES = {
         *(
             replace(_local_read_profile("learning-operator", action), synthetic_only=False)
             for action in ("graph_path", "k8s_review", "workpaper_review",
-                           "agent_grade", "detection_review", "triage_evaluate")
+                           "agent_grade", "detection_review", "triage_evaluate",
+                           "analyze_pack")
         ),
         _local_read_profile("learning-operator", "sample"),
         *(

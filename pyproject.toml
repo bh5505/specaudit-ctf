@@ -43,7 +43,7 @@ Homepage = "https://github.com/bh5505/specaudit-ctf"
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["extension*", "score*", "exercise_operator*", "learning*", "graph_evidence*", "review_workpaper*", "k8s_path_evidence*"]
+include = ["extension*", "score*", "exercise*", "learning*", "graph_evidence*", "review_workpaper*", "k8s_path_evidence*", "tools", "packs", "packs.ext_telecom_offsec"]
 exclude = ["tests*"]
 
 [tool.setuptools.package-data]
@@ -69,3 +69,5 @@ extension = [
 "graph_evidence" = ["fixtures/*.ndjson"]
 "review_workpaper" = ["packet/*.md", "packet/*.json", "packet/evidence/*.json"]
 "k8s_path_evidence" = ["fixture/*.json", "fixture/*.md", "README.md"]
+
+"packs.ext_telecom_offsec" = ["manifest.yaml", "README.md", "synthetic/*.yaml", "schema/migrations/*.sql", "checks/*.sql", "engagement_configs/*.yaml", "assets/*.yaml", "templates/*.tera"]

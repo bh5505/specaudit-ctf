@@ -18,6 +18,20 @@ This tree is the public attach surface:
 
 A validation client may attach the same CLI or MCP surface later.
 
+## Operational target analysis
+
+The existing `learning-operator.analyze_pack` invoke action connects pack
+findings to permission paths, Kubernetes prerequisites, workpaper review,
+detection records, captured agent behavior and triage order. It calls the core
+`pipeline.prioritize_targets` implementation; it does not run bundled samples.
+Cloud and other non-IP findings remain in the handoff alongside network targets.
+
+Use the [core analysis contract](../docs/operator-learning-arm.md) for the
+argument schema and CLI/MCP invocation. Successful attached calls include the
+bounded, digest-checked report in a second text block so the head can act on the
+analysis. The v1 execution envelope and four MCP tool names remain unchanged.
+External validation uses the existing scoped arms and operator authorization.
+
 ## Opt-in trusted observations
 
 The default runtime does not import or call the observation sidecar.

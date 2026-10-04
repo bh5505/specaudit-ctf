@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
 
 from exercise import fake_head
 from exercise.__main__ import main as exercise_main
-from exercise.attempt import AttemptError, grade_attempt
+from exercise.attempt import AGENT_CLAIMS_SCHEMA, AttemptError, grade_attempt
 from exercise.runner import ExerciseError, run_exercise
 from extension import trace
 
@@ -55,6 +56,9 @@ def test_competent_persona_passes_with_genuine_tool_evidence(
     document = grade_attempt(attempt_dir, expected_path=CONTRACT_02, key_env=KEY_HEX)
     assert document["trace"]["chain_ok"] is True
     assert document["trace"]["tool_calls"] == 5
+    assert document["agent_trace"]["status"] == "verified"
+    assert document["agent_trace"]["trace_sha256"]
+    assert len(document["agent_trace"]["observed_calls"]) == 5
     assert document["passed"] is True, document["reason"]
     assert document["unverified"] == []
     assert len(document["verified"]) == 3
@@ -68,6 +72,92 @@ def test_competent_persona_is_contract_derived(tmp_path: Path) -> None:
     document = grade_attempt(attempt_dir, expected_path=CONTRACT_03, key_env=KEY_HEX)
     assert document["passed"] is True, document["reason"]
     assert len(document["verified"]) == 4
+
+
+def test_supplied_agent_claims_are_bound_to_the_server_trace_and_gate_attempt(tmp_path: Path) -> None:
+    attempt_dir = tmp_path / "attempt"
+    _run_persona("competent", CONTRACT_02, attempt_dir)
+    baseline = grade_attempt(attempt_dir, expected_path=CONTRACT_02, key_env=KEY_HEX)
+    path = tmp_path / "claims.json"
+    claim = {
+        "schema": AGENT_CLAIMS_SCHEMA,
+        "trace_sha256": baseline["agent_trace"]["trace_sha256"],
+        "claims": [{"seq": 1, "tool": "list", "reported_outcome": "succeeded"}],
+    }
+    path.write_text(json.dumps(claim), encoding="utf-8")
+    matched = grade_attempt(attempt_dir, expected_path=CONTRACT_02, key_env=KEY_HEX, claims_path=path)
+    assert matched["passed"] is True
+    assert matched["agent_trace"]["claims_status"] == "supported"
+    claim["claims"][0]["reported_outcome"] = "denied"
+    path.write_text(json.dumps(claim), encoding="utf-8")
+    false = grade_attempt(attempt_dir, expected_path=CONTRACT_02, key_env=KEY_HEX, claims_path=path)
+    assert false["grade"]["passed"] is True
+    assert false["passed"] is False
+    assert false["agent_trace"]["claims_status"] == "unsupported"
+    assert "agent claims" in false["reason"]
+
+
+def test_agent_claims_cli_requires_attempt(tmp_path: Path, capsys) -> None:
+    assert exercise_main(["--agent-claims", str(tmp_path / "claims.json")]) == 2
+    assert "requires --attempt-dir" in capsys.readouterr().err
+
+
+def test_operator_cli_compares_claims_without_passing_key_to_head(tmp_path: Path, monkeypatch, capsys) -> None:
+    attempt_dir = tmp_path / "attempt"
+    _run_persona("competent", CONTRACT_02, attempt_dir)
+    baseline = grade_attempt(attempt_dir, expected_path=CONTRACT_02, key_env=KEY_HEX)
+    path = tmp_path / "claims.json"
+    path.write_text(json.dumps({
+        "schema": AGENT_CLAIMS_SCHEMA,
+        "trace_sha256": baseline["agent_trace"]["trace_sha256"],
+        "claims": [{"seq": 1, "tool": "list", "reported_outcome": "failed"}],
+    }), encoding="utf-8")
+    monkeypatch.setenv(trace.ENV_KEY, KEY_HEX)
+    assert exercise_main([
+        "--attempt-dir", str(attempt_dir), "--expected", str(CONTRACT_02),
+        "--agent-claims", str(path),
+    ]) == 1
+    report = json.loads(capsys.readouterr().out)
+    assert report["head"]["agent_trace"]["claims_status"] == "unsupported"
+    assert KEY_HEX not in json.dumps(report)
+
+
+def test_claim_file_rejects_symlink_duplicate_keys_and_oversize(tmp_path: Path) -> None:
+    attempt_dir = tmp_path / "attempt"
+    _run_persona("competent", CONTRACT_02, attempt_dir)
+    good = tmp_path / "valid.json"
+    baseline = grade_attempt(attempt_dir, expected_path=CONTRACT_02, key_env=KEY_HEX)
+    good.write_text(json.dumps({
+        "schema": AGENT_CLAIMS_SCHEMA,
+        "trace_sha256": baseline["agent_trace"]["trace_sha256"],
+        "claims": [{"seq": 1, "tool": "list", "reported_outcome": "succeeded"}],
+    }), encoding="utf-8")
+    link = tmp_path / "link.json"
+    link.symlink_to(good)
+    duplicate = tmp_path / "duplicate.json"
+    duplicate.write_text(
+        '{"schema":"%s","trace_sha256":"%s","claims":[],"claims":[]}'
+        % (AGENT_CLAIMS_SCHEMA, baseline["agent_trace"]["trace_sha256"]),
+        encoding="utf-8",
+    )
+    oversized = tmp_path / "oversized.json"
+    oversized.write_text(good.read_text(encoding="utf-8") + " " * 65536, encoding="utf-8")
+    for path in (link, duplicate, oversized):
+        result = grade_attempt(attempt_dir, expected_path=CONTRACT_02, key_env=KEY_HEX, claims_path=path)
+        assert result["passed"] is False
+        assert result["agent_trace"]["claims_status"] == "invalid"
+        assert result["grade"]["passed"] is True
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="Unix FIFO test")
+def test_claim_file_rejects_fifo_without_waiting_for_a_writer(tmp_path: Path) -> None:
+    attempt_dir = tmp_path / "attempt"
+    _run_persona("competent", CONTRACT_02, attempt_dir)
+    fifo = tmp_path / "claims.pipe"
+    os.mkfifo(fifo)
+    result = grade_attempt(attempt_dir, expected_path=CONTRACT_02, key_env=KEY_HEX, claims_path=fifo)
+    assert result["passed"] is False
+    assert result["agent_trace"]["claims_status"] == "invalid"
 
 
 def test_blind_zero_persona_is_never_graded(tmp_path: Path) -> None:
@@ -104,6 +194,8 @@ def test_truncated_attempt_fails_closed(tmp_path: Path) -> None:
     document = grade_attempt(attempt_dir, expected_path=CONTRACT_02, key_env=KEY_HEX)
     assert document["passed"] is False
     assert document["trace"]["chain_ok"] is False
+    assert document["agent_trace"]["status"] == "unverified"
+    assert document["agent_trace"]["observed_calls"] == []
 
 
 def test_attempt_without_key_is_a_usage_error(tmp_path: Path) -> None:

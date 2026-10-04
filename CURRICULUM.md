@@ -1,5 +1,7 @@
 # Curriculum — evidence-led cybersecurity audit practice
 
+Operational use is through the existing [core pack analysis and admitted arms](docs/operator-learning-arm.md). This document supplies planning or assessment context; its standalone examples do not define a separate operating mode.
+
 This curriculum serves two truths at once. Tracks A–D and the challenge assets
 listed below are **shipped** in this repository. The larger module map and
 T01–T08 seed packs define the learning program being built; unless explicitly

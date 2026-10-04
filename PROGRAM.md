@@ -1,5 +1,7 @@
 # Program — evidence-led cybersecurity audit learning
 
+Operational use is through the existing [core pack analysis and admitted arms](docs/operator-learning-arm.md). This document supplies planning or assessment context; its standalone examples do not define a separate operating mode.
+
 This is the single living architecture for the learning program: what the
 repository teaches now, what a complete internal-audit and telecom
 cybersecurity curriculum must cover, and what has to be true before new

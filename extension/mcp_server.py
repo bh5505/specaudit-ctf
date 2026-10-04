@@ -495,11 +495,19 @@ def _outcome_content(outcome: DispatchOutcome) -> dict[str, Any]:
     if outcome.contract_error is not None:
         raise _InvalidParams(str(outcome.contract_error))
     assert outcome.envelope is not None  # only contract errors lack one
-    return _tool_content(
+    content = _tool_content(
         outcome.envelope,
         is_error=outcome.exit_code != 0,
         structured=outcome.envelope,
     )
+    if outcome.exit_code == 0 and outcome.inline_report is not None:
+        # The first content and structuredContent retain exact v1 parity with
+        # CLI. Only this admitted inline review gets a second, digest-checked
+        # content item so attached heads can read the actual target analysis.
+        content["content"].append({"type": "text", "text": json.dumps(
+            outcome.inline_report, sort_keys=True,
+        )})
+    return content
 
 
 _TOOL_ARGUMENT_KEYS: dict[str, frozenset[str]] = {

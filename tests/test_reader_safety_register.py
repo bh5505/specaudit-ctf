@@ -1063,7 +1063,7 @@ def test_safety_tooling_is_checkout_only_and_does_not_import_extension() -> None
 
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     package_find = pyproject["tool"]["setuptools"]["packages"]["find"]
-    assert set(package_find["include"]) == {"extension*", "score*", "exercise_operator*", "learning*", "graph_evidence*", "review_workpaper*", "k8s_path_evidence*"}
+    assert set(package_find["include"]) == {"extension*", "score*", "exercise*", "learning*", "graph_evidence*", "review_workpaper*", "k8s_path_evidence*", "tools", "packs", "packs.ext_telecom_offsec"}
     assert not any("safety" in pattern for pattern in package_find["include"])
 
     runtime_lock = json.loads((ROOT / "runtime" / "lock.json").read_text(encoding="utf-8"))

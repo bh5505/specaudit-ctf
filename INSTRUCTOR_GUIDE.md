@@ -1,5 +1,7 @@
 # Instructor guide — design, delivery and assessment
 
+Operational use is through the existing [core pack analysis and admitted arms](docs/operator-learning-arm.md). This document supplies planning or assessment context; its standalone examples do not define a separate operating mode.
+
 This guide is for instructors, exercise directors and challenge authors using
 the [SpecAudit-CTF curriculum](CURRICULUM.md). It describes a complete delivery
 and quality system. It does not make proposed modules runnable, admit an

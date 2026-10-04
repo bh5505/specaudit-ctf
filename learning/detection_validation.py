@@ -113,6 +113,66 @@ def evaluate(packet: object) -> dict:
     return {"schema": "synthetic-detection-verdict/v1", "case_id": p["case_id"], "stages": verdict, "retest_result": retest_result}
 
 
+def evaluate_operational(packet: object) -> dict:
+    """Review a target-bound captured chain with the five-stage logic.
+
+    Unlike the fixed teaching packet, this accepts the caller's own rule and
+    event identities. It establishes internal linkage only; event provenance,
+    rule deployment and effectiveness still need independent validation.
+    """
+    p = _fields(packet, {"schema", "target", "technique_id", "prerequisite", "rule",
+                         "events", "alerts", "actions", "retests"})
+    if p["schema"] != "specaudit.operational-detection.v1":
+        raise PacketError("unsupported operational detection schema")
+    _string(p["target"])
+    _string(p["technique_id"])
+    pre = _fields(p["prerequisite"], {"datasource", "collection", "attempt"})
+    _string(pre["datasource"])
+    if pre["collection"] not in {"on", "off", "unknown"} or pre["attempt"] not in {"allowed", "blocked", "unknown"}:
+        raise PacketError("invalid operational prerequisite")
+    rule = _fields(p["rule"], {"id", "deployed", "event_kind", "outcome"})
+    _string(rule["id"])
+    _string(rule["event_kind"])
+    if type(rule["deployed"]) is not bool or rule["outcome"] not in {"allowed", "blocked"}:
+        raise PacketError("invalid operational rule")
+    events = _records(p["events"], {"id", "datasource", "kind", "outcome", "subject"})
+    alerts = _records(p["alerts"], {"id", "rule_id", "event_id"})
+    actions = _records(p["actions"], {"id", "alert_id", "decision"})
+    retests = _records(p["retests"], {"id", "action_id", "result"})
+    if any(e["subject"] != p["target"] or e["outcome"] not in {"allowed", "blocked"} for e in events):
+        raise PacketError("event subject differs from target or has invalid outcome")
+    if pre["attempt"] != "unknown" and any(e["outcome"] != pre["attempt"] for e in events):
+        raise PacketError("event outcome contradicts the declared attempt outcome")
+    if any(a["decision"] not in {"triaged", "dismissed"} for a in actions) or any(r["result"] not in {"effective", "ineffective"} for r in retests):
+        raise PacketError("invalid analyst decision or retest")
+    event_ids, alert_ids, action_ids = ({row["id"] for row in rows} for rows in (events, alerts, actions))
+    if any(a["event_id"] not in event_ids or a["rule_id"] != rule["id"] for a in alerts) or any(a["alert_id"] not in alert_ids for a in actions) or any(r["action_id"] not in action_ids for r in retests):
+        raise PacketError("unbound operational detection record")
+    stages = {stage: {"state": "unknown", "evidence": []} for stage in STAGES}
+    stages["rule_exists"] = {"state": "met" if rule["deployed"] else "not_met", "evidence": [rule["id"]]}
+    relevant = [e for e in events if e["datasource"] == pre["datasource"] and e["kind"] == rule["event_kind"]]
+    if pre["collection"] != "unknown":
+        stages["events_collected"] = {"state": "met" if relevant and pre["collection"] == "on" else "not_met",
+                                      "evidence": [e["id"] for e in relevant] if pre["collection"] == "on" else []}
+    retest_result = "unknown"
+    if pre["attempt"] == "blocked":
+        stages["rule_fired"]["state"] = "blocked"
+    elif pre["attempt"] == "allowed" and rule["deployed"] and stages["events_collected"]["state"] == "met":
+        matched = {e["id"] for e in relevant if e["outcome"] == rule["outcome"]}
+        fired = [a for a in alerts if a["event_id"] in matched]
+        stages["rule_fired"] = {"state": "met" if fired else "not_met", "evidence": [a["id"] for a in fired]}
+        if fired:
+            triaged = [a for a in actions if a["alert_id"] in {f["id"] for f in fired} and a["decision"] == "triaged"]
+            stages["analyst_acted"] = {"state": "met" if triaged else "not_met", "evidence": [a["id"] for a in triaged]}
+            if triaged:
+                checked = [r for r in retests if r["action_id"] in {a["id"] for a in triaged}]
+                stages["outcome_retested"] = {"state": "met" if checked else "not_met", "evidence": [r["id"] for r in checked]}
+                if checked:
+                    retest_result = "effective" if all(r["result"] == "effective" for r in checked) else "ineffective"
+    return {"schema": "specaudit.operational-detection-review.v1", "target": p["target"],
+            "technique_id": p["technique_id"], "stages": stages, "retest_result": retest_result}
+
+
 def grade(packet: object, submission: object) -> dict:
     expected = evaluate(packet)
     s = _fields(submission, {"schema", "case_id", "stages", "retest_result"})

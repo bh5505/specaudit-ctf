@@ -15,7 +15,7 @@ import stat
 import sys
 from pathlib import Path
 
-from extension.arms.learning_operator import ACTIONS, ARM_ID, _sample
+from extension.arms.learning_operator import SAMPLE_ACTIONS, ARM_ID, _sample
 from extension.contract import Extension
 from extension.dispatch import dispatch_invoke
 
@@ -47,7 +47,8 @@ def _read_request_file(path: Path) -> bytes:
         os.close(fd)
 
 
-def _parse_request(raw: bytes) -> dict:
+def _parse_json_document(raw: bytes) -> object:
+    """Strict bounded JSON shared with the operator's core CLI args-file."""
     def unique(pairs: list[tuple[str, object]]) -> dict:
         out = {}
         for key, value in pairs:
@@ -79,6 +80,11 @@ def _parse_request(raw: bytes) -> dict:
                 check_depth(child, depth + 1)
 
     check_depth(request)
+    return request
+
+
+def _parse_request(raw: bytes) -> dict:
+    request = _parse_json_document(raw)
     if (not isinstance(request, dict) or set(request) != {"arm_id", "action", "args"}
             or request["arm_id"] != ARM_ID or not isinstance(request["action"], str)
             or not isinstance(request["args"], dict)):
@@ -124,7 +130,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     sample = commands.add_parser("sample", help="write a synthetic, editable request")
-    sample.add_argument("workflow", choices=sorted(ACTIONS))
+    sample.add_argument("workflow", choices=sorted(SAMPLE_ACTIONS))
     sample.add_argument("--out", type=Path, required=True, help="fresh local JSON path")
     run = commands.add_parser("run", help="dispatch an operator-held JSON request")
     run.add_argument("--request", type=Path, required=True, help="local JSON request, or - for stdin")

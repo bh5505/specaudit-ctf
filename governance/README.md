@@ -9,8 +9,8 @@ The executable admission authority remains
 `register.v1.yaml` is deliberately partial. Its detailed records cover the 14
 research readers added in PR 97: 14 `list_tools` capabilities and 38 local-data
 actions. Its inventory section separately binds the exact semantic snapshot of
-all 226 admitted profiles (including eight new offline learning-operator
-profiles) so removal or profile drift cannot look like a clean
+all 227 admitted profiles (including eight offline learning-operator
+profiles and one inline pack-analysis action) so removal or profile drift cannot look like a clean
 governance check. The source records are research candidates, not selected or
 admitted upstream material. Their `research-mapping` relationships assert no
 consumption, compatibility, provenance, custody, license, or data-rights claim.
