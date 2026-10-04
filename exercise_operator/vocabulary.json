@@ -1,0 +1,122 @@
+{
+  "schema": "specaudit.ctf.public-finding-vocabulary.v1",
+  "instructions": "This shared pool covers all fixture-backed tracks and includes nonapplicable candidates. Choose only findings supported by your assigned evidence; keys are identifiers, not conclusions. Write your own rationale and traces_to. A key without owned evidence is invalid.",
+  "candidates": [
+    {
+      "finding_key": "demo-chain-iam-open-to-s3-public",
+      "control": "defense-in-depth: identity-to-exposure chain"
+    },
+    {
+      "finding_key": "demo-chain-iam-wildcard",
+      "control": "least-privilege: wildcard identity policy"
+    },
+    {
+      "finding_key": "demo-chain-internet-to-identity",
+      "control": "defense-in-depth: exposure-to-identity chain"
+    },
+    {
+      "finding_key": "demo-chain-role-assumable",
+      "control": "least-privilege: role assumability"
+    },
+    {
+      "finding_key": "demo-chain-sg-open-admin",
+      "control": "network containment: administrative shell exposure"
+    },
+    {
+      "finding_key": "demo-iam-assumable-admin-role",
+      "control": "least-privilege: role assumability"
+    },
+    {
+      "finding_key": "demo-iam-broad-assume-grant",
+      "control": "least-privilege: sts:AssumeRole grant scope"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-no-mfa",
+      "control": "identity boundary: MFA condition on sensitive trust"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-principal",
+      "control": "identity boundary: external principal trust"
+    },
+    {
+      "finding_key": "demo-iam-scoped-resource",
+      "control": "least-privilege: resource-scoped identity policy"
+    },
+    {
+      "finding_key": "demo-iam-to-exposure-chain",
+      "control": "defense-in-depth: identity-to-exposure chain"
+    },
+    {
+      "finding_key": "demo-iam-wildcard-action",
+      "control": "least-privilege: action scope"
+    },
+    {
+      "finding_key": "demo-iam-wildcard-resource",
+      "control": "least-privilege: resource containment"
+    },
+    {
+      "finding_key": "demo-knowledge-t1078-wildcard-accounts",
+      "control": "threat mapping: adversary technique for planted exposure"
+    },
+    {
+      "finding_key": "demo-knowledge-t1530-public-storage",
+      "control": "threat mapping: adversary technique for planted exposure"
+    },
+    {
+      "finding_key": "demo-knowledge-t1562-008-cloud-logs",
+      "control": "threat mapping: adversary technique for planted exposure"
+    },
+    {
+      "finding_key": "demo-role-trust-mfa-present",
+      "control": "identity boundary: MFA condition on sensitive trust"
+    },
+    {
+      "finding_key": "demo-s3-access-logging-missing",
+      "control": "detection: storage access logging"
+    },
+    {
+      "finding_key": "demo-s3-blocked-public-policy",
+      "control": "defense-in-depth: public access block contains a public policy"
+    },
+    {
+      "finding_key": "demo-s3-no-encryption",
+      "control": "data protection: encryption at rest absent"
+    },
+    {
+      "finding_key": "demo-s3-no-public-access-block",
+      "control": "storage exposure: account-level public guard absent"
+    },
+    {
+      "finding_key": "demo-s3-private-acl",
+      "control": "storage exposure: private ACL"
+    },
+    {
+      "finding_key": "demo-s3-public-read-acl",
+      "control": "storage exposure: public ACL grant"
+    },
+    {
+      "finding_key": "demo-sg-open-admin-port",
+      "control": "network containment: administrative shell exposure"
+    },
+    {
+      "finding_key": "demo-sg-open-db-port",
+      "control": "network containment: database engine exposure"
+    },
+    {
+      "finding_key": "demo-sg-restricted-admin-port",
+      "control": "network containment: restricted administrative ingress"
+    },
+    {
+      "finding_key": "demo-trail-disabled",
+      "control": "detection: management trail coverage"
+    },
+    {
+      "finding_key": "demo-trail-enabled",
+      "control": "detection: management trail enabled"
+    },
+    {
+      "finding_key": "demo-trap-anonymous-policy-contained",
+      "control": "defense-in-depth: public access block neutralizes an anonymous grant"
+    }
+  ]
+}

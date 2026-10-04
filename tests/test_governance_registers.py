@@ -2907,7 +2907,7 @@ def test_validation_never_cross_promotes_other_registers(registry, inventory) ->
 def test_checkout_configuration_and_static_imports_keep_governance_separate() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     package_find = pyproject["tool"]["setuptools"]["packages"]["find"]
-    assert set(package_find["include"]) == {"extension*", "learning*", "graph_evidence*", "review_workpaper*", "k8s_path_evidence*"}
+    assert set(package_find["include"]) == {"extension*", "score*", "exercise_operator*", "learning*", "graph_evidence*", "review_workpaper*", "k8s_path_evidence*"}
     assert not any("governance" in pattern for pattern in package_find["include"])
 
     for path in (ROOT / "extension").rglob("*.py"):

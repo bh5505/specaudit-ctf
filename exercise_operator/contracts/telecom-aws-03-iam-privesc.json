@@ -1,0 +1,39 @@
+{
+  "track": "telecom-aws-03-iam-privesc",
+  "seed": 123,
+  "fixtures": [
+    "tf_iam_assume_role",
+    "tf_iam_external_trust"
+  ],
+  "total": 4,
+  "findings": [
+    {
+      "finding_key": "demo-iam-assumable-admin-role",
+      "control": "least-privilege: role assumability",
+      "severity": "critical",
+      "rationale": "The role's trust policy lets any in-account principal assume it, and it carries AdministratorAccess: assumption is privilege escalation, not a configuration detail.",
+      "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_role.admin + aws_iam_role_policy_attachment.admin"
+    },
+    {
+      "finding_key": "demo-iam-broad-assume-grant",
+      "control": "least-privilege: sts:AssumeRole grant scope",
+      "severity": "high",
+      "rationale": "A standing policy grants sts:AssumeRole on the administrator role, so every principal holding the policy holds a documented path to admin.",
+      "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_policy.assume_broadly, Statement[0]"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-principal",
+      "control": "identity boundary: external principal trust",
+      "severity": "critical",
+      "rationale": "The trust policy admits a principal from a different account outright; the identity boundary is the other account's controls, not this one's.",
+      "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0].Principal"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-no-mfa",
+      "control": "identity boundary: MFA condition on sensitive trust",
+      "severity": "high",
+      "rationale": "The trust statement carries no MFA condition, so a compromised external principal needs nothing beyond its long-lived credentials to assume the role.",
+      "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0] (no Condition block)"
+    }
+  ]
+}
