@@ -1,0 +1,32 @@
+{
+  "track": "lab-net-01-service-discovery",
+  "lane": "live-service",
+  "seed": 123,
+  "fixtures": [
+    "lab-target golden rootfs (planted services in lab/target/start-services.sh)"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-net-ssh-22",
+      "control": "service exposure: administrative surface inventory",
+      "severity": "low",
+      "rationale": "An SSH administrative service is reachable on tcp/22 and discloses its software banner to any prober; the service is inventoried here as planted exposure.",
+      "traces_to": "lab/target/start-services.sh, the /usr/sbin/sshd listener on tcp/22"
+    },
+    {
+      "finding_key": "demo-net-http-8000",
+      "control": "service exposure: cleartext http listener",
+      "severity": "medium",
+      "rationale": "A cleartext HTTP listener serves the lab web tree on tcp/8000; content and headers travel unencrypted and the surface is prober-enumerable.",
+      "traces_to": "lab/target/start-services.sh, the python3 -m http.server listener on tcp/8000"
+    },
+    {
+      "finding_key": "demo-net-http-8080",
+      "control": "service exposure: cleartext http listener",
+      "severity": "medium",
+      "rationale": "A second cleartext HTTP listener serves the same lab web tree on tcp/8080; the duplicate surface doubles the enumerable exposure.",
+      "traces_to": "lab/target/start-services.sh, the python3 -m http.server listener on tcp/8080"
+    }
+  ]
+}

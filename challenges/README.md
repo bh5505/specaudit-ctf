@@ -90,6 +90,8 @@ evidence-less rows all fail it, and a partial finding set never reads
 as all-clear. Severity disagreements are surfaced as flags, not
 failures. See `score/grading.py` for the semantics.
 
+The installed-wheel [operator CLI](../docs/exercise-operator.md) can inventory these contracts, export a fixture-backed learner packet with answer material excluded, run a full synthetic lifecycle rehearsal without arms, and retain standalone grade records. It does not execute live-service lanes or prove cited evidence. The package ships operator contracts; give learners only the prepared export under separate access controls.
+
 ## Proposed workpaper alongside the graded finding set
 
 **Proposed for the shipped exact-grading challenges.** The design-ready

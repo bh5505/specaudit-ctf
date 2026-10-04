@@ -121,6 +121,10 @@ and enforce spend/egress containment externally. The CLI's executable hash,
 process timeout and output limits do not cap provider charges. No rank or
 model score promotes an evidence record or a finding.
 
+## Shipped exact-coverage challenge delivery
+
+Use the [exercise operator procedure](docs/exercise-operator.md) to export synthetic learner packets, retain full-range rehearsal evidence and grade captured submissions on the operator plane. Packet export alone does not separate OS identities or prevent a learner with checkout/package access from reading bundled contracts. Never mount the operator installation, contract corpus, rehearsal output or grade report into the learner context. Live-service and planted-code lanes require separate target/evidence operation; this CLI only performs standalone exact comparison for their submitted findings.
+
 ## Asset reconnaissance boundary
 
 For `asset-recon`, apply the [capability procedure](docs/scope-recon.md#actions-and-authority)

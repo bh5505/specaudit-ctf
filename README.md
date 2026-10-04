@@ -59,6 +59,8 @@ They are **research inputs**, not runtime inventory: none becomes bundled,
 admitted, installed, licensed, validated or maintained by being listed. The
 register stays separate from `extension/coverage.yaml` and the runtime catalog.
 
+The [shipped challenge operator CLI](docs/exercise-operator.md) inventories the 13 exact-coverage tracks, prepares seven fixture-backed learner packets with answer material excluded, rehearses the full synthetic range without arms, and grades submissions on the operator side from an installed wheel. It does not launch live-service lanes or attest evidence truth.
+
 The [offline learning workflows](docs/offline-learning-workflows.md) provide a
 `python -m learning` CLI for six bounded, offline-by-default E1
 import/review and self-study workflows. The opt-in `triage rank` command can

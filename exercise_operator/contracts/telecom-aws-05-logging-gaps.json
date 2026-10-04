@@ -1,0 +1,25 @@
+{
+  "track": "telecom-aws-05-logging-gaps",
+  "seed": 123,
+  "fixtures": [
+    "tf_cloudtrail_disabled",
+    "tf_s3_no_access_logging"
+  ],
+  "total": 2,
+  "findings": [
+    {
+      "finding_key": "demo-trail-disabled",
+      "control": "detection: management trail coverage",
+      "severity": "high",
+      "rationale": "With the management trail disabled, control-plane actions across the environment leave no durable record: the account-wide detection layer is off, not merely incomplete.",
+      "traces_to": "extension/range/tf_cloudtrail_disabled/input/main.tf, aws_cloudtrail.main (logging stopped)"
+    },
+    {
+      "finding_key": "demo-s3-access-logging-missing",
+      "control": "detection: storage access logging",
+      "severity": "medium",
+      "rationale": "A bucket holding audit artifacts records no server access logs, so the question 'who read or changed these audit records' is unanswerable for this surface.",
+      "traces_to": "extension/range/tf_s3_no_access_logging/input/main.tf, aws_s3_bucket.audit_logs with no aws_s3_bucket_logging resource"
+    }
+  ]
+}

@@ -22,10 +22,9 @@ invalid envelope files, which are scored as failed entries), ``2``
 scorer-level usage errors (no inputs, unusable rubric). stdout carries
 a valid JSON score document for both ``0`` and ``1``.
 
-This package is a checkout teaching-path deliverable: it runs from
-this repository with Python 3.11+ and the repo's own dependencies, and
-is outside the sealed ``extension`` surface (the wheel build does not
-include it).
+This package runs from a checkout or the installed wheel with Python
+3.11+ and the package dependencies. It remains outside the sealed
+validator runtime's admitted ``extension`` surface.
 """
 
 from __future__ import annotations
