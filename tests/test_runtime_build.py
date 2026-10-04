@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import contextlib
+import errno
 import hashlib
 import io
 import json
 import os
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -1098,7 +1100,18 @@ def test_tree_hash_rejects_rust_control_and_invalid_utf8_names(tmp_path: Path) -
             if isinstance(raw_name, str):
                 (root / raw_name).write_bytes(b"x")
             else:
-                fd = os.open(os.fsencode(root) + b"/" + raw_name, os.O_CREAT | os.O_WRONLY, 0o444)
+                # Check the decoding boundary even when the host filesystem
+                # (notably APFS) cannot represent an invalid UTF-8 name.
+                with pytest.raises(tree_hash.TreeHashError, match="not valid UTF-8"):
+                    tree_hash._validate_name(os.fsdecode(raw_name))
+                try:
+                    fd = os.open(os.fsencode(root) + b"/" + raw_name, os.O_CREAT | os.O_WRONLY, 0o444)
+                except OSError as exc:
+                    if sys.platform != "darwin" or exc.errno != errno.EPERM:
+                        raise
+                    # The Unicode-control walk above and invalid-name validator
+                    # both ran; byte-name traversal still runs on Linux.
+                    continue
                 os.close(fd)
             _seal(root)
             with pytest.raises(tree_hash.TreeHashError):

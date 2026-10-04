@@ -16,7 +16,7 @@ from extension.dispatch import dispatch_invoke
 from extension.invoke_profiles import invoke_profile
 from extension.mcp_server import McpServer
 from extension.arms import learning_operator
-from learning.operator import _read_report
+from learning.operator import _parse_request, _read_report, _read_request_file
 from tests.test_alt_head_mcp import _call, _content_json
 
 
@@ -101,7 +101,9 @@ def test_mode_a_local_cli_returns_verified_report(tmp_path: Path) -> None:
 
 def test_operator_request_rejects_duplicates_and_non_json(tmp_path: Path) -> None:
     for content in ('{"arm_id":"learning-operator","arm_id":"learning-operator","action":"x","args":{}}',
-                    '{"arm_id":"learning-operator","action":"x","args":{"bad":NaN}}'):
+                    '{"arm_id":"learning-operator","action":"x","args":{"bad":NaN}}',
+                    '{"arm_id":"learning-operator","action":"x","args":{"bad":1e999}}',
+                    '{"arm_id":"learning-operator","action":"x","args":{"bad":' + '[' * 65 + '0' + ']' * 65 + '}}'):
         request = tmp_path / "bad.json"
         request.write_text(content)
         result = subprocess.run([sys.executable, "-m", "learning", "operator", "run", "--request", str(request),
@@ -109,6 +111,57 @@ def test_operator_request_rejects_duplicates_and_non_json(tmp_path: Path) -> Non
                                 capture_output=True, text=True)
         assert result.returncode == 2
         assert not result.stdout
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="Unix operator file reads only")
+def test_operator_request_refuses_symlink_fifo_and_directory_without_blocking(tmp_path: Path) -> None:
+    regular = tmp_path / "request.json"
+    regular.write_text('{"arm_id":"learning-operator","action":"list_tools","args":{}}')
+    linked = tmp_path / "linked.json"
+    linked.symlink_to(regular)
+    fifo = tmp_path / "request.fifo"
+    os.mkfifo(fifo)
+    for path in (linked, fifo, tmp_path):
+        result = subprocess.run(
+            [sys.executable, "-m", "learning", "operator", "run", "--request", str(path),
+             "--attempt-id", "attempt-" + "a" * 64, "--artifact-dir", str(tmp_path)],
+            capture_output=True, text=True, timeout=5,
+        )
+        assert result.returncode == 2
+        assert not result.stdout
+        assert "invalid operator request:" in result.stderr
+    assert set(tmp_path.iterdir()) == {regular, linked, fifo}
+
+
+def test_operator_request_rejects_mutation_and_missing_nofollow_flags(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    request = tmp_path / "request.json"
+    request.write_text('{}')
+    real_fstat = os.fstat
+    calls = 0
+
+    def changed(fd: int) -> os.stat_result:
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            request.write_text('{"modified":true}')
+        return real_fstat(fd)
+
+    monkeypatch.setattr(os, "fstat", changed)
+    with pytest.raises(ValueError, match="changed while reading"):
+        _read_request_file(request)
+    monkeypatch.setattr(os, "fstat", real_fstat)
+    monkeypatch.delattr(os, "O_NOFOLLOW", raising=False)
+    with pytest.raises(ValueError, match="nofollow"):
+        _read_request_file(request)
+    with pytest.raises(ValueError, match="nofollow"):
+        _read_report(str(tmp_path), "sha256:" + "a" * 64)
+
+
+def test_operator_request_strict_json_accepts_finite_numbers() -> None:
+    raw = b'{"arm_id":"learning-operator","action":"list_tools","args":{"value":1e3}}'
+    assert _parse_request(raw)["args"]["value"] == 1000.0
 
 
 @pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="Unix Mode A only")
