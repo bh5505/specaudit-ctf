@@ -2,8 +2,10 @@
 
 This is an original, synthetic AWS permission-path exercise inspired by
 Thunderstorm's permission/trust graph. It imports a **narrow subset** of RAGE v0.1 NDJSON records for offline
-review. It is not an extension arm, a full RAGE parser, a trusted observation,
-an actual cloud/cluster test, or grading credit. It never runs a collector.
+review. The standalone importer is also called by the research-tier
+`learning-operator.graph_path` arm with inline evidence. It is not a full RAGE
+parser, a trusted observation, an actual cloud/cluster test, or grading credit.
+It never runs a collector.
 
 The shape was checked against Thunderstorm
 [`c75a3d7d33626de36d7e7814cd8902c0d60469ad`](https://github.com/ustayready/Thunderstorm/tree/c75a3d7d33626de36d7e7814cd8902c0d60469ad)

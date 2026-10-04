@@ -54,6 +54,7 @@ class InvokeProfile:
 
 
 _STATIC_POLICY_ARMS = (
+    "learning-operator",
     "agent-wiz",
     "ai-deep-sast",
     "attack-stix-data",
@@ -642,6 +643,14 @@ INVOKE_PROFILES = {
             _policy_profile(arm_id, tier)
             for arm_id, tier in _POLICY_ARM_TIERS.items()
         ),
+        # Bounded inline evidence and submissions. Real captured input can be
+        # supplied, so the manifest never claims synthetic-only provenance.
+        *(
+            replace(_local_read_profile("learning-operator", action), synthetic_only=False)
+            for action in ("graph_path", "k8s_review", "workpaper_review",
+                           "agent_grade", "detection_review", "triage_evaluate")
+        ),
+        _local_read_profile("learning-operator", "sample"),
         *(
             _dispatch_profile(arm_id, action, side_effects, timeout_ms, scope_env)
             for arm_id, action, side_effects, timeout_ms, scope_env in _DISPATCH_PROFILES

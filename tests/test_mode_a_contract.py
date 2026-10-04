@@ -539,7 +539,7 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # endpoint-armed reads (caldera had no profiles before).
     # Merged registry: main's 212 profiles plus the feature-branch ivanti
     # arm and the vulnify snapshot/batch layer (args.cve_ids / bundle_path).
-    assert len(INVOKE_PROFILES) == 218
+    assert len(INVOKE_PROFILES) == 226
     caller_file_reads = {
         capability_id
         for capability_id, profile in INVOKE_PROFILES.items()
@@ -613,6 +613,10 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.synthetic_only is True
+        elif profile.arm_id == "learning-operator":
+            assert profile.safety_class == "R0"
+            assert profile.side_effects == ("local-read",)
+            assert profile.synthetic_only is (profile.action == "sample")
         elif profile.arm_id in CALLER_FILE_READ_ARM_IDS:
             # R0 in-process reads over operator-supplied local files. A
             # read can be side-effect-free without its input being synthetic.
@@ -675,6 +679,10 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
             assert payload["safety_class"] == "R0"
             assert payload["side_effects"] == ["local-read"]
             assert payload["synthetic_only"] is True
+        elif profile.arm_id == "learning-operator":
+            assert payload["safety_class"] == "R0"
+            assert payload["side_effects"] == ["local-read"]
+            assert payload["synthetic_only"] is (profile.action == "sample")
         elif profile.arm_id in CALLER_FILE_READ_ARM_IDS:
             assert payload["safety_class"] == "R0"
             assert payload["side_effects"] == ["local-read"]

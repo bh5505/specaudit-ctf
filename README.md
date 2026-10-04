@@ -2,7 +2,7 @@
 
 ## Overview
 
-- **Arms**: 48 specialized adapters. No row is held (the HTTP-MCP
+- **Arms**: 49 specialized adapters. No row is held (the HTTP-MCP
   held set closed 2026-09-04; the tier remains enforced for any
   future held row); the burp-mcp, google-mcp-security, semgrep-mcp,
   prowler-mcp, and metasploit-mcp rows are research integrations on
@@ -22,11 +22,11 @@
   other agent CLIs.
 - **Range**: synthetic fixtures (`live_aws: false`). No live cloud.
 
-`extension/coverage.yaml` classifies the landscape survey (67 ids). It is a
+`extension/coverage.yaml` classifies the landscape survey (68 ids). It is a
 **survey map**, not a ship list: a row is not
 a promise that an adapter exists. Every row has a support tier
 (`research` | `experimental` | `maintained` | `held`). In this cut
-every arm row is curated (48 handlers) and every methodology-only
+every arm row is curated (49 handlers) and every methodology-only
 row stays uncurated (19). `curated` is not `maintained`.
 
 Per-arm caveats (composite egress, exploitation, LLM spend, source
@@ -60,13 +60,15 @@ admitted, installed, licensed, validated or maintained by being listed. The
 register stays separate from `extension/coverage.yaml` and the runtime catalog.
 
 The [offline learning workflows](docs/offline-learning-workflows.md) provide a
-separate `python -m learning` CLI for six bounded, offline-by-default E1
+`python -m learning` CLI for six bounded, offline-by-default E1
 import/review and self-study workflows. The opt-in `triage rank` command can
 call a provider under separate operator authority. The threat-model, agent,
 detection and Kubernetes exercises are executable now; formal assessment
 promotion remains separate.
-The graph and SiftRank readers are research import surfaces. They do not add
-an arm or change `invoke`, MCP, source admission or fixture grading.
+The `learning-operator` research arm exposes these six offline reviews through
+`invoke` with inline evidence only. Its local request-file command supports
+larger packets; see [the operator guide](docs/operator-learning-arm.md). This
+does not change source admission or fixture grading.
 
 ## Install
 
@@ -170,7 +172,9 @@ research-candidate readers. Those actions read operator-supplied local files or
 directories without a subprocess or network call; their manifests are
 `synthetic_only: false` because read-only local data can still be real data.
 Their exact actions and candidate-specific limitations are in
-[extension/README.md](extension/README.md). Every other CLI invoke action is
+[extension/README.md](extension/README.md). The `learning-operator` adds six
+offline inline-evidence assessments plus a synthetic sample action; real
+captured inputs keep `synthetic_only: false`. Every other CLI invoke action is
 refused before `Extension.invoke` until it has authoritative per-action safety,
 scope, side-effect, budget, cleanup, and tool-version metadata.
 

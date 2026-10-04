@@ -9,7 +9,8 @@ The executable admission authority remains
 `register.v1.yaml` is deliberately partial. Its detailed records cover the 14
 research readers added in PR 97: 14 `list_tools` capabilities and 38 local-data
 actions. Its inventory section separately binds the exact semantic snapshot of
-all 212 admitted profiles so removal or profile drift cannot look like a clean
+all 226 admitted profiles (including eight new offline learning-operator
+profiles) so removal or profile drift cannot look like a clean
 governance check. The source records are research candidates, not selected or
 admitted upstream material. Their `research-mapping` relationships assert no
 consumption, compatibility, provenance, custody, license, or data-rights claim.
@@ -20,7 +21,7 @@ the independently pinned canonical coverage-schema bytes. It requires the exact
 reconciles each classification with all 52 detailed register and authoritative
 profile records, binds every real specialized handler's canonical immediate
 truthy-payload refusal structure, and exercises both `list_tools` and
-`tools/list`. The full 63-row catalog is not globally frozen: the report binds
+`tools/list`. The full 68-row catalog is not globally frozen: the report binds
 the exact catalog bytes and its complete semantic snapshot, while the literal
 governance baseline freezes only the 14 PR 97 reader classifications.
 
