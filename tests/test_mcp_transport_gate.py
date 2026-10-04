@@ -918,7 +918,9 @@ def test_p6_pinned_dial_uses_pin_not_name() -> None:
             self.end_headers()
             self.wfile.write(b"ok")
 
-    server = ThreadingHTTPServer(("127.0.0.2", 0), _HostCapture)
+    # The redirected test socket only needs the universally configured loopback.
+    # The independently asserted TEST-NET pin still differs from this endpoint.
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _HostCapture)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     port = server.server_address[1]
@@ -940,7 +942,7 @@ def test_p6_pinned_dial_uses_pin_not_name() -> None:
 
     def fake_create_connection(address: tuple[str, int], timeout: float = 5.0, source_address: Any = None) -> socket.socket:
         dialed.append(address)
-        return original_create_connection(("127.0.0.2", address[1]), timeout, source_address)
+        return original_create_connection(("127.0.0.1", address[1]), timeout, source_address)
 
     socket.getaddrinfo = fake_getaddrinfo  # type: ignore[assignment]
     socket.create_connection = fake_create_connection  # type: ignore[assignment]

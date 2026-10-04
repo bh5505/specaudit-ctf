@@ -43,9 +43,13 @@ It requires Mode A, verifies the digest-named `policy-report` in the fresh
 artifact directory, then prints a local wrapper containing the unmodified
 `execution` v1 envelope and the parsed `report` with the actual assessment.
 The wrapper is an operator CLI presentation, not a new execution-result
-schema. It exits nonzero on an evaluated failure. It rejects oversized, duplicate-key and
-malformed requests; it does not allow arbitrary arm IDs. These local file
-reads belong to the operator process; the attached MCP `invoke` tool accepts
+schema. It exits nonzero on an evaluated failure. Request files must be
+regular, non-symlink files that remain unchanged during a bounded read; FIFOs
+are rejected without waiting for a writer. Stdin remains an explicit streaming
+input via `--request -`. The CLI rejects oversized, duplicate-key, non-finite
+number, over-nested and malformed requests; it does not allow arbitrary arm
+IDs. These local file reads belong to the operator process; the attached MCP
+`invoke` tool accepts
 only inline JSON arguments and has no request-file or evidence-path parameter.
 The CLI is convenient for captured packets that would be awkward as shell
 arguments. The same request args can be passed to the ordinary extension CLI

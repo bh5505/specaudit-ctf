@@ -717,8 +717,27 @@ def test_real_worker_success_contract_with_hermetic_boundary(monkeypatch):
         return original([sys.executable, "-c", script], **kwargs)
     monkeypatch.setattr(runner.subprocess, "Popen", fake)
     monkeypatch.setenv("ASSET_RECON_PROVIDERS", "google")
-    result = run_worker({"operation": "collect", "live": True, "source": "google", "kind": "domain", "value": "public.com", "variant": "A"}, 2)
-    assert result == {"ok": True, "data": [], "digest": HASH, "dns_status": 0}
+    request = {"operation": "collect", "live": True, "source": "google", "kind": "domain", "value": "public.com", "variant": "A"}
+    # Probe only in a disposable child: these hard limits must never affect
+    # pytest itself. Linux must retain the successful real-boundary assertion;
+    # other POSIX hosts may reject RLIMIT_AS and must then refuse the worker.
+    probe_script = (
+        "import resource; "
+        "resource.setrlimit(resource.RLIMIT_AS, (268435456, 268435456)); "
+        "resource.setrlimit(resource.RLIMIT_CPU, (12, 12)); "
+        "resource.setrlimit(resource.RLIMIT_FSIZE, (0, 0)); "
+        "resource.setrlimit(resource.RLIMIT_CORE, (0, 0))"
+    )
+    probe = original([sys.executable, "-c", probe_script], stdout=subprocess.PIPE,
+                     stderr=subprocess.PIPE)
+    _, errors = probe.communicate(timeout=5)
+    if probe.returncode:
+        assert sys.platform != "linux", errors.decode("utf-8", "replace")
+        with pytest.raises(Refusal, match="provider or probe failed"):
+            run_worker(request, 2)
+    else:
+        result = run_worker(request, 2)
+        assert result == {"ok": True, "data": [], "digest": HASH, "dns_status": 0}
 
 
 class FakeSocket:

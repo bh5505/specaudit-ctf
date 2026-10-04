@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import stat
@@ -19,25 +20,99 @@ from extension.contract import Extension
 from extension.dispatch import dispatch_invoke
 
 MAX_REQUEST_BYTES = 256_000
+MAX_REPORT_BYTES = 1_048_576
+
+
+def _read_request_file(path: Path) -> bytes:
+    """Read an unchanged regular request without following its leaf or blocking."""
+    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_NONBLOCK"):
+        raise ValueError("operator requests require Unix nofollow, nonblocking file reads")
+    flags = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | getattr(os, "O_CLOEXEC", 0)
+    fd = os.open(path, flags)
+    try:
+        before = os.fstat(fd)
+        if not stat.S_ISREG(before.st_mode):
+            raise ValueError("request must be a regular file")
+        if before.st_size > MAX_REQUEST_BYTES:
+            raise ValueError("request exceeds 256000 bytes")
+        with os.fdopen(fd, "rb", closefd=False) as stream:
+            raw = stream.read(MAX_REQUEST_BYTES + 1)
+        after = os.fstat(fd)
+        if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+            after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns
+        ):
+            raise ValueError("request changed while reading")
+        return raw
+    finally:
+        os.close(fd)
+
+
+def _parse_request(raw: bytes) -> dict:
+    def unique(pairs: list[tuple[str, object]]) -> dict:
+        out = {}
+        for key, value in pairs:
+            if key in out:
+                raise ValueError("duplicate JSON request key")
+            out[key] = value
+        return out
+
+    def invalid_constant(value: str) -> None:
+        raise ValueError(f"non-JSON constant {value}")
+
+    def finite_float(value: str) -> float:
+        number = float(value)
+        if not math.isfinite(number):
+            raise ValueError("non-finite JSON number")
+        return number
+
+    request = json.loads(raw, object_pairs_hook=unique,
+                         parse_constant=invalid_constant, parse_float=finite_float)
+
+    def check_depth(value: object, depth: int = 0) -> None:
+        if depth > 64:
+            raise ValueError("JSON nesting limit exceeded")
+        if isinstance(value, dict):
+            for child in value.values():
+                check_depth(child, depth + 1)
+        elif isinstance(value, list):
+            for child in value:
+                check_depth(child, depth + 1)
+
+    check_depth(request)
+    if (not isinstance(request, dict) or set(request) != {"arm_id", "action", "args"}
+            or request["arm_id"] != ARM_ID or not isinstance(request["action"], str)
+            or not isinstance(request["args"], dict)):
+        raise ValueError("request requires exact arm_id, action, and object args")
+    return request
 
 
 def _read_report(directory: str, digest: str) -> dict:
     """Read the descriptor-bound Mode A artifact, rejecting substitutions."""
     if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
         raise ValueError("invalid artifact digest")
-    if not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY"):
-        raise ValueError("Mode A requires Unix nofollow directory reads")
+    if not all(hasattr(os, flag) for flag in ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK")):
+        raise ValueError("Mode A requires Unix nofollow, nonblocking directory reads")
     name = digest.replace(":", "-", 1)
-    directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+                           | getattr(os, "O_CLOEXEC", 0))
     try:
-        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
+        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
+                     | getattr(os, "O_CLOEXEC", 0), dir_fd=directory_fd)
         with os.fdopen(fd, "rb") as stream:
-            if not stat.S_ISREG(os.fstat(stream.fileno()).st_mode):
+            before = os.fstat(stream.fileno())
+            if not stat.S_ISREG(before.st_mode):
                 raise ValueError("artifact is not a regular file")
-            raw = stream.read(1_048_577)
+            if before.st_size > MAX_REPORT_BYTES:
+                raise ValueError("artifact exceeds byte limit")
+            raw = stream.read(MAX_REPORT_BYTES + 1)
+            after = os.fstat(stream.fileno())
+            if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
+                after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns
+            ):
+                raise ValueError("artifact changed while reading")
     finally:
         os.close(directory_fd)
-    if len(raw) > 1_048_576 or hashlib.sha256(raw).hexdigest() != digest[7:]:
+    if len(raw) > MAX_REPORT_BYTES or hashlib.sha256(raw).hexdigest() != digest[7:]:
         raise ValueError("artifact digest or size mismatch")
     result = json.loads(raw)
     if not isinstance(result, dict):
@@ -72,21 +147,10 @@ def main(argv: list[str] | None = None) -> int:
         if str(ns.request) == "-":
             raw = sys.stdin.buffer.read(MAX_REQUEST_BYTES + 1)
         else:
-            with ns.request.open("rb") as stream:
-                raw = stream.read(MAX_REQUEST_BYTES + 1)
+            raw = _read_request_file(ns.request)
         if len(raw) > MAX_REQUEST_BYTES:
             raise ValueError("request exceeds 256000 bytes")
-        def unique(pairs):
-            out = {}
-            for key, value in pairs:
-                if key in out:
-                    raise ValueError("duplicate JSON request key")
-                out[key] = value
-            return out
-        request = json.loads(raw, object_pairs_hook=unique,
-                             parse_constant=lambda value: (_ for _ in ()).throw(ValueError(f"non-JSON constant {value}")))
-        if not isinstance(request, dict) or set(request) != {"arm_id", "action", "args"} or request["arm_id"] != ARM_ID or not isinstance(request["action"], str) or not isinstance(request["args"], dict):
-            raise ValueError("request requires exact arm_id, action, and object args")
+        request = _parse_request(raw)
     except (OSError, UnicodeError, ValueError, TypeError, RecursionError) as exc:
         print(f"invalid operator request: {exc}", file=sys.stderr)
         return 2
