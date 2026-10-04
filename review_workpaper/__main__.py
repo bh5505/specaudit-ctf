@@ -8,6 +8,7 @@ import argparse
 import hashlib
 import json
 from pathlib import Path
+from typing import Mapping
 
 
 STATUSES = {"supported", "rejected", "unresolved"}
@@ -36,8 +37,10 @@ def _text_list(value, label, errors):
             _text(item, f"{label}[{i}]", errors)
 
 
-def validate(manifest, submission, evidence_root):
+def validate(manifest, submission, evidence_root=None, *, evidence_bytes: Mapping[str, bytes] | None = None):
     """Return structural errors; semantic conclusions remain human-reviewed."""
+    if (evidence_root is None) == (evidence_bytes is None):
+        raise ValueError("select exactly one evidence source")
     errors = []
     manifest = _object(manifest, "manifest", errors)
     submission = _object(submission, "submission", errors)
@@ -57,7 +60,15 @@ def validate(manifest, submission, evidence_root):
     if len(records) > MAX_RECORDS:
         errors.append(f"manifest.evidence: maximum {MAX_RECORDS} records")
         records = records[:MAX_RECORDS]
-    root = evidence_root.resolve()
+    root = evidence_root.resolve() if evidence_root is not None else None
+    if evidence_bytes is not None:
+        if not isinstance(evidence_bytes, Mapping) or len(evidence_bytes) > MAX_RECORDS or any(
+            not isinstance(k, str) or not isinstance(v, bytes) for k, v in evidence_bytes.items()
+        ):
+            raise ValueError("invalid inline evidence mapping")
+        named = {row.get("file") for row in records if isinstance(row, dict) and isinstance(row.get("file"), str)}
+        if set(evidence_bytes) != named:
+            errors.append("inline evidence must match manifest file names exactly")
     for i, item in enumerate(records):
         label = f"manifest.evidence[{i}]"
         item = _object(item, label, errors)
@@ -75,23 +86,27 @@ def validate(manifest, submission, evidence_root):
         if not isinstance(rel, str) or not rel or Path(rel).is_absolute():
             errors.append(f"{label}.file: relative file required")
             continue
-        try:
-            path = (root / rel).resolve()
-        except (OSError, ValueError):
-            errors.append(f"{label}.file: invalid path")
-            continue
-        if not path.is_relative_to(root) or not path.is_file():
-            errors.append(f"{label}.file: missing or outside evidence root")
-            continue
-        # A bounded read prevents a forged manifest from making this checker
-        # ingest an arbitrary large file. This does not freeze the file for a
-        # later human review; custody requires an immutable packet at delivery.
-        try:
-            with path.open("rb") as stream:
-                content = stream.read(MAX_EVIDENCE_BYTES + 1)
-        except OSError:
-            errors.append(f"{label}.file: unreadable")
-            continue
+        if evidence_bytes is not None:
+            content = evidence_bytes.get(rel)
+            if content is None:
+                errors.append(f"{label}.file: absent from inline evidence")
+                continue
+        else:
+            try:
+                path = (root / rel).resolve()
+            except (OSError, ValueError):
+                errors.append(f"{label}.file: invalid path")
+                continue
+            if not path.is_relative_to(root) or not path.is_file():
+                errors.append(f"{label}.file: missing or outside evidence root")
+                continue
+            # This bounds a mutable path read; custody requires an immutable packet.
+            try:
+                with path.open("rb") as stream:
+                    content = stream.read(MAX_EVIDENCE_BYTES + 1)
+            except OSError:
+                errors.append(f"{label}.file: unreadable")
+                continue
         if len(content) > MAX_EVIDENCE_BYTES:
             errors.append(f"{label}.file: exceeds {MAX_EVIDENCE_BYTES} bytes")
             continue

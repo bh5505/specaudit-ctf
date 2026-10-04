@@ -490,7 +490,7 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
     }
     # Four ATT&CK bundle lookups plus all actions from the added readers
     # (merged registry incl. the feature-branch ivanti arm and vulnify batch layer).
-    assert len(INVOKE_PROFILES) == 218
+    assert len(INVOKE_PROFILES) == 226
     assert len(caller_file_reads) == 43
     expected_reader_capabilities = {
         f"{arm_id}.{action}"
@@ -633,6 +633,10 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
             assert profile.safety_class == "R0"
             assert profile.side_effects == ("local-read",)
             assert profile.synthetic_only is True
+        elif profile.arm_id == "learning-operator":
+            assert profile.safety_class == "R0"
+            assert profile.side_effects == ("local-read",)
+            assert profile.synthetic_only is (profile.action == "sample")
         elif profile.arm_id in CALLER_FILE_READ_ARM_IDS:
             # R0 in-process reads over operator-supplied local files. A
             # read can be side-effect-free without its input being synthetic.
@@ -876,7 +880,7 @@ def test_range_encoder_spends_one_step_under_freeze_budget(
 ) -> None:
     inner = run_range()
     # 48 after asset-recon, the ivanti VM extractor, and the research-candidate readers.
-    assert len(inner["coverage"]["attempted"]) == 48
+    assert len(inner["coverage"]["attempted"]) == 49
     payload = encode_range_document(
         inner,
         started_at="2026-08-25T12:00:00Z",

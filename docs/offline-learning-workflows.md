@@ -2,11 +2,11 @@
 
 These importable Python workflows are bounded learning and evidence-review
 pilots. Install with Python 3.11+ (`pip install -e '.[dev]'` for tests) and use
-`python -m learning {graph|k8s|review|agent|detection|triage}`. They do not add
-an `extension` arm, MCP tool, admitted `invoke` action, trusted observation, or
-finding-grader credit. An attached agent head can run the local CLI as an E1
-exercise under its host's file and process boundary; the extension MCP server
-does not expose these commands. Input source records and model ranks remain
+`python -m learning {graph|k8s|review|agent|detection|triage}`. The
+`learning-operator` research arm additionally admits six offline inline-input
+actions through `extension invoke` and the existing `invoke` MCP tool. It adds
+no separate MCP tool, trusted observation, or finding-grader credit. Input
+source records and model ranks remain
 declarations until independent custody and validation establish more.
 
 | Command | Working outcome | Contract and example |
@@ -29,6 +29,11 @@ cluster collector. The
 SiftRank synthetic ranking tests importer and metric wiring, not model quality;
 no model/provider call was made in repository validation. An actual provider
 experiment requires the operator's own scope, egress and spend enforcement.
+
+The [operator procedure](operator-learning-arm.md) covers discovery, runnable
+requests, artifact custody, and each action's inputs and limits. The local
+`python -m learning operator` command reads an operator-held request file and
+uses the same admitted dispatch. Attached MCP accepts inline JSON only.
 
 The [source decisions](source-decisions-2026-10-03.md) record selected upstream
 revisions and rights. The [candidate campaign](candidate-campaign-2026-10-03.md)

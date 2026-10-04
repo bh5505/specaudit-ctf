@@ -400,7 +400,7 @@ def test_v2_registry_is_frozen_ordered_and_does_not_expand_public_dispatch() -> 
         "gpohound.policy",
     )
     assert TOOLS == ("list", "describe", "invoke", "run_range")
-    assert len(INVOKE_PROFILES) == 218
+    assert len(INVOKE_PROFILES) == 226
     assert len(PR97_ARM_IDS) == 14
     assert sum(
         len(actions) - ("list_tools" in actions)

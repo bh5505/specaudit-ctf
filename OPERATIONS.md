@@ -42,6 +42,13 @@ an unreachable approver is a no-go, not permission to improvise.
 
 ## Environment tiers
 
+The `learning-operator` arm is an E1 offline review surface. Its inline source
+data and model ranks remain caller declarations; the request hash binds submitted
+JSON arguments but does not authenticate their producer. Use the local request
+CLI only under the operator's own file, identity and egress controls. An MCP
+attachment has no path-taking action for these workflows. The [operator
+procedure](docs/operator-learning-arm.md) gives runnable synthetic examples.
+
 | Tier | Intended use | Required boundary |
 |---|---|---|
 | `E0` Static review | Documents, diagrams and captured artifacts; no execution. | Read-only learner copy, no egress, ground truth isolated. |

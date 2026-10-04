@@ -547,6 +547,8 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.assetrecon import AssetReconArm
     from .arms.ivanti import ARM_ID as IVANTI_ARM_ID
     from .arms.ivanti import IvantiArm
+    from .arms.learning_operator import ARM_ID as LEARNING_OPERATOR_ARM_ID
+    from .arms.learning_operator import LearningOperatorArm
 
     return {
         BURP_ARM_ID: BurpArm(),
@@ -598,6 +600,7 @@ def _default_arms() -> dict[str, Transport]:
         M365PWNED_ARM_ID: M365PwnedArm(),
         ASSET_RECON_ARM_ID: AssetReconArm(),
         IVANTI_ARM_ID: IvantiArm(),
+        LEARNING_OPERATOR_ARM_ID: LearningOperatorArm(),
     }
 
 

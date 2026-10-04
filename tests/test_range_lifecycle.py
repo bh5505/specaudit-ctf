@@ -419,7 +419,7 @@ def test_uninstalled_curated_arm_is_skipped_held_is_error(
     ]
     skipped_ids = [arm_id for arm_id in curated_ids if arm_id not in held_ids]
     # 48 after asset-recon, the ivanti VM extractor, and the research-candidate readers.
-    assert len(curated_ids) == 48
+    assert len(curated_ids) == 49
     assert CURATED_ARM_ID in curated_ids
     # Research tier since the doc-21 dossier (2026-09-03): no endpoint
     # configured, so the arm is skipped as not-installed like other
@@ -435,13 +435,13 @@ def test_uninstalled_curated_arm_is_skipped_held_is_error(
     # needs curl, so under no_curated_tools it is skipped, not an error row.
     always_installed = (
         "attack-stix-data", "vulnify", "snmp-readtier", "ike-readtier",
-        "rpz-decoder", "asset-recon",
+        "rpz-decoder", "asset-recon", "learning-operator",
         "security-detections-mcp", "agentseal", "leonidas",
         "specterops-skills", "detection-in-the-cloud", "pentestkit", "collinear",
         "ad-pathfinder", "gpohound", "claude-ad", "numasec", "rubeus", "m365pwned",
     )
     skipped_ids = [arm_id for arm_id in skipped_ids if arm_id not in always_installed]
-    error_ids = held_ids + list(always_installed)
+    error_ids = held_ids + [arm_id for arm_id in curated_ids if arm_id in always_installed]
     # RED lock: matching lifecycle plus one unavailable auto-discovered
     # arm must not report complete / ok=true.
     _assert_v3_status(document, "degraded")

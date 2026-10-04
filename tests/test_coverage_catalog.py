@@ -20,6 +20,7 @@ SCHEMA_PATH = ROOT / "extension" / "schema" / "coverage.schema.json"
 
 # Public kebab slugs for every classified survey row, in registry order.
 EXPECTED_IDS = (
+    "learning-operator",
     "loopback",
     "foundry",
     "codeguard",
@@ -199,6 +200,7 @@ def test_curated_arms_are_exactly_the_curated_set(entries: list[dict]) -> None:
         "asset-recon",
         "security-detections-mcp",
         "agentseal",
+        "learning-operator",
         "leonidas",
         "specterops-skills",
         "detection-in-the-cloud",

@@ -13,13 +13,14 @@ COMMANDS = {
     "detection": "learning.detection_validation",
     "triage": "extension.triage.siftrank",
     "k8s": "k8s_path_evidence.__main__",
+    "operator": "learning.operator",
 }
 
 
 def main(argv: list[str] | None = None) -> int:
     args = list(sys.argv[1:] if argv is None else argv)
     if not args or args[0] in {"-h", "--help"}:
-        print("usage: python -m learning {graph|k8s|review|agent|detection|triage} ...")
+        print("usage: python -m learning {graph|k8s|review|agent|detection|triage|operator} ...")
         return 0 if args else 2
     command = args.pop(0)
     if command not in COMMANDS:

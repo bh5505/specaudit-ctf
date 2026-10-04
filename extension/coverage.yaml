@@ -10,6 +10,13 @@
 
 version: 1
 entries:
+  - id: learning-operator
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: First-party offline operator adapter for six PR4 evidence and synthetic exercise workflows. Inline bounded inputs only; no caller paths, target collection, upstream executable, provider connection, or grader authority. The local operator request CLI may read operator-selected files outside attached MCP.
+
   - id: loopback
     kind: methodology-only
     protocols: [none]

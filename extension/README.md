@@ -7,7 +7,7 @@ This tree is the public attach surface:
 
 - `coverage.yaml` — classified survey map (not a ship list)
 - `contract.py` — fail-closed `list` / `describe` / `invoke`
-- `arms/` — 48 specialized handlers (families below)
+- `arms/` — 49 specialized handlers (families below)
 - `heads/` — Claude Code CLI, Codex CLI, and other-agent-CLI profiles
 - `range/` — synthetic fixtures only
 - `mcp_server.py` — stdio MCP for four tools (`list`, `describe`,
@@ -136,7 +136,7 @@ guarantee; this runner is an output budget, not an operating-system sandbox.
 Every row has a support `tier`: `research` | `experimental` |
 `maintained` | `held`. `curated: true` is a **deprecated**
 compatibility flag meaning a specialized handler exists in this cut;
-it is **not** `tier: maintained`. **48 arms are curated; zero rows
+it is **not** `tier: maintained`. **49 arms are curated; zero rows
 are held (the HTTP-MCP held set closed 2026-09-04); exactly one
 capability is maintained — the agent-wiz
 read tier `agent-wiz.list_tools` (X5-PROMOTE, doc 13 evidence gate).**
@@ -173,6 +173,14 @@ tool from that register must clear the admission checklist in
 [PROGRAM.md](../PROGRAM.md#admission-checklist) before it is used here at all.
 
 ### Curated arms by family
+
+**Offline operator assessment** (`tier: research`):
+
+- `learning-operator` — six inline, bounded PR4 review actions over graph,
+  Kubernetes, workpaper, agent, detection and captured triage packets. `sample`
+  returns editable synthetic requests; `list_tools` discovers the contract.
+  No caller path, provider call, upstream collector/executor or grader authority
+  is exposed through MCP. See [operator procedure](../docs/operator-learning-arm.md).
 
 **In-process reconnaissance** (`tier: research`):
 

@@ -714,9 +714,9 @@ COMMON_ARM_LIMITATIONS = (
 # policy.  Result-envelope and transport behavior beyond this named boundary
 # remains outside the v1 claim.
 EXPECTED_READER_SOURCE_SHA256: Mapping[str, str] = {
-    "extension/contract.py": "sha256:65863833c6787e8ba04e5e1c3ecdf6dbe52306d090149214b12411df8d27d571",
+    "extension/contract.py": "sha256:a28e2fd1a879cc2b0b41a8803b908b1b7ae04242465d5b049ad1caf94064a36c",
     "extension/dispatch.py": "sha256:e4db3d8981211818f2e699a36409adca1757de6b2efdf2af3b18301da37f25ef",
-    "extension/invoke_profiles.py": "sha256:79672b897abc325b7a945508415a20347421544770cf5617bc1649c4c3a1b70a",
+    "extension/invoke_profiles.py": "sha256:a09a96720a44138c319cd3e6952d94c39473d67be6c61cd68c1961532db4c434",
     "extension/arms/mcp_client.py": "sha256:0db4b795f70c55789558f5cd4f8beb230b6439e0a9ecabd6282055deaaeca8cd",
     "extension/arms/strict_data.py": "sha256:46f1a79ec954f3e4ee5e84811273314e997b11e9ff3b8237e17fb730e150f5a5",
     "extension/arms/ad_pathfinder/__init__.py": "sha256:c8c63a346c2b1b4e30b27ab4f13ea1238035e04490a9df6ea3b6946ba6526894",
@@ -789,9 +789,9 @@ HANDLER_CLASS_BY_ARM: Mapping[str, str] = {
 EXPECTED_SURFACE_SHA256: Mapping[str, str] = {
     "governance": "sha256:c53c18cc5be4241cd07c039ef9fe121e607a9e16e7ff3e470ac4fcec7e65d1a4",
     "coverage": "sha256:56a026ac9348829cf2279a6ad89b547656b1e2ce7d69b1b43e334f694390a702",
-    "invoke_profiles": "sha256:94fc94aa492210544066d297b56565e97a83487ad827f65328355b3a9a2dd688",
+    "invoke_profiles": "sha256:33267588fc7a19c4e3503fcf57b4eb3756f343cc42b42eb6ecd0fb30bb34ba1e",
     "policies": "sha256:ba34bc23518f5481cbcfa2b2954ab25a20c800fe1415f4945fbeb008da8130ba",
-    "reader_runtime": "sha256:bb6427d7b374e86c524a1fe6cea758ad8a1ab0c0c51939b26855c9b9a35b4d84",
+    "reader_runtime": "sha256:596f0acd0444f445ae7593a350c1829107e3f8234e8fa85bb59f6fe32df07c00",
 }
 
 
