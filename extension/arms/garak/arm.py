@@ -12,6 +12,7 @@ from ...contract import (
     NotInstalledError,
     Result,
 )
+from ..bounded_capture import run_bounded
 from ..mcp_client import redact
 from .policy import (
     ALLOWED_ACTIONS,
@@ -77,15 +78,10 @@ class GarakArm:
             return self._read_report(spec, action)
         cmd = argv_for(binary, action)
         try:
-            proc = subprocess.run(
+            proc, overflowed = run_bounded(
                 cmd,
-                capture_output=True,
-                stdin=subprocess.DEVNULL,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
+                maximum=MAX_OUTPUT_CHARS,
                 timeout=self.timeout,
-                check=False,
             )
         except subprocess.TimeoutExpired:
             return Result(
@@ -103,6 +99,9 @@ class GarakArm:
                 output=None,
                 error=redact(str(exc)),
             )
+        if overflowed:
+            return Result(ok=False, arm_id=spec.id, action=action, output=None,
+                          error="subprocess output exceeded capture cap")
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or f"{action} failed").strip()
             return Result(

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -106,6 +107,68 @@ def test_reader_failures_are_typed(tmp_path: Path) -> None:
     no_objects.write_text(json.dumps({"type": "bundle", "id": "bundle--00000000-0000-4000-8000-00000000000f"}), encoding="utf-8")
     with pytest.raises(BundleError, match="objects list"):
         reader.load_bundle(no_objects)
+
+
+def test_reader_enforces_byte_cap_at_both_entry_points(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(reader, "MAX_BUNDLE_BYTES", 80)
+    raw = json.dumps({"type": "bundle", "objects": [], "padding": "x" * 80}).encode()
+    path = tmp_path / "large.json"
+    path.write_bytes(raw)
+    with pytest.raises(BundleError, match="byte read cap"):
+        reader.load_bundle_bytes(raw)
+    with pytest.raises(BundleError, match="byte read cap"):
+        reader.load_bundle(path)
+
+
+def test_reader_rejects_special_files_and_symlinks(tmp_path: Path) -> None:
+    fifo = tmp_path / "bundle.json"
+    os.mkfifo(fifo)
+    with pytest.raises(BundleError, match="regular file"):
+        reader.load_bundle(fifo)
+    target = tmp_path / "actual.json"
+    target.write_text('{"type":"bundle","objects":[]}', encoding="utf-8")
+    link = tmp_path / "link.json"
+    link.symlink_to(target)
+    with pytest.raises(BundleError, match="could not be read"):
+        reader.load_bundle(link)
+
+
+@pytest.mark.parametrize("missing_flag", ["O_NONBLOCK", "O_NOFOLLOW"])
+def test_reader_refuses_when_safe_open_flags_unavailable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing_flag: str
+) -> None:
+    path = tmp_path / "bundle.json"
+    path.write_text('{"type":"bundle","objects":[]}', encoding="utf-8")
+    monkeypatch.delattr(reader.os, missing_flag, raising=False)
+    with pytest.raises(BundleError, match="requires no-follow and nonblocking"):
+        reader.load_bundle(path)
+
+
+def test_reader_bounds_structure_before_json_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(reader, "MAX_JSON_DEPTH", 5)
+    monkeypatch.setattr(reader, "MAX_JSON_CONTAINERS", 8)
+    monkeypatch.setattr(reader, "MAX_JSON_SEPARATORS", 15)
+    monkeypatch.setattr(reader, "MAX_BUNDLE_OBJECTS", 2)
+    with pytest.raises(BundleError, match="JSON depth cap"):
+        reader.load_bundle_bytes(b'[[[[[[]]]]]]')
+    with pytest.raises(BundleError, match="JSON container cap"):
+        reader.load_bundle_bytes(b'[[{}, {}, {}, {}, {}, {}, {}, {}]]')
+    with pytest.raises(BundleError, match="JSON separator cap"):
+        reader.load_bundle_bytes(b'[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]')
+    with pytest.raises(BundleError, match="object cap"):
+        reader.load_bundle_bytes(json.dumps({
+            "type": "bundle", "objects": [
+                {"id": "one"}, {"id": "two"}, {"id": "three"}
+            ]
+        }).encode())
+
+    # Brackets and escaped quotes in JSON strings are not containers.
+    valid = {"type": "bundle", "objects": [{"id": "one", "name": '[{}] " ['}]}
+    assert len(reader.load_bundle_bytes(json.dumps(valid).encode())["subjects"]) == 0
 
 
 def test_technique_lookup_by_id_and_name() -> None:

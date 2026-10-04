@@ -10,8 +10,9 @@ tools, input= for the three deliberate stdin feeders (zgrab2's host
 channel, page-fetch's URL line, the MCP stdio transport).
 
 Two defense layers are pinned here:
-- an AST invariant (every subprocess spawn in extension/ sets stdin=
-  or input=), so future arms cannot silently regress; and
+- an AST invariant (every direct subprocess spawn in extension/ sets stdin=
+  or input=, and migrated arms use the shared runner), so future arms
+  cannot silently regress; and
 - per-arm behavioral tests: a fake echo binary records the stdin the
   child actually received; each fixed arm must hand the child an EMPTY
   stdin while argv still carries the target.
@@ -84,19 +85,26 @@ def _spawn_calls(tree: ast.AST) -> list[tuple[ast.Call, str]]:
 
 def test_every_subprocess_spawn_controls_stdin() -> None:
     checked = 0
+    bounded_calls = 0
     offenders: list[str] = []
     for path in sorted(EXTENSION_ROOT.rglob("*.py")):
         if "__pycache__" in path.parts:
             continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
+        bounded_calls += sum(
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "run_bounded"
+            for node in ast.walk(tree)
+        )
         for call, label in _spawn_calls(tree):
             checked += 1
             names = [kw.arg for kw in call.keywords if kw.arg is not None]
             if "stdin" not in names and "input" not in names:
                 offenders.append(f"{path}:{call.lineno} {label}")
-    assert checked >= 20, (
+    assert checked >= 5 and bounded_calls >= 20, (
         f"spawn-site walk found only {checked} calls — the invariant "
-        "is broken"
+        f"is broken (shared bounded calls: {bounded_calls})"
     )
     assert not offenders, (
         "subprocess spawns without explicit stdin control (inherited "

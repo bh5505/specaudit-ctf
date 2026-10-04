@@ -1,11 +1,4 @@
-"""Hermetic tests for the governed MCP-surface pipeline.
-
-Covers the two new surface tools wired into extension/mcp_server.py:
-``pack_run`` (step 2: evidence -> pack report.json) and ``prioritize_targets``
-(step 3: report -> prioritized targets + threat models + attack chains +
-human-validation-ready report). The backend is extension/pipeline.py, which
-imports the durable tools/demo_* cores.
-"""
+"""Hermetic operator-pipeline tests and attached MCP boundary regressions."""
 import hashlib
 import json
 import tempfile
@@ -67,18 +60,6 @@ def test_pack_run_rejects_missing_required_sources(tmp_path, db, fast_csv):
     assert not (out / "report.json").exists()
 
 
-def test_mcp_pack_run_missing_sources_is_error(tmp_path):
-    evidence = _synthetic_pack_evidence(tmp_path, complete=False)
-    result = mcp.McpServer().handle({
-        "jsonrpc": "2.0", "id": 4, "method": "tools/call",
-        "params": {"name": "pack_run", "arguments": {
-            "pack_root": str(PACK_ROOT), "evidence_dir": str(evidence),
-            "db": "sqlite", "run_id": "missing-sources"}},
-    })
-    assert result["result"]["isError"] is True
-    assert "pack evidence incomplete" in result["result"]["content"][0]["text"]
-
-
 def test_governed_pack_run_refuses_forged_offsec_manifest(tmp_path):
     fake_pack = tmp_path / "forged-pack"
     fake_pack.mkdir()
@@ -103,14 +84,6 @@ def test_governed_pack_run_refuses_forged_offsec_manifest(tmp_path):
     with pytest.raises(ctf_run_checks.RunnerError,
                        match="checked-in pack root"):
         ctf_run_checks.run(fake_pack, evidence, out, "sqlite", 100, "fake-run")
-    result = mcp.McpServer().handle({
-        "jsonrpc": "2.0", "id": 5, "method": "tools/call",
-        "params": {"name": "pack_run", "arguments": {
-            "pack_root": str(fake_pack), "evidence_dir": str(evidence),
-            "db": "sqlite", "run_id": "fake-run"}},
-    })
-    assert result["result"]["isError"] is True
-    assert "checked-in ext_telecom_offsec" in result["result"]["content"][0]["text"]
     assert not (out / "report.json").exists()
 
 
@@ -257,9 +230,8 @@ def test_prioritize_consumes_g3_pairing_when_available(tmp_path):
 
 def test_prioritize_degrades_when_pairing_extract_fails(tmp_path):
     """A malformed base table makes duckdb raise inside extract_pairings. The
-    stage must degrade to an explicit incomplete marker, not crash
-    prioritize_targets (the MCP surface only translates ValueError/RuntimeError,
-    so an escaping duckdb error would abort the whole tool call)."""
+    stage must degrade to an explicit incomplete marker, without aborting
+    the operator's prioritization run."""
     pytest.importorskip("duckdb")
     ev = _pairing_evidence(tmp_path)
     # Drop the is_active column the G3 join references: CREATE TABLE succeeds,
@@ -353,48 +325,22 @@ def test_native_csv_stamps_lineage_before_constrained_insert(tmp_path, csv_body)
         conn.close()
 
 
-def test_mcp_tools_list_exposes_pipeline():
+def test_mcp_tools_list_excludes_operator_pipeline():
     srv = mcp.McpServer()
     listed = srv._dispatch("tools/list", {})
     names = [t["name"] for t in listed["tools"]]
-    assert "pack_run" in names
-    assert "prioritize_targets" in names
+    assert names == ["list", "describe", "invoke", "run_range"]
 
 
-def test_mcp_call_prioritize_envelope():
-    srv = mcp.McpServer()
-    r = srv.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
-                    "params": {"name": "prioritize_targets",
-                               "arguments": {"report": {"findings": _converged_findings()}}}})
-    result = r["result"]
-    assert result["isError"] is False
-    assert "content" in result
-    body = json.loads(result["content"][0]["text"])
-    assert body["summary"]["total_targets"] == 2
-    assert body["targets"][0]["threat_model"]["expected_initial_access"]["technique"] == "T1190"
-
-
-def test_mcp_call_prioritize_error_envelope():
-    srv = mcp.McpServer()
-    # No report/report_path is a param-shape error -> JSON-RPC -32602 (not an
-    # isError envelope), consistent with _require_id handling.
-    r = srv.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call",
-                    "params": {"name": "prioritize_targets", "arguments": {}}})
-    assert r["error"]["code"] == -32602
-
-
-def test_mcp_call_pack_run_envelope():
-    pack_root = PACK_ROOT
-    assert pack_root.is_dir()
-    with tempfile.TemporaryDirectory(prefix="ctf-mcp-tst-") as td:
-        evidence = _synthetic_pack_evidence(Path(td))
-        srv = mcp.McpServer()
-        r = srv.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call",
-                        "params": {"name": "pack_run", "arguments": {
-                            "pack_root": str(pack_root),
-                            "evidence_dir": str(evidence),
-                            "db": "sqlite", "run_id": "mcp-test-env"}}})
-    assert r["result"]["isError"] is False
-    body = json.loads(r["result"]["content"][0]["text"])
-    assert body["report"]["pack_id"] == "ext_telecom_offsec"
-    assert {f["check_id"] for f in body["report"]["findings"]} == {AWS_T1}
+@pytest.mark.parametrize("name,arguments", [
+    ("pack_run", {"pack_root": str(PACK_ROOT), "evidence_dir": "/untrusted", "out_dir": "/untrusted"}),
+    ("prioritize_targets", {"report_path": "/untrusted", "out_path": "/untrusted"}),
+])
+def test_attached_mcp_cannot_reach_operator_pipeline(name, arguments):
+    # Reject the call before loading the pipeline or touching caller paths.
+    response = mcp.McpServer().handle({
+        "jsonrpc": "2.0", "id": 3, "method": "tools/call",
+        "params": {"name": name, "arguments": arguments},
+    })
+    assert response["error"]["code"] == -32602
+    assert response["error"]["message"] == f"unknown tool: {name}"

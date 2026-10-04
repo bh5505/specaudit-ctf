@@ -60,7 +60,10 @@ class CalderaArm:
         self._explicit = endpoint
         self.call_timeout = call_timeout
         self.scan_timeout = scan_timeout
-        self._urlopen = urlopen or urllib_request.urlopen
+        self._urlopen = (
+            urlopen if urlopen is not None
+            else urllib_request.build_opener(_NoRedirect()).open
+        )
 
     def base_url(self) -> str | None:
         if self._explicit is not None:
@@ -248,3 +251,10 @@ def _quote(name: str) -> str:
 
 class _HttpFailure(Exception):
     """Internal: a failed REST call, message already redacted."""
+
+
+class _NoRedirect(urllib_request.HTTPRedirectHandler):
+    """Keep the authenticated API request on its configured endpoint."""
+
+    def redirect_request(self, *args: object, **kwargs: object) -> None:
+        return None

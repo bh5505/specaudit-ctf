@@ -33,6 +33,7 @@ import hashlib
 import ipaddress
 import json
 import os
+import re
 
 # Name the DNS lanes ask about. Owner-configurable; nothing in this tool
 # resolves a name it was not told to use.
@@ -46,6 +47,18 @@ import sys
 CGNAT = ipaddress.ip_network("100.64.0.0/10")
 BANNER_CAP = 512
 HTTP_CAP = 4096
+_DNS_LABEL = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\Z")
+
+
+def validated_dns_name(name):
+    """Accept a DNS name, never a dig option, server selector or control."""
+    if (not isinstance(name, str) or len(name) > 253 or not name
+            or name.endswith("..")):
+        raise ValueError("invalid DNS query name")
+    labels = name.rstrip(".").split(".")
+    if not labels or any(not _DNS_LABEL.fullmatch(label) for label in labels):
+        raise ValueError("invalid DNS query name")
+    return name
 
 
 def lab_scoped(ip):
@@ -280,7 +293,7 @@ def dns_probe_dig(ip, port, timeout, name=None):
     packet path. A parsed rcode is real protocol evidence; a raw timeout is not
     the same observation as NOERROR/NODATA.
     """
-    name = name or DNS_PROBE_NAME
+    name = validated_dns_name(name if name is not None else DNS_PROBE_NAME)
     try:
         proc = subprocess.run(
             ["dig", "+time=2", "+tries=1", "+noall", "+comments", "+stats",
@@ -328,10 +341,10 @@ def ntp_probe_udp(ip, port, timeout):
 
 def dns_query_udp(ip, port, timeout, name=None):
     """One DNS A query for a name we own, over UDP."""
-    name = name or DNS_PROBE_NAME
+    name = validated_dns_name(name if name is not None else DNS_PROBE_NAME)
     qid = 0x5747
     wire = (bytes.fromhex("%04x" % qid) + b"\x01\x00\x00\x01\x00\x00\x00\x00"
-            + b"".join(bytes([len(p)]) + p.encode() for p in name.split("."))
+            + b"".join(bytes([len(p)]) + p.encode() for p in name.rstrip(".").split("."))
             + b"\x00\x00\x01\x00\x01")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.settimeout(timeout)
@@ -358,6 +371,10 @@ def main():
                     help="name to ask the resolver for; must be a name the "
                          "operator owns (default %s)" % DNS_PROBE_NAME)
     args = ap.parse_args()
+    try:
+        args.dns_name = validated_dns_name(args.dns_name)
+    except ValueError as exc:
+        ap.error(str(exc))
     os.makedirs(args.out_dir, exist_ok=True)
 
     targets = parse_targets(args.targets)
@@ -417,7 +434,8 @@ def main():
         if t["proto"] == "udp":
             info, err = None, ""
             if t["port"] == 53:
-                info = dns_probe_dig(t["ip"], t["port"], args.timeout)
+                info = dns_probe_dig(t["ip"], t["port"], args.timeout,
+                                     args.dns_name)
                 if info:
                     rec["tool"] = "dig (udp dns query, +tries=1)"
             if info is None and t["port"] in (123, 323):

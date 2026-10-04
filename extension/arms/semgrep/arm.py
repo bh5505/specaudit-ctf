@@ -21,6 +21,7 @@ from ...contract import (
     NotInstalledError,
     Result,
 )
+from ..bounded_capture import run_bounded
 from ..mcp_client import (
     MAX_MCP_ROWS,
     MCP_CALL_TIMEOUT,
@@ -222,15 +223,10 @@ class SemgrepArm:
             scan_env["SEMGREP_DISABLE_VERSION_CHECK"] = "1"
             scan_env["SEMGREP_SEND_METRICS"] = "off"
             try:
-                proc = subprocess.run(
+                proc, overflowed = run_bounded(
                     argv,
-                    capture_output=True,
-                    stdin=subprocess.DEVNULL,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
+                    maximum=1_048_576,
                     timeout=TIMEOUT_SECONDS,
-                    check=False,
                     env=scan_env,
                 )
             except subprocess.TimeoutExpired:
@@ -249,6 +245,9 @@ class SemgrepArm:
                     output=None,
                     error=redact(str(exc)),
                 )
+            if overflowed:
+                return Result(ok=False, arm_id=spec.id, action=action,
+                              output=None, error="semgrep output exceeded capture cap")
             if proc.returncode != 0:
                 return Result(
                     ok=False,

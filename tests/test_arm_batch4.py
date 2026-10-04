@@ -192,13 +192,13 @@ def test_routersploit_relative_bin_resolves_absolute_and_temp_cwd(
     assert Path(resolved).is_absolute()
     assert Path(resolved).resolve() == binary.resolve()
     captured: dict[str, list[str]] = {}
-    real_run = subprocess.run
+    from extension.arms.bounded_capture import run_bounded as real_run
 
     def _run(*args, **kwargs):
         captured["cmd"] = list(args[0])
         return real_run(*args, **kwargs)
 
-    monkeypatch.setattr("extension.arms.routersploit.arm.subprocess.run", _run)
+    monkeypatch.setattr("extension.arms.routersploit.arm.run_bounded", _run)
     result = RoutersploitArm().invoke(
         _spec(ROUTERSPLOIT_ID),
         "run",

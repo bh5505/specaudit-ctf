@@ -56,7 +56,10 @@ class ZapArm:
         self._explicit = endpoint
         self.call_timeout = call_timeout
         self.scan_timeout = scan_timeout
-        self._urlopen = urlopen or urllib_request.urlopen
+        self._urlopen = (
+            urlopen if urlopen is not None
+            else urllib_request.build_opener(_NoRedirect()).open
+        )
 
     def base_url(self) -> str | None:
         if self._explicit is not None:
@@ -228,3 +231,10 @@ class ZapArm:
 
 class _HttpFailure(Exception):
     """Internal: a failed native-API read, message already redacted."""
+
+
+class _NoRedirect(urllib_request.HTTPRedirectHandler):
+    """Keep authenticated ZAP API requests on their configured endpoint."""
+
+    def redirect_request(self, *args: object, **kwargs: object) -> None:
+        return None
