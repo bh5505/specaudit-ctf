@@ -12,7 +12,8 @@ local to this machine:
    independent sensor of the same estate, already in the pack's tables;
 2. this machine's local services file says what a port is normally used for -
    read from the file, not looked up, so nothing leaves the host;
-3. the pack's own port classes (telecom control plane, management ports) say
+3. the pack's own port classes (telecom control plane, restricted peer
+   distribution, management ports) say
    what kind of exposure a port would be if the claim is right.
 
 Combining them answers, per claimed endpoint: does another sensor in our data
@@ -56,8 +57,9 @@ TELECOM_PORT_CLASS = {
     53: "resolver",
     500: "vpn_anchor", 4500: "vpn_anchor",
 }
-MANAGEMENT_PORTS = {22, 23, 53, 161, 389, 1521, 3306, 3389, 5432, 5900, 7680,
-                    9200, 27017}
+MANAGEMENT_PORTS = {22, 23, 53, 161, 389, 1521, 3306, 3389, 5432, 5900,
+                    5985, 5986, 9200, 27017}
+RESTRICTED_PEER_DISTRIBUTION_PORTS = {7680}
 
 # Ports this platform's services file does not know but whose assignment is
 # not in doubt, with where the name comes from. Nothing here is looked up at
@@ -75,6 +77,9 @@ KNOWN_UNREGISTERED = {
     4123: ("cisco-tps", "Cisco TPS"),
     830: ("netconf-be", "RFC 6242 (NETCONF over SSH)"),
     8342: ("abstraction", "RFC 6243 (NETCONF with EXI)"),
+    5985: ("winrm", "Microsoft WinRM 2.0 default HTTP port"),
+    5986: ("winrm", "Microsoft WinRM 2.0 default HTTPS port"),
+    7680: ("delivery-optimization", "Microsoft Delivery Optimization peer transfer"),
 }
 
 
@@ -121,9 +126,12 @@ def load_local_services():
     return by_port
 
 
-def classify(port):
+def classify(port, protocol="tcp"):
     if port in TELECOM_PORT_CLASS:
         return TELECOM_PORT_CLASS[port]
+    if port in RESTRICTED_PEER_DISTRIBUTION_PORTS:
+        return ("restricted_peer_distribution_port" if protocol == "tcp"
+                else "restricted_service_port")
     if port in MANAGEMENT_PORTS:
         return "management_port"
     return "other"
@@ -155,6 +163,7 @@ SERVICE_EQUIVALENCE = [
     {"m3ua", "sua", "m2pa", "sigtran"},
     {"ipsec", "isakmp", "ike", "natt", "ipsec-nat-t"},
     {"winrm", "wsman", "http", "https"},
+    {"delivery-optimization", "windows-update-delivery-optimization", "dosvc"},
 ]
 
 
@@ -267,6 +276,10 @@ def assess_endpoint(row, services, vm_ports):
     known_names = set(entry[1]) if entry else set()
     if port in KNOWN_UNREGISTERED:
         known_names.add(KNOWN_UNREGISTERED[port][0])
+    # The assigned peer service uses TCP. Keep other protocols in the boundary
+    # policy, but do not infer their service from the numeric port.
+    if port == 7680 and protocol != "tcp":
+        known_names.clear()
     label = label_agreement(port, claim, known_names)
 
     ports = vm_ports.get(ip, {})
@@ -285,7 +298,7 @@ def assess_endpoint(row, services, vm_ports):
         "asm_service_type": (row.get("service_type") or "").strip(),
         "local_reference_names": "|".join(sorted(known_names)),
         "label_agreement": label,
-        "port_class": classify(port),
+        "port_class": classify(port, protocol),
         "vm_corroboration": corroboration,
         "vm_open_findings_on_port": ports.get(port, 0),
         "product_version_claim": (row.get("product_version") or "").strip()[:120],
@@ -363,7 +376,7 @@ def run(evidence_dir, out_dir, run_id=None, limit=None):
         "label_agreement_means": {
             "agree": "the claim names the service this port normally carries",
             "agree_by_equivalent_name": "the claim names an accepted equivalent "
-                                        "(http on 443, rdp on 3389, winrm on 7680)",
+                                        "(http on 443, rdp on 3389, wsman on 5985)",
             "label_disagreement": "the claim names one service and this port "
                                   "normally carries another - audit candidate",
             "claim_not_comparable": "the claim is banner prose that does not name "

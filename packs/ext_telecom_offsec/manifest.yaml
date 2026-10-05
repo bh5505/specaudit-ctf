@@ -89,7 +89,7 @@ checks:
     for the same IP. This narrower additive result corroborates the vulnerable service itself rather than only the
     address.
 - id: ext_telecom_offsec_asmvm_t1_exposed_mgmt_ports
-  name: ASM/VM T1 management/legacy service surface reachable from the internet
+  name: ASM/VM T1 policy-restricted service surface reachable from the internet
   check_type: deterministic_sql
   file: checks/ext_telecom_offsec_asmvm_t1_exposed_mgmt_ports.sql
   depends_on_tables:
@@ -97,8 +97,9 @@ checks:
   - ext_telecom_offsec_asmvm_vm_asset
   - ext_telecom_offsec_asmvm_service_observation
   severity: high
-  explanation: 'Flags every ASM-observed active service answering on the public internet on a management, clear-text
-    or data-plane port, grouped by protocol and port (the policy exception an owner can fix). This is the observed-reachability
+  explanation: 'Flags every ASM-observed active service answering on a port restricted by the engagement internet-boundary
+    policy, including management, clear-text, data-plane, and peer-distribution ports. A port alone does not identify its
+    service. Results are grouped by protocol and port (the policy exception an owner can fix). This is the observed-reachability
     analogue of the AWS security-group ingress test: an ASM feed shows what answers, not what a firewall allows.
     Also reports how many of the affected addresses the VM estate does not scan at all.'
 - id: ext_telecom_offsec_asmvm_t1_telecom_control_plane_exposed
@@ -110,7 +111,7 @@ checks:
   - ext_telecom_offsec_asmvm_vm_asset
   - ext_telecom_offsec_asmvm_service_observation
   severity: high
-  explanation: 'Flags ASM-observed active services on the telecom control plane, which the enterprise management-port
+  explanation: 'Flags ASM-observed active services on the telecom control plane, which the restricted-service port
     list above does not name: GTP-C / GTP-U / GTP'' and Diameter, CWMP/TR-069 CPE management, SIP/SIPS, the NTP
     timing plane, public resolvers, and IKE / IPsec NAT-T anchors. Grouped by class + protocol + port because exposing
     Diameter and exposing NTP are different decisions with different owners; per-class risk comes from CAP-PARAM

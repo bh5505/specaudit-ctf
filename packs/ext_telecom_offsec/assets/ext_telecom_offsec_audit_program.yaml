@@ -10,9 +10,9 @@ controls:
 - control_id: OFFSEC-ASMVM-T1
   title: 'Threat-model-first: what is reachable from the internet, and is it owned and managed'
   objective: Demonstrate the internet-facing estate is bounded by declared owned address space, that what answers from outside
-    is either managed by the VM estate or explicitly accepted, and that no management or clear-text service answers on the
-    public internet.
-  risk: Owned but unmanaged internet-facing hosts, and management/data-plane ports answering publicly, are the classic telecom
+    is either managed by the VM estate or explicitly accepted, and that no policy-restricted service answers on the
+    public internet without a documented boundary decision.
+  risk: Owned but unmanaged internet-facing hosts, and unreviewed restricted service ports answering publicly, are a telecom
     perimeter failure; neither the ASM feed nor the VM feed can detect the pair alone.
   framework_refs:
   - NIST CSF 2.0 ID.AM-01, ID.AM-02
@@ -34,10 +34,10 @@ controls:
     expected_result: Every observed address is inside a declared owned range, or an ownership decision is documented; owned
       and externally-responsive addresses have VM coverage or an accepted exception.
   - step_id: OFFSEC-ASMVM-T1-S2
-    procedure: List ASM-observed active services answering on management, clear-text and data-plane ports (the port list in
-      engagement_configs/default.yaml) and confirm a boundary rule or documented exception per protocol/port.
-    expected_result: No management, clear-text or data-plane port answers on the public internet without an approved, time-bounded
-      exception naming the owner.
+    procedure: List ASM-observed active services answering on the restricted port list in engagement_configs/default.yaml,
+      identify the actual service and peer scope, and confirm a boundary rule or documented exception per protocol/port.
+    expected_result: No policy-restricted port answers on the public internet without an approved, time-bounded
+      exception naming the owner and permitted peers.
   - step_id: OFFSEC-ASMVM-T1-S3
     procedure: For every VM finding at or above the critical severity threshold, confirm whether ASM observes the address
       as internet-active, and for the intersection confirm the remediation or compensating control.
