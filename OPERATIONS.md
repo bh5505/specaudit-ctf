@@ -1,7 +1,7 @@
-# Operations — safe exercise environments and evidence custody
+# Operations — target scope and evidence custody
 
-This guide defines the operator boundary for delivering the
-[curriculum](CURRICULUM.md). It does not arm any action. Current command,
+This guide defines the operator boundary for SpecAudit-CTF reconnaissance,
+pack analysis and target validation. It does not arm any action. Current command,
 catalog and policy truth remains in [README.md](README.md) and
 [extension/README.md](extension/README.md); per-arm caveats override a generic
 example here.
@@ -47,7 +47,9 @@ data and model ranks remain caller declarations; the request hash binds submitte
 JSON arguments but does not authenticate their producer. Use the local request
 CLI only under the operator's own file, identity and egress controls. An MCP
 attachment has no path-taking action for these workflows. The [operator
-procedure](docs/operator-learning-arm.md) gives runnable synthetic examples.
+procedure](docs/operator-learning-arm.md) binds these reviews to actual pack
+findings through the core `invoke` path. The `analyze_pack` action performs
+analysis only; subsequent target-facing arm invocations retain their own gates.
 
 | Tier | Intended use | Required boundary |
 |---|---|---|

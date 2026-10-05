@@ -8,6 +8,7 @@ import pytest
 
 from extension import mcp_server as mcp
 from extension.pipeline import pack_run, prioritize_targets, validation_report
+from extension.operator_analysis import finding_id
 from tools import ctf_run_checks
 
 T1 = "ext_telecom_offsec_asmvm_t1_critical_vuln_on_exposed"
@@ -265,6 +266,205 @@ def test_prioritize_marks_pairing_incomplete_without_evidence(tmp_path):
         report=[_t3("203.0.113.10", 443, "T1190 - X")], evidence_dir=str(empty))
     assert res2["pairing"]["available"] is False
     assert "absent" in res2["pairing"]["reason"]
+
+
+def _graph_item(finding, *, block_candidate=False):
+    graph = (PACK_ROOT.parents[1] / "graph_evidence/fixtures/synthetic-aws.rage.ndjson").read_text()
+    bucket = finding["record_locator"].split(" / ")[0]
+    graph = graph.replace("practice-data", bucket)
+    if block_candidate:
+        graph = graph.replace('"edge_id":"edge-2"', '"edge_id":"edge-2"').replace(
+            '"state":"ACTIVE","target":"aws|000000000000|aws:s3:bucket|' + bucket,
+            '"state":"BLOCKED","target":"aws|000000000000|aws:s3:bucket|' + bucket, 1)
+    return {"finding": {"check_id": finding["check_id"], "record_locator": finding["record_locator"]},
+            "kind": "graph", "input": {"graph_ndjson": graph, "sha256": hashlib.sha256(graph.encode()).hexdigest(),
+                                       "source": "aws|000000000000|aws:iam:role|trainee",
+                                       "target": f"aws|000000000000|aws:s3:bucket|{bucket}"}}
+
+
+def test_actual_pack_report_cloud_target_and_graph_change_validation_work(tmp_path):
+    evidence = _synthetic_pack_evidence(tmp_path)
+    packed = pack_run(str(PACK_ROOT), str(evidence), db="sqlite", run_id="operator-integration")
+    finding = next(f for f in packed["report"]["findings"] if f["check_id"] == AWS_T1)
+    assert finding["record_locator"].startswith("synthetic-offsec-bucket / 000000000000")
+    result = prioritize_targets(report=packed["report"], operator_evidence={
+        "schema": "specaudit.operator-evidence.v1", "items": [_graph_item(finding)]})
+    target = next(t for t in result["targets"] if t.get("finding", {}).get("check_id") == AWS_T1)
+    assert target["ip"] is None
+    assert target["operational_reviews"]["graph"][0]["review"]["path_verdicts"] == ["blocked", "configured_candidate", "unknown"]
+    assert target["validation_tasks"][-1]["action"] == "verify-effective-permission"
+    assert finding["record_locator"] in result["markdown"]
+
+    blocked = prioritize_targets(report=packed["report"], operator_evidence={
+        "schema": "specaudit.operator-evidence.v1", "items": [_graph_item(finding, block_candidate=True)]})
+    blocked_target = next(t for t in blocked["targets"] if t.get("finding", {}).get("check_id") == AWS_T1)
+    assert "configured_candidate" not in blocked_target["operational_reviews"]["graph"][0]["review"]["path_verdicts"]
+    assert blocked_target["validation_tasks"][-1]["action"] == "resolve-path-prerequisite"
+    assert blocked_target["score"] == target["score"]  # supplementary data does not change pack truth
+
+    (tmp_path / "benign").mkdir()
+    benign = pack_run(str(PACK_ROOT), str(_synthetic_pack_evidence(tmp_path / "benign", benign=True)),
+                      db="sqlite", run_id="operator-benign")
+    assert benign["report"]["findings"] == []
+    with pytest.raises(ValueError, match="orphan"):
+        prioritize_targets(report=benign["report"], operator_evidence={
+            "schema": "specaudit.operator-evidence.v1", "items": [_graph_item(finding)]})
+
+
+def test_detection_chain_binds_actual_attck_and_reports_gaps():
+    finding = _t3("203.0.113.10", 443, "T1190 - Exploit Public-Facing Application")
+    packet = {"schema": "specaudit.operational-detection.v1", "target": finding["record_locator"],
+              "technique_id": "T1190", "prerequisite": {"datasource": "web-logs", "collection": "off", "attempt": "allowed"},
+              "rule": {"id": "rule-web", "deployed": True, "event_kind": "request", "outcome": "allowed"},
+              "events": [], "alerts": [], "actions": [], "retests": []}
+    item = {"finding": {"check_id": finding["check_id"], "record_locator": finding["record_locator"]},
+            "kind": "detection", "input": {"packet": packet}}
+    evidence = {"schema": "specaudit.operator-evidence.v1", "items": [item]}
+    result = prioritize_targets(report=[finding], operator_evidence=evidence)
+    target = result["targets"][0]
+    assert target["operational_reviews"]["detection"][0]["review"]["stages"]["events_collected"]["state"] == "not_met"
+    assert target["validation_tasks"][-1]["action"] == "resolve-detection-gaps"
+    item["input"]["packet"]["technique_id"] = "T1078"
+    with pytest.raises(ValueError, match="absent from pack attack chain"):
+        prioritize_targets(report=[finding], operator_evidence=evidence)
+
+
+def test_two_same_kind_reviews_on_one_ip_remain_distinct():
+    first = _t3("203.0.113.10", 443, "T1190 - Exploit Public-Facing Application")
+    second = _t3("203.0.113.10", 8443, "T1190 - Exploit Public-Facing Application")
+    def item(finding):
+        return {"finding": {"check_id": finding["check_id"], "record_locator": finding["record_locator"]},
+                "kind": "detection", "input": {"packet": {
+                    "schema": "specaudit.operational-detection.v1", "target": finding["record_locator"],
+                    "technique_id": "T1190", "prerequisite": {"datasource": "web-logs", "collection": "off", "attempt": "allowed"},
+                    "rule": {"id": "rule-web", "deployed": False, "event_kind": "request", "outcome": "allowed"},
+                    "events": [], "alerts": [], "actions": [], "retests": []}}}
+    result = prioritize_targets(report=[first, second], operator_evidence={
+        "schema": "specaudit.operator-evidence.v1", "items": [item(first), item(second)]})
+    target = result["targets"][0]
+    assert len(target["operational_reviews"]["detection"]) == 2
+    assert len(target["validation_tasks"]) == 3
+    assert {row["finding"]["record_locator"] for row in target["validation_tasks"][1:]} == {
+        first["record_locator"], second["record_locator"]}
+    assert target["validation_tasks"][0]["invocation"] == {
+        "arm_id": "nmap", "action": "scan",
+        "args": {"target": "203.0.113.10", "mode": "version-light", "ports": [443, 8443]}}
+
+
+def test_captured_triage_order_is_bound_to_actual_targets():
+    from extension.operator_analysis import finding_id
+    from extension.triage.siftrank import UPSTREAM_REVISION
+
+    findings = [_t3("203.0.113.11", 443, "T1190 - X"),
+                _t3("203.0.113.12", 443, "T1110 - Y")]
+    target_ids = ["ip:203.0.113.11", "ip:203.0.113.12"]
+    source = "pack-report-sha256:" + hashlib.sha256(json.dumps(findings, sort_keys=True,
+                                          separators=(",", ":"), ensure_ascii=False).encode()).hexdigest()
+    candidates = [{"id": identity, "text": "Review bound " + finding_id(f),
+                   "source": source} for identity, f in zip(target_ids, findings)]
+    ranking = [{"rank": rank, "input_index": idx, "document": candidates[idx],
+                "value": "review", "score": 0.5, "exposure": 1, "rounds": 1}
+               for rank, idx in enumerate((1, 0), 1)]
+    raw_candidates = json.dumps(candidates)
+    raw_ranking = json.dumps(ranking)
+    binding = {"upstream_revision": UPSTREAM_REVISION,
+               "input_sha256": hashlib.sha256(raw_candidates.encode()).hexdigest(),
+               "ranking_sha256": hashlib.sha256(raw_ranking.encode()).hexdigest(),
+               "prompt_sha256": "a" * 64, "run_id": "synthetic-captured-order",
+               "captured_at": "2026-10-04T00:00:00Z", "provider": "synthetic",
+               "model": "synthetic", "custody_ref": "synthetic-only"}
+    triage = {"candidates_json": raw_candidates, "ranking_json": raw_ranking, "binding": binding}
+    packet = {"schema": "specaudit.operator-evidence.v1", "items": [], "triage": triage}
+    result = prioritize_targets(report=findings, operator_evidence=packet)
+    by_id = {t["target_id"]: t for t in result["targets"]}
+    assert by_id[target_ids[1]]["review_order"] == 1
+    assert by_id[target_ids[0]]["review_order"] == 2
+    assert result["targets"][0]["target_id"] == target_ids[1]
+    assert by_id[target_ids[0]]["rank"] is not None  # risk ranking stays separate
+    ranking.pop()
+    triage["ranking_json"] = json.dumps(ranking)
+    triage["binding"]["ranking_sha256"] = hashlib.sha256(triage["ranking_json"].encode()).hexdigest()
+    with pytest.raises(ValueError, match="ranking must cover"):
+        prioritize_targets(report=findings, operator_evidence=packet)
+
+
+def test_cloud_locator_never_becomes_ip_target_from_prose():
+    finding = {"check_id": AWS_T1, "record_locator": "bucket-a / 000000000000 / us-test-1",
+               "title": "Cloud note mentions 203.0.113.10", "risk_score": 70}
+    result = prioritize_targets(report=[_t3("203.0.113.10", 443, "T1190 - X"), finding])
+    assert {t["target_id"] for t in result["targets"]} == {
+        "ip:203.0.113.10", finding_id(finding)}
+    assert finding["record_locator"] in result["markdown"]
+    assert result["targets"][0]["target_id"] == finding_id(finding)
+    assert result["targets"][0]["review_priority"] == 1
+
+
+def test_operational_detection_rejects_contradictory_attempt_and_event():
+    from learning.detection_validation import PacketError, evaluate_operational
+
+    target = "203.0.113.7:443 / service:test"
+    packet = {"schema": "specaudit.operational-detection.v1", "target": target,
+              "technique_id": "T1190", "prerequisite": {"datasource": "web-logs", "collection": "on", "attempt": "allowed"},
+              "rule": {"id": "rule", "deployed": True, "event_kind": "request", "outcome": "blocked"},
+              "events": [{"id": "e", "datasource": "web-logs", "kind": "request", "outcome": "blocked", "subject": target}],
+              "alerts": [{"id": "a", "rule_id": "rule", "event_id": "e"}],
+              "actions": [{"id": "d", "alert_id": "a", "decision": "triaged"}],
+              "retests": [{"id": "r", "action_id": "d", "result": "effective"}]}
+    with pytest.raises(PacketError, match="contradicts"):
+        evaluate_operational(packet)
+
+
+def test_k8s_review_correlates_exact_service_account_subject():
+    fixture = PACK_ROOT.parents[1] / "k8s_path_evidence/fixture"
+    capture = json.loads((fixture / "capture.json").read_text())
+    raw = (fixture / "report.json").read_text()
+    finding = {"check_id": "ext_telecom_offsec_technology_t2_validation_gap",
+               "record_locator": capture["subject"] + " / cluster:synthetic", "risk_score": 45}
+    item = {"finding": {"check_id": finding["check_id"], "record_locator": finding["record_locator"]},
+            "kind": "k8s", "input": {"report_json": raw, "capture": capture}}
+    packet = {"schema": "specaudit.operator-evidence.v1", "items": [item]}
+    result = prioritize_targets(report=[finding], operator_evidence=packet)
+    target = result["targets"][0]
+    review = target["operational_reviews"]["k8s"][0]["review"]
+    assert review["subject"] == capture["subject"]
+    assert {case["outcome"] for case in review["cases"]} >= {"unknown-prerequisite"}
+    assert target["validation_tasks"][-1]["action"] == "verify-ssar-and-path-prerequisites"
+    item["finding"]["record_locator"] = "another-subject / cluster:synthetic"
+    with pytest.raises(ValueError, match="orphan"):
+        prioritize_targets(report=[finding], operator_evidence=packet)
+
+
+def test_workpaper_review_checks_real_manifest_and_exact_finding_subject():
+    raw = '{"observation":"synthetic capture"}'
+    digest = hashlib.sha256(raw.encode()).hexdigest()
+    finding = {"check_id": AWS_T1, "record_locator": "bucket-a / 000000000000 / us-test-1",
+               "risk_score": 55}
+    manifest = {"schema": "specaudit.review-evidence.v1", "evidence": [{
+        "id": "ev-1", "file": "evidence.json", "sha256": digest, "producer": "synthetic pack",
+        "version": "v1", "captured_at": "2026-10-04T00:00:00Z", "subject": finding["record_locator"],
+        "scope": "synthetic lab", "custody": "operator declared", "data_class": "synthetic",
+        "transformations": "none", "limitations": "declared capture", "kind": "observed"}]}
+    submission = {"schema": "specaudit.review-workpaper.v1", "subject": finding["record_locator"],
+                  "version": "v1", "period": "fixture interval", "boundary": "lab", "criterion": "least privilege",
+                  "reviewer": "operator", "assets": ["bucket-a"], "trust_boundaries": ["bucket policy"],
+                  "attacker_goals": ["read data"], "untested": ["effective access"],
+                  "limitations": ["not authenticated"], "recommendation": ["review policy"],
+                  "retest": ["verify denied read"], "overall": "inconclusive",
+                  "claims": [{"id": "c1", "status": "supported", "hypothesis": "bucket policy issue",
+                              "boundary": "bucket policy", "observation": "declared capture", "inference": "review needed",
+                              "alternative": "org deny", "validation": "check effective access", "residual_risk": "unknown",
+                              "evidence_ids": ["ev-1"]}],
+                  "coverage": [{"surface": "bucket policy", "disposition": "inconclusive", "claim_ids": ["c1"]}]}
+    item = {"finding": {"check_id": finding["check_id"], "record_locator": finding["record_locator"]},
+            "kind": "workpaper", "input": {"manifest": manifest, "submission": submission,
+                                           "evidence": {"evidence.json": raw}}}
+    packet = {"schema": "specaudit.operator-evidence.v1", "items": [item]}
+    target = prioritize_targets(report=[finding], operator_evidence=packet)["targets"][0]
+    assert target["operational_reviews"]["workpaper"][0]["review"]["structure_valid"] is True
+    assert target["validation_tasks"][-1]["action"] == "review-claim-and-custody"
+    submission["subject"] = "another-bucket"
+    with pytest.raises(ValueError, match="subject differs"):
+        prioritize_targets(report=[finding], operator_evidence=packet)
 
 
 @pytest.mark.parametrize("db,fast_csv", [

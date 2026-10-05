@@ -65,6 +65,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         ),
     )
     parser.add_argument(
+        "--agent-claims",
+        default=None,
+        help=(
+            "optional JSON claim declarations bound by trace_sha256 and call seq; "
+            "requires --attempt-dir and operator-held trace key"
+        ),
+    )
+    parser.add_argument(
         "--head-execute",
         action="store_true",
         help=(
@@ -132,6 +140,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             expected_path=args.expected,
             head=args.head,
             attempt_dir=args.attempt_dir,
+            agent_claims_path=args.agent_claims,
             head_execute=args.head_execute,
             battery=args.battery,
             attempt_prompt=args.attempt_prompt,

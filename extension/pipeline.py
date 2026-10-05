@@ -48,6 +48,7 @@ from tools import demo_target_analysis as dta  # noqa: E402
 from tools import demo_rollup_hosts as drh  # noqa: E402
 from tools import demo_rank_hosts as drk  # noqa: E402
 from tools import render_provenance_header as rph  # noqa: E402
+from .operator_analysis import correlate, finding_id
 
 # Default location of the curated CVE->technique map shipped with the vulnify arm.
 _CURATED_MAP_DEFAULT = (
@@ -236,6 +237,7 @@ def prioritize_targets(
     map_path: str | None = None,
     with_report: bool = True,
     out_path: str | None = None,
+    operator_evidence: dict | None = None,
 ) -> dict:
     """Prioritized target list with threat models + attack chains (step 3).
 
@@ -274,7 +276,12 @@ def prioritize_targets(
         ip = p["ip"]
         tm = _threat_model(ip, p)
         tm["rank"] = rank_by_ip.get(ip)  # None if the host was not technique-context ranked
+        refs = [finding_id(f) for f in findings
+                if f.get("check_id") in {dta.T3, dta.T1_FLAGSHIP}
+                and ip in set(dta.IP_RE.findall(f.get("record_locator") or ""))]
         targets.append({
+            "target_id": "ip:" + ip,
+            "finding_ids": refs,
             "ip": ip,
             "rank": tm["rank"],
             "score": p.get("score"),
@@ -283,7 +290,55 @@ def prioritize_targets(
             "pairing_evidence": pairing_by_ip.get(ip, []),
             "threat_model": tm,
             "attack_chain": p.get("steps"),
+            "operational_reviews": {},
+            "next_validation": ["confirm initial-access hypothesis and asset identity"],
+            "validation_tasks": [{"action": "validate-initial-access-hypothesis", "subject": ip,
+                                  "suggested_capability": "nmap.scan",
+                                  "invocation": {"arm_id": "nmap", "action": "scan",
+                                                 "args": {"target": ip, "mode": "version-light",
+                                                          **({"ports": p["ports"]} if p["ports"] else {})}},
+                                  "prerequisite": "human-reviewed target and separately authorized NMAP_DISPATCH_SCOPE",
+                                  "status": "pending human authorization and validation"}],
         })
+
+    # Preserve non-IP findings as first-class target identities. The ATT&CK
+    # path builder intentionally covers only IP technique context; a cloud,
+    # technology or Kubernetes row cannot silently disappear from the handoff.
+    covered = {ref for t in targets for ref in t["finding_ids"]}
+    for finding in findings:
+        key = finding_id(finding)
+        if key in covered:
+            continue
+        locator = finding["record_locator"]
+        targets.append({
+            "target_id": key, "finding_ids": [key], "ip": None,
+            "rank": None, "score": finding.get("risk_score"), "ports": [],
+            "convergence": False, "pairing_evidence": [], "attack_chain": [],
+            "threat_model": {
+                "ip": None, "asset_role": "pack finding: " + finding["check_id"],
+                "rank": None, "score": finding.get("risk_score"),
+                "converged_initial_access": False,
+                "priority_justification": "pack finding requires review; no IP ATT&CK path inferred",
+                "expected_initial_access": {"technique": None, "evidence": None, "provenance": None},
+                "post_initial_access": [], "likely_impact": None, "phases_observed": [],
+                "validation_status": "awaiting human red-team analyst validation",
+            },
+            "finding": {"check_id": finding["check_id"], "record_locator": locator,
+                        "title": finding.get("title")},
+            "operational_reviews": {},
+            "next_validation": ["validate pack finding and asset identity before target contact"],
+            "validation_tasks": [{"action": "validate-pack-finding", "subject": locator,
+                                  "suggested_capability": "independent authorized observation",
+                                  "status": "pending human authorization and validation"}],
+        })
+    targets.sort(key=lambda t: (-int(bool(t["convergence"])),
+                                -(t["score"] if isinstance(t["score"], (int, float)) else 0),
+                                t["target_id"]))
+    for order, target in enumerate(targets, 1):
+        target["review_priority"] = order
+    supplement = correlate(findings, targets, operator_evidence)
+    if supplement["triage_available"]:
+        targets.sort(key=lambda target: target["review_order"])
 
     result = {
         "targets": targets,
@@ -295,6 +350,7 @@ def prioritize_targets(
             "pairing_available": pairing["available"],
             "pairing_incomplete_reason": None if pairing["available"] else pairing["reason"],
             "human_validation_gate": "REQUIRED before any agentic exploitability validation",
+            "supplemental": supplement,
         },
     }
     if with_report:
@@ -327,9 +383,9 @@ def _validation_report_markdown(targets: list[dict], findings: list[dict]) -> st
     for i, t in enumerate(targets, 1):
         tm = t["threat_model"]
         lines.append(
-            f"\n## {i}. {t['ip']}  "
-            f"(rank {tm.get('rank')}, risk_max {t['score']}, "
-            f"{'CONVERGED INITIAL ACCESS' if t['convergence'] else 'alert-only'})"
+            f"\n## {i}. {t['ip'] or t['finding']['record_locator']}  "
+            f"(review priority {t['review_priority']}, ATT&CK rank {tm.get('rank')}, risk_max {t['score']}, "
+            f"{'CONVERGED INITIAL ACCESS' if t['convergence'] else 'alert-only' if t['attack_chain'] else 'pack finding; no ATT&CK chain'})"
         )
         lines.append(f"- **Asset role**: {tm['asset_role']}")
         lines.append(f"- **Priority**: {tm['priority_justification']}")
@@ -343,6 +399,28 @@ def _validation_report_markdown(targets: list[dict], findings: list[dict]) -> st
         if tm["likely_impact"]:
             lines.append(f"- **Likely impact**: {tm['likely_impact']}")
         lines.append(f"- **Validation status**: {tm['validation_status']}")
+        if t.get("finding"):
+            lines.append(f"- **Pack finding**: {t['finding']['check_id']} — {t['finding'].get('title') or ''}")
+        for kind, rows in t["operational_reviews"].items():
+            for row in rows:
+                review = row["review"]
+                if kind == "graph":
+                    outcome = ", ".join(review["path_verdicts"]) or "no paths"
+                elif kind == "k8s":
+                    outcome = ", ".join(case["id"] + ": " + case["outcome"] for case in review["cases"]) or "no test cases"
+                elif kind == "workpaper":
+                    outcome = "structure valid; human conclusion pending" if review["structure_valid"] else "structure invalid: " + "; ".join(review["errors"])
+                elif kind == "detection":
+                    outcome = ", ".join(stage + ": " + value["state"] for stage, value in review["stages"].items())
+                    outcome += "; retest: " + review["retest_result"]
+                else:
+                    outcome = "declared trace status: " + review["declared_trace_status"] + "; independent authentication pending"
+                lines.append(f"- **{kind} review** ({row['finding_id']}; {review['source_class']}): {outcome}")
+        if t.get("review_order"):
+            lines.append(f"- **Captured triage review order**: {t['review_order']} (not evidence priority)")
+        lines.append("- **Next validation**: " + "; ".join(t["next_validation"]))
+        for task in t["validation_tasks"]:
+            lines.append("  - " + task["action"] + " — " + task["status"])
     lines.append("\n---\n## Human red-team analyst validation gate\n")
     lines.append("For each target: confirm the asset role, initial-access hypothesis and")
     lines.append("attack chain are correct before agentic exploitability validation runs.")
@@ -375,6 +453,7 @@ def validation_report(
     map_path: str | None = None,
     out_path: str | None = None,
     run_id: str = "mcp",
+    operator_evidence: dict | None = None,
 ) -> dict:
     """Full handoff deliverable: prioritized targets + provenance header.
 
@@ -385,6 +464,7 @@ def validation_report(
     result = prioritize_targets(
         report=report, report_path=report_path, evidence_dir=evidence_dir,
         map_path=map_path, with_report=True, out_path=out_path,
+        operator_evidence=operator_evidence,
     )
     md = result.get("markdown") or (
         Path(result["report_path"]).read_text(encoding="utf-8")

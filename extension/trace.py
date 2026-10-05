@@ -254,6 +254,7 @@ def _result_summary(
         "capability_id": None,
         "fixture_ids": [],
         "error": None,
+        "rpc_error_code": None,
     }
     if response is None:
         return summary
@@ -264,6 +265,8 @@ def _result_summary(
         err = response.get("error")
         message = err.get("message") if isinstance(err, Mapping) else str(err)
         summary["error"] = _cap_str(message)
+        if isinstance(err, Mapping) and type(err.get("code")) is int:
+            summary["rpc_error_code"] = err["code"]
         return summary
     result = response.get("result")
     if not isinstance(result, Mapping):
@@ -309,6 +312,7 @@ class TraceVerification:
         self.tool_calls = 0
         self.attempt_id: str | None = None
         self.close_ok = False
+        self.sha256: str | None = None
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -337,6 +341,9 @@ def verify_trace(path: Path, key: bytes) -> TraceVerification:
     if not raw:
         verification.reasons.append("trace is empty")
         return verification
+    # Identity of exactly the bytes authenticated below. Consumers must
+    # not re-read a file that may change between verification and binding.
+    verification.sha256 = hashlib.sha256(raw).hexdigest()
     if not raw.endswith(b"\n"):
         verification.reasons.append("trace ends with a partial line")
     lines = raw.decode("utf-8", errors="replace").splitlines()

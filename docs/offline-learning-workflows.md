@@ -1,13 +1,14 @@
-# Offline evidence learning workflows
+# Individual evidence evaluator APIs
 
-These importable Python workflows are bounded learning and evidence-review
-pilots. Install with Python 3.11+ (`pip install -e '.[dev]'` for tests) and use
-`python -m learning {graph|k8s|review|agent|detection|triage}`. The
-`learning-operator` research arm additionally admits six offline inline-input
-actions through `extension invoke` and the existing `invoke` MCP tool. It adds
-no separate MCP tool, trusted observation, or finding-grader credit. Input
-source records and model ranks remain
-declarations until independent custody and validation establish more.
+For operator investigations, use [core pack analysis](operator-learning-arm.md)
+through `extension invoke` or the attached head's `invoke` tool. It connects
+these evaluators to findings, target identities and validation work.
+
+The commands below remain compatibility interfaces for evaluating an individual
+input or authoring an assessment. The fixed agent scene and fixed detection
+worksheet are self-study contracts; they are not actual agent-attempt or target
+telemetry evaluations. Core operation uses captured head traces and scoped
+detection records instead.
 
 | Command | Working outcome | Contract and example |
 |---|---|---|

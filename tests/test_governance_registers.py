@@ -151,11 +151,11 @@ def test_foundation_binds_exact_inventory_and_pr97_scope(registry, inventory) ->
     assert report.integrity_ok
     assert not report.current_ok
     assert not report.complete_ok
-    assert report.inventory_count == 226
+    assert report.inventory_count == 227
     assert report.governed_runtime_count == 52
     assert report.source_count == 14
     assert report.module_count == 1
-    assert registry.document["runtime_inventory"]["expected_count"] == 226
+    assert registry.document["runtime_inventory"]["expected_count"] == 227
     assert tuple(registry.document["runtime_inventory"]["capability_ids"]) == (
         inventory.capability_ids
     )
@@ -2907,7 +2907,7 @@ def test_validation_never_cross_promotes_other_registers(registry, inventory) ->
 def test_checkout_configuration_and_static_imports_keep_governance_separate() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     package_find = pyproject["tool"]["setuptools"]["packages"]["find"]
-    assert set(package_find["include"]) == {"extension*", "score*", "exercise_operator*", "learning*", "graph_evidence*", "review_workpaper*", "k8s_path_evidence*"}
+    assert set(package_find["include"]) == {"extension*", "score*", "exercise*", "learning*", "graph_evidence*", "review_workpaper*", "k8s_path_evidence*", "tools", "packs", "packs.ext_telecom_offsec"}
     assert not any("governance" in pattern for pattern in package_find["include"])
 
     for path in (ROOT / "extension").rglob("*.py"):

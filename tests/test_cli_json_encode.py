@@ -490,7 +490,7 @@ def test_manifest_profiles_carry_honest_class_truth() -> None:
     }
     # Four ATT&CK bundle lookups plus all actions from the added readers
     # (merged registry incl. the feature-branch ivanti arm and vulnify batch layer).
-    assert len(INVOKE_PROFILES) == 226
+    assert len(INVOKE_PROFILES) == 227
     assert len(caller_file_reads) == 43
     expected_reader_capabilities = {
         f"{arm_id}.{action}"

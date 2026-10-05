@@ -11,6 +11,7 @@ CLI's JSON-string parsing of ``args``).
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
@@ -28,6 +29,7 @@ from .encode import (
     ArtifactHandoffError,
     ArtifactSink,
     AttemptContractError,
+    _canonical_bytes,
     bind_artifact_dir,
     encode_invoke_failure,
     encode_invoke_result,
@@ -66,6 +68,9 @@ class DispatchOutcome:
     exit_code: int
     stderr_line: str | None
     contract_error: AttemptContractError | None = None
+    # Only learning-operator.analyze_pack can return a bounded inline review
+    # alongside its v1 envelope; digest verification is performed below.
+    inline_report: Mapping[str, Any] | None = None
 
 
 def dispatch_invoke(
@@ -179,6 +184,20 @@ def dispatch_invoke(
             return DispatchOutcome(envelope, 1, "invoke failed")
         status = envelope.get("status")
         if status == STATUS_COMPLETE:
+            if (
+                arm_id == "learning-operator"
+                and action == "analyze_pack"
+                and isinstance(result.output, dict)
+            ):
+                artifacts = envelope.get("artifacts")
+                digest = "sha256:" + hashlib.sha256(_canonical_bytes(result.output)).hexdigest()
+                if (
+                    isinstance(artifacts, list)
+                    and len(artifacts) == 1
+                    and artifacts[0].get("kind") == "policy-report"
+                    and artifacts[0].get("digest") == digest
+                ):
+                    return DispatchOutcome(envelope, 0, None, inline_report=result.output)
             return DispatchOutcome(envelope, 0, None)
         # The admitted envelope, not a child-controlled Result field, owns the
         # process/MCP success signal. Keep child error text out of stderr: an

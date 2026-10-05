@@ -7,7 +7,7 @@ scope:
   repository_complete: false
 runtime_inventory:
   authority: extension.invoke_profiles.INVOKE_PROFILES
-  expected_count: 226
+  expected_count: 227
   capability_ids:
   - ad-pathfinder.list_datasources
   - ad-pathfinder.list_paths
@@ -114,6 +114,7 @@ runtime_inventory:
   - ike-readtier.list_tools
   - ike-readtier.probe
   - learning-operator.agent_grade
+  - learning-operator.analyze_pack
   - learning-operator.detection_review
   - learning-operator.graph_path
   - learning-operator.k8s_review
@@ -235,7 +236,7 @@ runtime_inventory:
   - zdns.lookup
   - zgrab2.list_tools
   - zgrab2.scan
-  contract_sha256: sha256:3d6433d485bf312ba90fe41c506b2ce4317931a92c6a98f0c165fd5f6be71e4e
+  contract_sha256: sha256:8241e9dd53eb708cc530c2d781aece025f680b8073e5e37a67b1d56a3894f51e
 contract_templates:
 - id: policy-read-v1
   safety_class: R0

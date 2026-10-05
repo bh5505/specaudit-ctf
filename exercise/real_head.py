@@ -369,6 +369,7 @@ def execute_real_head(
     prompt_sha256: str,
     prompt_chars: int,
     timeout_seconds: int,
+    claims_path: Path | None = None,
 ) -> dict[str, Any]:
     """Spawn the armed head, then grade whatever the SERVER recorded.
 
@@ -512,6 +513,7 @@ def execute_real_head(
             directory,
             expected_path=Path(expected_path),
             key_env=key,
+            **({"claims_path": claims_path} if claims_path is not None else {}),
         )
     except AttemptError as exc:
         lane = _failed_real_lane(

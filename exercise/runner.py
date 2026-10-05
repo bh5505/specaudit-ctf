@@ -50,6 +50,7 @@ def run_exercise(
     expected_path: str | None = None,
     head: str | None = None,
     attempt_dir: str | None = None,
+    agent_claims_path: str | None = None,
     head_execute: bool = False,
     trace_key: str | None = None,
     battery: bool = False,
@@ -99,6 +100,9 @@ def run_exercise(
     ext = extension if extension is not None else Extension()
     prompt_facts: tuple[str, str, int] | None = None
     armed_cmd: str | None = None
+
+    if agent_claims_path is not None and attempt_dir is None:
+        raise ExerciseError("--agent-claims requires --attempt-dir")
 
     if head_execute:
         if head == FAKE_HEAD:
@@ -301,6 +305,7 @@ def run_exercise(
             trace_key=trace_key
             if trace_key is not None
             else os.environ.get("SPECAUDIT_CTF_MCP_TRACE_KEY"),
+            claims_path=Path(agent_claims_path) if agent_claims_path else None,
         )
     elif head_execute:
         from .real_head import execute_real_head, resolve_timeout, RealHeadError
@@ -326,6 +331,7 @@ def run_exercise(
                 prompt_sha256=prompt_sha256,
                 prompt_chars=prompt_chars,
                 timeout_seconds=timeout_seconds,
+                claims_path=Path(agent_claims_path) if agent_claims_path else None,
             )
         except RealHeadError as exc:
             # Arming/wiring failures (codex preflight, mcp-config write,
@@ -345,6 +351,7 @@ def run_exercise(
                 Path(attempt_dir),
                 expected_path=Path(expected_path),  # type: ignore[arg-type]
                 key_env=key,
+                claims_path=Path(agent_claims_path) if agent_claims_path else None,
             )
         except AttemptError as exc:
             document = {
@@ -561,6 +568,7 @@ def _execute_fake_head(
     attempt_dir: str,
     expected_path: str,
     trace_key: str | None,
+    claims_path: Path | None = None,
 ) -> dict[str, Any]:
     """Spawn the lane-internal fake head, then grade its attempt.
 
@@ -615,6 +623,7 @@ def _execute_fake_head(
             directory,
             expected_path=Path(expected_path),
             key_env=key,
+            **({"claims_path": claims_path} if claims_path is not None else {}),
         )
     except AttemptError as exc:
         return _failed_attempt_lane(attempt_dir, str(exc))

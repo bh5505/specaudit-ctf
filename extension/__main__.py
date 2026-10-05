@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from pathlib import Path
 from typing import Any, Sequence
 
 from .contract import Extension, ExtensionError
@@ -33,8 +34,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     invoke_parser.add_argument(
         "args",
         nargs="?",
-        default="{}",
+        default=None,
         help="JSON object of action arguments (default: {})",
+    )
+    invoke_parser.add_argument(
+        "--args-file", default=None,
+        help="operator-local, bounded regular JSON object file for action arguments",
+    )
+    invoke_parser.add_argument(
+        "--include-report", action="store_true",
+        help="print a JSON execution/report wrapper for learning-operator analyze_pack only",
     )
     invoke_parser.add_argument(
         "--attempt-id",
@@ -71,11 +80,27 @@ def main(argv: Sequence[str] | None = None) -> int:
                 print(str(exc), file=sys.stderr)
                 return 2
         if ns.cmd == "invoke":
+            if ns.args_file is not None and ns.args is not None:
+                print("choose either inline args or --args-file", file=sys.stderr)
+                return 2
+            if ns.include_report and (ns.id, ns.action) != ("learning-operator", "analyze_pack"):
+                print("--include-report requires learning-operator analyze_pack", file=sys.stderr)
+                return 2
             args_error: ExtensionError | None = None
             args: dict[str, Any] = {}
             try:
-                args = _parse_args_json(ns.args)
-            except ExtensionError as exc:
+                if ns.args_file is not None:
+                    # This local operator read never becomes an arm argument or
+                    # an MCP path. The shared nofollow reader checks that the
+                    # file remains unchanged throughout a bounded read.
+                    from learning.operator import _parse_json_document, _read_request_file
+                    parsed = _parse_json_document(_read_request_file(Path(ns.args_file)))
+                    if not isinstance(parsed, dict):
+                        raise ValueError("JSON arguments must be an object")
+                    args = parsed
+                else:
+                    args = _parse_args_json(ns.args if ns.args is not None else "{}")
+            except (ExtensionError, OSError, ValueError, TypeError, UnicodeError, RecursionError) as exc:
                 args_error = exc
             outcome = dispatch_invoke(
                 ext,
@@ -87,7 +112,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 artifact_dir=ns.artifact_dir,
             )
             if outcome.envelope is not None:
-                _emit(outcome.envelope)
+                if ns.include_report:
+                    _emit({"execution": outcome.envelope, "report": outcome.inline_report})
+                else:
+                    _emit(outcome.envelope)
             if outcome.stderr_line:
                 print(outcome.stderr_line, file=sys.stderr)
             return outcome.exit_code

@@ -1,5 +1,33 @@
 # specaudit-ctf
 
+## Operate SpecAudit-CTF
+
+Use the existing arms and attached agent heads to collect scoped evidence,
+run the telecom security pack, analyze its findings, and select target-specific
+validation work. Permission paths, Kubernetes prerequisites, detection records,
+workpaper review and captured triage order participate in that analysis.
+
+The core path is **reconnaissance/enrichment → pack checks → target analysis →
+operator-reviewed validation through admitted arms**. Cloud and other non-IP
+findings stay in the target set. Analysis does not grant target authority.
+
+From an installed package or checkout, prepare the core invocation from a pack
+report already produced by `tools/ctf_run_checks.py` or
+`extension.pipeline.pack_run`:
+
+```sh
+python -c 'import json; from pathlib import Path; Path("analysis-args.json").write_text(json.dumps({"report": json.loads(Path("out/report.json").read_text())}))'
+python -m extension invoke learning-operator analyze_pack \
+  --args-file analysis-args.json --include-report
+```
+
+Add `operator_evidence` to that argument object to bind captured evidence to
+specific findings. The [core analysis contract](docs/operator-learning-arm.md)
+describes inputs, outputs, retained artifacts and the validation handoff. Attached
+heads use the same `invoke` action and receive the analysis in its result.
+The arm's historical `learning-operator` identifier remains compatible; the
+operator does not need a separate learning CLI to run this path.
+
 ## Overview
 
 - **Arms**: 49 specialized adapters. No row is held (the HTTP-MCP
@@ -32,45 +60,18 @@ row stays uncurated (19). `curated` is not `maintained`.
 Per-arm caveats (composite egress, exploitation, LLM spend, source
 mutation): [extension/README.md](extension/README.md).
 
-## Learning program
+## Documentation
 
-The shipped runtime and challenges are the first usable layer of a larger,
-evidence-led cybersecurity audit learning program. The program connects
-technical validation to internal-audit workpapers and extends the target
-curriculum across general cybersecurity and telecom—from subscriber identity,
-5G core and interconnect through RAN, telco cloud, network APIs, fraud and
-resilience. That target coverage is documented honestly; it does not imply that
-the corresponding labs or integrations ship.
+- [Core analysis and invocation](docs/operator-learning-arm.md): operational inputs, target analysis and validation handoff.
+- [Operations](OPERATIONS.md): scope, containment, custody and cleanup.
+- [Extension contracts](extension/README.md): admitted arms, head attachment and action-specific prerequisites.
+- [Pack and evidence tools](tools/README.md): producing the findings consumed by analysis.
+- [Challenges](challenges/README.md): synthetic target and finding contracts.
 
-| Reader | Living guide |
-|---|---|
-| Everyone: architecture, status, sources and research register | [Program](PROGRAM.md) |
-| Trainee: pathways, shipped A–D, full module map and proposed seed packs | [Curriculum](CURRICULUM.md) |
-| Instructor or challenge author: delivery, grading, calibration and maintenance | [Instructor guide](INSTRUCTOR_GUIDE.md) |
-| Operator: authorization, environment tiers, containment, custody and cleanup | [Operations](OPERATIONS.md) |
-| Challenge user or author: shipped inventory, exact grading and authoring contract | [Challenges](challenges/README.md) |
-| Reconnaissance operator or learner: association evidence, exclusions and bounded observations | [Asset reconnaissance](docs/scope-recon.md) |
-| Repository maintainer: partial PR 97 governance register and fail-closed integrity checker | [Governance register](governance/README.md) |
-| Learner, reviewer or operator: executable offline graph, workpaper, agent, detection and triage pilots | [Offline learning workflows](docs/offline-learning-workflows.md) |
-
-The [program research register](PROGRAM.md#candidate-register-42-unique-candidates)
-contains 42 unique candidates and 12 supplemental methodology/corpus families.
-They are **research inputs**, not runtime inventory: none becomes bundled,
-admitted, installed, licensed, validated or maintained by being listed. The
-register stays separate from `extension/coverage.yaml` and the runtime catalog.
-
-The [shipped challenge operator CLI](docs/exercise-operator.md) inventories the 13 exact-coverage tracks, prepares seven fixture-backed learner packets with answer material excluded, rehearses the full synthetic range without arms, and grades submissions on the operator side from an installed wheel. It does not launch live-service lanes or attest evidence truth.
-
-The [offline learning workflows](docs/offline-learning-workflows.md) provide a
-`python -m learning` CLI for six bounded, offline-by-default E1
-import/review and self-study workflows. The opt-in `triage rank` command can
-call a provider under separate operator authority. The threat-model, agent,
-detection and Kubernetes exercises are executable now; formal assessment
-promotion remains separate.
-The `learning-operator` research arm exposes these six offline reviews through
-`invoke` with inline evidence only. Its local request-file command supports
-larger packets; see [the operator guide](docs/operator-learning-arm.md). This
-does not change source admission or fixture grading.
+[Program](PROGRAM.md), [curriculum](CURRICULUM.md), [instructor guidance](INSTRUCTOR_GUIDE.md)
+and [individual evaluator APIs](docs/offline-learning-workflows.md) are supporting
+references. Candidate surveys and self-study examples are not alternative
+operator workflows or evidence that an upstream tool executed.
 
 ## Install
 

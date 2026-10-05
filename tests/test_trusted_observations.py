@@ -343,7 +343,7 @@ def test_observation_registry_is_frozen_and_does_not_admit_actions() -> None:
 
 def test_sidecar_preserves_public_dispatch_and_pr97_rosters() -> None:
     assert TOOLS == ("list", "describe", "invoke", "run_range")
-    assert len(INVOKE_PROFILES) == 226
+    assert len(INVOKE_PROFILES) == 227
     assert len(PR97_ARM_IDS) == 14
     assert sum(
         len(actions) - ("list_tools" in actions)

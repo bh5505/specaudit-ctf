@@ -12,7 +12,7 @@ from graph_evidence.importer import evaluate as evaluate_graph
 from k8s_path_evidence.__main__ import normalize
 from learning.agent_security_harness import answer, grade, trace
 from review_workpaper.__main__ import validate
-from extension.arms.learning_operator import ACTIONS, ARM_ID, _sample
+from extension.arms.learning_operator import SAMPLE_ACTIONS, ARM_ID, _sample
 from extension.contract import Extension
 from extension.dispatch import dispatch_invoke
 from learning.operator import _read_report
@@ -74,7 +74,7 @@ def main():
     )
     assert metrics["evaluation_scope"] == "synthetic-format-fixture"
     with tempfile.TemporaryDirectory() as temp:
-        for index, action in enumerate(sorted(ACTIONS)):
+        for index, action in enumerate(sorted(SAMPLE_ACTIONS)):
             artifact_dir = Path(temp) / str(index)
             artifact_dir.mkdir()
             outcome = dispatch_invoke(Extension(), arm_id=ARM_ID, action=action,

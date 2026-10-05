@@ -539,7 +539,7 @@ def test_capability_manifests_are_deterministic_and_admitted() -> None:
     # endpoint-armed reads (caldera had no profiles before).
     # Merged registry: main's 212 profiles plus the feature-branch ivanti
     # arm and the vulnify snapshot/batch layer (args.cve_ids / bundle_path).
-    assert len(INVOKE_PROFILES) == 226
+    assert len(INVOKE_PROFILES) == 227
     caller_file_reads = {
         capability_id
         for capability_id, profile in INVOKE_PROFILES.items()

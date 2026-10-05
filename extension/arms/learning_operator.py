@@ -18,6 +18,7 @@ ARM_ID = "learning-operator"
 MAX_ARGS_BYTES = 256_000
 MAX_RESULT_BYTES = 256_000
 ACTIONS = {
+    "analyze_pack": frozenset({"report", "operator_evidence"}),
     "graph_path": frozenset({"graph_ndjson", "sha256", "source", "target", "project"}),
     "k8s_review": frozenset({"report_json", "capture"}),
     "workpaper_review": frozenset({"manifest", "submission", "evidence"}),
@@ -26,6 +27,7 @@ ACTIONS = {
     "triage_evaluate": frozenset({"candidates_json", "ranking_json", "binding", "labels_json"}),
 }
 REQUIRED = {
+    "analyze_pack": frozenset({"report"}),
     "graph_path": ACTIONS["graph_path"] - {"project"},
     "k8s_review": ACTIONS["k8s_review"],
     "workpaper_review": ACTIONS["workpaper_review"],
@@ -33,12 +35,14 @@ REQUIRED = {
     "detection_review": ACTIONS["detection_review"] - {"submission"},
     "triage_evaluate": ACTIONS["triage_evaluate"],
 }
+SAMPLE_ACTIONS = frozenset(ACTIONS) - {"analyze_pack"}
 CAVEATS = (
     "offline import and synthetic exercise only; no upstream collector, provider, or target dispatch",
     "hashes bind supplied bytes but do not authenticate source or custody",
     "graph paths and Kubernetes checks do not establish effective access",
     "workpaper structure needs human conclusion review; triage ranking is review order, not evidence",
     "inline captured data can be real; apply host egress, identity, and data controls externally",
+    "pack analysis is a hypothesis and review handoff, not an authorization to validate exploitability",
 )
 
 
@@ -59,12 +63,14 @@ class LearningOperatorArm:
                 return _ok(spec, action, {"read_actions": sorted((*ACTIONS, "sample", "list_tools")),
                                           "dispatch_actions": [],
                                           "arg_keys": {key: sorted(value) for key, value in ACTIONS.items()},
-                                          "sample_arg_keys": ["workflow"], "caveats": list(CAVEATS)})
+                                          "sample_arg_keys": ["workflow"],
+                                          "sample_workflows": sorted(SAMPLE_ACTIONS),
+                                          "caveats": list(CAVEATS)})
             if action == "sample":
                 _shape(payload, {"workflow"}, {"workflow"})
                 workflow = payload["workflow"]
-                if not isinstance(workflow, str) or workflow not in ACTIONS:
-                    raise ValueError("workflow must name a listed offline action")
+                if not isinstance(workflow, str) or workflow not in SAMPLE_ACTIONS:
+                    raise ValueError("workflow must name a listed synthetic sample")
                 return _ok(spec, action, {"arm_id": ARM_ID, "action": workflow, "args": _sample(workflow),
                                           "classification": "bundled synthetic teaching example"})
             if action not in ACTIONS:
@@ -102,6 +108,21 @@ def _raw(value: Any, label: str, limit: int) -> bytes:
 
 
 def _run(action: str, args: dict) -> dict:
+    if action == "analyze_pack":
+        from extension.pipeline import prioritize_targets
+        report = args["report"]
+        if not isinstance(report, dict) or not isinstance(report.get("findings"), list):
+            raise ValueError("report must be a pack report object with a findings list")
+        if any(not isinstance(row, dict) for row in report["findings"]):
+            raise ValueError("report findings must be objects")
+        evidence = args.get("operator_evidence")
+        if evidence is not None and not isinstance(evidence, dict):
+            raise ValueError("operator_evidence must be an inline object")
+        # The markdown rendering duplicates every target's details. Keep the
+        # admitted inline result focused on structured targets so ordinary
+        # multi-finding packs fit the bounded result channel. Operators can
+        # render a separate human report through the pipeline API.
+        return prioritize_targets(report=report, operator_evidence=evidence, with_report=False)
     if action == "graph_path":
         from graph_evidence.importer import MAX_BYTES, evaluate
         if "project" in args and type(args["project"]) is not bool:

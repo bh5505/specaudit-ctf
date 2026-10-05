@@ -52,6 +52,13 @@ hashes identify the bytes read; they neither sign the checkout nor make it
 immutable. A locally modified checker can of course modify its own literals, so
 independent review of a deliberate baseline update remains part of the gate.
 
+The 2026-10-04 baseline refresh binds the exact revised bytes of
+`extension/dispatch.py` and `extension/invoke_profiles.py` after admitting the
+separate `learning-operator.analyze_pack` action. It updates their source hashes
+and the derived profile/runtime surface anchors only. The PR97 inventory,
+reader policies, unverified controls and permanently non-ready v1 state remain
+unchanged.
+
 ## What v1 records
 
 Every reader remains exposed to the common requirements below:

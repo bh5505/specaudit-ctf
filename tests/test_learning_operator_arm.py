@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from extension.arms.learning_operator import ACTIONS, ARM_ID, _sample
+from extension.arms.learning_operator import SAMPLE_ACTIONS, ARM_ID, _sample
 from extension.contract import Extension
 from extension.dispatch import dispatch_invoke
 from extension.invoke_profiles import invoke_profile
@@ -20,7 +20,7 @@ from learning.operator import _parse_request, _read_report, _read_request_file
 from tests.test_alt_head_mcp import _call, _content_json
 
 
-@pytest.mark.parametrize("action", sorted(ACTIONS))
+@pytest.mark.parametrize("action", sorted(SAMPLE_ACTIONS))
 def test_all_samples_dispatch_and_mcp_with_real_assessments(action: str) -> None:
     args = _sample(action)
     local = dispatch_invoke(Extension(), arm_id=ARM_ID, action=action, args=args)
@@ -50,6 +50,128 @@ def test_specific_outcomes_and_bounded_false_submission() -> None:
     triage = ext.invoke(ARM_ID, "triage_evaluate", _sample("triage_evaluate")).output["assessment"]
     assert triage["evaluation_scope"] == "synthetic-format-fixture"
     assert triage["kind"] == "review-order-evaluation-only"
+
+
+def _pack_args(technique: str = "T1190") -> dict:
+    return {"report": {"run_id": "operator-capture-1", "findings": [
+        {"check_id": "ext_telecom_offsec_asmvm_t3_asmvm_technique_context_bridge_gap",
+         "record_locator": "203.0.113.7:443 / service:capture-1",
+         "title": "Technique context on captured service 203.0.113.7:443",
+         "details": f"technique={technique} - Capture; tactic=TA0001 - Initial Access",
+         "severity": "high", "risk_score": 40},
+    ]}}
+
+
+def test_analyze_pack_cli_and_attached_mcp_return_real_report(tmp_path: Path) -> None:
+    args = _pack_args()
+    outcome = dispatch_invoke(Extension(), arm_id=ARM_ID, action="analyze_pack", args=args)
+    assert outcome.exit_code == 0
+    assert outcome.envelope["status"] == "complete"
+    assert outcome.inline_report is not None
+    assert outcome.inline_report["assessment"]["targets"][0]["ip"] == "203.0.113.7"
+    assert "markdown" not in outcome.inline_report["assessment"]
+    assert invoke_profile(ARM_ID, "analyze_pack").synthetic_only is False
+
+    response = _call(McpServer(extension=Extension()), "invoke",
+                     {"id": ARM_ID, "action": "analyze_pack", "args": args})
+    result = response["result"]
+    assert result["isError"] is False
+    assert len(result["content"]) == 2
+    assert json.loads(result["content"][0]["text"]) == result["structuredContent"]
+    inline = json.loads(result["content"][1]["text"])
+    assert inline["assessment"]["targets"][0]["ip"] == "203.0.113.7"
+    artifact = result["structuredContent"]["artifacts"][0]
+    encoded = json.dumps(inline, sort_keys=True, separators=(",", ":")).encode()
+    assert artifact["digest"] == "sha256:" + hashlib.sha256(encoded).hexdigest()
+
+    changed = _call(McpServer(extension=Extension()), "invoke",
+                    {"id": ARM_ID, "action": "analyze_pack", "args": _pack_args("T1110")})
+    second = json.loads(changed["result"]["content"][1]["text"])
+    assert second["assessment"]["targets"][0]["threat_model"]["expected_initial_access"]["technique"] == "T1110"
+
+    request = tmp_path / "request.json"
+    request.write_text(json.dumps({"arm_id": ARM_ID, "action": "analyze_pack", "args": args}))
+    directory = tmp_path / "artifacts"
+    directory.mkdir()
+    local = subprocess.run([sys.executable, "-m", "learning", "operator", "run",
+                            "--request", str(request), "--attempt-id", "attempt-" + "a" * 64,
+                            "--artifact-dir", str(directory)], capture_output=True, text=True)
+    assert local.returncode == 0, local.stderr
+    printed = json.loads(local.stdout)
+    assert printed["report"]["assessment"]["targets"][0]["ip"] == "203.0.113.7"
+    assert printed["execution"]["artifacts"][0]["digest"] == artifact["digest"]
+
+    args_file = tmp_path / "args.json"
+    args_file.write_text(json.dumps(args))
+    core_cli = subprocess.run([sys.executable, "-m", "extension", "invoke", ARM_ID,
+                               "analyze_pack", "--args-file", str(args_file), "--include-report"],
+                              capture_output=True, text=True)
+    assert core_cli.returncode == 0, core_cli.stderr
+    core_output = json.loads(core_cli.stdout)
+    assert core_output["execution"]["schema"] == "specaudit.ctf.execution-result.v1"
+    assert core_output["report"]["assessment"]["targets"][0]["ip"] == "203.0.113.7"
+    assert core_output["execution"]["artifacts"][0]["digest"] == artifact["digest"]
+
+
+def test_analyze_pack_150_findings_keeps_structured_targets_available() -> None:
+    findings = []
+    for index in range(150):
+        ip = f"198.51.{index // 256}.{index % 256}"
+        findings.append({
+            "check_id": "ext_telecom_offsec_asmvm_t3_asmvm_technique_context_bridge_gap",
+            "record_locator": f"{ip}:443 / service:captured-{index}",
+            "title": f"Technique context on service {ip}:443",
+            "details": "technique=T1190 - Capture; tactic=TA0001 - Initial Access",
+            "severity": "high", "risk_score": 40,
+        })
+    args = {"report": {"run_id": "operator-many-findings", "findings": findings}}
+    assert len(json.dumps(args).encode()) < 256_000
+    response = _call(McpServer(extension=Extension()), "invoke",
+                     {"id": ARM_ID, "action": "analyze_pack", "args": args})
+    assert response["result"]["isError"] is False
+    assert response["result"]["structuredContent"]["status"] == "complete"
+    assessment = json.loads(response["result"]["content"][1]["text"])["assessment"]
+    assert assessment["summary"]["total_targets"] == 150
+    assert len(assessment["targets"]) == 150
+    assert "markdown" not in assessment
+
+
+def test_core_cli_args_file_fail_closed(tmp_path: Path) -> None:
+    args_file = tmp_path / "args.json"
+    args_file.write_text('{"report":{"findings":[]},"report":{"findings":[]}}')
+    cmd = [sys.executable, "-m", "extension", "invoke", ARM_ID, "analyze_pack",
+           "--args-file", str(args_file), "--include-report"]
+    rejected = subprocess.run(cmd, capture_output=True, text=True)
+    assert rejected.returncode != 0
+    failure = json.loads(rejected.stdout)
+    assert failure["execution"]["status"] == "failed" and failure["report"] is None
+    linked = tmp_path / "linked.json"
+    linked.symlink_to(args_file)
+    rejected_link = subprocess.run([*cmd[:-3], "--args-file", str(linked), "--include-report"],
+                                   capture_output=True, text=True)
+    assert rejected_link.returncode != 0
+    assert json.loads(rejected_link.stdout)["report"] is None
+    rejected_other = subprocess.run([sys.executable, "-m", "extension", "invoke", ARM_ID,
+                                     "graph_path", "--include-report"], capture_output=True, text=True)
+    assert rejected_other.returncode == 2 and not rejected_other.stdout
+
+
+def test_analyze_pack_rejects_paths_bad_shapes_and_oversized_inputs() -> None:
+    for args in (
+        {"report_path": "/tmp/report.json"},
+        {"report": {"findings": []}, "evidence_dir": "/tmp/evidence"},
+        {"report": {"findings": "not an array"}},
+        {"report": {"findings": ["not an object"]}},
+        {"report": {"findings": []}, "operator_evidence": "/tmp/evidence"},
+        {"report": {"findings": [], "padding": "x" * 256_001}},
+    ):
+        outcome = dispatch_invoke(Extension(), arm_id=ARM_ID, action="analyze_pack", args=args)
+        assert outcome.exit_code != 0 and outcome.envelope["status"] == "failed"
+        assert outcome.inline_report is None
+        response = _call(McpServer(extension=Extension()), "invoke",
+                         {"id": ARM_ID, "action": "analyze_pack", "args": args})
+        assert response["result"]["isError"] is True
+        assert len(response["result"]["content"]) == 1
 
 
 def test_invalid_hash_evidence_and_path_arguments_fail_closed() -> None:
@@ -82,7 +204,7 @@ def test_invalid_hash_evidence_and_path_arguments_fail_closed() -> None:
 
 
 def test_mode_a_local_cli_returns_verified_report(tmp_path: Path) -> None:
-    for index, action in enumerate(sorted(ACTIONS)):
+    for index, action in enumerate(sorted(SAMPLE_ACTIONS)):
         request = tmp_path / f"{action}.json"
         sample = subprocess.run([sys.executable, "-m", "learning", "operator", "sample", action, "--out", str(request)], capture_output=True, text=True)
         assert sample.returncode == 0, sample.stderr
