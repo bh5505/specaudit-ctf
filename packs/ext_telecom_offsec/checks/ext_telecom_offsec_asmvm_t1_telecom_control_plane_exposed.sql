@@ -2,9 +2,9 @@
 -- model-first trust boundary), telecom control-plane analogue of
 -- ext_telecom_offsec_asmvm_t1_exposed_mgmt_ports.
 --
--- The management-port list is an enterprise-admin list (RDP, SSH, databases,
--- Redis, Elasticsearch ...). A telecom estate has a second reachable plane that
--- list does not name: subscriber-edge CPE management (CWMP/TR-069), call
+-- The restricted-service list includes administration, data, and peer ports.
+-- A telecom estate has a second reachable plane that the list does not name:
+-- subscriber-edge CPE management (CWMP/TR-069), call
 -- signalling (SIP/SIPS), the core (GTP-C, GTP-U, GTP'/NCP, Diameter), the timing
 -- plane (NTP), name resolution (DNS), and the IPsec anchors (IKE / NAT-T).
 -- The control-plane and unattributed-exposure findings can compound: an

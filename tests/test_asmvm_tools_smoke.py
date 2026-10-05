@@ -43,6 +43,7 @@ sys.path.insert(0, str(TOOLS))
 
 import asmvm_evidence_builder as builder  # noqa: E402
 import csv_type_preflight as preflight  # noqa: E402
+import livefire_capture as livefire  # noqa: E402
 import livefire_overlay as overlay  # noqa: E402
 import livefire_target_list as target_list  # noqa: E402
 
@@ -1016,14 +1017,82 @@ def test_indirect_recon_label_comparison_is_conservative():
                                  names_443) == "claim_not_comparable"
     assert recon.label_agreement(443, "", names_443) == "no_claim"
     assert recon.label_agreement(65001, "telemetry", set()) == "no_local_reference"
-    # 7680 is in the pack's management list; winrm and wsman are one service
-    assert recon.label_agreement(
-        7680, "wsman",
-        {"http", "winrm"}) == "agree_by_equivalent_name"
-    # port classes come from the pack's classes, not invented here
+    # A port-only WinRM claim on 7680 conflicts with the normal peer service.
+    peer = recon.assess_endpoint(
+        {"ip": "192.0.2.1", "port": 7680, "protocol": "tcp",
+         "service_name": "delivery-optimization"}, {}, {})
+    wrong_winrm = recon.assess_endpoint(
+        {"ip": "192.0.2.1", "port": 7680, "protocol": "tcp",
+         "service_name": "winrm"}, {}, {})
+    assert peer["label_agreement"] == "agree"
+    assert peer["port_class"] == "restricted_peer_distribution_port"
+    assert wrong_winrm["label_agreement"] == "label_disagreement"
+    udp_peer = recon.assess_endpoint(
+        {"ip": "192.0.2.1", "port": 7680, "protocol": "udp",
+         "service_name": "delivery-optimization"}, {}, {})
+    assert udp_peer["label_agreement"] == "no_local_reference"
+    assert udp_peer["port_class"] == "restricted_service_port"
+    for port in (5985, 5986):
+        winrm = recon.assess_endpoint(
+            {"ip": "192.0.2.1", "port": port, "protocol": "tcp",
+             "service_name": "wsman"}, {}, {})
+        assert winrm["label_agreement"] == "agree_by_equivalent_name"
+        assert winrm["port_class"] == "management_port"
+    # Port classes come from the pack's classes, not invented here.
     assert recon.classify(2152) == "gtp_core"
-    assert recon.classify(7680) == "management_port"
     assert recon.classify(443) == "other"
+
+
+@pytest.mark.parametrize("banner,expects_get", [
+    (b"", False),
+    (b"HTTP/1.1 200 OK\r\n", True),
+])
+def test_livefire_7680_requires_http_banner_for_get(tmp_path, monkeypatch,
+                                                     banner, expects_get):
+    """A peer port alone must not trigger HTTP; an HTTP-speaking service still can."""
+    targets = tmp_path / "targets.txt"
+    targets.write_text("127.0.0.1 tcp/7680\n", encoding="utf-8")
+    out_dir = tmp_path / "receipts"
+    calls = {"connect": 0, "get": 0, "close": 0}
+
+    class FakeSocket:
+        def __init__(self, tracked=False):
+            self.tracked = tracked
+
+        def connect(self, address):
+            pass
+
+        def getsockname(self):
+            return ("127.0.0.1", 0)
+
+        def close(self):
+            if self.tracked:
+                calls["close"] += 1
+
+    def fake_grab_tcp(ip, port, timeout):
+        calls["connect"] += 1
+        return FakeSocket(tracked=calls["connect"] == 1), banner, ""
+
+    def fake_http_get(sock, ip, port, proto, timeout):
+        calls["get"] += 1
+        return {"http_status": "200"}, ""
+
+    monkeypatch.setattr(livefire.socket, "socket", lambda *args: FakeSocket())
+    monkeypatch.setattr(livefire.subprocess, "run",
+                        lambda *args, **kwargs: type("Result", (), {"stdout": ""})())
+    monkeypatch.setattr(livefire, "grab_tcp", fake_grab_tcp)
+    monkeypatch.setattr(livefire, "http_get", fake_http_get)
+    monkeypatch.setattr(sys, "argv", ["livefire_capture.py", "--targets", str(targets),
+                                   "--out-dir", str(out_dir)])
+
+    assert livefire.main() == 0
+    assert calls == {"connect": 2 if expects_get else 1,
+                     "get": 1 if expects_get else 0, "close": 1}
+    receipts = list(csv.DictReader((out_dir / "livefire_receipts.csv")
+                                   .open(encoding="utf-8")))
+    assert len(receipts) == 1
+    assert receipts[0]["endpoint_status"] == "open"
+    assert receipts[0]["http_status"] == ("200" if expects_get else "")
 
 
 def test_indirect_recon_smoke_over_tiny_synthetic_evidence(tmp_path):

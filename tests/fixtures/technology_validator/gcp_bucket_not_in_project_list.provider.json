@@ -14,12 +14,12 @@
     "resourceId": "projects/_/buckets/demo-bucket"
   },
   "project": {
-    "projectId": "other-project",
-    "projectNumber": "999999999999"
+    "projectId": "demo-project",
+    "projectNumber": "123456789012"
   },
   "bucket_list": [
     {
-      "name": "demo-bucket",
+      "name": "other-bucket",
       "projectNumber": "123456789012"
     }
   ],

@@ -4,9 +4,8 @@
 --
 -- AWS posture tells you what a firewall ALLOWS; an ASM feed tells you what is
 -- actually ANSWERING. This check flags every ASM-observed active service that
--- answers on the public internet on a management, legacy-clear-text or
--- data-plane port - the ports that should never be internet-reachable in a
--- telecom estate. Grouping is per protocol+port (the policy exception), because
+-- answers on the public internet on a policy-restricted management, clear-text,
+-- data-plane, or peer-distribution port. Grouping is per protocol+port (the policy exception), because
 -- the audit action is a boundary rule change, not a per-host ticket.
 --
 -- Port set is CAP-PARAM: it mirrors engagement_configs/default.yaml
@@ -18,7 +17,7 @@
 
 SELECT
     'asmvm:mgmt-port:' || s.protocol || ':' || CAST(s.port AS VARCHAR) AS finding_key,
-    'Internet-reachable management/legacy service surface: ' ||
+    'Internet-reachable policy-restricted service surface: ' ||
         CAST(s.port AS VARCHAR) || '/' || s.protocol   AS title,
     COUNT(DISTINCT s.ip)                             AS affected_count,
     COUNT(*)                                         AS exposure_estimate,
@@ -68,7 +67,8 @@ WHERE s.run_id = ?1
                  2181, 2375, 2376, 3306, 3389, 4444, 5432, 5601, 5672, 5900, 5901,
                  5902, 5984, 5985, 5986, 6379, 8080, 9000, 9092, 9200, 11211,
                  15672, 27017, 50000, 50070,
-                 -- WinRM-HTTP 7680 is in the same class as 5985/5986
+                 -- TCP 7680 may carry Delivery Optimization peer traffic;
+                 -- preserve the boundary policy without inferring a service.
                  -- Telecom control-plane ports are handled by a separate check; see
                  -- ext_telecom_offsec_asmvm_t1_telecom_control_plane_exposed.sql.
                  7680)

@@ -484,7 +484,7 @@ def main():
         wants_tls = (t["port"] in (443, 465, 993, 995, 8443, 14443)
                      or banner_low.startswith((b"\x16\x03", b"tls", b"ssl")))
         is_http = banner_low.startswith((b"http/", b"get", b"post")) or t["port"] in (
-            80, 443, 4000, 5040, 7680, 8080, 14443)
+            80, 443, 4000, 5040, 8080, 14443)
         if banner_low.startswith((b"ssh-", b"ftp", b"smtp", b"220", b"220-")) or \
                 t["port"] in (21, 22, 25, 139, 445, 135):
             # banner protocols: close after the banner, do not speak further
@@ -513,6 +513,10 @@ def main():
                     rec["banner"] = (rec["banner"] + " tls_handshake_error="
                                      + tls_err)[:BANNER_CAP]
         if is_http:
+            try:
+                sock.close()
+            except OSError:
+                pass
             sock3, banner3, _ = grab_tcp(t["ip"], t["port"], args.timeout)
             if sock3 is not None:
                 info, http_err = http_get(sock3, t["ip"], t["port"],

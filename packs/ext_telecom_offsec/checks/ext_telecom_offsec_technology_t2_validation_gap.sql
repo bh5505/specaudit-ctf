@@ -6,6 +6,8 @@ WITH candidate_scope AS (
            c.validator_engagement_id, c.finding_id, c.source_run_id,
            c.inventory_snapshot_id, c.rule_id, c.provider, c.resource_uid,
            c.account_id,
+           MIN(COALESCE(c.region, '')) AS region,
+           COUNT(DISTINCT COALESCE(c.region, '')) AS region_variants,
            MAX(CASE WHEN UPPER(COALESCE(c.severity, '')) = 'CRITICAL'
                     THEN 1 ELSE 0 END) AS critical_seen,
            CAST(LENGTH(c.engagement_id) AS VARCHAR) || ':' || c.engagement_id ||
@@ -34,6 +36,8 @@ validation_by_finding AS (
         v.validator_engagement_id, v.finding_id, v.source_run_id,
         v.inventory_snapshot_id, v.rule_id, v.provider, v.resource_uid,
         v.account_id,
+        MIN(COALESCE(v.region, '')) AS region,
+        COUNT(DISTINCT COALESCE(v.region, '')) AS region_variants,
         COUNT(DISTINCT v.attempt_id) AS result_count,
         COUNT(DISTINCT v.configuration_status) AS configuration_variants,
         COUNT(DISTINCT v.reachability_status) AS reachability_variants,
@@ -310,11 +314,17 @@ SELECT
             THEN 'engagement_scope_mismatch'
         WHEN COALESCE(c.source_run_id, '') = '' THEN 'missing_source_run_id'
         WHEN COALESCE(c.resource_uid, '') = '' THEN 'missing_resource_uid'
+        WHEN c.rule_id = 'AZURE-NET-002'
+             AND (c.region_variants <> 1 OR c.region = '')
+            THEN 'missing_or_ambiguous_region_scope'
         WHEN v.result_count IS NULL THEN 'missing'
         WHEN v.result_count <> 1 THEN 'ambiguous_multiple_results'
         WHEN v.configuration_variants <> 1 OR v.reachability_variants <> 1
              OR v.verdict_variants > 1 OR v.receipt_variants <> 1
             THEN 'ambiguous_inconsistent_result'
+        WHEN c.rule_id = 'AZURE-NET-002'
+             AND (v.region_variants <> 1 OR v.region <> c.region)
+            THEN 'region_scope_mismatch'
         WHEN v.configuration_status = 'refuted' THEN 'source_claim_contradicted'
         WHEN v.configuration_status = 'unknown' THEN 'inconclusive'
         WHEN v.configuration_status NOT IN ('confirmed', 'refuted', 'unknown') THEN 'invalid_status'
@@ -365,6 +375,9 @@ WHERE c.run_id = ?1
        OR COALESCE(c.source_run_id, '') = ''
        OR COALESCE(c.resource_uid, '') = ''
        OR COALESCE(c.account_id, '') = ''
+       OR (c.rule_id = 'AZURE-NET-002'
+           AND (c.region_variants <> 1 OR c.region = ''
+                OR v.region_variants <> 1 OR v.region <> c.region))
        OR v.result_count IS NULL
        OR v.result_count <> 1
        OR v.configuration_variants <> 1

@@ -25,11 +25,13 @@ ext_telecom_offsec_asmvm:
   asm_source_system: cortex_xpanse
   vm_source_system: ivanti_neurons
 
-  # CAP-PARAM (T1 mgmt-port check): ports that must never answer on the public
-  # internet in a telecom estate - management, clear-text, and data-plane.
+  # CAP-PARAM (T1 restricted-service check): ports this engagement flags for
+  # an explicit internet-boundary decision - management, clear-text, data-plane,
+  # and peer-distribution services. The key retains its established name.
   # Mirrored as a literal IN-list in
   # checks/ext_telecom_offsec_asmvm_t1_exposed_mgmt_ports.sql.
-  # WinRM-HTTP 7680 shares the management-port class with 5985/5986.
+  # TCP 7680 commonly carries Windows Delivery Optimization peer traffic, not
+  # default WinRM (5985/5986). Verify the actual service and peer policy.
   # Telecom control-plane ports are NOT added here - see
   # telecom_control_plane_ports below and its own check.
   mgmt_legacy_data_ports: [21, 22, 23, 25, 69, 110, 111, 135, 137, 139, 143, 161,
@@ -39,7 +41,7 @@ ext_telecom_offsec_asmvm:
     50000, 50070, 7680]
 
   # CAP-PARAM (T1 telecom control-plane check): the second reachable plane of a
-  # telecom estate, which the enterprise-admin list above does not name. Mirrored
+  # telecom estate, which the restricted-service list above does not name. Mirrored
   # as literal rows in checks/ext_telecom_offsec_asmvm_t1_telecom_control_plane_exposed.sql
   # (class_key, class label, risk, port). Grouped by class because the
   # remediation and the risk are per class, not per port.

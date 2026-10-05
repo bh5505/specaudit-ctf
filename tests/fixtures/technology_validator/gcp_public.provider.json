@@ -17,6 +17,12 @@
     "projectId": "demo-project",
     "projectNumber": "123456789012"
   },
+  "bucket_list": [
+    {
+      "name": "demo-bucket",
+      "projectNumber": "123456789012"
+    }
+  ],
   "bucket": {
     "name": "demo-bucket",
     "projectNumber": "123456789012"

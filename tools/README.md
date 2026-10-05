@@ -65,9 +65,11 @@ be asked offline, from three things already in hand:
    sensor of the same estate, already in the pack's tables;
 2. **this host's services file**, parsed rather than looked up, so no name service
    is consulted and a miss means "not in the file", not "the resolver did
-   something"; plus a small table of telecom/infra ports the file does not know
-   (GTP-C/GTP-U, SIGTRAN, TR-069, NETCONF) with where each assignment comes from;
-3. the **pack's port classes** (telecom control plane, management ports).
+   something"; plus a fixed table of telecom/infra port assignments used
+   alongside the local file (GTP-C/GTP-U, SIGTRAN, TR-069, NETCONF, Delivery
+   Optimization, WinRM) with where each assignment comes from;
+3. the **pack's port classes** (telecom control plane, restricted peer
+   distribution, management ports).
 
 Per claimed endpoint the receipt records whether the other sensor agrees the port
 is open, whether the service name matches what that port normally carries, and
