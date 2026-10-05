@@ -6,6 +6,8 @@ WITH candidate_scope AS (
            c.validator_engagement_id, c.finding_id, c.source_run_id,
            c.inventory_snapshot_id, c.rule_id, c.provider, c.resource_uid,
            c.account_id,
+           MIN(COALESCE(c.region, '')) AS region,
+           COUNT(DISTINCT COALESCE(c.region, '')) AS region_variants,
            MAX(CASE WHEN UPPER(COALESCE(c.severity, '')) = 'CRITICAL'
                     THEN 1 ELSE 0 END) AS critical_seen,
            CAST(LENGTH(c.engagement_id) AS VARCHAR) || ':' || c.engagement_id ||
@@ -34,6 +36,8 @@ validation_by_finding AS (
         v.validator_engagement_id, v.finding_id, v.source_run_id,
         v.inventory_snapshot_id, v.rule_id, v.provider, v.resource_uid,
         v.account_id,
+        MIN(COALESCE(v.region, '')) AS region,
+        COUNT(DISTINCT COALESCE(v.region, '')) AS region_variants,
         COUNT(DISTINCT v.attempt_id) AS result_count,
         COUNT(DISTINCT v.configuration_status) AS configuration_variants,
         COUNT(DISTINCT v.reachability_status) AS reachability_variants,
@@ -94,6 +98,9 @@ WHERE c.run_id = ?1
   AND COALESCE(c.source_run_id, '') <> ''
   AND COALESCE(c.resource_uid, '') <> ''
   AND COALESCE(c.account_id, '') <> ''
+  AND (c.rule_id <> 'AZURE-NET-002' OR
+       (c.region_variants = 1 AND c.region <> ''
+        AND v.region_variants = 1 AND v.region = c.region))
   AND c.rule_id IN ('AWS-NET-001', 'AWS-NET-010', 'AWS-NET-011', 'GCP-IAM-001', 'AZURE-NET-002')
   AND v.result_count = 1
   AND v.configuration_variants = 1

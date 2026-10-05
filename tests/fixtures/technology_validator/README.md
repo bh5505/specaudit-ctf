@@ -14,10 +14,11 @@ the Rust validator.
 
 Each case passes a synthetic candidate and explicit scope to the validator's
 `--evaluate-technology-fixture` entry point. Provider response files contain
-raw JSON objects. GCP bundles capture effective configuration, project and
-bucket identity, and bucket IAM policy replies. Azure bundles capture cloud,
-account, and NSG replies. The Rust fixture path feeds them to the production
-evaluator in memory and does not launch a provider executable. The harness
+raw JSON objects. GCP bundles capture effective configuration, project identity,
+a project-scoped bucket list, bucket identity, and bucket IAM policy replies.
+Azure bundles capture cloud, account, and NSG replies. The Rust fixture path
+feeds the replies to the production evaluator in memory and does not launch a
+provider executable. The harness
 checks a small result projection. A preflight refusal must assert that no
 provider command was planned. An identity mismatch discovered in a supplied
 provider reply asserts that the necessary read was planned; the fixture path
@@ -36,14 +37,22 @@ uncertainty; and missing or mismatched authorization, provider identity, and
 claim identity. GCP and Azure nonzero provider exits remain inconclusive even
 when the captured reply looks positive.
 GCP candidates use the CAI bucket UID `//storage.googleapis.com/demo-bucket`.
-The captured project and bucket responses must bind to the explicitly scoped
-project number. Foreign bucket identities and malformed bucket UIDs fail closed.
+The captured project, bucket-list membership, and bucket responses must bind to
+the explicitly scoped project number. The bucket list must contain the target
+before any live bucket describe or policy read; missing membership, an absent
+target, and a target listed under another project remain inconclusive. Foreign
+bucket identities and malformed bucket UIDs also fail closed.
 For Azure, the candidate and finding detail `account_id` are the tenant GUID
 emitted by the collector. The NSG resource ID and provider account response
 carry the separate subscription GUID. Cases check wrong or missing tenant
 scope, a subscription mismatch in the NSG resource ID or provider response,
 an NSG response that returns the right name under a different subscription,
 and case-insensitive UUID matching across the tenant and NSG resource ID.
+Azure candidate and finding detail regions use the synthetic display name
+`East US`, while the NSG response uses the matching API location `eastus`.
+Separate cases require a missing inventory region or mismatched finding detail
+region to stop before provider reads, and a returned NSG in `westus2` to remain
+inconclusive after the planned reads.
 The positive and private GCP/Azure cases omit `details.reason`, as the
 producing checks do; separate changed-reason cases require a command-free
 inconclusive result.

@@ -6,11 +6,13 @@
     "finding_id": "ctf-azure-missing-detail-scope",
     "rule_id": "AZURE-NET-002",
     "resource_uid": "/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/ctf-rg/providers/Microsoft.Network/networkSecurityGroups/ctf-nsg",
+    "region": "East US",
     "account_id": "22222222-2222-4222-8222-222222222222",
     "details": {
       "details": {
         "rule_name": "allow-ssh"
-      }
+      },
+      "region": "East US"
     },
     "authorization": {
       "subscription_id": "11111111-1111-4111-8111-111111111111",

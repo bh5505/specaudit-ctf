@@ -18,6 +18,7 @@
   "nsg": {
     "id": "/subscriptions/AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA/resourceGroups/ctf-rg/providers/Microsoft.Network/networkSecurityGroups/ctf-nsg",
     "name": "ctf-nsg",
+    "location": "eastus",
     "securityRules": [
       {
         "access": "Allow",

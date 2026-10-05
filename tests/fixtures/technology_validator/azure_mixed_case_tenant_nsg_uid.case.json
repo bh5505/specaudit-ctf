@@ -6,12 +6,14 @@
     "finding_id": "ctf-azure-mixed-case-tenant-nsg-uid",
     "rule_id": "AZURE-NET-002",
     "resource_uid": "/subscriptions/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa/resourceGroups/ctf-rg/providers/Microsoft.Network/networkSecurityGroups/ctf-nsg",
+    "region": "East US",
     "account_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
     "details": {
       "account_id": "BbBbBbBb-BBBB-4BBB-8BBB-bbbbbbbbbbbb",
       "details": {
         "rule_name": "allow-ssh"
-      }
+      },
+      "region": "East US"
     },
     "authorization": {
       "subscription_id": "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA",

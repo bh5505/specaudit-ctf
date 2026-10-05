@@ -45,6 +45,18 @@
       [
         "storage",
         "buckets",
+        "list",
+        "--raw",
+        "--limit=701",
+        "--page-size=100",
+        "--format=json(name,projectNumber)",
+        "--project=demo-project",
+        "--account=validator@example.test",
+        "--quiet"
+      ],
+      [
+        "storage",
+        "buckets",
         "describe",
         "gs://demo-bucket",
         "--raw",
