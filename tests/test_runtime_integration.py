@@ -208,7 +208,10 @@ def test_parallel_full_lock_checks_use_isolated_staging() -> None:
         )
         for _ in range(2)
     ]
-    results = [process.communicate(timeout=30) for process in processes]
+    # A full lock-check traces the three sealed invocations end to end; on
+    # slower filesystems (e.g. 9p-mounted Windows checkouts) that takes
+    # minutes, so the budget covers slow-but-correct hosts, not just fast CI.
+    results = [process.communicate(timeout=900) for process in processes]
     for process, (stdout, stderr) in zip(processes, results, strict=True):
         assert process.returncode == 0, stdout + stderr
         assert "lock-check (full)" in stderr
