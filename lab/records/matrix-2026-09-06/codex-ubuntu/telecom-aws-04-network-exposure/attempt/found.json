@@ -1,0 +1,32 @@
+{
+  "track": "telecom-aws-04-network-exposure",
+  "seed": null,
+  "fixtures": [
+    "tf_sg_open_ingress",
+    "tf_s3_policy_blocked_trap"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-sg-open-admin-port",
+      "control": "network containment: administrative shell exposure",
+      "severity": "high",
+      "rationale": "The aws_security_group.admin resource in main.tf allows inbound TCP port 22 from 0.0.0.0/0, exposing the administrative shell to every IPv4 source.",
+      "traces_to": "extension/range/tf_sg_open_ingress/input/main.tf, aws_security_group.admin, ingress 0.0.0.0/0 tcp/22"
+    },
+    {
+      "finding_key": "demo-sg-open-db-port",
+      "control": "network containment: database engine exposure",
+      "severity": "critical",
+      "rationale": "The aws_security_group.db resource in main.tf allows inbound TCP port 3306 from 0.0.0.0/0, exposing the database engine to every IPv4 source.",
+      "traces_to": "extension/range/tf_sg_open_ingress/input/main.tf, aws_security_group.db, ingress 0.0.0.0/0 tcp/3306"
+    },
+    {
+      "finding_key": "demo-trap-anonymous-policy-contained",
+      "control": "defense-in-depth: public access block neutralizes an anonymous grant",
+      "severity": "low",
+      "rationale": "The aws_s3_bucket_policy.trap in main.tf grants anonymous access, but aws_s3_bucket_public_access_block.trap blocks public ACLs and public policies, containing the anonymous grant.",
+      "traces_to": "extension/range/tf_s3_policy_blocked_trap/input/main.tf, aws_s3_bucket_policy.trap neutralized by aws_s3_bucket_public_access_block.trap"
+    }
+  ]
+}

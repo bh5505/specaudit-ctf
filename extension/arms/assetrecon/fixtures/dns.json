@@ -1,0 +1,7 @@
+[
+  {"name": "api.example.test", "type": "A", "value": "192.0.2.10", "ttl": 300},
+  {"name": "192.0.2.10", "type": "PTR", "value": "api.example.test"},
+  {"name": "mail.example.test", "type": "A", "value": "198.51.100.25"},
+  {"name": "198.51.100.25", "type": "PTR", "value": "mail.example.test"},
+  {"name": "api.example.test", "type": "AAAA", "value": "2001:db8::10"}
+]

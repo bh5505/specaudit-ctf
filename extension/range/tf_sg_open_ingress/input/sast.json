@@ -1,0 +1,21 @@
+{
+  "kind": "sast",
+  "findings": [
+    {
+      "id": "demo-sast-sg-admin",
+      "rule_id": "sg-open-admin-port",
+      "asset_id": "sg-admin",
+      "severity": "high",
+      "file": "main.tf",
+      "message": "World-open ingress to administrative shell services"
+    },
+    {
+      "id": "demo-sast-sg-db",
+      "rule_id": "sg-open-database-port",
+      "asset_id": "sg-db",
+      "severity": "critical",
+      "file": "main.tf",
+      "message": "Production database engine reachable from any address"
+    }
+  ]
+}

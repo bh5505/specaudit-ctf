@@ -1,0 +1,13 @@
+{
+  "kind": "sast",
+  "findings": [
+    {
+      "id": "demo-sast-iam-star",
+      "rule_id": "iam-wildcard-policy",
+      "asset_id": "iam-open",
+      "severity": "critical",
+      "file": "main.tf",
+      "message": "IAM policy allows Action=* on Resource=*"
+    }
+  ]
+}

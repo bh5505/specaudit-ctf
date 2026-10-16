@@ -1,0 +1,32 @@
+{
+  "track": "telecom-aws-04-network-exposure",
+  "seed": 123,
+  "fixtures": [
+    "tf_sg_open_ingress",
+    "tf_s3_policy_blocked_trap"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-sg-open-admin-port",
+      "control": "network containment: administrative shell exposure",
+      "severity": "high",
+      "rationale": "World-open ingress on an administrative shell port puts an interactive login surface on every routable address; credential attacks need no application flaw.",
+      "traces_to": "extension/range/tf_sg_open_ingress/input/main.tf, aws_security_group.admin, ingress 0.0.0.0/0 tcp/22"
+    },
+    {
+      "finding_key": "demo-sg-open-db-port",
+      "control": "network containment: database engine exposure",
+      "severity": "critical",
+      "rationale": "The database engine port is reachable from any address; the only remaining barriers are the engine's own authentication and patch level.",
+      "traces_to": "extension/range/tf_sg_open_ingress/input/main.tf, aws_security_group.db, ingress 0.0.0.0/0 tcp/3306"
+    },
+    {
+      "finding_key": "demo-trap-anonymous-policy-contained",
+      "control": "defense-in-depth: public access block neutralizes an anonymous grant",
+      "severity": "low",
+      "rationale": "The bucket policy would grant anonymous reads, but all four Block Public Access toggles are on, so the grant never takes effect: a contained misconfiguration to report at low severity, not a live exposure.",
+      "traces_to": "extension/range/tf_s3_policy_blocked_trap/input/main.tf, aws_s3_bucket_policy.trap neutralized by aws_s3_bucket_public_access_block.trap"
+    }
+  ]
+}

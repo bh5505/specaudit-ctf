@@ -1,0 +1,53 @@
+{
+  "schema": "specaudit.ctf.execution-result.v1",
+  "schema_version": 1,
+  "capability_id": "fixture.range-observe",
+  "tool": {
+    "name": "fixture-range",
+    "version": "1.0.0"
+  },
+  "scope": {
+    "authorized": [
+      "file:///extension/range/tf_s3_public_access",
+      "file:///extension/range/tf_iam_open"
+    ],
+    "touched": ["file:///extension/range/tf_s3_public_access"]
+  },
+  "safety_class": "R0",
+  "side_effects": ["local-read"],
+  "approval_ref": null,
+  "roe_ref": "roe:synthetic-range",
+  "budget": {
+    "reserved": {
+      "timeout_ms": 60000,
+      "max_output_bytes": 1048576,
+      "max_tool_steps": 16,
+      "max_spend": null
+    },
+    "spent": {
+      "elapsed_ms": 800,
+      "output_bytes": 64,
+      "tool_steps": 1,
+      "spend": 0
+    }
+  },
+  "started_at": "2026-08-25T12:00:00Z",
+  "finished_at": "2026-08-25T12:00:01Z",
+  "status": "failed",
+  "transport_ok": false,
+  "artifacts": [],
+  "coverage": {
+    "attempted": ["fixture.required-scan"],
+    "complete": [],
+    "skipped": [],
+    "unsupported": [],
+    "failed": ["fixture.required-scan"],
+    "required": ["fixture.required-scan"]
+  },
+  "cleanup": {
+    "required": false,
+    "proof_digest": null,
+    "residual": false
+  },
+  "limitations": ["required arm fixture.required-scan status=error"]
+}

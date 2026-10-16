@@ -1,0 +1,18 @@
+{
+  "expected_total": 4,
+  "extras": [],
+  "hits": [
+    "demo-emu-caldera-adversary-catalog-exposed",
+    "demo-emu-caldera-default-red-key",
+    "demo-emu-caldera-no-agents-enrolled",
+    "demo-emu-caldera-unauthenticated-refused"
+  ],
+  "invalid": [],
+  "misses": [],
+  "passed": true,
+  "schema": "specaudit.ctf.grade.v1",
+  "score": 1.0,
+  "severity_mismatches": [],
+  "track": "lab-emu-01-caldera-listings",
+  "track_match": true
+}

@@ -1,0 +1,21 @@
+{
+  "kind": "sast",
+  "findings": [
+    {
+      "id": "demo-sast-sg-jump",
+      "rule_id": "sg-open-admin-port",
+      "asset_id": "sg-jump",
+      "severity": "high",
+      "file": "main.tf",
+      "message": "World-open ingress to an internet-facing host inside the trust boundary"
+    },
+    {
+      "id": "demo-sast-role-escalate",
+      "rule_id": "iam-role-assumable-admin",
+      "asset_id": "role-escalate",
+      "severity": "critical",
+      "file": "main.tf",
+      "message": "Assumable administrator role sits in the blast radius of the exposed host"
+    }
+  ]
+}

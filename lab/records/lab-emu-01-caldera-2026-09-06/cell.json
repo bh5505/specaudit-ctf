@@ -1,0 +1,78 @@
+{
+  "arms": [
+    {
+      "action": "adversaries",
+      "arm_id": "caldera",
+      "capability_id": "caldera.adversaries",
+      "envelope_status": "complete",
+      "status": "complete"
+    },
+    {
+      "action": "agents",
+      "arm_id": "caldera",
+      "capability_id": "caldera.agents",
+      "envelope_status": "complete",
+      "status": "complete"
+    },
+    {
+      "action": "operations",
+      "arm_id": "caldera",
+      "capability_id": "caldera.operations",
+      "envelope_status": "complete",
+      "status": "complete"
+    }
+  ],
+  "battery": [],
+  "challenge": "lab-emu-01-caldera-listings",
+  "grading": {
+    "expected_total": 4,
+    "extras": [],
+    "hits": [
+      "demo-emu-caldera-adversary-catalog-exposed",
+      "demo-emu-caldera-default-red-key",
+      "demo-emu-caldera-no-agents-enrolled",
+      "demo-emu-caldera-unauthenticated-refused"
+    ],
+    "invalid": [],
+    "misses": [],
+    "passed": true,
+    "schema": "specaudit.ctf.grade.v1",
+    "score": 1.0,
+    "severity_mismatches": [],
+    "track": "lab-emu-01-caldera-listings",
+    "track_match": true
+  },
+  "head": null,
+  "live_aws": false,
+  "ok": true,
+  "range": {
+    "chains": [
+      {
+        "ingress_asset": "sg-jump",
+        "kind": "internet_to_identity",
+        "role_asset": "role-escalate",
+        "summary": "Internet-reachable ingress on demo-jump-sg chains into assumable role demo-escalation-role"
+      }
+    ],
+    "fixtures": [
+      "tf_s3_public_access",
+      "tf_iam_open",
+      "tf_iam_assume_role",
+      "tf_iam_external_trust",
+      "tf_sg_open_ingress",
+      "tf_cloudtrail_disabled",
+      "tf_s3_no_access_logging",
+      "tf_s3_policy_blocked_trap",
+      "tf_s3_unencrypted",
+      "tf_chain_ingress_role"
+    ],
+    "full_status": "complete",
+    "matched": true,
+    "ok": true,
+    "status": "complete"
+  },
+  "schema": "exercise.run.v1",
+  "seed": null,
+  "status": "complete",
+  "summary": "exercise complete; range complete (10 fixtures); grading passed; score 1.00; arms 3/3"
+}

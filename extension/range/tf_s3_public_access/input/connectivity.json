@@ -1,0 +1,11 @@
+{
+  "kind": "connectivity",
+  "edges": [
+    {
+      "from": "internet",
+      "to": "s3-public",
+      "via": "https/443",
+      "auth": "none"
+    }
+  ]
+}

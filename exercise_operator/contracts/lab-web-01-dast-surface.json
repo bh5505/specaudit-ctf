@@ -1,0 +1,32 @@
+{
+  "track": "lab-web-01-dast-surface",
+  "lane": "live-service",
+  "seed": 123,
+  "fixtures": [
+    "lab-target golden rootfs (planted web content under lab/target/)"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-web-dir-listing",
+      "control": "web hardening: directory indexing disabled",
+      "severity": "medium",
+      "rationale": "The /notes/ path renders an auto-generated directory index, disclosing the served tree's structure and inviting direct object retrieval.",
+      "traces_to": "lab/target/ golden rootfs plants /srv/lab-www/notes/ with no index.html, so the python http.server listener auto-indexes the directory"
+    },
+    {
+      "finding_key": "demo-web-stale-file-exposed",
+      "control": "web hardening: no stale content in the served tree",
+      "severity": "low",
+      "rationale": "A superseded ops note is directly retrievable through the listing; stale served content is disclosure surface even when its contents are inert.",
+      "traces_to": "lab/target/notes/redeploy-checklist.txt (planted stale file reachable via the /notes/ listing)"
+    },
+    {
+      "finding_key": "demo-web-server-header",
+      "control": "web hardening: implementation disclosure",
+      "severity": "low",
+      "rationale": "Responses carry the server implementation's default identification header, naming the software stack and runtime version to any prober.",
+      "traces_to": "lab/target/start-services.sh, the python3 -m http.server listeners whose default responses carry the implementation Server header"
+    }
+  ]
+}

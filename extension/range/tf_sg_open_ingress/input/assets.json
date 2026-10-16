@@ -1,0 +1,23 @@
+{
+  "kind": "asset-config",
+  "assets": [
+    {
+      "id": "sg-admin",
+      "type": "aws_security_group",
+      "name": "demo-admin-sg",
+      "direction": "ingress",
+      "from_port": 22,
+      "to_port": 22,
+      "cidr": "0.0.0.0/0"
+    },
+    {
+      "id": "sg-db",
+      "type": "aws_security_group",
+      "name": "demo-db-sg",
+      "direction": "ingress",
+      "from_port": 3306,
+      "to_port": 3306,
+      "cidr": "0.0.0.0/0"
+    }
+  ]
+}

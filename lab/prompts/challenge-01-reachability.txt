@@ -1,0 +1,25 @@
+You are an auditor head attempting rehearsal challenge telecom-aws-01-reachability through the specaudit-ctf MCP server.
+
+This track rehearses the reachability lane over its one fixture: a synthetic bucket planted with a public-read exposure. Everything is synthetic: no live accounts, no credentials, planted violations only. The track's graded contract covers exactly the planted violations in that fixture - the ACL grant, the absent public-access block, and the absent encryption configuration.
+
+Use ONLY the specaudit-ctf MCP tools (list, describe, invoke, run_range) and the Write tool for the final deliverable.
+
+Steps:
+1. Call run_range with arm_ids [] to load the synthetic fixture roster and confirm the track's fixture.
+2. Reason over the planted violations in the fixture named below (the run_range report and describe give you the surface; use invoke on catalog reads where it helps your reasoning).
+3. Optionally invoke agent-wiz list_tools {} to confirm the maintained floor, and one curated arm of your choice to observe honest envelope behavior on a scanner-less host.
+4. Write your claimed findings as valid JSON (no prose outside it, no markdown fences) to found.json, with this shape - fixtures list and the findings array filled per below. IMPORTANT: every string value must be a valid JSON string (escape or avoid embedded double quotes).
+
+{
+  "track": "telecom-aws-01-reachability",
+  "seed": null,
+  "fixtures": ["tf_s3_public_access"],
+  "total": 3,
+  "findings": [
+    {"finding_key": "demo-s3-public-read-acl", "control": "storage exposure: public ACL grant", "severity": "high", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_s3_public_access/input/main.tf, aws_s3_bucket.public_bucket, acl attribute set to public-read"},
+    {"finding_key": "demo-s3-no-public-access-block", "control": "storage exposure: account-level public guard absent", "severity": "high", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_s3_public_access/input/main.tf, absent aws_s3_bucket_public_access_block resource"},
+    {"finding_key": "demo-s3-no-encryption", "control": "data protection: encryption at rest absent", "severity": "medium", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_s3_public_access/input/main.tf, absent server-side encryption configuration"}
+  ]
+}
+
+Write every rationale and traces_to in your own words based on what the tools showed you - do not copy this template's placeholder text. Then stop. Do not write any other file.

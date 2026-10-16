@@ -1,0 +1,47 @@
+{
+  "track": "telecom-aws-06-chain-rehearsal",
+  "seed": null,
+  "fixtures": [
+    "tf_chain_ingress_role",
+    "tf_iam_open",
+    "tf_s3_public_access"
+  ],
+  "total": 5,
+  "findings": [
+    {
+      "finding_key": "demo-chain-sg-open-admin",
+      "control": "network containment: administrative shell exposure",
+      "severity": "high",
+      "rationale": "aws_security_group.jump permits ingress 0.0.0.0/0 tcp/22, exposing administrative SSH to the internet.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf, aws_security_group.jump, ingress 0.0.0.0/0 tcp/22"
+    },
+    {
+      "finding_key": "demo-chain-role-assumable",
+      "control": "least-privilege: role assumability",
+      "severity": "critical",
+      "rationale": "aws_iam_role.escalation is broadly assumable and is attached to AdministratorAccess through aws_iam_role_policy_attachment.escalation.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf, aws_iam_role.escalation + aws_iam_role_policy_attachment.escalation"
+    },
+    {
+      "finding_key": "demo-chain-internet-to-identity",
+      "control": "defense-in-depth: exposure-to-identity chain",
+      "severity": "critical",
+      "rationale": "connectivity.json links sg-jump to role-escalate via sts:AssumeRole, connecting internet ingress to identity escalation.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/connectivity.json, edge sg-jump -> role-escalate via sts:AssumeRole"
+    },
+    {
+      "finding_key": "demo-chain-iam-open-to-s3-public",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "tf_iam_open Statement[0] combined with the tf_s3_public_access public-read ACL links broad IAM access to public S3 exposure.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf Statement[0] chained with extension/range/tf_s3_public_access/input/main.tf public-read ACL"
+    },
+    {
+      "finding_key": "demo-chain-iam-wildcard",
+      "control": "least-privilege: wildcard identity policy",
+      "severity": "critical",
+      "rationale": "aws_iam_policy.wildcard uses wildcard Action and Resource values in Statement[0], violating least privilege across all resources.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action and Statement[0].Resource"
+    }
+  ]
+}

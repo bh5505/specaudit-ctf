@@ -1,0 +1,39 @@
+{
+  "track": "telecom-aws-03-iam-privesc",
+  "seed": null,
+  "fixtures": [
+    "tf_iam_assume_role",
+    "tf_iam_external_trust"
+  ],
+  "total": 4,
+  "findings": [
+    {
+      "finding_key": "demo-iam-assumable-admin-role",
+      "control": "least-privilege: role assumability",
+      "severity": "critical",
+      "rationale": "The aws_iam_role.admin trust statement makes the role assumable and its aws_iam_role_policy_attachment.admin attachment grants AdministratorAccess, allowing an assumed identity to exercise full account administration.",
+      "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_role.admin + aws_iam_role_policy_attachment.admin"
+    },
+    {
+      "finding_key": "demo-iam-broad-assume-grant",
+      "control": "least-privilege: sts:AssumeRole grant scope",
+      "severity": "high",
+      "rationale": "The aws_iam_policy.assume_broadly Statement[0] permits sts:AssumeRole against every role, giving its attached principal account-wide role-assumption authority instead of access only to designated roles.",
+      "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_policy.assume_broadly, Statement[0]"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-principal",
+      "control": "identity boundary: external principal trust",
+      "severity": "critical",
+      "rationale": "The aws_iam_role.external_trust Statement[0].Principal identifies a principal outside the owning AWS account, permitting an external identity to assume the role and cross the account identity boundary.",
+      "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0].Principal"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-no-mfa",
+      "control": "identity boundary: MFA condition on sensitive trust",
+      "severity": "high",
+      "rationale": "The aws_iam_role.external_trust Statement[0] contains no MFA Condition, so the trusted external principal can assume the sensitive role without proving possession of a multi-factor device.",
+      "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0] (no Condition block)"
+    }
+  ]
+}

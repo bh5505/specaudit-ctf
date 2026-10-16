@@ -1,0 +1,13 @@
+{
+  "kind": "sast",
+  "findings": [
+    {
+      "id": "demo-sast-unencrypted",
+      "rule_id": "s3-no-default-encryption",
+      "asset_id": "data-lake",
+      "severity": "high",
+      "file": "main.tf",
+      "message": "Default server-side encryption absent on a data lake bucket"
+    }
+  ]
+}

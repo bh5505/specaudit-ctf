@@ -1,0 +1,11 @@
+{
+  "kind": "connectivity",
+  "edges": [
+    {
+      "from": "any-principal",
+      "to": "iam-open",
+      "via": "iam:AttachUserPolicy",
+      "auth": "principal"
+    }
+  ]
+}

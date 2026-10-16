@@ -1,0 +1,33 @@
+{
+  "track": "lab-knowledge-01-attack-mapping",
+  "seed": 123,
+  "fixtures": [
+    "tf_s3_public_access",
+    "tf_cloudtrail_disabled",
+    "tf_iam_open"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-knowledge-t1530-public-storage",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "high",
+      "rationale": "The planted public-read bucket is exactly the condition ATT&CK T1530 (Data from Cloud Storage) exploits: an adversary reads cloud-stored objects without authenticating.",
+      "traces_to": "extension/range/tf_s3_public_access/input/main.tf public-read ACL mapped to ATT&CK technique T1530"
+    },
+    {
+      "finding_key": "demo-knowledge-t1562-008-cloud-logs",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "high",
+      "rationale": "The planted disabled management trail is the condition ATT&CK sub-technique T1562.008 (Disable or Modify Cloud Logs) leaves behind: control-plane actions leave no durable record.",
+      "traces_to": "extension/range/tf_cloudtrail_disabled/input/main.tf disabled trail mapped to ATT&CK sub-technique T1562.008"
+    },
+    {
+      "finding_key": "demo-knowledge-t1078-wildcard-accounts",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "critical",
+      "rationale": "The planted wildcard identity policy is what makes ATT&CK T1078 (Valid Accounts) devastating here: any compromised account operates with no action or resource boundary.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf wildcard identity policy mapped to ATT&CK technique T1078"
+    }
+  ]
+}

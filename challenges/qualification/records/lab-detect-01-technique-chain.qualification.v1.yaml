@@ -1,0 +1,57 @@
+# Qualification record: technique-to-detection pilot (design-ready).
+# A record is a gate inventory: every gate is enumerated, none is satisfied.
+schema: specaudit.ctf.qualification-record.v1
+id: lab-detect-01-technique-chain
+pilot: lab-detect-01-technique-chain
+status: design-ready
+review_lanes:
+  - lane: technical
+    state: "assigned, unstaffed, wholly operator-gated"
+  - lane: safety-operator
+    state: "assigned, unstaffed, wholly operator-gated"
+  - lane: instructional
+    state: "assigned, unstaffed, wholly operator-gated"
+learner_context_separation:
+  # Separation is proven for the INSTRUCTOR-CONTROLLED ASSESSMENT VARIANT
+  # only. The transparent self-study flow is unchanged and still prints its
+  # own derived verdict; it is not a protected exam and must not be presented
+  # as one. The variant's expected outcomes live only in the canaried
+  # instructor key, the learner assessment packet strips the verdict-gate
+  # declarations, and the shipped worksheet refuses that packet.
+  state: proven
+  evidence_refs:
+    - tests/test_detect_instructor_variant.py::test_assessment_grading_uses_the_instructor_key_only
+    - tests/test_detect_instructor_variant.py::test_assessment_key_and_case_bindings_are_enforced
+    - tests/test_detect_instructor_variant.py::test_assessment_packet_strips_the_verdict_gate_fields
+    - tests/test_containment_instructor_plane.py::test_instructor_plane_enumerated
+    - tests/test_containment_instructor_plane.py::test_direct_read_of_instructor_material_is_typed_refused
+    - tests/test_containment_instructor_plane.py::test_new_instructor_keys_are_canaried_and_refused
+  notes: >-
+    Assessment variant: instructor/expected.json (canaried) holds the exact
+    five stage states and retest result per case; the learner packet under
+    instructor/assessment/ carries scenario prose and complete evidence
+    records but strips rule.deployment, collection and attempt declarations,
+    so the closed-shape worksheet refuses it and no shipped code path derives
+    the verdicts from learner-held material. The key file is enumerated under
+    challenges/*/instructor/ and direct reads from a simulated learner root
+    are typed-refused. Separation is procedural: the operator must keep the
+    instructor directory outside the learner context.
+calibration:
+  state: fixtures-shipped-human-scoring-open
+  packet: challenges/qualification/calibration/lab-detect-01-technique-chain/
+dry_run:
+  state: procedure-shipped-not-executed
+  runbook: challenges/qualification/dry-run/runbook.md
+reset:
+  state: determinism-proven
+  evidence_refs:
+    - tests/test_containment_suite.py::test_rerun_determinism_and_ledger_retry_identity
+honest_limits:
+  - "No review lane is staffed; every lane state is assigned, unstaffed, wholly operator-gated. No person has accepted any review duty."
+  - "Transparent self-study retained unchanged: python -m learning.detection_validation still prints its own derived verdict, so the separation claim in this record covers the instructor-controlled assessment variant only, never the self-study flow."
+  - "Assessment variant is instructor-controlled: the canaried expected.json holds the stage verdicts and the learner packet strips the verdict-gate declarations (the shipped worksheet refuses the packet), but a learner handed the original self-study packets can still derive the verdicts by reasoning; keeping instructor/ outside the learner context remains an operator duty."
+  - "Calibration seeds are machine-discriminated author samples (reviewer calibration-seed, adjusted_score null), shipped for the retest-effectiveness stage only. No human double-scoring has occurred; counting a seed as calibrated review is refused by construction (qualification/loader.py)."
+  - "The dry-run procedure is shipped and has never been executed; no learner-path dry-run evidence exists for this pilot."
+  - "Packet records are declarations, not independently trusted captured telemetry; the machine result is stage agreement only and cannot replace an instructor's evidence/custody judgment."
+  - "Reset determinism is proven for the containment rerun test in this checkout only; reset for this pilot means restoring clean checkout bytes."
+  - "This record itself is not a promotion signal: status stays design-ready until the operator gate is passed."

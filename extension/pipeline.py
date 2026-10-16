@@ -1,0 +1,518 @@
+"""Operator-side pipeline: pack findings -> prioritized targets with threat
+models + attack chains.
+
+The ``tools/*.py`` scripts provide durable cores. This module composes them
+for an operator with approved evidence and report paths. It is not an MCP tool:
+attached callers use the four-tool admitted MCP surface, while filesystem
+custody and pack/report destinations remain operator decisions.
+
+The end-to-end path:
+
+    step 1   invoke <recon/enrich arm>          seed = top-level domains + a
+             asset-recon, gti, vulnify, zdns,   description of the target
+             zgrab2, httpprobe, nmap, ...       environment -> assets + intel
+    step 2   operator pack_run                 an explicitly supplied pack
+                                             over operator-approved evidence
+                                                 -> report.json (findings)
+    step 3   operator prioritize_targets       report -> prioritized target list
+                                                 with threat models + attack
+                                                 chains (HUMAN VALIDATION GATE
+                                                 deliverable for red-team review)
+    step 4   invoke <scan arm>                 agentic exploitability validation
+             nmap, zgrab2, httpprobe,          of the human-validated targets
+             snmp_readtier, ike_readtier, ...
+
+Steps 1 and 4 use the admitted ``invoke`` arm surface. The operator runs
+steps 2 and 3 after validating local evidence, custody and output paths. The
+pack root, the G3 pairing tables/join predicate, and any check-id tier mapping
+are operator-supplied joint-run configuration; this repository ships no pack.
+The cores imported here are the same deterministic logic the ``tools/demo_*``
+CLIs call.
+
+Pure-stdlib; sqlite is the default pack engine, so the operator need not install
+duckdb for the basic workflow.
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+import tempfile
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+
+# Make the repo-root ``tools/`` package importable regardless of cwd.
+_ROOT = Path(__file__).resolve().parents[1]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
+
+from tools import ctf_run_checks  # noqa: E402  (lazy duckdb; sqlite is stdlib)
+from tools import demo_alert_pairings as dap  # noqa: E402  (G3, lazy duckdb)
+from tools import demo_target_analysis as dta  # noqa: E402
+from tools import demo_rollup_hosts as drh  # noqa: E402
+from tools import demo_rank_hosts as drk  # noqa: E402
+from tools import render_provenance_header as rph  # noqa: E402
+from .operator_analysis import correlate, finding_id
+
+# Default location of the curated CVE->technique map shipped with the vulnify arm.
+_CURATED_MAP_DEFAULT = (
+    _ROOT / "extension" / "arms" / "vulnify" / "data" / "curated_cve_technique_map.json"
+)
+
+# ATT&CK phases ordered for the threat-model narrative.
+_PHASE_ORDER = (
+    "Initial Access", "Execution", "Persistence", "Privilege Escalation",
+    "Defense Evasion", "Credential Access", "Discovery", "Lateral Movement",
+    "Collection", "Command and Control", "Impact",
+)
+
+# Inferred asset role by management/service ports (mirrors the pack port classes).
+_ROLE_BY_PORT = {
+    500: "VPN concentrator (IKE)", 4500: "VPN concentrator (NAT-T IKE)",
+    123: "NTP timing element", 53: "DNS resolver", 161: "network element mgmt (SNMP)",
+    22: "remote admin (SSH)", 23: "remote admin (Telnet)",
+    80: "web origin (HTTP)", 443: "web origin (HTTPS)", 8443: "web origin (HTTPS alt)",
+    25: "mail relay (SMTP)", 3389: "remote desktop (RDP)",
+}
+
+
+def _asset_role(ports: list) -> str:
+    """Infer an asset-role label from the ports the pack surfaced."""
+    if not ports:
+        return "unknown (port-less finding)"
+    roles = []
+    for p in ports:
+        if p in _ROLE_BY_PORT:
+            roles.append(_ROLE_BY_PORT[p])
+    return "; ".join(sorted(set(roles))) if roles else "service endpoint (unclassified)"
+
+
+def _threat_model(ip: str, target: dict) -> dict:
+    """Build a concise per-target threat model from pack findings.
+
+    This is the human-validation framing: what the asset is, how it is most
+    likely to be reached, what happens after, and why it is ranked where it is.
+    It is deliberately a *hypothesis to be validated* -- every assertion is
+    grounded in the pack finding provenance, and the human red-team analyst is
+    the gate before any agentic exploitability validation proceeds.
+    """
+    steps = target.get("steps", [])
+    initial = next((s for s in steps if s.get("phase") == "Initial Access"), None)
+    post = [s for s in steps if s.get("phase") != "Initial Access"]
+    phases_seen = [s.get("phase") for s in steps]
+    impact = next((s for s in post if s.get("phase") == "Impact"), None)
+    return {
+        "ip": ip,
+        "asset_role": _asset_role(target.get("ports") or []),
+        "rank": target.get("rank"),
+        "score": target.get("score"),
+        "converged_initial_access": bool(target.get("convergence")),
+        "priority_justification": (
+            "CROSS-SOURCE CONVERGENCE: alert-asserted initial-access technique "
+            "cross-corroborated by a curated RCE CVE mapping -- highest-confidence "
+            "initial-access hypothesis"
+            if target.get("convergence")
+            else "alert-asserted initial-access technique, no curated CVE anchor yet"
+        ),
+        "expected_initial_access": {
+            "technique": initial.get("technique") if initial else None,
+            "evidence": initial.get("evidence") if initial else None,
+            "provenance": initial.get("provenance") if initial else None,
+        },
+        "post_initial_access": [
+            {"phase": s.get("phase"), "technique": s.get("technique")} for s in post
+        ],
+        "likely_impact": impact.get("technique") if impact else None,
+        "phases_observed": sorted(set(phases_seen), key=lambda p: _PHASE_ORDER.index(p) if p in _PHASE_ORDER else 99),
+        "validation_status": "awaiting human red-team analyst validation",
+    }
+
+
+def _ranked_targets(findings: list[dict],
+                    tier_for_check: Mapping[str, str] | None = None) -> list[dict]:
+    """Ranked priority targets (ip + score + tiers) from pack findings.
+
+    ``tier_for_check`` is operator-supplied joint-run configuration mapping
+    check ids to tier labels; when supplied it overrides the demo core's
+    content-derived tiers for the check ids present.
+    """
+    rollup = drh.build_rollup(findings, tier_for_check)
+    try:
+        ranked = drk.rank_hosts(rollup)
+    except Exception:  # pragma: no cover - ranking is best-effort metadata
+        ranked = []
+    score_by_ip = {r.get("ip"): r.get("score") for r in ranked if isinstance(r, dict)}
+    tiers_by_ip = {}
+    for tier, ips in (rollup.get("tiers") or {}).items():
+        for ip in ips:
+            tiers_by_ip.setdefault(ip, []).append(tier)
+    return [
+        {"ip": ip, "score": score_by_ip.get(ip), "tiers": tiers_by_ip.get(ip, [])}
+        for ip in score_by_ip
+    ]
+
+
+def pack_run(
+    pack_root: str,
+    evidence_dir: str,
+    out_dir: str | None = None,
+    db: str = "sqlite",
+    limit: int = 100,
+    run_id: str | None = None,
+    fast_csv: bool = False,
+) -> dict:
+    """Run an explicitly supplied pack over operator-approved evidence.
+
+    The pack root is operator-supplied (for example an external pack checkout
+    available in the joint-run environment); this repository ships no pack.
+    Wraps ``tools/ctf_run_checks.run()`` (the durable runner) and returns both
+    the parsed report and the report.json path, so the next operator step
+    (``prioritize_targets``) consumes a stable, discoverable artifact rather
+    than guessing at output locations.
+    """
+    if not Path(pack_root).is_dir():
+        raise ValueError("pack_run requires an existing, operator-supplied pack root")
+    out = Path(out_dir) if out_dir else Path(tempfile.mkdtemp(prefix="ctf-mcp-"))
+    if db not in ("duckdb", "sqlite"):
+        raise ValueError("db must be 'duckdb' or 'sqlite'")
+    rid = run_id or "mcp-%s" % os.urandom(4).hex()
+    try:
+        rc = ctf_run_checks.run(
+            pack_root, evidence_dir, str(out), db, limit, rid, fast_csv=fast_csv
+        )
+    except ctf_run_checks.RunnerError as exc:
+        raise RuntimeError(str(exc)) from exc
+    if rc != 0:
+        raise RuntimeError("pack run failed (rc=%r)" % rc)
+    report_path = out / "report.json"
+    if not report_path.is_file():
+        raise RuntimeError("pack run did not produce report.json at %s" % report_path)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
+    return {"report": report, "report_path": str(report_path), "run_id": rid}
+
+
+def _load_findings(report, report_path) -> list[dict]:
+    if isinstance(report, dict) and isinstance(report.get("findings"), list):
+        return report["findings"]
+    if report_path:
+        p = Path(report_path)
+        if p.is_file():
+            return json.loads(p.read_text(encoding="utf-8"))["findings"]
+    if isinstance(report, list):
+        return report
+    raise ValueError("prioritize_targets needs a pack report (findings list) or a report_path")
+
+
+def _pairing_stage(evidence_dir: str | None, focus_ips: list[str],
+                   pairing_tables: Sequence[str] = (),
+                   pairing_predicate: str | None = None) -> dict:
+    """Explicit G3 pairing stage: per-alert technique pairs for the focus IPs.
+
+    Parsing report strings (``demo_target_analysis.parse_report``) is a fuzzy
+    fallback, not the durable G3 pairing the pipeline advertises. The pairing
+    base tables and join predicate are operator-supplied joint-run
+    configuration; when they are configured and the named tables are present in
+    the evidence directory, consume ``demo_alert_pairings.extract_pairings``
+    and report the result as available; otherwise mark the result explicitly
+    incomplete instead of pretending the report-text derivation covered
+    pairing.
+    """
+    if not pairing_tables or not pairing_predicate:
+        return {"available": False,
+                "reason": "pairing tables/join predicate not configured "
+                          "(operator-supplied joint-run configuration)"}
+    if not evidence_dir:
+        return {"available": False,
+                "reason": "no evidence_dir supplied; G3 pairing evidence unavailable"}
+    evidence = Path(evidence_dir)
+    missing = [table for table in pairing_tables
+               if not (evidence / f"{table}.csv").is_file()]
+    if missing:
+        return {"available": False,
+                "reason": "G3 pairing base table(s) absent: " + ", ".join(missing)}
+    if not focus_ips:
+        return {"available": True, "pair_count": 0, "by_ip": {}, "pairs": []}
+    try:
+        pairs = dap.extract_pairings(evidence, focus_ips, tables=pairing_tables,
+                                     join_predicate=pairing_predicate)
+    except ImportError:
+        return {"available": False,
+                "reason": "duckdb is not importable; G3 pairing skipped"}
+    except Exception as exc:  # noqa: BLE001 - any pairing failure degrades, never crashes
+        # A malformed base table, a DuckDB type/cast error, or any other core
+        # failure must degrade to an explicit incomplete marker: crashing here
+        # would abort the operator's prioritization run.
+        return {"available": False, "reason": f"G3 pairing failed: {exc}"}
+    by_ip: dict[str, list[dict]] = {}
+    for pair in pairs:
+        by_ip.setdefault(pair["ip"], []).append(pair)
+    return {"available": True, "pair_count": len(pairs), "by_ip": by_ip,
+            "pairs": pairs}
+
+
+def prioritize_targets(
+    report: dict | list | None = None,
+    report_path: str | None = None,
+    evidence_dir: str | None = None,
+    map_path: str | None = None,
+    with_report: bool = True,
+    out_path: str | None = None,
+    operator_evidence: dict | None = None,
+    *,
+    pairing_tables: Sequence[str] = (),
+    pairing_predicate: str | None = None,
+    tier_for_check: Mapping[str, str] | None = None,
+) -> dict:
+    """Prioritized target list with threat models + attack chains (step 3).
+
+    Consumes the pack report (from ``pack_run``) plus optional evidence/CVE
+    cross-reference and the curated CVE->technique map, and produces the
+    human-validation-ready deliverable: ranked targets, each with a threat
+    model and a grounded multi-step ATT&CK attack chain, plus the rendered
+    markdown report for human red-team analysts to validate.
+
+    ``map_path`` defaults to the curated map shipped with the vulnify arm.
+    ``evidence_dir`` enables CVE cross-reference (banner-inferred + scan CVEs).
+    ``pairing_tables``/``pairing_predicate`` and ``tier_for_check`` are
+    operator-supplied joint-run configuration: the G3 pairing base tables plus
+    join predicate, and a check-id -> tier mapping that overrides the demo
+    core's content-derived tiers. Defaults keep the generic behavior (pairing
+    unavailable, content-derived tiers).
+    """
+    if report is None and report_path is None:
+        raise ValueError("prioritize_targets needs report (dict/list) or report_path")
+    findings = _load_findings(report, report_path)
+    per_ip = dta.parse_report(findings)
+    pairing = _pairing_stage(evidence_dir, sorted(per_ip),
+                             pairing_tables=pairing_tables,
+                             pairing_predicate=pairing_predicate)
+    pairing_by_ip = pairing.get("by_ip") or {}
+
+    cves = {}
+    if evidence_dir:
+        cves = dta.read_cves(Path(evidence_dir))
+
+    curated = {}
+    map_file = Path(map_path) if map_path else _CURATED_MAP_DEFAULT
+    if map_file.is_file():
+        curated = json.loads(map_file.read_text(encoding="utf-8")).get("entries", {})
+
+    enriched = dta.cross_ref(per_ip, cves, curated)
+    paths = dta.build_attack_paths(enriched)
+    ranked = _ranked_targets(findings, tier_for_check)
+    rank_by_ip = {t["ip"]: i for i, t in enumerate(ranked)}
+
+    targets = []
+    for p in paths:
+        ip = p["ip"]
+        tm = _threat_model(ip, p)
+        tm["rank"] = rank_by_ip.get(ip)  # None if the host was not technique-context ranked
+        high_signal = dta.high_signal_check_ids()
+        refs = [finding_id(f) for f in findings
+                if (not high_signal or f.get("check_id") in high_signal)
+                and ip in set(dta.IP_RE.findall(f.get("record_locator") or ""))]
+        targets.append({
+            "target_id": "ip:" + ip,
+            "finding_ids": refs,
+            "ip": ip,
+            "rank": tm["rank"],
+            "score": p.get("score"),
+            "ports": p.get("ports"),
+            "convergence": p.get("convergence"),
+            "pairing_evidence": pairing_by_ip.get(ip, []),
+            "threat_model": tm,
+            "attack_chain": p.get("steps"),
+            "operational_reviews": {},
+            "next_validation": ["confirm initial-access hypothesis and asset identity"],
+            "validation_tasks": [{"action": "validate-initial-access-hypothesis", "subject": ip,
+                                  "suggested_capability": "nmap.scan",
+                                  "invocation": {"arm_id": "nmap", "action": "scan",
+                                                 "args": {"target": ip, "mode": "version-light",
+                                                          **({"ports": p["ports"]} if p["ports"] else {})}},
+                                  "prerequisite": "human-reviewed target and separately authorized NMAP_DISPATCH_SCOPE",
+                                  "status": "pending human authorization and validation"}],
+        })
+
+    # Preserve non-IP findings as first-class target identities. The ATT&CK
+    # path builder intentionally covers only IP technique context; a cloud,
+    # technology or Kubernetes row cannot silently disappear from the handoff.
+    covered = {ref for t in targets for ref in t["finding_ids"]}
+    for finding in findings:
+        key = finding_id(finding)
+        if key in covered:
+            continue
+        locator = finding["record_locator"]
+        targets.append({
+            "target_id": key, "finding_ids": [key], "ip": None,
+            "rank": None, "score": finding.get("risk_score"), "ports": [],
+            "convergence": False, "pairing_evidence": [], "attack_chain": [],
+            "threat_model": {
+                "ip": None, "asset_role": "pack finding: " + finding["check_id"],
+                "rank": None, "score": finding.get("risk_score"),
+                "converged_initial_access": False,
+                "priority_justification": "pack finding requires review; no IP ATT&CK path inferred",
+                "expected_initial_access": {"technique": None, "evidence": None, "provenance": None},
+                "post_initial_access": [], "likely_impact": None, "phases_observed": [],
+                "validation_status": "awaiting human red-team analyst validation",
+            },
+            "finding": {"check_id": finding["check_id"], "record_locator": locator,
+                        "title": finding.get("title")},
+            "operational_reviews": {},
+            "next_validation": ["validate pack finding and asset identity before target contact"],
+            "validation_tasks": [{"action": "validate-pack-finding", "subject": locator,
+                                  "suggested_capability": "independent authorized observation",
+                                  "status": "pending human authorization and validation"}],
+        })
+    targets.sort(key=lambda t: (-int(bool(t["convergence"])),
+                                -(t["score"] if isinstance(t["score"], (int, float)) else 0),
+                                t["target_id"]))
+    for order, target in enumerate(targets, 1):
+        target["review_priority"] = order
+    supplement = correlate(findings, targets, operator_evidence)
+    if supplement["triage_available"]:
+        targets.sort(key=lambda target: target["review_order"])
+
+    result = {
+        "targets": targets,
+        "pairing": pairing,
+        "summary": {
+            "total_targets": len(targets),
+            "converged_initial_access": sum(1 for t in targets if t["convergence"]),
+            "by_asset_role": _count_by(targets, lambda t: t["threat_model"]["asset_role"]),
+            "pairing_available": pairing["available"],
+            "pairing_incomplete_reason": None if pairing["available"] else pairing["reason"],
+            "human_validation_gate": "REQUIRED before any agentic exploitability validation",
+            "supplemental": supplement,
+        },
+    }
+    if with_report:
+        md = _validation_report_markdown(targets, findings)
+        if out_path:
+            Path(out_path).write_text(md, encoding="utf-8")
+            result["report_path"] = out_path
+            result["markdown"] = None
+        else:
+            result["markdown"] = md
+    return result
+
+
+def _count_by(targets: list[dict], key) -> dict:
+    out: dict[str, int] = {}
+    for t in targets:
+        k = key(t)
+        out[k] = out.get(k, 0) + 1
+    return dict(sorted(out.items(), key=lambda kv: -kv[1]))
+
+
+def _validation_report_markdown(targets: list[dict], findings: list[dict]) -> str:
+    """Human red-team validation report: prioritized targets, threat models,
+    attack chains, and an explicit analyst sign-off gate."""
+    lines = [
+        "# Prioritized Target List — Threat Models & Attack Chains (human validation gate)\n",
+        f"_{len(targets)} prioritized targets derived from {len(findings)} pack findings. "
+        "Review and sign off below before any agentic exploitability validation._\n",
+    ]
+    for i, t in enumerate(targets, 1):
+        tm = t["threat_model"]
+        lines.append(
+            f"\n## {i}. {t['ip'] or t['finding']['record_locator']}  "
+            f"(review priority {t['review_priority']}, ATT&CK rank {tm.get('rank')}, risk_max {t['score']}, "
+            f"{'CONVERGED INITIAL ACCESS' if t['convergence'] else 'alert-only' if t['attack_chain'] else 'pack finding; no ATT&CK chain'})"
+        )
+        lines.append(f"- **Asset role**: {tm['asset_role']}")
+        lines.append(f"- **Priority**: {tm['priority_justification']}")
+        ia = tm["expected_initial_access"]
+        if ia and ia["technique"]:
+            lines.append(f"- **Expected initial access**: {ia['technique']}"
+                         + (f" — {ia['evidence']}" if ia["evidence"] else ""))
+        if tm["post_initial_access"]:
+            chain = " → ".join(f"{s['technique']} ({s['phase']})" for s in tm["post_initial_access"])
+            lines.append(f"- **Post-initial-access chain**: {chain}")
+        if tm["likely_impact"]:
+            lines.append(f"- **Likely impact**: {tm['likely_impact']}")
+        lines.append(f"- **Validation status**: {tm['validation_status']}")
+        if t.get("finding"):
+            lines.append(f"- **Pack finding**: {t['finding']['check_id']} — {t['finding'].get('title') or ''}")
+        for kind, rows in t["operational_reviews"].items():
+            for row in rows:
+                review = row["review"]
+                if kind == "graph":
+                    outcome = ", ".join(review["path_verdicts"]) or "no paths"
+                elif kind == "k8s":
+                    outcome = ", ".join(case["id"] + ": " + case["outcome"] for case in review["cases"]) or "no test cases"
+                elif kind == "workpaper":
+                    outcome = "structure valid; human conclusion pending" if review["structure_valid"] else "structure invalid: " + "; ".join(review["errors"])
+                elif kind == "detection":
+                    outcome = ", ".join(stage + ": " + value["state"] for stage, value in review["stages"].items())
+                    outcome += "; retest: " + review["retest_result"]
+                else:
+                    outcome = "declared trace status: " + review["declared_trace_status"] + "; independent authentication pending"
+                lines.append(f"- **{kind} review** ({row['finding_id']}; {review['source_class']}): {outcome}")
+        if t.get("review_order"):
+            lines.append(f"- **Captured triage review order**: {t['review_order']} (not evidence priority)")
+        lines.append("- **Next validation**: " + "; ".join(t["next_validation"]))
+        for task in t["validation_tasks"]:
+            lines.append("  - " + task["action"] + " — " + task["status"])
+    lines.append("\n---\n## Human red-team analyst validation gate\n")
+    lines.append("For each target: confirm the asset role, initial-access hypothesis and")
+    lines.append("attack chain are correct before agentic exploitability validation runs.")
+    lines.append("\n- [ ] target set reviewed and confirmed\n")
+    return "\n".join(lines) + "\n"
+
+
+def _provenance_receipts(report_path: str | None, evidence_dir: str | None) -> list[Path]:
+    """Receipt paths the run context actually provides, for the provenance block.
+
+    The block binds real receipt paths/digests, so an empty list is only correct
+    when the caller supplied neither a report path nor an evidence directory.
+    """
+    receipts: list[Path] = []
+    if report_path:
+        report = Path(report_path)
+        if report.is_file():
+            receipts.append(report)
+    if evidence_dir:
+        evidence = Path(evidence_dir)
+        if evidence.is_dir():
+            receipts.extend(sorted(evidence.glob("*.csv")))
+    return receipts
+
+
+def validation_report(
+    report: dict | list | None = None,
+    report_path: str | None = None,
+    evidence_dir: str | None = None,
+    map_path: str | None = None,
+    out_path: str | None = None,
+    run_id: str = "mcp",
+    operator_evidence: dict | None = None,
+) -> dict:
+    """Full handoff deliverable: prioritized targets + provenance header.
+
+    Convenience that renders ``prioritize_targets`` output and injects the
+    self-refreshing provenance block (generation stamp, run-id, cited receipt
+    digests) so the validation report is auditable.
+    """
+    result = prioritize_targets(
+        report=report, report_path=report_path, evidence_dir=evidence_dir,
+        map_path=map_path, with_report=True, out_path=out_path,
+        operator_evidence=operator_evidence,
+    )
+    md = result.get("markdown") or (
+        Path(result["report_path"]).read_text(encoding="utf-8")
+        if result.get("report_path") else ""
+    )
+    if md:
+        block = rph.render_provenance_block(
+            _provenance_receipts(report_path, evidence_dir),
+            run_id=run_id,
+            repo_heads=[("specaudit-ctf", str(_ROOT))],
+        )
+        md = rph.inject_block(md, block)
+        if out_path:
+            Path(out_path).write_text(md, encoding="utf-8")
+            result["report_path"] = out_path
+            result["markdown"] = None
+        else:
+            result["markdown"] = md
+    return result

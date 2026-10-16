@@ -1,0 +1,80 @@
+[
+  {
+    "value": "ID: C03\nA dashboard says all controls passed without an underlying event or artifact.",
+    "document": {
+      "id": "C03",
+      "text": "A dashboard says all controls passed without an underlying event or artifact.",
+      "source": "packet/c03"
+    },
+    "rank": 1,
+    "score": 5.0,
+    "exposure": 5,
+    "rounds": 1,
+    "input_index": 2
+  },
+  {
+    "value": "ID: C05\nA rule exists in the repository but telemetry from the sensor is missing.",
+    "document": {
+      "id": "C05",
+      "text": "A rule exists in the repository but telemetry from the sensor is missing.",
+      "source": "packet/c05"
+    },
+    "rank": 2,
+    "score": 4.0,
+    "exposure": 5,
+    "rounds": 1,
+    "input_index": 4
+  },
+  {
+    "value": "ID: C02\nA role policy permits administrator escalation but an organization deny and untested session condition remain.",
+    "document": {
+      "id": "C02",
+      "text": "A role policy permits administrator escalation but an organization deny and untested session condition remain.",
+      "source": "packet/c02"
+    },
+    "rank": 3,
+    "score": 3.0,
+    "exposure": 5,
+    "rounds": 1,
+    "input_index": 1
+  },
+  {
+    "value": "ID: C04\nThe test event is observed in a retained signed trace, with a matching timestamp and bounded scope.",
+    "document": {
+      "id": "C04",
+      "text": "The test event is observed in a retained signed trace, with a matching timestamp and bounded scope.",
+      "source": "packet/c04"
+    },
+    "rank": 4,
+    "score": 2.0,
+    "exposure": 5,
+    "rounds": 1,
+    "input_index": 3
+  },
+  {
+    "value": "ID: C01\nThe exercise scope lists a test account and a fixed synthetic region.",
+    "document": {
+      "id": "C01",
+      "text": "The exercise scope lists a test account and a fixed synthetic region.",
+      "source": "packet/c01"
+    },
+    "rank": 5,
+    "score": 1.0,
+    "exposure": 5,
+    "rounds": 1,
+    "input_index": 0
+  },
+  {
+    "value": "ID: C06\nThe synthetic asset inventory has a cosmetic display label.",
+    "document": {
+      "id": "C06",
+      "text": "The synthetic asset inventory has a cosmetic display label.",
+      "source": "packet/c06"
+    },
+    "rank": 6,
+    "score": 0.0,
+    "exposure": 5,
+    "rounds": 1,
+    "input_index": 5
+  }
+]

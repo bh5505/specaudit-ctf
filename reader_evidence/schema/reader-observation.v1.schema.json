@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "specaudit.ctf.reader-observation.v1",
+  "title": "specaudit trusted-side reader observation (v1)",
+  "description": "Binds acquired trusted-side input bytes to an attempt identity. The observation id is a replay identity over binding fields, not a content digest; the resolved path is an audit locator, not identity. Custody is operator-asserted and content bounds are unsigned.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "observation_id", "attempt_id", "arm_id", "action", "handler_revision", "collected_at", "input", "execution_result_digest", "custody", "evidence_class", "limitations"],
+  "properties": {
+    "schema": {"const": "specaudit.ctf.reader-observation.v1"},
+    "schema_version": {"const": 1},
+    "observation_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "attempt_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{7,63}$"},
+    "arm_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "action": {"type": "string", "minLength": 1, "maxLength": 256},
+    "handler_revision": {"type": "string", "minLength": 1, "maxLength": 256},
+    "collected_at": {"type": "string", "description": "naive local iso datetime supplied by the caller", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$"},
+    "input": {
+      "oneOf": [
+        {"$ref": "#/definitions/fileInput"},
+        {"$ref": "#/definitions/directoryInput"}
+      ]
+    },
+    "execution_result_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "custody": {"const": "operator-asserted-root"},
+    "evidence_class": {"const": "declared"},
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    }
+  },
+  "definitions": {
+    "fileInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["size_bytes", "sha256", "resolved_path", "logical_suffix"],
+      "properties": {
+        "size_bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "resolved_path": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "audit locator; not identity"},
+        "logical_suffix": {"type": "string", "pattern": "^\\.[a-z0-9]{1,16}$"}
+      }
+    },
+    "directoryInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["manifest_digest", "entry_count", "total_bytes", "resolved_path"],
+      "properties": {
+        "manifest_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "entry_count": {"type": "integer", "minimum": 0},
+        "total_bytes": {"type": "integer", "minimum": 0},
+        "resolved_path": {"type": "string", "minLength": 1, "maxLength": 1024, "description": "audit locator; not identity"}
+      }
+    }
+  }
+}

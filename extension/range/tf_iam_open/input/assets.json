@@ -1,0 +1,12 @@
+{
+  "kind": "asset-config",
+  "assets": [
+    {
+      "id": "iam-open",
+      "type": "aws_iam_policy",
+      "name": "demo-wildcard-policy",
+      "action": "*",
+      "resource": "*"
+    }
+  ]
+}

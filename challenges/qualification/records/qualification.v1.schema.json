@@ -1,0 +1,132 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "specaudit.ctf.qualification-record.v1",
+  "title": "Closed qualification record for a design-ready challenge pilot",
+  "description": "One record enumerates every qualification gate for one pilot and states, honestly, that none is satisfied. It is a gate inventory, never a promotion signal. The shape is closed: additionalProperties is false at every level.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "pilot",
+    "status",
+    "review_lanes",
+    "learner_context_separation",
+    "calibration",
+    "dry_run",
+    "reset",
+    "honest_limits"
+  ],
+  "properties": {
+    "schema": {"const": "specaudit.ctf.qualification-record.v1"},
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9.-]{2,63}$"
+    },
+    "pilot": {
+      "type": "string",
+      "enum": [
+        "lab-review-01-threat-model",
+        "lab-agent-01-tool-boundary",
+        "lab-detect-01-technique-chain",
+        "lab-k8s-01-rbac-path"
+      ]
+    },
+    "status": {
+      "const": "design-ready",
+      "description": "A qualification record exists only for a design-ready pilot; qualification-ready status lives on the slice or pilot itself and is a gate inventory, not a promotion signal."
+    },
+    "review_lanes": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {"$ref": "#/definitions/review_lane"}
+    },
+    "learner_context_separation": {"$ref": "#/definitions/separation"},
+    "calibration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "packet"],
+      "properties": {
+        "state": {"const": "fixtures-shipped-human-scoring-open"},
+        "packet": {
+          "type": "string",
+          "pattern": "^challenges/qualification/calibration/[a-z0-9-]+/$"
+        }
+      }
+    },
+    "dry_run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "runbook"],
+      "properties": {
+        "state": {"const": "procedure-shipped-not-executed"},
+        "runbook": {"const": "challenges/qualification/dry-run/runbook.md"}
+      }
+    },
+    "reset": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "evidence_refs"],
+      "properties": {
+        "state": {"const": "determinism-proven"},
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {"$ref": "#/definitions/evidence_ref"}
+        }
+      }
+    },
+    "honest_limits": {
+      "type": "array",
+      "minItems": 1,
+      "items": {"type": "string", "minLength": 1, "maxLength": 1024}
+    }
+  },
+  "definitions": {
+    "review_lane": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["lane", "state"],
+      "properties": {
+        "lane": {
+          "enum": ["technical", "safety-operator", "instructional"]
+        },
+        "state": {
+          "const": "assigned, unstaffed, wholly operator-gated"
+        }
+      }
+    },
+    "evidence_ref": {
+      "type": "string",
+      "pattern": "^tests/test_[a-z0-9_]+\\.py::test_[a-z0-9_]+$",
+      "description": "A pytest node id that must exist in this checkout; validators grep the named file for the named function."
+    },
+    "separation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "evidence_refs", "notes"],
+      "properties": {
+        "state": {
+          "enum": ["proven", "not-asserted"],
+          "description": "proven only where tests in this checkout cover this pilot; not-asserted means no separation proof exists and one is required before assessment use."
+        },
+        "evidence_refs": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/evidence_ref"}
+        },
+        "notes": {"type": "string", "minLength": 1, "maxLength": 1024}
+      },
+      "if": {
+        "properties": {"state": {"const": "proven"}},
+        "required": ["state"]
+      },
+      "then": {
+        "properties": {"evidence_refs": {"minItems": 1}}
+      },
+      "else": {
+        "properties": {"evidence_refs": {"maxItems": 0}}
+      }
+    }
+  }
+}

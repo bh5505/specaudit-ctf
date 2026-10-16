@@ -1,0 +1,217 @@
+# containment/ — operator rehearsal of the containment layers (SAFE-01, empirical)
+
+This package rehearses, against the repo's own reader arms, the layered
+containment an operator chains before pointing any arm at hostile input:
+
+1. **Acquisition gate** — `reader_evidence.acquire` applied by the
+   harness BEFORE dispatch. Hostile inputs (traversal,
+   absolute-out-of-root, symlink-escape, device-file) are typed-refused
+   there and never reach a child (`blocked` outcome with the stable
+   refusal reason).
+2. **Audit-hook enforcement plane** — `containment/enforcer.py` installs
+   a PEP 578 `sys.addaudithook` hook in a CHILD interpreter before target
+   code runs (`containment/worker.py`). The hook denies egress
+   (socket connect/bind/getaddrinfo), subprocess/process creation
+   (Popen/system/exec/posix_spawn/fork), write opens everywhere, any open
+   outside the profile's resolved allowlist, and file-mutation verbs
+   (rename/replace/link/symlink/remove/rmdir/chmod/chown/copyfile/rmtree)
+   whose endpoints resolve outside the scratch root. Every denial raises
+   `PermissionError` AND appends one JSON line
+   (`{"event", "path"?, "mode"?, "ts_seq"}`) to an inherited pipe the
+   child can only append to; the parent reads it. An installed audit hook
+   cannot be removed or replaced from inside the process (PEP 578
+   no-cooperation property).
+3. **OS-enforced namespace jail** — `containment/os_isolation.py` (with
+   `containment/isolate_launcher.sh`) runs a target command inside a
+   Linux mount/net/PID namespace jail, supervised from OUTSIDE the
+   learner process. Where the host permits the namespaces (WSL2's default
+   distro qualifies) the kernel itself refuses the escape; elsewhere the
+   module refuses typed. See "OS-enforced E1 isolation (Linux/WSL)"
+   below — this is the kernel-enforced E1 floor beneath layer 2, not a
+   replacement for it.
+
+## What the suite proves (empirically, in this checkout)
+
+- All 14 baseline arms x 38 data actions (`+1 list_tools` smoke per arm,
+  which adds no path signal: discovery carries no input path to acquire
+  or deny) run in-root under the guard with **zero enforcer denials**,
+  ending `positive` (arm ok) or `refusal` (arm policy refused a minimal
+  input — a valid containment result, never faked into a success).
+- The four escape probes (loopback socket, subprocess, write-open, symlink)
+  are all denied in the enforced canary child; the same probes in a
+  CONTROL child WITHOUT the hook run host-native (subprocess succeeds),
+  proving the denials come from the enforcer, not from host hardening.
+- Hostile inputs are blocked before dispatch with typed reasons, each
+  recorded as a ledger row.
+- MCP-mediated out-of-root reads are denied under the guard
+  (`containment/mcp_guard.py`): a real stdio round trip — in-root feed
+  completes; a feed outside the approved root yields the error envelope
+  plus the pipe denial record.
+- `python -m extension.range` with no path arguments under the guard
+  completes or degrades with zero write-denial violations outside scratch.
+- Instructor-plane separation at the operator-profile layer: the
+  instructor keys are outside every approved root the harness admits, so
+  direct and reader-mediated access are typed-refused; canary strings
+  (`INSTRUCTOR-CANARY-*`) are absent from `exercise_operator` prepare
+  exports, and a deliberate leak fixture proves the detector fires.
+- Interruption (parent `stop_case` kill mid-run), cleanup (scratch
+  byte-identical after a run), rerun determinism, and per-case custody
+  retention (acquisition records live in the outside detail documents).
+
+## What it does NOT prove (honest limits)
+
+- **Not an OS sandbox.** The enforcement plane polices the Python
+  audit-hook level only. Residual bypasses: C-extension internal I/O that
+  raises no audited event; raw syscalls via ctypes/cffi; file descriptors
+  already inherited across the spawn; processes that outlive the child.
+  The operator's E2/E3 OS sandbox remains the real boundary. (Locally,
+  `containment/os_isolation.py` is the complementary kernel-enforced E1
+  floor where the host permits Linux namespaces — see below; the
+  audit-hook plane remains the evidence layer, and the two compose.)
+- **Not adversarial-process-proof.** The child is repo code under
+  hostile inputs, not a committed adversary co-designing escapes; in a
+  checkout layout the runtime read allowlist includes the repo tree
+  itself (the child must be able to import `extension`), so repo-internal
+  reads are admitted and the instructor-plane boundary at the enforcer
+  layer is complete only for an installed-wheel runtime layout.
+- **HZ-INPUT-PATH-UNBOUND remains open** for direct in-process arm use
+  without this harness/guard: an arm invoked in-process with a hostile
+  path and no acquisition gate is not contained by anything in this
+  package.
+- On Windows the trusted acquisition gate itself is typed-refused
+  (`platform-unsupported`: no `os.O_NOFOLLOW`), so admitted cases proceed
+  with the gate refusal recorded honestly and the CLI labels the run
+  `partial`; symlink-escape and device-file hostile classes are POSIX-only.
+
+## OS-enforced E1 isolation (Linux/WSL)
+
+`containment/os_isolation.py` + `containment/isolate_launcher.sh` are a
+kernel-enforced E1 path: a supervisor OUTSIDE the learner process runs a
+target command inside a Linux namespace jail. The audit-hook plane (layer
+2) produces Python-plane EVIDENCE; this layer makes the KERNEL refuse the
+escape. Both are rehearsal surfaces for E1; neither grants E2/E3.
+
+What it proves (empirically, on hosts that permit the namespaces — WSL2's
+default distro qualifies; `tests/test_os_isolation.py` is the evidence and
+runs as part of the suite gate under WSL):
+
+- **Filesystem bounds.** The jail root is a private tmpfs holding ONLY:
+  the approved inputs bound read-only at `/inputs`; the scratch directory
+  bound read-write at `/scratch`; the minimal runtime to execute the
+  target (system python + stdlib — an explicit mount plan: `/usr` bound
+  read-only, merged-`/usr` symlinks (`/bin`, `/lib`, `/lib64`, `/sbin`)
+  recreated, individual device nodes bound; every mount is listed in
+  `isolate_launcher.sh` and built by `_build_mount_plan`); a fresh private
+  `/tmp`; a fresh procfs. The host root is `pivot_root(2)`-ed out and
+  lazy-detached (`MNT_DETACH`), so `/home`, `/root`, `/etc`, `/mnt`,
+  `/media` and every other host path are absent BY CONSTRUCTION, and the
+  jail root is remounted read-only: writes outside the two granted dirs
+  fail with EROFS at the syscall (observed errno 30).
+- **Offline by construction.** A fresh network namespace whose only
+  interface is a DOWN loopback: `connect(2)` to 127.0.0.1 fails
+  ENETUNREACH (101) and `getaddrinfo` fails EAI_AGAIN (-3). There is no
+  route and no usable resolver in this namespace; DNS/egress are
+  impossible, not merely denied by policy.
+- **Resource bounds.** The profile's rlimits (RLIMIT_NPROC, RLIMIT_NOFILE,
+  RLIMIT_AS, RLIMIT_FSIZE bounded to scratch-scale, RLIMIT_CPU) are
+  applied in-jail before exec (the prlimit(2) family via `setrlimit`). On
+  root hosts the target is dropped to `nobody` — which is what makes
+  RLIMIT_NPROC kernel-enforced (EAGAIN/11 beyond the bound; the kernel
+  exempts the namespace root) and leaves the target with no capability at
+  all (no mount, no chroot, nothing).
+- **Independent stop.** The supervisor owns the jail's process group
+  (`start_new_session`; the launcher deliberately never `setsid`s).
+  `stop(pid)`/`stop_all()` SIGKILL the group regardless of target
+  cooperation; the wall-clock `timeout_s` does the same on its own
+  (`timeout-killed`); PID-namespace teardown reclaims anything that
+  escaped the group with its own `setsid` once pid 1 dies.
+- **Answer-key separation.** Only the two granted directories are
+  mounted. Instructor keys anywhere else on the host — including NEXT TO
+  the approved inputs — are not present in the jail: no `/instructor-keys`
+  in the listing, no path to reach them, `/inputs/../instructor-keys`
+  resolves inside the jail root and is absent.
+
+What it does NOT prove / honest limits:
+
+- Not a full container: no seccomp profile, no cgroup pressure or device
+  controls. It bounds filesystem/network/processes exactly as listed
+  above, nothing more.
+- The host must actually permit the namespaces. The module PROBES the
+  effective host (`unshare --mount --pid --fork true`, plus the
+  `--user --map-root-user` variant when the supervisor is not root) and
+  refuses typed — `IsolationError("unsupported-host")` — on plain Windows
+  or any host whose kernel denies unshare. It never degrades to running
+  unjailed.
+- On non-root supervisors the target stays namespace root (the userns has
+  no second uid mapping to drop to), so RLIMIT_NPROC is advisory there;
+  every other control is unchanged and the refusal behavior is identical.
+- E0 (static review) and E1 (this path) only. E2/E3 remain explicitly
+  operator-gated environments per OPERATIONS.md: this path grants no
+  E2/E3 authority and no live targets — and the jailed child has no
+  network to reach any even if misused.
+
+How to run it:
+
+```bash
+# the evidence suite (WSL, or any Linux host that permits the namespaces)
+python -m pytest tests/test_os_isolation.py -q
+```
+
+```python
+from containment.os_isolation import IsolationProfile, run_isolated, stop_all
+
+profile = IsolationProfile(
+    approved_inputs="/srv/operator/approved",   # bound ro at /inputs
+    scratch="/srv/operator/scratch",            # bound rw at /scratch
+    limits={"RLIMIT_NPROC": 64, "RLIMIT_FSIZE": 1 << 20},
+    timeout_s=60.0,
+)
+result = run_isolated(profile, ["/usr/bin/python3", "-c", "..."])
+# IsolationError(reason="unsupported-host" | "mount-failed" |
+#                "target-failed" | "timeout-killed") otherwise
+stop_all()  # independent operator stop for every live jail
+```
+
+Relationship to the other layers: the acquisition gate filters hostile
+inputs before dispatch; the audit-hook plane records Python-plane denials
+as evidence; this layer is the kernel-enforced floor beneath both. They
+compose — run the same target under the guard AND the jail and each plane
+reports what IT refused. The E2/E3 OS sandbox remains the operator gate
+per OPERATIONS.md; nothing here grants it.
+
+## How operators run it
+
+```bash
+# the matrix (roster JSON: [{"arm_id","action","path_argument"},...];
+# the package never imports safety.check — the caller supplies the roster)
+python -m containment \
+  --approved-root /srv/operator/approved \
+  --scratch-root /srv/operator/scratch \
+  --fixtures-root /srv/operator/approved/fixtures \
+  --roster-json roster.json \
+  --ledger /srv/operator/containment-attempts.jsonl
+```
+
+```python
+# a guarded MCP server round trip
+from containment.mcp_guard import guarded_call, invoke_arguments
+result = guarded_call(profile, tool="invoke", arguments=invoke_arguments(
+    entry_id="vulnify", action="lookup",
+    args={"feed": str(approved / "feed.json"), "cve_id": "CVE-2024-0001"}))
+```
+
+To launch a long-lived guarded MCP server by hand: start the worker child
+with the profile env (`CONTAINMENT_PROFILE_JSON`) and the denial pipe
+(`CONTAINMENT_DENIAL_FD`, or `CONTAINMENT_DENIAL_HANDLE` on Windows —
+`pass_fds` is unsupported there, so the inheritable handle VALUE is
+inherited and re-opened with `msvcrt.open_osfhandle`), write the one job
+line `{"kind":"mcp-server"}` to its stdin, then speak ndjson MCP on the
+same stream. The child can only append denials to the pipe; read it from
+the parent side.
+
+Ledger discipline: rows go to a containment-LOCAL attempt ledger
+(`lane="operator-rehearsal"`, subject `containment:<arm>:<action>`,
+deterministic attempt ids so re-runs are legitimate retries), never to
+any evaluation ledger. The structured detail document lives outside the
+ledger, referenced by digest. No network, no clock reads in library code
+(caller-supplied timestamps; the CLI owns the clock), no live targets.

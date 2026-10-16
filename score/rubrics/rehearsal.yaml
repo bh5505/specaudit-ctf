@@ -1,0 +1,11 @@
+# Example rubric for python -m score --rubric
+#
+# required_capabilities: every id must appear as at least one scored
+#   envelope's capability_id, else the run fails.
+# allowed_degraded: named capability ids may pass AS DEGRADED — this
+#   waives exactly the status/limitations gates for those envelopes.
+#   Evidence, cleanup, budget, scope, approval, and required-arm gates
+#   are never waivable.
+name: rehearsal
+required_capabilities: []
+allowed_degraded: []

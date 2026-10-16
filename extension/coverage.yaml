@@ -1,0 +1,486 @@
+# Survey map for the specaudit-ctf collaboration cut.
+# Classifies each surveyed product. Not a ship list of adapters.
+# Support tier is research | experimental | maintained | held.
+# curated is a deprecated compatibility flag for specialized handlers;
+# it is not equivalent to maintained. No rows are held on this cut
+# (the HTTP-MCP held set closed 2026-09-04).
+# Methodology-only rows are never curated and never maintained.
+# research/experimental presence is not a validator support promise.
+
+
+version: 1
+entries:
+  - id: learning-operator
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: First-party offline operator adapter for six PR4 evidence and synthetic exercise workflows. Inline bounded inputs only; no caller paths, target collection, upstream executable, provider connection, or grader authority. The local operator request CLI may read operator-selected files outside attached MCP.
+
+  - id: loopback
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Native pack-check and validation-client lanes in the specaudit CTF suite. Methodology for this extension, not an adapter.
+
+  - id: foundry
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Open specification for agentic security evaluation, finding lifecycle, and spec-kit workflow.
+
+  - id: codeguard
+    kind: methodology-only
+    protocols: [mcp, http]
+    curated: false
+    tier: research
+    notes: Model-agnostic secure-by-default rule corpus for AI coding agents, with optional MCP packaging. A check contract, not a scanner.
+
+  - id: vulnhunter
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Attacker-first hunt, falsify, and verify skills. Teach-only methodology.
+
+  - id: edge-device-posture
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Network-edge device posture review (router/CPE/IoT-appliance class) - plane model (management, admin/data, config artifacts), version-disclosure posture, and offline-image vs live-surface reconciliation, with absence-shaped reconciliation verdicts stated explicitly. Instantiated by the lab-edge-01-device-posture live-service challenge against the golden lab target; generalizes to any appliance image with a declared service set.
+
+  - id: defending-code
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Reference recon, find, verify, report, and patch harness with threat-model-gated scan skills.
+
+  - id: mantis
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Portable multi-stage skill toolkit with inspectable artifacts. Teach-only methodology.
+
+  - id: raptor
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Autonomous offensive and defensive review framework that layers static engines under an agent decision loop.
+
+  - id: deepsec
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Agent-powered large-repository scanner. Curated CLI arm wrapping the Node Commander entry (not npx/pnpm). DEEPSEC_SCAN_ROOT must be an existing workspace with config; invocations cwd there. Operator runs init out of band. scan is the unarmed matcher default and writes workspace state. process is gated by DEEPSEC_DISPATCH_SCOPE=localhost (containment is the scan root) and can cost thousands of dollars.
+
+  - id: vvah
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Multi-stage agentic SAST CLI. Curated CLI arm; doctor live-probes configured backends (may spend tokens); estimate spends nothing (VVAH_SCAN_ROOT, cwd pinned). scan defaults to --stop-after s9 and is gated by VVAH_DISPATCH_SCOPE. remediate is the S10 command and requires VVAH_ALLOW_REMEDIATE=1 plus dispatch scope. validate is not exposed. Agentic pipeline may spend model tokens.
+
+  - id: ai-deep-sast
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Hybrid CI SAST. Curated CLI arm; --skip-llm scan is the safe default and requires a local AI_DEEP_SAST_SEMGREP_CONFIG inside the scan root (no registry p/ default). ai_scan runs local Foundation-Sec via llama-completion; frontier deepscan.py is not exposed beyond dry_run --dry-run. Full AI scan is gated by AI_DEEP_SAST_DISPATCH_SCOPE.
+
+  - id: trailofbits
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Marketplace of composable specialist review skills for Claude Code CLI and Codex CLI.
+
+  - id: cloudflare
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Six-phase security-audit skill covering recon, hunt, adversarial validate, report, and independent verify.
+
+  - id: metasploit-mcp
+    kind: arm
+    protocols: [mcp, http]
+    curated: true
+    tier: research
+    notes: Metasploit Framework MCP over the operator-run local server (GH05TCREW MetasploitMCP, legacy HTTP+SSE) on the hardened shared client - literal-loopback endpoint policy (METASPLOIT_MCP_ENDPOINT must name 127.0.0.1 or [::1]); the client sends no credential (the msfrpcd password is server-side). Exploit/payload/session/listener listings are admitted read capabilities; the execution tools are admitted R1 network-egress dispatch profiles gated by METASPLOIT_DISPATCH_SCOPE with per-host scope matching (host-bearing tools) and scope-presence arming (session/job tools, audited by id).
+
+  - id: burp-mcp
+    kind: arm
+    protocols: [mcp, http]
+    curated: true
+    tier: research
+    notes: Burp Suite MCP over PortSwigger's official MCP Server BApp (SSE mode, default 127.0.0.1:9876, auto-starts with Burp once the BApp is installed - enabled defaults true and persists in the BApp's extension data, verified from source 2026-09-06), fully usable on the free Community Edition. Admitted read set re-verified from the current tool surface on 2026-09-06 - proxy/WebSocket/Organizer history incl. regex variants, codecs, random text, both config exports (credential-filtered upstream since v1.3.0), and the Pro-gated scanner/Collaborator reads, with no edition gating (tools the connected Burp does not list are refused as unavailable by the arm; active requests, UI mutations, config writes, and the live-editor read stay blocked). Curated SSE arm on the hardened shared transport; endpoint policy is literal-loopback only (BURP_MCP_ENDPOINT must name 127.0.0.1 or [::1]) and the client sends no credential. For the first-class DAST role use the zaproxy arm (free native API).
+
+  - id: agent-wiz
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: maintained
+    notes: Offline agent-framework graph extractor. Curated CLI arm wrapping first-party agent-wiz; the read tier agent-wiz.list_tools is the only maintained capability (X5-PROMOTE, doc 13 evidence gate; owner specaudit-ctf maintainers). extract and visualize are path-contained local reads. analyze (OpenAI egress) is gated by AGENT_WIZ_DISPATCH_SCOPE and credential presence.
+
+  - id: maestro
+    kind: methodology-only
+    protocols: [http]
+    curated: false
+    tier: research
+    notes: Agentic threat-modeling reference application. Methodology artifact, not an adapter.
+
+  - id: prowler-mcp
+    kind: arm
+    protocols: [mcp, http]
+    curated: true
+    tier: research
+    notes: First-party CSPM MCP over the official OSS server (prowler-cloud/prowler mcp_server/, fastmcp 3.4.5 streamable HTTP at /mcp) on the hardened shared client. Endpoint policy is the explicit union - operator-fronted https for self-hosted remote deployments, or literal-loopback http for the first-party local default (--transport http, --host 127.0.0.1, --port 8000; upstream ships no TLS). The client sends no credential (hub/docs tools are unauthenticated server-side; tenant tools authenticate to api.prowler.com with a server-held key). Exact-name admission - 43 read lookups pinned from first-party source (10 hub catalog + 2 docs + 31 tenant reads); the 18 mutating tools (scan triggers, mutelist/integration/provider writers, role setting) and the hosted-only prowler_cloud_ namespace are exactly blocked.
+
+  - id: semgrep-mcp
+    kind: arm
+    protocols: [mcp, cli, http]
+    curated: true
+    tier: research
+    notes: First-party SAST via the semgrep CLI as the primary surface - local rule scans with an inline rule pack (registry/URL configs refused, metrics off), scan containment is the SEMGREP_SCAN_ROOT directory. MCP reads (scan/findings/AST/language/schema) remain available over an operator-configured https endpoint on the hardened transport. No client credential sent for either surface.
+
+  - id: google-mcp-security
+    kind: arm
+    protocols: [mcp, http]
+    curated: true
+    tier: research
+    notes: Google Threat Intelligence lookups over the official gti-mcp server (Google's google/mcp-security GTI server; FastMCP-based, stdio by default, HTTP-capable by construction) deployed at an operator-configured https endpoint via the hardened shared client. All 32 allowlisted tools are read-only lookups verified against the current official tool inventory (36 tools as of 2026-09-06; the 4 mutating tools - the collection create/update family and the upload-and-share analyse_file - are exactly blocked); no client credential is sent - the upstream holds the sole server-side key (VT_APIKEY, read per-request from the server's environment). No dispatch tier.
+
+  - id: garak
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: LLM vulnerability scanner with a probe, detector, and evaluator pipeline. Curated CLI arm; probe/detector listing and local report reading only, target-bound install, open-ended probe dispatch blocked.
+
+  - id: pyrit
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Multi-turn generative-AI red-team framework. Curated CLI arm wrapping first-party pyrit_scan only. list_scenarios is the read tier; scan is gated by PYRIT_DISPATCH_SCOPE and spends model tokens on the operator-configured endpoints. Requires operator PyRIT config. CoPyRIT GUI is out of scope.
+
+  - id: mitre-atlas
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Adversary knowledge base for AI-enabled systems. Curriculum only.
+
+  - id: cyberseceval
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Published LLM security benchmark suites. Curriculum and eval reference.
+
+  - id: cybench
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Professional CTF task set with subtask grading. Challenge-design reference.
+
+  - id: owasp-agentic
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: OWASP agentic application threats, mitigations, and MCP security guides.
+
+  - id: checkov
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Offline graph-based IaC misconfiguration scanner. Curated CLI arm; fixed-argv terraform scan, offline bundle mode, scan root contained to the packaged synthetic range.
+
+  - id: cloudgoat
+    kind: methodology-only
+    protocols: [cli]
+    curated: false
+    tier: research
+    notes: Vulnerable-by-design cloud scenarios. Range and curriculum reference, not an adapter.
+
+  - id: stratus-red-team
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Cloud technique library. Curated CLI arm; local technique list reads, warmup/detonate/revert gated by STRATUS_DISPATCH_SCOPE. Dispatch acts cloud-side on the operator's own account — the scope gate binds the technique ID (the armed scope must literally name the technique; anything else is an evaluated failure), and detonation spends real cloud resources.
+
+  - id: attackforge-testsuites
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Import-ready methodology checklists including telecom and cloud suites.
+
+  - id: attackforge-writeups
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: Finding-writeup knowledge bases covering ATT&CK, ATLAS, CWE, and CAPEC.
+
+  - id: attack-stix-data
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Canonical ATT&CK corpus as STIX 2.1 collection bundles. Curated first-party read arm; exact lookups (technique by ATT&CK id or name, software/group by name or alias, bounded relationship reads with a closed type allowlist, and CVE-keyed object mappings with per-invocation custody receipts) over a local STIX bundle. The CVE action defaults to the bundled deterministic demo sample; other actions require an operator-supplied bundle. A small demo sample ships as data under the arm (see its NOTICE; not maintained here). Pure in-process stdlib reader with no subprocess, no endpoint, no network on any tier, and no dispatch tier.
+
+  - id: vulnify
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Bounded in-process local vulnerability reads over an operator-supplied feed (json/jsonl/yaml; single cve_id/name lookup plus list_vulns) or a frozen local JSON snapshot (args.cve_ids batch; custody receipt; Finding-E curated-technique fallback). The feed interface is wired into the trusted-observation layer; the snapshot/batch layer is preserved. No search beyond list_vulns, subprocess, endpoint, network, database mutation, or dispatch tier.
+
+  - id: snmp-readtier
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: experimental
+    notes: Scope-armed stdlib-only SNMPv2c GET identity read limited to sysDescr.0, sysUpTime.0, and sysName.0. One bounded UDP request, no walk or set; timeout remains an unknown observation. Digest-bound custody receipts cover normalized arguments, request bytes, raw responses, and per-OID outcomes.
+
+  - id: ike-readtier
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: experimental
+    notes: Scope-armed stdlib-only IKEv1 responder-presence read using one fixed AES256-SHA1-PSK-MODP2048 phase-1 SA proposal on UDP 500 and optional NAT-T 4500. No KE payload or key establishment. Digest-bound custody receipts cover normalized arguments and per-port request/reply outcomes.
+
+  - id: mitreattack-python
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Official ATT&CK Python library and CLIs. Curated CLI arm; local STIX-to-Excel conversion only, network downloader on no tier.
+
+  - id: mitre-cti
+    kind: methodology-only
+    protocols: [none]
+    curated: false
+    tier: research
+    notes: STIX 2.0 ATT&CK and CAPEC datasets maintained alongside the 2.1 corpus.
+
+  - id: vuls
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Agent-less host vulnerability scanner. Curated CLI arm; local report/summary reads, host scan gated by VULS_DISPATCH_SCOPE, feed fetch on no tier. Scan targets come from vuls's own config discovery (config.toml at the invoke working directory) — the scope gate arms the scan action, so the armed config is what bounds what gets scanned.
+
+  - id: zaproxy
+    kind: arm
+    protocols: [cli, mcp, http]
+    curated: true
+    tier: research
+    notes: Intercepting-proxy DAST and this suite's first-class DAST role (the Burp-role substitute; free native API, no Pro features required). Allowlisted view reads incl. spider/ascan results; ascan/spider dispatch gated by ZAP_DISPATCH_SCOPE; passive results via alerts/alerts_summary.
+
+  - id: wapiti
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Black-box web vulnerability scanner. Curated dispatch-only arm (no read-only mode upstream); scans gated by WAPITI_DISPATCH_SCOPE.
+
+  - id: commix
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Command-injection specialist scanner. Curated dispatch-only arm (active prober, no read-only mode upstream); probes gated by COMMIX_DISPATCH_SCOPE.
+
+  - id: zdns
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: High-volume DNS resolution toolkit. Curated dispatch-only arm; live resolution gated by ZDNS_DISPATCH_SCOPE.
+
+  - id: zgrab2
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Application-layer handshake scanner. Curated CLI arm; list_modules is a static allowlist; scan feeds one host on stdin with a closed module set and optional --port. Gated by ZGRAB2_DISPATCH_SCOPE.
+
+  - id: nmap
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Network service discovery. Curated CLI arm over the user's own nmap (NPSL; never bundled); single-host targets, closed flag sets (connect/version/version-light, fixed -T4, top-ports default), XML on stdout capped and redacted; scan dispatch gated by NMAP_DISPATCH_SCOPE. version-light disables discovery and reverse DNS and uses unprivileged TCP version probes.
+
+  - id: page-fetch
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Headless Chrome URL fetcher. Curated dispatch-only arm; http(s) URL with a hostname, then host-scope via PAGE_FETCH_DISPATCH_SCOPE. Upstream reads URLs from stdin only (detectify/page-fetch), so argv never carries the URL — the arm feeds the validated URL as the single stdin line. Private, metadata, and localhost hosts are allowed if in scope; only the initial URL is scope-checked — redirects, name resolution at fetch time, and rendering subresources are not re-checked (treat the armed scope as reachable from anything its hosts redirect or reference to), and browser state may be written in the binary's default location.
+
+  - id: http-probe
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Bounded curl HTTP probe with caller-selected headers. Curated dispatch-only arm; curl ships on Kali lab images and modern Windows, URLs are http(s), headers use a closed schema, redirects surface as data and are never followed, and probes are gated by HTTP_PROBE_DISPATCH_SCOPE.
+
+  - id: caldera
+    kind: arm
+    protocols: [http, cli]
+    curated: true
+    tier: research
+    notes: Adversary-emulation platform with ATT&CK-mapped abilities and a REST API. Curated REST arm; allowlisted GET reads, operation scheduling gated by CALDERA_DISPATCH_SCOPE.
+
+  - id: osmedeus
+    kind: arm
+    protocols: [cli, http]
+    curated: true
+    tier: research
+    notes: Declarative recon orchestration engine. Curated CLI arm; local asset reads, scan dispatch gated by OSMEDEUS_DISPATCH_SCOPE.
+
+  - id: sniper
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Automated pentest harness composing many sub-scanners. Curated dispatch-only CLI arm gated by SNIPER_DISPATCH_SCOPE. Scoping the named target does not bound 90+ sub-tools. Community binary is root-only and phones home when armed. Operators who accept composite egress arm the scope; others leave unarmed.
+
+  - id: dark-moon
+    kind: arm
+    protocols: [cli, mcp]
+    curated: true
+    tier: research
+    notes: Autonomous multi-agent pentest platform. Curated CLI arm wrapping the shell launcher; MCP tool names stay unpinned and unbound. campaign/run gated by DARK_MOON_DISPATCH_SCOPE. Composite egress inside Docker.
+
+  - id: routersploit
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Exploitation framework for embedded and CPE devices. Curated CLI arm; non-interactive -m run is gated by ROUTERSPLOIT_DISPATCH_SCOPE. Default unarmed. Every run executes the module (not a check-only path).
+  - id: rpz-decoder
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Ad-hoc threat-intel extraction from an operator-supplied DNS Response Policy Zone. decode turns an AXFR dump into raw IP/CIDR and domain indicator lists (action-tagged, written to files, sampled in the result); fetch is a dispatch-gated dig AXFR using a 0600 TSIG key file, status a keyless SOA probe. No schedule, no appliance; no zone data or account identifiers ship in the repo.
+
+  - id: asset-recon
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: First-party bounded asset reconnaissance. Offline plan/parse and explicit CT, PTR, registry and passive-provider discovery share one evidence graph. Live provider reads require live=true and exact ASSET_RECON_PROVIDERS grants; probe requires live=true and ASSET_RECON_PROBE_SCOPE, plus the existing tool scope for delegated scanners. Discovered names and graph edges never grant probe authority. Partial results retain evidence but are not complete. No background enumeration or automatic probing.
+
+  - id: security-detections-mcp
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Local rule reads over operator-supplied detection indexes. Curated CLI read arm; no rule generation, index mutation, deployment, or hosted fallback on the read path. Results carry the exact input-byte digest, which identifies the snapshot but is not a trusted-custody attestation. Per-corpus revision and licensing remain operator gates.
+
+  - id: agentseal
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Offline agent-framework static-fixture analysis. Curated first-party CLI reader over an operator-supplied fixture; it exposes no active mode, registry call, subprocess, or network path. Results retain bounded configuration evidence and the exact input-byte digest; upstream schema equivalence is not claimed.
+
+
+  - id: leonidas
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Declarative cloud-attack corpus reads. Curated first-party CLI reader over an operator-supplied compatibility corpus; executor bodies are projected as inert text and the arm has no cloud credential or execution path. Results identify the exact input bytes; upstream revision, schema equivalence, and corpus rights are not implied.
+
+  - id: specterops-skills
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Curated first-party methodology-skill reader over an operator-supplied compatibility catalog. Bounded tool mappings and human steps remain distinct; skill prose is untrusted input and grants no permission. Results identify the exact input bytes, while upstream revision, mapping accuracy, schema equivalence, and reuse rights remain operator gates.
+
+  - id: detection-in-the-cloud
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Cloud detection playbook reads over a bounded operator-supplied directory. File-reading actions identify the exact bytes read; list_playbooks identifies its deterministic name/format listing, not file contents. A rule listing is never operating-effectiveness evidence. This is companion methodology, not a second detection engine; the operator must bind page and definition revisions and rights.
+
+  - id: pentestkit
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Experiment-accounting reads over operator-supplied ledgers. The first-party CLI reader keeps phase/status buckets and all structurally valid records in reconstructable denominators, refuses malformed records, and returns the exact input digest. It does not authenticate the producer or turn a caller file into trusted evaluation evidence.
+
+  - id: collinear
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Cybersecurity simulated-world scenario reads. The first-party CLI reader withholds expected findings and trace keys from scenario views and applies exact-match comparison without exposing answer counts. Its operator-supplied scenario file and submission are not trusted grading evidence; instructor storage, identity, custody, and environment separation remain external gates.
+
+  - id: ad-pathfinder
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Imported AD-path result reads over an operator-supplied compatibility export. Missing datasource reads as not assessed, never clean; the bounded schema projects path evidence and rejects unrecognized fields. The arm distributes no bundled credentials or corpus, does no live collection, and does not grade a blocked path as demonstrated compromise.
+
+  - id: gpohound
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: GPO policy evidence reads over an operator-supplied compatibility export. Filtered-out policy is not effective access; security/WMI filters and item-level targeting remain applicability limits. The bounded first-party reader identifies its input bytes, makes no shared-graph writes, and does not claim upstream schema equivalence.
+
+  - id: claude-ad
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: AD methodology reads over an operator-supplied compatibility file. The bounded first-party CLI reader separates prerequisites, observed facts, and inference and identifies its input bytes. Method prose authorizes no action; framework mappings are not compliance claims or upstream-schema evidence.
+
+  - id: numasec
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Finding-lifecycle reads over an operator-supplied ledger. The bounded first-party CLI reader requires a continuous closed transition chain, actor/reason fields, and increasing timestamps, then derives status from that history. Actor strings and verified state remain unauthenticated caller assertions until trusted identity and observation binding exist.
+
+  - id: rubeus
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Deweaponized AD-telemetry reads over an operator-supplied compatibility file. The bounded first-party CLI reader projects an allowlisted record shape, redacts secret-bearing fields and values, and identifies its input bytes; it performs no collection or ticket operation. Operators must still exclude real credentials, and legitimate administration is not automatically compromise.
+
+  - id: m365pwned
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: research
+    notes: Educational M365 consent-case reads over an operator-supplied compatibility file. The bounded first-party CLI reader has no Graph, tenant, mailbox, or file-access path and identifies its input bytes. It does not prove the input is synthetic or verify permission claims; API-owner validation, upstream equivalence, and any future live integration remain separate SAFE-01 and governance work.
+  - id: ivanti
+    kind: arm
+    protocols: [cli]
+    curated: true
+    tier: experimental
+    notes: First-party stdlib-only Ivanti (RiskSense) VM API extractor. search pulls host (assets), hostFinding (findings), vulnerability, or tag records from the platform /client/{id}/{subject}/search endpoint with x-api-key auth; export creates a server-side UI-identical CSV and polls for the download. Output is the flattened JSON-safe Ivanti bronze shape consumed by pack evidence ingestion. filters/fields are offline discovery of the API's valid filter and exportable-field names. No scope grant is required for discovery; live pulls need IVANTI_URL/IVANTI_API_VER/IVANTI_CLIENT_ID/IVANTI_API_KEY (or an Ivanti_config.ini).

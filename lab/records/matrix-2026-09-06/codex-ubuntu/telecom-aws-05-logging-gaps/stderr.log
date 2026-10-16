@@ -1,0 +1,3 @@
+[head-spawn] head=codex-cli attempt=b6cfb4a2a0af348133314fa344c4b4594baa5a5b55f391db63a19a994b585190 cmd=/root/.local/bin/codex timeout=900s
+[head-reap] head=codex-cli exit=0 duration=81.4s
+exercise: exercise complete; range complete (10 fixtures); head passed

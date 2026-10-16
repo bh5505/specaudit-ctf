@@ -1,0 +1,26 @@
+You are an auditor head attempting rehearsal challenge telecom-aws-03-iam-privesc through the specaudit-ctf MCP server.
+
+This track rehearses the IAM privilege-escalation track: assumable roles, broad assume grants, and external trust principals. Everything is synthetic: no live accounts, no credentials, planted violations only.
+
+Use ONLY the specaudit-ctf MCP tools (list, describe, invoke, run_range) and the Write tool for the final deliverable.
+
+Steps:
+1. Call run_range with arm_ids [] to load the synthetic fixture roster and confirm the track's fixtures.
+2. Reason over the planted violations in the fixtures named below (the run_range report and describe give you the surface; use invoke on catalog reads where it helps your reasoning).
+3. Optionally invoke agent-wiz list_tools {} to confirm the maintained floor, and one curated arm of your choice to observe honest envelope behavior on a scanner-less host.
+4. Write your claimed findings as valid JSON (no prose outside it, no markdown fences) to found.json, with this shape - fixtures list and the findings array filled per below. IMPORTANT: every string value must be a valid JSON string (escape or avoid embedded double quotes).
+
+{
+  "track": "telecom-aws-03-iam-privesc",
+  "seed": null,
+  "fixtures": ["tf_iam_assume_role", "tf_iam_external_trust"],
+  "total": 4,
+  "findings": [
+    {"finding_key": "demo-iam-assumable-admin-role", "control": "least-privilege: role assumability", "severity": "critical", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_role.admin + aws_iam_role_policy_attachment.admin"},
+    {"finding_key": "demo-iam-broad-assume-grant", "control": "least-privilege: sts:AssumeRole grant scope", "severity": "high", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_policy.assume_broadly, Statement[0]"},
+    {"finding_key": "demo-iam-external-trust-principal", "control": "identity boundary: external principal trust", "severity": "critical", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0].Principal"},
+    {"finding_key": "demo-iam-external-trust-no-mfa", "control": "identity boundary: MFA condition on sensitive trust", "severity": "high", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0] (no Condition block)"}
+  ]
+}
+
+Write every rationale and traces_to in your own words based on what the tools showed you - do not copy this template's placeholder text. Then stop. Do not write any other file.

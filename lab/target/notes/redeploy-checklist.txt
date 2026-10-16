@@ -1,0 +1,13 @@
+Demo stale ops note (planted lab content — inert by construction).
+
+Left behind on the golden lab target so the web lane has an honest,
+harmless information-disclosure finding: this file is reachable only
+through the /notes/ directory listing because the directory ships no
+index.html. Everything below is placeholder text; nothing here is or
+was ever a real credential or endpoint.
+
+Redeploy checklist (superseded draft — kept for the lab surface):
+  1. recycle the demo bucket demo-public-bucket
+  2. re-run lab/build-golden.sh and lab/spawn-target.sh
+  3. confirm the three listeners (22 / 8000 / 8080)
+  4. rotate the placeholder token ROTATE-ME-PLACEHOLDER (demo only)

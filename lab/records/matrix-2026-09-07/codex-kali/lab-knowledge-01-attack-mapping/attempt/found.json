@@ -1,0 +1,33 @@
+{
+  "track": "lab-knowledge-01-attack-mapping",
+  "seed": null,
+  "fixtures": [
+    "tf_s3_public_access",
+    "tf_cloudtrail_disabled",
+    "tf_iam_open"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-knowledge-t1530-public-storage",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "high",
+      "rationale": "The fixture sets a public-read ACL on an S3 bucket, and the T1530 lookup identifies Data from Cloud Storage as adversary behavior that enumerates and accesses data held in cloud storage.",
+      "traces_to": "extension/range/tf_s3_public_access/input/main.tf public-read ACL mapped to ATT&CK technique T1530, Data from Cloud Storage"
+    },
+    {
+      "finding_key": "demo-knowledge-t1562-008-cloud-logs",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "high",
+      "rationale": "The fixture disables a CloudTrail trail, and the T1562.008 lookup identifies Disable Cloud Logs as a way adversaries impair collection of cloud logging evidence.",
+      "traces_to": "extension/range/tf_cloudtrail_disabled/input/main.tf disabled trail mapped to ATT&CK sub-technique T1562.008, Disable Cloud Logs"
+    },
+    {
+      "finding_key": "demo-knowledge-t1078-wildcard-accounts",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "critical",
+      "rationale": "The fixture assigns a wildcard identity policy that can expose the account to unauthorized principals, and the T1078 lookup identifies Valid Accounts as adversary use of legitimate credentials to access, persist in, or escalate within an environment.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf wildcard identity policy mapped to ATT&CK technique T1078, Valid Accounts"
+    }
+  ]
+}

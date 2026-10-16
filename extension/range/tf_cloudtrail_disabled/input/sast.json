@@ -1,0 +1,13 @@
+{
+  "kind": "sast",
+  "findings": [
+    {
+      "id": "demo-sast-trail-disabled",
+      "rule_id": "cloudtrail-disabled",
+      "asset_id": "trail-main",
+      "severity": "high",
+      "file": "main.tf",
+      "message": "Management trail is disabled; control-plane events go unrecorded"
+    }
+  ]
+}

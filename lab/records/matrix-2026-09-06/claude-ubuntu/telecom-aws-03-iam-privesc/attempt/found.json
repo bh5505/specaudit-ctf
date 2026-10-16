@@ -1,0 +1,12 @@
+{
+  "track": "telecom-aws-03-iam-privesc",
+  "seed": null,
+  "fixtures": ["tf_iam_assume_role", "tf_iam_external_trust"],
+  "total": 4,
+  "findings": [
+    {"finding_key": "demo-iam-assumable-admin-role", "control": "least-privilege: role assumability", "severity": "critical", "rationale": "An admin role is broadly assumable, granting excessive privileges.", "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_role.admin + aws_iam_role_policy_attachment.admin"},
+    {"finding_key": "demo-iam-broad-assume-grant", "control": "least-privilege: sts:AssumeRole grant scope", "severity": "high", "rationale": "A policy grants sts:AssumeRole action with an overly broad scope, allowing assumption of various roles.", "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_policy.assume_broadly, Statement[0]"},
+    {"finding_key": "demo-iam-external-trust-principal", "control": "identity boundary: external principal trust", "severity": "critical", "rationale": "An IAM role trusts an external principal, potentially allowing unauthorized access from outside the AWS account.", "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0].Principal"},
+    {"finding_key": "demo-iam-external-trust-no-mfa", "control": "identity boundary: MFA condition on sensitive trust", "severity": "high", "rationale": "An external trust relationship lacks a mandatory MFA condition, increasing the risk of unauthorized access.", "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0] (no Condition block)"}
+  ]
+}

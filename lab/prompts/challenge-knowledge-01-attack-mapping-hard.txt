@@ -1,0 +1,24 @@
+You are an auditor head attempting rehearsal challenge lab-knowledge-01-attack-mapping through the specaudit-ctf MCP server. This is the hard-mode attempt: no per-finding hints are provided. You ground each mapping in the technique lookups, write the exposure statement, and defend a severity - the calibration is yours.
+
+This track rehearses the AI/knowledge lane: threat-intelligence reasoning over the synthetic range - mapping planted fixture exposures to the adversary techniques they enable. Everything is synthetic: no live accounts, no credentials, planted violations only.
+
+Use ONLY the specaudit-ctf MCP tools (list, describe, invoke, run_range) and the Write tool for the final deliverable.
+
+Steps:
+1. Call run_range with arm_ids [] to load the synthetic fixture roster.
+2. For each mapping, ground the technique by invoking the attack-stix-data arm's technique action over the shipped demo bundle, e.g. invoke attack-stix-data technique with args {"bundle": "extension/arms/attackstix/data/demo-enterprise-sample.json", "id": "T1530"} - and look up whichever other technique ids the finding keys name. Read what the bundle actually says and use it in your own words.
+3. Write your claimed findings as valid JSON (no prose outside it, no markdown fences) to found.json. It must contain these exact finding keys, once each, in any order; fill every other field entirely from your own investigation. IMPORTANT: every string value must be a valid JSON string (escape or avoid embedded double quotes).
+
+{
+  "track": "lab-knowledge-01-attack-mapping",
+  "seed": null,
+  "fixtures": ["tf_s3_public_access", "tf_cloudtrail_disabled", "tf_iam_open"],
+  "total": 3,
+  "findings": [
+    {"finding_key": "demo-knowledge-t1530-public-storage", "control": "<your call>", "severity": "<your call: critical|high|medium|low|none>", "rationale": "<one sentence citing the planted line AND what the technique lookup showed>", "traces_to": "<the fixture line plus the technique id your mapping rests on>"},
+    {"finding_key": "demo-knowledge-t1562-008-cloud-logs", "control": "<your call>", "severity": "<your call>", "rationale": "<...>", "traces_to": "<...>"},
+    {"finding_key": "demo-knowledge-t1078-wildcard-accounts", "control": "<your call>", "severity": "<your call>", "rationale": "<...>", "traces_to": "<...>"}
+  ]
+}
+
+Write every rationale and traces_to in your own words based on what the tools showed you. Then stop. Do not write any other file.

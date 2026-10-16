@@ -1,0 +1,68 @@
+{
+  "approval_ref": "operator://dispatch-scope/SEMGREP_SCAN_ROOT",
+  "artifacts": [
+    {
+      "digest": "sha256:6e9bbfce4e52229ce891e939a20be3bc4d84229939b9db9d99782fd5bd8f241b",
+      "kind": "policy-report",
+      "redaction": "credentials-stripped"
+    }
+  ],
+  "budget": {
+    "reserved": {
+      "max_output_bytes": 1048576,
+      "max_spend": null,
+      "max_tool_steps": 1,
+      "timeout_ms": 120000
+    },
+    "spent": {
+      "elapsed_ms": 3000,
+      "output_bytes": 1703,
+      "spend": 0,
+      "tool_steps": 1
+    }
+  },
+  "capability_id": "semgrep-mcp.semgrep_scan",
+  "cleanup": {
+    "proof_digest": null,
+    "required": false,
+    "residual": false
+  },
+  "coverage": {
+    "attempted": [
+      "semgrep-mcp.semgrep_scan"
+    ],
+    "complete": [
+      "semgrep-mcp.semgrep_scan"
+    ],
+    "failed": [],
+    "required": [
+      "semgrep-mcp.semgrep_scan"
+    ],
+    "skipped": [],
+    "unsupported": []
+  },
+  "finished_at": "2026-09-06T17:54:01Z",
+  "limitations": [],
+  "roe_ref": "doc://README#dispatch-doctrine",
+  "safety_class": "R1",
+  "schema": "specaudit.ctf.execution-result.v1",
+  "schema_version": 1,
+  "scope": {
+    "authorized": [
+      "policy://extension/arms/semgrep-mcp"
+    ],
+    "touched": [
+      "policy://extension/arms/semgrep-mcp"
+    ]
+  },
+  "side_effects": [
+    "subprocess"
+  ],
+  "started_at": "2026-09-06T17:53:58Z",
+  "status": "complete",
+  "tool": {
+    "name": "specaudit-ctf",
+    "version": "0.1.0"
+  },
+  "transport_ok": true
+}

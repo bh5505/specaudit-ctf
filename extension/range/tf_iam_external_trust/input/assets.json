@@ -1,0 +1,12 @@
+{
+  "kind": "asset-config",
+  "assets": [
+    {
+      "id": "external-trust",
+      "type": "aws_iam_role",
+      "name": "demo-external-trust-role",
+      "external_trust": true,
+      "mfa_required": false
+    }
+  ]
+}

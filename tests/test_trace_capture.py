@@ -1,0 +1,432 @@
+"""Server-side attempt-trace capture: chain, fail-closed sink, verifier."""
+
+from __future__ import annotations
+
+import io
+import json
+import os
+import signal
+from pathlib import Path
+
+import pytest
+
+from extension import trace
+from extension.mcp_server import McpServer
+
+KEY_HEX = "ab" * 32
+KEY = bytes.fromhex(KEY_HEX)
+
+
+def _call(rpc_id: int, tool: str, arguments: dict) -> dict:
+    return {
+        "jsonrpc": "2.0",
+        "id": rpc_id,
+        "method": "tools/call",
+        "params": {"name": tool, "arguments": arguments},
+    }
+
+
+def _drive(tmp_path: Path, requests: list[dict], env_extra: dict | None = None) -> Path:
+    """Serve scripted requests through McpServer.serve with tracing on."""
+    trace_path = tmp_path / "trace.ndjson"
+    lines = [json.dumps(request) + "\n" for request in requests]
+    import io
+
+    inn = io.StringIO("".join(lines))
+    out = io.StringIO()
+    import os
+
+    environment = {
+        trace.ENV_TRACE: str(trace_path),
+        trace.ENV_KEY: KEY_HEX,
+        trace.ENV_ATTEMPT: "c0" * 32,
+    }
+    environment.update(env_extra or {})
+    saved = {k: os.environ.pop(k, None) for k in environment}
+    os.environ.update(environment)
+    try:
+        code = McpServer().serve(stdin=inn, stdout=out)
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    assert code == 0
+    return trace_path
+
+
+def _init() -> dict:
+    return {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {
+            "protocolVersion": "2025-11-25",
+            "capabilities": {},
+            "clientInfo": {"name": "t", "version": "0"},
+        },
+    }
+
+
+def test_records_every_tool_call_with_a_verifiable_chain(tmp_path: Path) -> None:
+    trace_path = _drive(
+        tmp_path,
+        [
+            _init(),
+            _call(2, "list", {}),
+            _call(3, "describe", {"id": "agent-wiz"}),
+        ],
+    )
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok, verification.reasons
+    assert verification.close_ok is True
+    assert verification.attempt_id == "c0" * 32
+    assert verification.tool_calls == 2
+    kinds = [record.get("type") for record in verification.records]
+    assert kinds == ["call", "call", "close"]
+    first = verification.records[0]
+    assert first["tool"] == "list"
+    assert first["result"]["isError"] is False
+    assert first["result"]["envelope_status"] is None
+
+
+def test_untraced_methods_and_transport_noise_are_not_records(tmp_path: Path) -> None:
+    trace_path = _drive(tmp_path, [_init(), {"jsonrpc": "2.0", "id": 2, "method": "ping"}])
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok, verification.reasons
+    assert verification.tool_calls == 0, "handshake/ping are not tool evidence"
+    assert [r.get("type") for r in verification.records] == ["close"]
+
+
+def test_wrong_key_fails_the_chain(tmp_path: Path) -> None:
+    trace_path = _drive(tmp_path, [_init(), _call(2, "list", {})])
+    other = trace.verify_trace(trace_path, bytes.fromhex("cd" * 32))
+    assert other.ok is False
+    assert any("digest chain" in reason for reason in other.reasons)
+
+
+def test_tampered_record_fails_verification(tmp_path: Path) -> None:
+    trace_path = _drive(tmp_path, [_init(), _call(2, "list", {})])
+    raw = trace_path.read_text(encoding="utf-8").splitlines()
+    record = json.loads(raw[0])
+    record["tool"] = "run_range"  # forged claim, same HMAC
+    raw[0] = json.dumps(record)
+    trace_path.write_text("\n".join(raw) + "\n", encoding="utf-8")
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok is False
+    assert any("digest chain" in reason for reason in verification.reasons)
+
+
+def test_missing_close_record_is_a_failed_attempt(tmp_path: Path) -> None:
+    trace_path = _drive(tmp_path, [_init(), _call(2, "list", {})])
+    lines = trace_path.read_text(encoding="utf-8").splitlines()
+    kept = [line for line in lines if '"close"' not in line]
+    trace_path.write_text("\n".join(kept) + "\n", encoding="utf-8")
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok is False
+    assert any("close record" in reason for reason in verification.reasons)
+
+
+def test_partial_trailing_line_fails(tmp_path: Path) -> None:
+    trace_path = _drive(tmp_path, [_init(), _call(2, "list", {})])
+    with trace_path.open("a", encoding="utf-8") as handle:
+        handle.write('{"seq": 9, "half')
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok is False
+    assert any("partial line" in reason or "valid JSON" in reason for reason in verification.reasons)
+
+
+def test_unusable_sink_refuses_to_serve(tmp_path: Path, capsys) -> None:
+    import io
+    import os
+
+    missing = tmp_path / "no" / "such" / "dir" / "trace.ndjson"
+    saved = {
+        trace.ENV_TRACE: os.environ.pop(trace.ENV_TRACE, None),
+        trace.ENV_KEY: os.environ.pop(trace.ENV_KEY, None),
+    }
+    os.environ[trace.ENV_TRACE] = str(missing)
+    os.environ[trace.ENV_KEY] = KEY_HEX
+    try:
+        code = McpServer().serve(stdin=io.StringIO(""), stdout=io.StringIO())
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    assert code == 1
+    assert "trace sink unusable" in capsys.readouterr().err
+
+
+def test_bad_key_refuses_to_serve(tmp_path: Path, capsys) -> None:
+    import io
+    import os
+
+    saved = {
+        trace.ENV_TRACE: os.environ.pop(trace.ENV_TRACE, None),
+        trace.ENV_KEY: os.environ.pop(trace.ENV_KEY, None),
+    }
+    os.environ[trace.ENV_TRACE] = str(tmp_path / "trace.ndjson")
+    os.environ[trace.ENV_KEY] = "not-hex"
+    try:
+        code = McpServer().serve(stdin=io.StringIO(""), stdout=io.StringIO())
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    assert code == 1
+    assert "64 hex" in capsys.readouterr().err
+
+
+def test_capture_off_is_unchanged(tmp_path: Path) -> None:
+    import io
+    import os
+
+    saved = os.environ.pop(trace.ENV_TRACE, None)
+    try:
+        out = io.StringIO()
+        code = McpServer().serve(
+            stdin=io.StringIO(json.dumps(_init()) + "\n"), stdout=out
+        )
+        assert code == 0
+        assert "protocolVersion" in out.getvalue()
+        assert not (tmp_path / "trace.ndjson").exists()
+    finally:
+        if saved is not None:
+            os.environ[trace.ENV_TRACE] = saved
+
+
+def test_secret_shaped_arguments_are_redacted(tmp_path: Path) -> None:
+    trace_path = _drive(
+        tmp_path,
+        [
+            _init(),
+            _call(
+                2,
+                "invoke",
+                {
+                    "id": "x",
+                    "action": "y",
+                    "args": {"api_key": "supersecret", "note": "hello"},
+                },
+            ),
+        ],
+    )
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok, verification.reasons
+    args = verification.records[0]["args"]
+    # Keyword redaction scrubs key name AND value (same semantics as the
+    # arm-side scrubber); non-secret strings pass through.
+    assert "supersecret" not in args["args"]
+    assert '"note": "hello"' in args["args"]
+    assert "[redacted]" in args["args"]
+
+
+def test_run_range_record_carries_the_fixture_roster(tmp_path: Path) -> None:
+    trace_path = _drive(tmp_path, [_init(), _call(2, "run_range", {"arm_ids": []})])
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok, verification.reasons
+    result = verification.records[0]["result"]
+    assert result["isError"] is False
+    assert len(result["fixture_ids"]) == 10
+    assert "tf_iam_open" in result["fixture_ids"]
+
+
+def test_non_object_line_does_not_crash_the_traced_server(tmp_path: Path) -> None:
+    trace_path = _drive(
+        tmp_path,
+        [
+            {"jsonrpc": "2.0", "id": 1, "method": "ping"},
+            ["not", "an", "object"],
+            _call(2, "list", {}),
+        ],
+    )
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok, verification.reasons
+    assert verification.tool_calls == 1
+
+
+def test_non_empty_existing_trace_refuses_startup(tmp_path: Path, capsys) -> None:
+    import io
+    import os
+
+    trace_path = tmp_path / "trace.ndjson"
+    trace_path.write_text('{"seq": 1}\n', encoding="utf-8")
+    saved = {
+        trace.ENV_TRACE: os.environ.pop(trace.ENV_TRACE, None),
+        trace.ENV_KEY: os.environ.pop(trace.ENV_KEY, None),
+    }
+    os.environ[trace.ENV_TRACE] = str(trace_path)
+    os.environ[trace.ENV_KEY] = KEY_HEX
+    try:
+        code = McpServer().serve(stdin=io.StringIO(""), stdout=io.StringIO())
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+    assert code == 1
+    assert "already exists" in capsys.readouterr().err
+
+
+def test_records_after_close_fail_verification(tmp_path: Path) -> None:
+    trace_path = _drive(tmp_path, [_init(), _call(2, "list", {})])
+    # Forge a VALID chained extension after the close record (we hold
+    # the key): the verifier must still refuse — a cleanly closed trace
+    # ends with its close record.
+    records = [json.loads(line) for line in trace_path.read_text(encoding="utf-8").splitlines()]
+    last = records[-1]
+    assert last["type"] == "close"
+    extension = {
+        "seq": last["seq"] + 1,
+        "ts": last["ts"],
+        "prev": last["hmac"],
+        "type": "call",
+        "tool": "list",
+        "args": {},
+        "result": {"isError": False, "envelope_status": None, "capability_id": None, "fixture_ids": [], "error": None},
+    }
+    body = {k: v for k, v in extension.items() if k != "hmac"}
+    import hmac as hmac_module
+    import hashlib
+
+    mac = hmac_module.new(KEY, digestmod=hashlib.sha256)
+    mac.update(last["hmac"].encode("ascii"))
+    mac.update(trace._canonical(body))
+    extension["hmac"] = mac.hexdigest()
+    with trace_path.open("a", encoding="utf-8") as handle:
+        handle.write(json.dumps(extension) + "\n")
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok is False
+    assert any("does not end with a close record" in reason for reason in verification.reasons)
+
+
+def test_secret_shaped_keys_redact_their_values(tmp_path: Path) -> None:
+    trace_path = _drive(
+        tmp_path,
+        [
+            _init(),
+            _call(
+                2,
+                "invoke",
+                {"id": "x", "action": "y", "args": {"credentials": "hunter2"}},
+            ),
+        ],
+    )
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok, verification.reasons
+    args = verification.records[0]["args"]
+    assert "hunter2" not in json.dumps(args)
+    assert "[redacted]" in args["args"]
+
+
+@pytest.mark.skipif(os.name == 'nt', reason='Windows cannot deliver SIGTERM as a signal')
+def test_sigterm_is_attested_as_graceful_close(tmp_path: Path) -> None:
+    """Agent CLIs stop their MCP servers with a termination signal, not
+    an stdin EOF: a trapped SIGTERM appends the close record so the
+    trace attests an orderly shutdown (POSIX lanes; Windows cannot
+    deliver SIGTERM as a signal)."""
+    import signal
+    import subprocess
+    import sys
+    import time
+
+    trace_path = tmp_path / "trace.ndjson"
+    env = dict(os.environ)
+    env[trace.ENV_TRACE] = str(trace_path)
+    env[trace.ENV_KEY] = KEY_HEX
+    env[trace.ENV_ATTEMPT] = "c0" * 32
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "extension.mcp_server"],
+        stdin=subprocess.PIPE,
+        # The test only reads the trace file: DEVNULL cannot fill up
+        # and block the server mid-write of a large response.
+        stdout=subprocess.DEVNULL,
+        env=env,
+        cwd=str(Path(__file__).resolve().parents[1]),
+    )
+    try:
+        proc.stdin.write(json.dumps(_init()).encode("utf-8") + b"\n")
+        proc.stdin.write(json.dumps(_call(2, "list", {})).encode("utf-8") + b"\n")
+        proc.stdin.flush()
+        time.sleep(0.5)
+        proc.send_signal(signal.SIGTERM)
+        proc.wait(timeout=10)
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+    verification = trace.verify_trace(trace_path, KEY)
+    assert verification.ok, verification.reasons
+    assert verification.tool_calls == 1
+    assert verification.close_ok is True
+    assert verification.records[-1]["type"] == "close"
+
+
+def test_range_fixture_ids_come_from_the_manifest() -> None:
+    roster = trace.range_fixture_ids()
+    assert len(roster) == 10
+    assert len(set(roster)) == len(roster)
+    assert "tf_iam_open" in roster
+
+
+def test_signal_handlers_not_installed_for_monkeypatched_stdio(
+    tmp_path: Path,
+) -> None:
+    """Module-attr monkeypatching of sys.stdin (the tracer-test pattern)
+    must not satisfy the real-stdio guard: an in-process serve with
+    patched stdio installs no process-global signal handlers."""
+    import extension.mcp_server as mcp_server
+
+    before_term = signal.getsignal(signal.SIGTERM)
+    before_int = signal.getsignal(signal.SIGINT)
+    saved_stdin = mcp_server.sys.stdin
+    saved_stdout = mcp_server.sys.stdout
+    # Capture prior env values so the finally restores them exactly —
+    # the lab/CI hosts leave these unset, but the suite must not
+    # destroy an operator-set value either.
+    prior_env = {
+        var: os.environ.get(var)
+        for var in (trace.ENV_TRACE, trace.ENV_KEY, trace.ENV_ATTEMPT)
+    }
+    trace_path = tmp_path / "trace.ndjson"
+    mcp_server.sys.stdin = io.StringIO("")  # EOF immediately
+    mcp_server.sys.stdout = io.StringIO()
+    os.environ[trace.ENV_TRACE] = str(trace_path)
+    os.environ[trace.ENV_KEY] = KEY_HEX
+    os.environ[trace.ENV_ATTEMPT] = "d1" * 32
+    after_term = after_int = None
+    try:
+        mcp_server.McpServer().serve()
+        # Capture the post-serve state INSIDE the try: the finally
+        # below restores the prior handlers for isolation, and the
+        # regression signal (did serve() leak a handler?) must be
+        # recorded before the restoration erases it.
+        after_term = signal.getsignal(signal.SIGTERM)
+        after_int = signal.getsignal(signal.SIGINT)
+    finally:
+        mcp_server.sys.stdin = saved_stdin
+        mcp_server.sys.stdout = saved_stdout
+        # Restore whatever the outer environment held (including
+        # absence); never leave the test's values behind.
+        for var, prior in prior_env.items():
+            if prior is None:
+                os.environ.pop(var, None)
+            else:
+                os.environ[var] = prior
+        # getsignal() returns None only for handlers installed outside
+        # Python, which signal.signal() cannot restore — skip rather
+        # than mask the outcome from inside the finally.
+        if before_term is not None:
+            signal.signal(signal.SIGTERM, before_term)
+        if before_int is not None:
+            signal.signal(signal.SIGINT, before_int)
+    # The regression assertion compares the POST-SERVE state, not the
+    # just-restored state: a serve() that installs handlers under
+    # monkeypatched stdio must fail this test.
+    assert after_term is before_term
+    assert after_int is before_int

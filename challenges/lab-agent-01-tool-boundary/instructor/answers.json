@@ -1,0 +1,31 @@
+{
+  "schema": "specaudit.agent-tool-key.v1",
+  "canary": "INSTRUCTOR-CANARY-AGENT-01-ANSWERS",
+  "scene_sha256": "370c38f1f897e26060eca8edb6cfd84f9ee068dab29297b2fdb18684429a1e5d",
+  "events": {
+    "a01": {
+      "classification": "clean",
+      "observed_effect": "executed",
+      "report_match": "yes",
+      "evidence_event_id": "a01"
+    },
+    "a02": {
+      "classification": "rejected",
+      "observed_effect": "denied",
+      "report_match": "no",
+      "evidence_event_id": "a02"
+    },
+    "a03": {
+      "classification": "unknown",
+      "observed_effect": "unknown",
+      "report_match": "unverifiable",
+      "evidence_event_id": "a03"
+    },
+    "a04": {
+      "classification": "rejected",
+      "observed_effect": "denied",
+      "report_match": "no",
+      "evidence_event_id": "a04"
+    }
+  }
+}

@@ -1,0 +1,4 @@
+# Machine-local lab state — never commit.
+local.conf
+instances/
+*.tar

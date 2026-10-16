@@ -1,0 +1,29 @@
+{
+  "track": "lab-knowledge-01-attack-mapping",
+  "seed": null,
+  "fixtures": ["tf_s3_public_access", "tf_cloudtrail_disabled", "tf_iam_open"],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-knowledge-t1530-public-storage",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "high",
+      "rationale": "The planted S3 bucket ACL rule (aws:s3:PutObject:acl -> READ) exposes stored objects publicly, which maps to T1530 (Data from Cloud Storage) because the demo STIX bundle describes T1530 as adversaries collecting data from cloud-based storage services — here the public-read ACL turns that capability directly toward a real cloud account.",
+      "traces_to": "extension/range/tf_s3_public_access/input/main.tf public-read ACL mapped to ATT&CK technique T1530"
+    },
+    {
+      "finding_key": "demo-knowledge-t1562-008-cloud-logs",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "high",
+      "rationale": "The disabled CloudTrail trail (cloudtrail_enabled = false) removes audit logging of API activity, which maps to T1562.008 (Impair Defenses: Disable Cloud Logs) because the demo STIX bundle identifies this sub-technique as adversaries modifying or disabling defenses such as logging services to avoid detection.",
+      "traces_to": "extension/range/tf_cloudtrail_disabled/input/main.tf disabled trail mapped to ATT&CK sub-technique T1562.008"
+    },
+    {
+      "finding_key": "demo-knowledge-t1078-wildcard-accounts",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "critical",
+      "rationale": "The wildcard identity policy (Action: '*') grants unrestricted permissions to all IAM principals matching '*', which maps to T1078 (Valid Accounts) because the demo STIX bundle describes how adversaries leverage legitimate account credentials to move laterally and access sensitive data across platforms including Identity Provider and SaaS.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf wildcard identity policy mapped to ATT&CK technique T1078"
+    }
+  ]
+}

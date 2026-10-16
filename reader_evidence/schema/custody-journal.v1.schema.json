@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "specaudit.ctf.custody-journal.v1",
+  "title": "specaudit custody journal record (v1)",
+  "description": "One authenticated custody/replay record over a reader observation. The HMAC key is an operator-chosen local trust root; nothing here claims an operator provisioned or used it. custody_state is strictly limited to operator-asserted-custody and verified-custody: source-authenticity is an open operator gate that this journal cannot claim locally. The acquisition digest binds the acquisition record's content-identity fields (size_bytes, sha256) so retained artifact bytes can be re-verified; the full observation document lives outside the journal.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "seq", "journal_id", "observation_id", "observation_digest", "acquisition_digest", "attempt_id", "arm_id", "action", "custody_state", "recorded_at", "prev_record_digest", "record_digest"],
+  "properties": {
+    "schema": {"const": "specaudit.ctf.custody-journal.v1"},
+    "schema_version": {"const": 1},
+    "seq": {"type": "integer", "minimum": 1},
+    "journal_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "derived from the attempt identity; one journal serves one attempt"},
+    "observation_id": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "observation_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "sha256 over the canonical reader-observation.v1 document, which lives outside the journal"},
+    "acquisition_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "sha256 over the canonical AcquisitionRecord content-identity fields"},
+    "attempt_id": {"type": "string", "pattern": "^[a-z0-9][a-z0-9._-]{7,63}$"},
+    "arm_id": {"type": "string", "minLength": 1, "maxLength": 256},
+    "action": {"type": "string", "minLength": 1, "maxLength": 256},
+    "custody_state": {"enum": ["operator-asserted-custody", "verified-custody"]},
+    "recorded_at": {"type": "string", "description": "naive local iso datetime supplied by the caller", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]+)?$"},
+    "prev_record_digest": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}]},
+    "record_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+    "auth_tag": {"type": "string", "pattern": "^[0-9a-f]{64}$", "description": "optional HMAC-SHA256 under the operator-held key, over the canonical record bytes including record_digest"}
+  }
+}

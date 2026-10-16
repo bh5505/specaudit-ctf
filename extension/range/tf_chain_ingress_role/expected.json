@@ -1,0 +1,81 @@
+{
+  "exposure": {
+    "id": "demo-exp-role-escalate",
+    "kind": "assumable_role",
+    "asset_id": "role-escalate",
+    "asset_name": "demo-escalation-role",
+    "severity": "critical",
+    "summary": "aws_iam_role role-escalate is assumable via sts:AssumeRole by broader principals"
+  },
+  "path": [
+    {
+      "from": "sg-jump",
+      "to": "role-escalate",
+      "via": "sts:AssumeRole",
+      "auth": "principal"
+    }
+  ],
+  "impact": {
+    "id": "demo-imp-role-escalate",
+    "kind": "privilege_escalation",
+    "asset_id": "role-escalate",
+    "severity": "critical",
+    "summary": "A principal that can assume demo-escalation-role acts with its permissions on every resource"
+  },
+  "exposures": [
+    {
+      "id": "demo-exp-sg-jump",
+      "kind": "open_ingress",
+      "asset_id": "sg-jump",
+      "asset_name": "demo-jump-sg",
+      "severity": "high",
+      "summary": "aws_security_group sg-jump admits 0.0.0.0/0 ingress on port range 22-22",
+      "path": [
+        {
+          "from": "internet",
+          "to": "sg-jump",
+          "via": "tcp/22",
+          "auth": "none"
+        }
+      ],
+      "impact": {
+        "id": "demo-imp-sg-jump",
+        "kind": "remote_service_exposure",
+        "asset_id": "sg-jump",
+        "severity": "high",
+        "summary": "Administrative or data services on demo-jump-sg are reachable from any address"
+      }
+    },
+    {
+      "id": "demo-exp-role-escalate",
+      "kind": "assumable_role",
+      "asset_id": "role-escalate",
+      "asset_name": "demo-escalation-role",
+      "severity": "critical",
+      "summary": "aws_iam_role role-escalate is assumable via sts:AssumeRole by broader principals",
+      "path": [
+        {
+          "from": "sg-jump",
+          "to": "role-escalate",
+          "via": "sts:AssumeRole",
+          "auth": "principal"
+        }
+      ],
+      "impact": {
+        "id": "demo-imp-role-escalate",
+        "kind": "privilege_escalation",
+        "asset_id": "role-escalate",
+        "severity": "critical",
+        "summary": "A principal that can assume demo-escalation-role acts with its permissions on every resource"
+      }
+    }
+  ],
+  "chains": [
+    {
+      "kind": "internet_to_identity",
+      "ingress_asset": "sg-jump",
+      "role_asset": "role-escalate",
+      "summary": "Internet-reachable ingress on demo-jump-sg chains into assumable role demo-escalation-role"
+    }
+  ]
+}

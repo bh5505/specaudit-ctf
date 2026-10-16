@@ -1,0 +1,12 @@
+{
+  "kind": "asset-config",
+  "assets": [
+    {
+      "id": "assume-target",
+      "type": "aws_iam_role",
+      "name": "demo-admin-role",
+      "assumable": true,
+      "admin": true
+    }
+  ]
+}

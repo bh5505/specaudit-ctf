@@ -1,0 +1,54 @@
+{
+  "schema": "specaudit.ctf.detection-rules.v1",
+  "rules": [
+    {
+      "rule_id": "DEMO-0001",
+      "name": "synthetic repeated-auth-failure demo",
+      "severity": "low",
+      "log_fields_required": ["principal", "auth_outcome", "event_time"],
+      "false_positive_notes": "shared synthetic service accounts fail auth in bursts during the scripted demo window"
+    },
+    {
+      "rule_id": "DEMO-0002",
+      "name": "synthetic off-hours file staging demo",
+      "severity": "medium",
+      "log_fields_required": ["principal", "target_path", "bytes_written", "event_time"],
+      "false_positive_notes": "the demo night-shift backup job writes archives to the same staging prefix"
+    },
+    {
+      "rule_id": "DEMO-0003",
+      "name": "synthetic privilege-grant spike demo",
+      "severity": "high",
+      "log_fields_required": ["actor", "granted_role", "target_principal", "event_time"],
+      "false_positive_notes": "quarterly synthetic access review re-grants every role in one batch"
+    },
+    {
+      "rule_id": "DEMO-0004",
+      "name": "synthetic egress-volume outlier demo",
+      "severity": "medium",
+      "log_fields_required": ["source_host", "destination", "bytes_sent", "event_time"],
+      "false_positive_notes": "the synthetic dataset ships one intentionally large baseline export per host"
+    },
+    {
+      "rule_id": "DEMO-0005",
+      "name": "synthetic dormant-credential reuse demo",
+      "severity": "high",
+      "log_fields_required": ["principal", "last_seen_before_days", "auth_source", "event_time"],
+      "false_positive_notes": "deliberately dormant demo principals wake on a fixed schedule to exercise the rule"
+    },
+    {
+      "rule_id": "DEMO-0006",
+      "name": "synthetic log-source silence demo",
+      "severity": "low",
+      "log_fields_required": ["log_source", "last_event_time"],
+      "false_positive_notes": "demo hosts pause emission during scripted maintenance, which is expected silence"
+    },
+    {
+      "rule_id": "DEMO-0007",
+      "name": "synthetic config-hash drift demo",
+      "severity": "medium",
+      "log_fields_required": ["target_path", "config_hash", "change_actor", "event_time"],
+      "false_positive_notes": "the demo harness rewrites pinned configs between scenarios, tripping drift on purpose"
+    }
+  ]
+}

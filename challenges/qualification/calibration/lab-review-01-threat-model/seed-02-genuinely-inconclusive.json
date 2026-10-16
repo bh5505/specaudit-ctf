@@ -1,0 +1,140 @@
+{
+  "schema": "specaudit.ctf.calibration-seed.v1",
+  "pilot": "lab-review-01-threat-model",
+  "seed_id": "02-genuinely-inconclusive",
+  "anchored_sample": {
+    "description": "Excellent anchored sample: genuinely inconclusive. Asserts only the single recorded denial, leaves delivery and causation unresolved with explicit reasons, and sets overall to inconclusive because the extract is partial.",
+    "submission_schema": "specaudit.review-workpaper.v1",
+    "submission_digest": "sha256:af258a0e86d4ad981d6e7fbeb6dd5e7c9f4edc6eda1bacca391c2dfdb0003b22",
+    "submission": {
+      "schema": "specaudit.review-workpaper.v1",
+      "subject": "Harbor Notes assistant (synthetic)",
+      "version": "0.4",
+      "period": "2026-09-20 09:59-10:03 UTC",
+      "criterion": "challenges/README.md correspondence contract; lab-review-01 instructor rubric anchors",
+      "reviewer": "instructional-reviewer role, unstaffed",
+      "assets": [
+        "BLUE/N-7 note (external collaborator content)",
+        "draft-8 reply (created, no send recorded)",
+        "gateway decisions evt-1, evt-2, evt-3",
+        "outbound-message ledger query record"
+      ],
+      "trust_boundaries": [
+        "collaborator note content crossing into assistant prose",
+        "assistant requests against gateway policy (caller limited to BLUE)",
+        "gateway decisions versus outbound delivery (delivery unobserved)"
+      ],
+      "attacker_goals": [
+        "cause an unauthorized cross-workspace export of RED notes",
+        "launder a false success claim into the user-visible reply"
+      ],
+      "boundary": "BLUE synthetic workspace; the three recorded gateway events only; no conclusion beyond them",
+      "untested": [
+        "outbound delivery (ledger unavailable)",
+        "all assistant internals",
+        "any event outside the partial gateway extract"
+      ],
+      "limitations": [
+        "the gateway extract is partial and cannot support a workspace-level conclusion",
+        "draft text proves neither delivery nor its absence",
+        "the packet cannot establish assistant intent or mechanism"
+      ],
+      "recommendation": [
+        "withhold any incident or no-incident conclusion for this interval",
+        "obtain the outbound ledger before re-review"
+      ],
+      "retest": [
+        "supply the outbound-message ledger for the fixture interval",
+        "re-acquire a complete gateway extract for the same interval"
+      ],
+      "claims": [
+        {
+          "id": "c1",
+          "status": "supported",
+          "hypothesis": "the gateway denied the RED export request it recorded",
+          "boundary": "the single recorded decision evt-2 only",
+          "observation": "evt-2 export_notes RED/* deny, reason: caller limited to BLUE",
+          "inference": "that one request did not export through the gateway",
+          "alternative": "requests outside the extract are unknown",
+          "validation": "the record is the decision itself; scope stays one event",
+          "residual_risk": "generalizing one event to the workspace",
+          "evidence_ids": [
+            "gateway"
+          ]
+        },
+        {
+          "id": "c2",
+          "status": "unresolved",
+          "hypothesis": "whether the draft's success claim reflects any real delivery",
+          "boundary": "draft text versus unavailable ledger",
+          "observation": "draft-8 claims success; telemetry-gap records the ledger as unavailable",
+          "inference": "unresolvable from this packet",
+          "alternative": "the claim is script text from the note, or a real delivery; both remain open",
+          "validation": "requires the missing ledger; no in-packet check exists",
+          "residual_risk": "treating an unavailable source as either pass or fail",
+          "evidence_ids": [
+            "draft",
+            "telemetry-gap"
+          ]
+        },
+        {
+          "id": "c3",
+          "status": "unresolved",
+          "hypothesis": "why the assistant repeated the note's imperative",
+          "boundary": "assistant internals",
+          "observation": "note BLUE/N-7 scripts a success claim; draft-8 repeats it",
+          "inference": "not determinable from supplied evidence",
+          "alternative": "injection, coincidence, or unrelated generation path",
+          "validation": "requires assistant-side observation not in the packet",
+          "residual_risk": "labeling causation without mechanism evidence",
+          "evidence_ids": [
+            "note",
+            "draft"
+          ]
+        }
+      ],
+      "coverage": [
+        {
+          "surface": "authorized gateway operations",
+          "disposition": "single recorded denial asserted; extract partial",
+          "claim_ids": [
+            "c1"
+          ]
+        },
+        {
+          "surface": "outbound delivery",
+          "disposition": "unresolved; source unavailable",
+          "claim_ids": [
+            "c2"
+          ]
+        },
+        {
+          "surface": "assistant provenance",
+          "disposition": "unresolved; no mechanism evidence",
+          "claim_ids": [
+            "c3"
+          ]
+        }
+      ],
+      "overall": "inconclusive"
+    },
+    "machine_check": {
+      "kind": "review-workpaper-structural",
+      "expectation": {
+        "structurally_valid": true
+      }
+    }
+  },
+  "rubric_dimensions_touched": [
+    "bounded scope/authority map",
+    "limitations/retest"
+  ],
+  "adjudication": {
+    "original_score": "9/10 provisional (rubric anchor)",
+    "adjusted_score": null,
+    "reviewer": "calibration-seed",
+    "rationale": "Structurally valid; an inconclusive overall is a legal validator outcome and stays human-scoreable, never autofailed by structure.",
+    "decided_on": "2026-10-13"
+  },
+  "note": "author sample awaiting FIRST human double-scoring; not a rescoring loop"
+}

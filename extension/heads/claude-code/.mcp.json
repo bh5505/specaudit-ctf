@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "specaudit-ctf": {
+      "command": "python",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/launch_mcp.py"],
+      "env": {
+        "PYTHONPATH": "${CLAUDE_PROJECT_DIR}",
+        "SPECAUDIT_CTF_ROOT": "${CLAUDE_PROJECT_DIR}"
+      }
+    }
+  }
+}

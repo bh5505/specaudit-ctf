@@ -1,0 +1,20 @@
+{
+  "track": "telecom-aws-06-chain-rehearsal",
+  "seed": 123,
+  "fixtures": [
+    "tf_chain_ingress_role",
+    "tf_iam_open",
+    "tf_s3_public_access"
+  ],
+  "stage": 2,
+  "total": 1,
+  "findings": [
+    {
+      "finding_key": "demo-chain-internet-to-identity",
+      "control": "defense-in-depth: exposure-to-identity chain",
+      "severity": "critical",
+      "rationale": "The internet-reachable host chains into the assumable administrator role: neither asset alone yields account takeover, the joined chain does.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/connectivity.json, edge sg-jump -> role-escalate via sts:AssumeRole"
+    }
+  ]
+}

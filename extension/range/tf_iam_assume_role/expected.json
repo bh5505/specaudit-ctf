@@ -1,0 +1,51 @@
+{
+  "exposure": {
+    "id": "demo-exp-assume-target",
+    "kind": "assumable_role",
+    "asset_id": "assume-target",
+    "asset_name": "demo-admin-role",
+    "severity": "critical",
+    "summary": "aws_iam_role assume-target is assumable via sts:AssumeRole by broader principals"
+  },
+  "path": [
+    {
+      "from": "any-principal",
+      "to": "assume-target",
+      "via": "sts:AssumeRole",
+      "auth": "principal"
+    }
+  ],
+  "impact": {
+    "id": "demo-imp-assume-target",
+    "kind": "privilege_escalation",
+    "asset_id": "assume-target",
+    "severity": "critical",
+    "summary": "A principal that can assume demo-admin-role acts with its permissions on every resource"
+  },
+  "exposures": [
+    {
+      "id": "demo-exp-assume-target",
+      "kind": "assumable_role",
+      "asset_id": "assume-target",
+      "asset_name": "demo-admin-role",
+      "severity": "critical",
+      "summary": "aws_iam_role assume-target is assumable via sts:AssumeRole by broader principals",
+      "path": [
+        {
+          "from": "any-principal",
+          "to": "assume-target",
+          "via": "sts:AssumeRole",
+          "auth": "principal"
+        }
+      ],
+      "impact": {
+        "id": "demo-imp-assume-target",
+        "kind": "privilege_escalation",
+        "asset_id": "assume-target",
+        "severity": "critical",
+        "summary": "A principal that can assume demo-admin-role acts with its permissions on every resource"
+      }
+    }
+  ],
+  "chains": []
+}

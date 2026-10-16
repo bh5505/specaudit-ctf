@@ -1,0 +1,42 @@
+{
+  "name": "export-tool (synthetic CTF)",
+  "description": "Synthetic project-scoped Agent Card for Project rehearsal; advertises the validator inventory snapshot skill. Machine-only read path: no live actions.",
+  "version": "0.1.0-ctf",
+  "project_id": "rehearsal-2026",
+  "engagement_id": "rehearsal-2026",
+  "audit_year": 2026,
+  "capabilities": {
+    "extended_agent_card": true
+  },
+  "skills": [
+    {
+      "name": "specaudit.validator.inventory.snapshot.v1",
+      "schema": 1,
+      "capabilities": {
+        "extended_agent_card": true
+      }
+    }
+  ],
+  "validation_context": {
+    "urn": "urn:specaudit:validation-context:v1",
+    "contract": "specaudit.validation-context.v1"
+  },
+  "limits": {
+    "connect_timeout_s": 10,
+    "request_timeout_s": 60,
+    "read_idle_timeout_s": 10,
+    "agent_card_body_bytes": 524288,
+    "protected_body_bytes": 10485760,
+    "inventory": {
+      "page_size": 200,
+      "max_pages": 250,
+      "max_candidates": 50000,
+      "cumulative_bytes": 67108864,
+      "order": "severity_rank_desc,risk_score_desc_nulls_last,finding_id_asc"
+    }
+  },
+  "auth": {
+    "allow_actions": false,
+    "note": "CTF synthetic card; no live actions"
+  }
+}

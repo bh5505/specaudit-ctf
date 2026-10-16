@@ -1,0 +1,50 @@
+{
+  "schema": "synthetic-detection-chain/v1",
+  "technique": {
+    "technique_id": "T1078",
+    "source_path": "extension/arms/attackstix/data/demo-enterprise-sample.json",
+    "source_sha256": "704f253c5754d84c4dd19831c3369e9800165239276a3cb7c23b315d7fe47219"
+  },
+  "rule": {
+    "id": "rule-privileged-session",
+    "deployed": true,
+    "event_kind": "privileged-session",
+    "outcome": "allowed"
+  },
+  "prerequisite": {
+    "datasource": "identity-audit",
+    "collection": "on",
+    "attempt": "allowed"
+  },
+  "events": [
+    {
+      "id": "evt-a1",
+      "datasource": "identity-audit",
+      "kind": "privileged-session",
+      "outcome": "allowed",
+      "subject": "synthetic-admin"
+    }
+  ],
+  "alerts": [
+    {
+      "id": "alert-a1",
+      "rule_id": "rule-privileged-session",
+      "event_id": "evt-a1"
+    }
+  ],
+  "actions": [
+    {
+      "id": "case-a1",
+      "alert_id": "alert-a1",
+      "decision": "triaged"
+    }
+  ],
+  "retests": [
+    {
+      "id": "retest-a1",
+      "action_id": "case-a1",
+      "result": "effective"
+    }
+  ],
+  "case_id": "positive"
+}

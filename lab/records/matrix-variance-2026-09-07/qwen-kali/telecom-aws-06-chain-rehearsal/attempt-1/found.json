@@ -1,0 +1,43 @@
+{
+  "track": "telecom-aws-06-chain-rehearsal",
+  "seed": null,
+  "fixtures": ["tf_chain_ingress_role", "tf_iam_open", "tf_s3_public_access"],
+  "total": 5,
+  "findings": [
+    {
+      "finding_key": "demo-chain-sg-open-admin",
+      "control": "network containment: administrative shell exposure",
+      "severity": "high",
+      "rationale": "An aws_security_group_rule in extension/range/tf_chain_ingress_role/input/main.tf grants ingress 0.0.0.0/0 on tcp port 22 to the jump security group, opening SSH to the entire internet.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf, aws_security_group.jump, ingress 0.0.0.0/0 tcp/22"
+    },
+    {
+      "finding_key": "demo-chain-role-assumable",
+      "control": "least-privilege: role assumability",
+      "severity": "critical",
+      "rationale": "A permissive aws_iam_role_policy_attachment named escalation in extension/range/tf_chain_ingress_role/input/main.tf couples with the associated aws_iam_role to allow arbitrary sts:AssumeRole assumptions across the account.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf, aws_iam_role.escalation + aws_iam_role_policy_attachment.escalation"
+    },
+    {
+      "finding_key": "demo-chain-internet-to-identity",
+      "control": "defense-in-depth: exposure-to-identity chain",
+      "severity": "critical",
+      "rationale": "The connectivity manifest at extension/range/tf_chain_ingress_role/input/connectivity.json maps edge sg-jump to role-escalate via sts:AssumeRole, forming a direct chain from the open SSH gateway to role assumption.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/connectivity.json, edge sg-jump -> role-escalate via sts:AssumeRole"
+    },
+    {
+      "finding_key": "demo-chain-iam-open-to-s3-public",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "The wildcard policy Statement[0] in extension/range/tf_iam_open/input/main.tf provides broad identity-level permissions that chain directly to the public-read ACL configured on the S3 bucket in extension/range/tf_s3_public_access/input/main.tf.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf Statement[0] chained with extension/range/tf_s3_public_access/input/main.tf public-read ACL"
+    },
+    {
+      "finding_key": "demo-chain-iam-wildcard",
+      "control": "least-privilege: wildcard identity policy",
+      "severity": "critical",
+      "rationale": "An aws_iam_policy named wildcard in extension/range/tf_iam_open/input/main.tf defines Statement[0] with wildcards on both Action and Resource, violating least-privilege by granting unrestricted permission.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action and Statement[0].Resource"
+    }
+  ]
+}

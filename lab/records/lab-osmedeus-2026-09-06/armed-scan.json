@@ -1,0 +1,69 @@
+{
+  "approval_ref": "operator://dispatch-scope/OSMEDEUS_DISPATCH_SCOPE",
+  "artifacts": [
+    {
+      "digest": "sha256:484f9f6f9ef9157ec4f6b6eb4e715c85000bee15d3741cdd0aaf3790371ba815",
+      "kind": "policy-report",
+      "redaction": "credentials-stripped"
+    }
+  ],
+  "budget": {
+    "reserved": {
+      "max_output_bytes": 1048576,
+      "max_spend": null,
+      "max_tool_steps": 1,
+      "timeout_ms": 600000
+    },
+    "spent": {
+      "elapsed_ms": 361000,
+      "output_bytes": 20598,
+      "spend": 0,
+      "tool_steps": 1
+    }
+  },
+  "capability_id": "osmedeus.scan",
+  "cleanup": {
+    "proof_digest": null,
+    "required": false,
+    "residual": false
+  },
+  "coverage": {
+    "attempted": [
+      "osmedeus.scan"
+    ],
+    "complete": [
+      "osmedeus.scan"
+    ],
+    "failed": [],
+    "required": [
+      "osmedeus.scan"
+    ],
+    "skipped": [],
+    "unsupported": []
+  },
+  "finished_at": "2026-09-06T18:13:38Z",
+  "limitations": [],
+  "roe_ref": "doc://README#dispatch-doctrine",
+  "safety_class": "R1",
+  "schema": "specaudit.ctf.execution-result.v1",
+  "schema_version": 1,
+  "scope": {
+    "authorized": [
+      "policy://extension/arms/osmedeus"
+    ],
+    "touched": [
+      "policy://extension/arms/osmedeus"
+    ]
+  },
+  "side_effects": [
+    "subprocess",
+    "network-egress"
+  ],
+  "started_at": "2026-09-06T18:07:37Z",
+  "status": "complete",
+  "tool": {
+    "name": "specaudit-ctf",
+    "version": "0.1.0"
+  },
+  "transport_ok": true
+}

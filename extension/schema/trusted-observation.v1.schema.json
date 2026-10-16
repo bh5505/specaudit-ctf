@@ -1,0 +1,308 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "specaudit.ctf.trusted-observation.v1",
+  "description": "Closed structural contract for opt-in trusted-side binding of one declared vulnify.lookup record to a per-attempt source admission, semantic-complete execution-result, exact policy-report bytes, and exact raw source bytes. Runtime verification owns cross-field time, replay identity, content identity, and byte-binding semantics. Validator-attested Mode A is an assertion by the trusted caller, not proof supplied by execution-result v1.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "observation_id",
+    "admission_id",
+    "attempt_id",
+    "capability_id",
+    "arm_id",
+    "action",
+    "producer",
+    "verifier",
+    "subject",
+    "scope",
+    "collected_at",
+    "verified_at",
+    "source",
+    "custody",
+    "bindings",
+    "evidence",
+    "limitations"
+  ],
+  "properties": {
+    "schema": { "const": "specaudit.ctf.trusted-observation.v1" },
+    "schema_version": { "type": "integer", "const": 1 },
+    "observation_id": {
+      "type": "string",
+      "description": "Stable v1 replay identity over schema, capability, and validator-created attempt id; not a digest of the full observation document.",
+      "pattern": "^trusted-observation-[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "admission_id": {
+      "type": "string",
+      "pattern": "^source-admission-[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "attempt_id": { "$ref": "#/definitions/attempt_id" },
+    "capability_id": { "const": "vulnify.lookup" },
+    "arm_id": { "const": "vulnify" },
+    "action": { "const": "lookup" },
+    "producer": { "$ref": "#/definitions/producer" },
+    "verifier": { "$ref": "#/definitions/issuer" },
+    "subject": { "$ref": "#/definitions/subject" },
+    "scope": { "$ref": "#/definitions/scope" },
+    "collected_at": { "$ref": "#/definitions/timestamp" },
+    "verified_at": { "$ref": "#/definitions/timestamp" },
+    "source": { "$ref": "#/definitions/source" },
+    "custody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "controller",
+        "source_assertion",
+        "result_assertion",
+        "raw_artifact_locator",
+        "policy_report_locator"
+      ],
+      "properties": {
+        "controller": { "$ref": "#/definitions/identifier" },
+        "source_assertion": { "const": "validator-held-before-attempt" },
+        "result_assertion": { "const": "validator-attested-mode-a" },
+        "raw_artifact_locator": { "$ref": "#/definitions/ref" },
+        "policy_report_locator": {
+          "type": "string",
+          "pattern": "^mode-a://attempt-[0-9a-f]{64}/sha256-[0-9a-f]{64}$(?![\\s\\S])"
+        }
+      }
+    },
+    "bindings": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "admission_digest",
+        "execution_result_digest",
+        "policy_report"
+      ],
+      "properties": {
+        "admission_digest": { "$ref": "#/definitions/digest" },
+        "execution_result_digest": { "$ref": "#/definitions/digest" },
+        "policy_report": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["digest", "bytes"],
+          "properties": {
+            "digest": { "$ref": "#/definitions/digest" },
+            "bytes": { "type": "integer", "minimum": 1, "maximum": 1048576 }
+          }
+        }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class", "record", "applicability"],
+      "properties": {
+        "class": { "const": "declared" },
+        "record": { "$ref": "#/definitions/vulnerability_record" },
+        "applicability": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["assessed", "status"],
+          "properties": {
+            "assessed": { "const": false },
+            "status": { "const": "not-assessed" }
+          }
+        }
+      }
+    },
+    "limitations": {
+      "allOf": [
+        { "$ref": "#/definitions/limitations" },
+        { "contains": { "const": "applicability-not-assessed" } },
+        { "contains": { "const": "source-admission-is-not-governance-promotion" } },
+        { "contains": { "const": "upstream-equivalence-not-established" } }
+      ]
+    }
+  },
+  "definitions": {
+    "attempt_id": {
+      "type": "string",
+      "pattern": "^attempt-[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$(?![\\s\\S])"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "pattern": "^(?!0000-)(?:(?:[0-9]{4}-(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01]))|(?:[0-9]{4}-(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30))|(?:[0-9]{4}-02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29))T(?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]Z$(?![\\s\\S])"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:/+\\-]{0,255}$(?![\\s\\S])"
+    },
+    "ref": {
+      "type": "string",
+      "minLength": 4,
+      "maxLength": 1024,
+      "pattern": "^[a-z][a-z0-9+.-]*://[^\\s]+$(?![\\s\\S])"
+    },
+    "issuer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "$ref": "#/definitions/identifier" },
+        "version": { "$ref": "#/definitions/identifier" }
+      }
+    },
+    "producer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version", "revision"],
+      "properties": {
+        "id": { "const": "specaudit-ctf" },
+        "version": { "const": "0.1.0" },
+        "revision": { "$ref": "#/definitions/identifier" }
+      }
+    },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "revision",
+        "schema",
+        "timestamp",
+        "freshness",
+        "logical_locator",
+        "authority_ref",
+        "raw_artifact"
+      ],
+      "properties": {
+        "id": { "$ref": "#/definitions/identifier" },
+        "revision": { "$ref": "#/definitions/identifier" },
+        "schema": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["id", "version", "format"],
+          "properties": {
+            "id": { "const": "specaudit.ctf.vulnify-feed-projection.v1" },
+            "version": { "type": "integer", "const": 1 },
+            "format": { "enum": ["json", "jsonl", "yaml"] }
+          }
+        },
+        "timestamp": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["status", "value"],
+          "properties": {
+            "status": { "enum": ["known", "unknown"] },
+            "value": {
+              "anyOf": [
+                { "$ref": "#/definitions/timestamp" },
+                { "type": "null" }
+              ]
+            }
+          },
+          "allOf": [
+            {
+              "if": { "properties": { "status": { "const": "known" } } },
+              "then": { "properties": { "value": { "$ref": "#/definitions/timestamp" } } },
+              "else": { "properties": { "value": { "type": "null" } } }
+            }
+          ]
+        },
+        "freshness": { "const": "not-assessed" },
+        "logical_locator": { "$ref": "#/definitions/ref" },
+        "authority_ref": { "$ref": "#/definitions/ref" },
+        "raw_artifact": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["digest", "bytes", "normalized_records_digest"],
+          "properties": {
+            "digest": { "$ref": "#/definitions/digest" },
+            "bytes": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 67108864
+            },
+            "normalized_records_digest": { "$ref": "#/definitions/digest" }
+          }
+        }
+      }
+    },
+    "subject": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "cve_id"],
+      "properties": {
+        "kind": { "const": "cve-record" },
+        "cve_id": {
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^CVE-[0-9]{4}-[0-9]{4,}$(?![\\s\\S])"
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "identifier"],
+      "properties": {
+        "kind": { "const": "vulnerability-record" },
+        "identifier": {
+          "type": "string",
+          "maxLength": 36,
+          "pattern": "^cve:CVE-[0-9]{4}-[0-9]{4,}$(?![\\s\\S])"
+        }
+      }
+    },
+    "vulnerability_record": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cve_id"],
+      "properties": {
+        "cve_id": {
+          "type": "string",
+          "maxLength": 32,
+          "pattern": "^CVE-[0-9]{4}-[0-9]{4,}$(?![\\s\\S])"
+        },
+        "name": { "$ref": "#/definitions/nullable_text" },
+        "severity": { "$ref": "#/definitions/nullable_text" },
+        "description": { "$ref": "#/definitions/nullable_text" },
+        "source": { "$ref": "#/definitions/nullable_text" },
+        "published": { "$ref": "#/definitions/nullable_text" },
+        "modified": { "$ref": "#/definitions/nullable_text" },
+        "status": { "$ref": "#/definitions/nullable_text" },
+        "cvss": {
+          "anyOf": [
+            { "type": "number", "minimum": 0, "maximum": 10 },
+            { "type": "null" }
+          ]
+        },
+        "aliases": { "$ref": "#/definitions/text_list" },
+        "references": { "$ref": "#/definitions/text_list" },
+        "affected": { "$ref": "#/definitions/text_list" }
+      }
+    },
+    "nullable_text": {
+      "anyOf": [
+        { "type": "string", "maxLength": 16384 },
+        { "type": "null" }
+      ]
+    },
+    "text_list": {
+      "type": "array",
+      "items": { "type": "string", "maxLength": 16384 }
+    },
+    "limitations": {
+      "type": "array",
+      "maxItems": 67,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$(?![\\s\\S])"
+      }
+    }
+  }
+}

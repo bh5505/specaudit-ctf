@@ -1,0 +1,58 @@
+{
+  "approval_ref": null,
+  "artifacts": [],
+  "budget": {
+    "reserved": {
+      "max_output_bytes": 4096,
+      "max_spend": null,
+      "max_tool_steps": 1,
+      "timeout_ms": 1000
+    },
+    "spent": {
+      "elapsed_ms": 0,
+      "output_bytes": 0,
+      "spend": 0,
+      "tool_steps": 0
+    }
+  },
+  "capability_id": "fixture.local-read",
+  "cleanup": {
+    "proof_digest": null,
+    "required": false,
+    "residual": false
+  },
+  "coverage": {
+    "attempted": [],
+    "complete": [],
+    "failed": [],
+    "required": [],
+    "skipped": [],
+    "unsupported": [
+      "fixture.local-read"
+    ]
+  },
+  "finished_at": "2026-08-25T12:00:00Z",
+  "limitations": [
+    "held capability is never invocable"
+  ],
+  "roe_ref": "roe:synthetic-range",
+  "safety_class": "R0",
+  "schema": "specaudit.ctf.execution-result.v1",
+  "schema_version": 1,
+  "scope": {
+    "authorized": [
+      "file:///extension/range/tf_s3_public_access"
+    ],
+    "touched": []
+  },
+  "side_effects": [
+    "none"
+  ],
+  "started_at": "2026-08-25T12:00:00Z",
+  "status": "failed",
+  "tool": {
+    "name": "fixture",
+    "version": "0.0.0"
+  },
+  "transport_ok": false
+}

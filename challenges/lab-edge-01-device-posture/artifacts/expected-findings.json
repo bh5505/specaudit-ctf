@@ -1,0 +1,39 @@
+{
+  "track": "lab-edge-01-device-posture",
+  "lane": "live-service",
+  "seed": 123,
+  "fixtures": [
+    "lab-target golden rootfs (planted device surface in lab/target/start-services.sh and lab/target/notes/)"
+  ],
+  "total": 4,
+  "findings": [
+    {
+      "finding_key": "demo-edge-mgmt-version-disclosure",
+      "control": "device management plane: implementation and version disclosure",
+      "severity": "low",
+      "rationale": "The device's SSH management plane on tcp/22 hands its implementation and version to any unauthenticated prober in the handshake banner, giving an attacker free target-selection intelligence for the administrative surface.",
+      "traces_to": "lab/target/start-services.sh, the /usr/sbin/sshd listener on tcp/22 (banner observed by the zgrab2 ssh grab)"
+    },
+    {
+      "finding_key": "demo-edge-admin-planes-cleartext",
+      "control": "device admin planes: transport protection",
+      "severity": "medium",
+      "rationale": "Both administrative web planes (tcp/8000 and tcp/8080) serve their interfaces over cleartext HTTP with no TLS anywhere on the device's admin surface, so management interactions and responses travel unencrypted.",
+      "traces_to": "lab/target/start-services.sh, the two python3 -m http.server listeners on tcp/8000 and tcp/8080"
+    },
+    {
+      "finding_key": "demo-edge-ops-docs-exposed",
+      "control": "device config artifacts: operational documentation exposure",
+      "severity": "medium",
+      "rationale": "The device's served tree exposes an operational redeploy checklist through an auto-indexed directory: the document inventories the device's listeners and its rotation procedure, disclosing configuration facts an attacker would otherwise have to probe for.",
+      "traces_to": "lab/target/notes/redeploy-checklist.txt, reachable via the indexless /notes/ directory listing on tcp/8000"
+    },
+    {
+      "finding_key": "demo-edge-image-reconciliation",
+      "control": "device inventory: offline image vs live surface reconciliation",
+      "severity": "none",
+      "rationale": "Reconciliation verdict, not a violation: the offline image's declared service set (ssh/22, http/8000, http/8080 in start-services.sh) matches the live probe exactly - no listener outside the image's declared set was observed, and no declared listener was dark.",
+      "traces_to": "lab/target/start-services.sh (declared set) reconciled against the live nmap port inventory of the spawned target"
+    }
+  ]
+}

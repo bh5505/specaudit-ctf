@@ -1,0 +1,41 @@
+{
+  "schema": "specaudit.ctf.calibration-seed.v1",
+  "pilot": "lab-detect-01-technique-chain",
+  "seed_id": "01-retest-ineffective-correct",
+  "anchored_sample": {
+    "description": "Retest-effectiveness anchor, correct side: the retest-failed packet shows all five stages met while the retest outcome is ineffective. The sample separates 'a retest happened' (outcome_retested met) from 'the control works' (retest_result ineffective). Machine-graded exact.",
+    "submission_schema": "synthetic-detection-submission/v1",
+    "submission_digest": "sha256:4dc0e7edf964d658a84be7f6f42251df1c15c61b94bab2a364f3cccc995bf630",
+    "submission": {
+      "schema": "synthetic-detection-submission/v1",
+      "case_id": "retest-failed",
+      "stages": {
+        "rule_exists": "met",
+        "events_collected": "met",
+        "rule_fired": "met",
+        "analyst_acted": "met",
+        "outcome_retested": "met"
+      },
+      "retest_result": "ineffective"
+    },
+    "machine_check": {
+      "kind": "detection-grade",
+      "expectation": {
+        "case_id": "retest-failed",
+        "pass": true,
+        "differences": {}
+      }
+    }
+  },
+  "rubric_dimensions_touched": [
+    "retest occurrence versus retest outcome"
+  ],
+  "adjudication": {
+    "original_score": "5/5 stages, retest ineffective (provisional)",
+    "adjusted_score": null,
+    "reviewer": "calibration-seed",
+    "rationale": "grade() returns pass=true with no differences; retest occurrence (met) stays separated from retest outcome (ineffective).",
+    "decided_on": "2026-10-13"
+  },
+  "note": "author sample awaiting FIRST human double-scoring; not a rescoring loop"
+}

@@ -1,0 +1,34 @@
+{
+  "synthetic": true,
+  "response_file": "aws_s3_acl_blocked_bpa.json",
+  "request": {
+    "schema": "specaudit.validator.technology-fixture.v1",
+    "provider": "aws",
+    "finding_id": "ctf-aws-s3-blocked-bpa",
+    "rule_id": "AWS-NET-001",
+    "resource_uid": "arn:aws:s3:::ctf-synthetic-bucket",
+    "account_id": "000000000000",
+    "region": "us-east-1",
+    "details": {
+      "details": {
+        "reason": "confirmed_public_exposure"
+      },
+      "account_id": "000000000000",
+      "region": "us-east-1"
+    },
+    "authorization": {
+      "aws_read_role": true,
+      "account_id": "000000000000",
+      "regions": [
+        "us-east-1"
+      ]
+    }
+  },
+  "expect": {
+    "finding_id": "ctf-aws-s3-blocked-bpa",
+    "rule_id": "AWS-NET-001",
+    "configuration_status": "refuted",
+    "reachability_status": "unknown",
+    "reason_code": "bpa_overrides_public_acl"
+  }
+}

@@ -1,0 +1,76 @@
+{
+  "schema": "specaudit.ctf.calibration-seed.v1",
+  "pilot": "lab-k8s-01-rbac-path",
+  "seed_id": "02-genuinely-inconclusive",
+  "anchored_sample": {
+    "description": "Excellent anchored sample: genuinely inconclusive. Asserts only the single recorded deny; leaves the BLUE path and the RED read unresolved with explicit reasons (inferred edge, missing SSAR coverage) and sets overall to inconclusive.",
+    "submission_schema": "free-form human workpaper (lab-k8s-01 ships no machine submission schema)",
+    "submission_digest": "sha256:3ab80b6e78df1c35e685f12c9d9a80d7151888c1ae5717654d7e90a41194f82a",
+    "submission": {
+      "subject": "system:serviceaccount:blue:reviewer (synthetic)",
+      "period": "capture 2026-09-21T10:05:00Z (synthetic)",
+      "criterion": "k8s_path_evidence/fixture/README.md contract; lab-k8s-01 instructor rubric anchors",
+      "branch_assessments": [
+        {
+          "case_id": "red-binding-create",
+          "verdict": "blocked by the supplied check",
+          "statement": "The only assertable branch: the recorded SSAR deny for create rolebindings red.",
+          "evidence": [
+            "red-binding-create"
+          ]
+        },
+        {
+          "case_id": "blue-secret-read",
+          "verdict": "unresolved",
+          "statement": "The allow check and the inferred can_get edge do not establish effective access; without a decision-time check the branch stays unresolved.",
+          "evidence": [
+            "blue-secret-read",
+            "can_get"
+          ]
+        },
+        {
+          "case_id": "red-secret-read-unknown",
+          "verdict": "unresolved",
+          "statement": "Missing SSAR coverage; no verdict is supportable from this packet.",
+          "evidence": [
+            "red-secret-read-unknown",
+            "ssar_complete"
+          ]
+        }
+      ],
+      "untested": [
+        "everything beyond the single recorded deny"
+      ],
+      "limitations": [
+        "capture scope is synthetic and ssar_complete=false"
+      ],
+      "retest": [
+        "obtain complete SSAR coverage before any path conclusion"
+      ],
+      "overall": "inconclusive"
+    },
+    "machine_check": {
+      "kind": "capture-reference",
+      "expectation": {
+        "ids": [
+          "red-binding-create",
+          "blue-secret-read",
+          "can_get",
+          "red-secret-read-unknown",
+          "ssar_complete"
+        ]
+      }
+    }
+  },
+  "rubric_dimensions_touched": [
+    "blocked/unknown branch reasoning"
+  ],
+  "adjudication": {
+    "original_score": "9/10 provisional (rubric anchor)",
+    "adjusted_score": null,
+    "reviewer": "calibration-seed",
+    "rationale": "All references resolve in the shipped fixture; an inconclusive overall is a legal human verdict this pilot keeps scoreable.",
+    "decided_on": "2026-10-13"
+  },
+  "note": "author sample awaiting FIRST human double-scoring; not a rescoring loop"
+}

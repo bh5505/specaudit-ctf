@@ -1,0 +1,47 @@
+{
+  "track": "telecom-aws-06-chain-rehearsal",
+  "seed": null,
+  "fixtures": [
+    "tf_chain_ingress_role",
+    "tf_iam_open",
+    "tf_s3_public_access"
+  ],
+  "total": 5,
+  "findings": [
+    {
+      "finding_key": "demo-chain-sg-open-admin",
+      "control": "network containment: administrative shell exposure",
+      "severity": "high",
+      "rationale": "The jump host’s administrative SSH port is open to every routable address, creating a broadly reachable interactive surface inside the trust boundary.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf:7-12 (aws_security_group.jump ingress 0.0.0.0/0 on tcp/22)"
+    },
+    {
+      "finding_key": "demo-chain-role-assumable",
+      "control": "least-privilege: role assumability",
+      "severity": "critical",
+      "rationale": "The in-account principal can assume the AdministratorAccess role, turning role assumption into a direct path to account-wide privilege escalation.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf:15-24,27-29 (aws_iam_role.escalation and AdministratorAccess attachment)"
+    },
+    {
+      "finding_key": "demo-chain-internet-to-identity",
+      "control": "defense-in-depth: exposure-to-identity chain",
+      "severity": "critical",
+      "rationale": "The internet-facing jump host chains into the assumable administrator role, producing an end-to-end path from unauthenticated network reachability to privileged identity.",
+      "traces_to": "extension/range/tf_chain_ingress_role/input/connectivity.json:10-14 and extension/range/tf_chain_ingress_role/input/main.tf:7-12,15-24"
+    },
+    {
+      "finding_key": "demo-chain-iam-open-to-s3-public",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "A principal with the wildcard identity policy can read the public-read bucket, so the open identity control compounds into a direct data-disclosure path across two fixtures.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf:7-9 chained with extension/range/tf_s3_public_access/input/main.tf:2-4"
+    },
+    {
+      "finding_key": "demo-chain-iam-wildcard",
+      "control": "least-privilege: wildcard identity policy",
+      "severity": "critical",
+      "rationale": "The policy grants Action=* on Resource=*, leaving no effective privilege boundary for any attached principal.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf:7-9 (aws_iam_policy.wildcard Statement[0].Action and Statement[0].Resource)"
+    }
+  ]
+}

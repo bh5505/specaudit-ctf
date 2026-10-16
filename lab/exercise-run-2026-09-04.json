@@ -1,0 +1,61 @@
+{
+  "arms": [
+    {
+      "action": "scan",
+      "arm_id": "nmap",
+      "capability_id": "nmap.scan",
+      "envelope_status": "complete",
+      "status": "complete"
+    }
+  ],
+  "challenge": "telecom-aws-06-chain-rehearsal",
+  "grading": {
+    "expected_total": 5,
+    "extras": [],
+    "hits": [
+      "demo-chain-iam-open-to-s3-public",
+      "demo-chain-iam-wildcard",
+      "demo-chain-internet-to-identity",
+      "demo-chain-role-assumable",
+      "demo-chain-sg-open-admin"
+    ],
+    "invalid": [],
+    "misses": [],
+    "passed": true,
+    "schema": "specaudit.ctf.grade.v1",
+    "score": 1.0,
+    "severity_mismatches": [],
+    "track": "telecom-aws-06-chain-rehearsal",
+    "track_match": true
+  },
+  "head": {
+    "head": "claude-code",
+    "launcher": "/root/ctf/extension/heads/claude-code/launch_mcp.py",
+    "ready": true,
+    "status": "available"
+  },
+  "live_aws": false,
+  "ok": true,
+  "range": {
+    "chains": [
+      {
+        "ingress_asset": "sg-jump",
+        "kind": "internet_to_identity",
+        "role_asset": "role-escalate",
+        "summary": "Internet-reachable ingress on demo-jump-sg chains into assumable role demo-escalation-role"
+      }
+    ],
+    "fixtures": [
+      "tf_s3_public_access",
+      "tf_iam_open",
+      "tf_chain_ingress_role"
+    ],
+    "matched": true,
+    "ok": true,
+    "status": "complete"
+  },
+  "schema": "exercise.run.v1",
+  "seed": null,
+  "status": "complete",
+  "summary": "exercise complete; range complete (3 fixtures); grading passed; score 1.00; arms 1/1; head available"
+}

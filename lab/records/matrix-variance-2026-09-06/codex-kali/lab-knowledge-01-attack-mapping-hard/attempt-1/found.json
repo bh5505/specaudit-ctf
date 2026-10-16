@@ -1,0 +1,33 @@
+{
+  "track": "lab-knowledge-01-attack-mapping",
+  "seed": null,
+  "fixtures": [
+    "tf_s3_public_access",
+    "tf_cloudtrail_disabled",
+    "tf_iam_open"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-knowledge-t1530-public-storage",
+      "control": "S3 public-access blocks should deny public ACLs and public bucket policies.",
+      "severity": "high",
+      "rationale": "The bucket leaves public ACL and policy access open, and T1530 says adversaries can harvest data from cloud storage, so the direct exposure of stored objects justifies high severity.",
+      "traces_to": "tf_s3_public_access: block_public_acls = false; block_public_policy = false -> T1530"
+    },
+    {
+      "finding_key": "demo-knowledge-t1562-008-cloud-logs",
+      "control": "CloudTrail logging should remain enabled and multi-region.",
+      "severity": "medium",
+      "rationale": "The trail is explicitly disabled, and T1562.008 says adversaries disable cloud logging to evade detection, so the loss of a primary audit signal justifies medium severity.",
+      "traces_to": "tf_cloudtrail_disabled: enable_logging = false -> T1562.008"
+    },
+    {
+      "finding_key": "demo-knowledge-t1078-wildcard-accounts",
+      "control": "IAM role trust policies should restrict principals to explicitly approved accounts.",
+      "severity": "critical",
+      "rationale": "The role trust policy grants any AWS account the right to assume it, and T1078 says adversaries can use valid accounts to gain and expand access, so the wildcard identity exposure justifies critical severity.",
+      "traces_to": "tf_iam_open: Principal.AWS = \"*\" -> T1078"
+    }
+  ]
+}

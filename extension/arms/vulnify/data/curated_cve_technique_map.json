@@ -1,0 +1,26 @@
+{
+  "_doc": "Finding E - operator-side curated CVE->technique map. enterprise-attack.json carries ZERO cve external_reference anchors (Finding AE/6al), so exact-reference bundle mapping cannot cover sponsor CVEs. This map is expert-curated from well-established ATT&CK mappings of the CVEs observed on the top actionable hosts (canonical silver evidence_v4). provenance_class=curated_expert_map, distinct from pack banner_asserted_inference / scan_corroborated and alert_asserted_direct.",
+  "_grounding": "CVEs are the ASM-inferred (cve_observation) + VM scan-confirmed (vm_cve_observation) sets on the six C-tier headline hosts. Mapping confidence reflects how canonical the technique attribution is.",
+  "entries": {
+    "CVE-2021-44790": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache httpd mod_lua RCE", "confidence": "high"},
+    "CVE-2022-31813": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache httpd mod_rewrite RCE", "confidence": "high"},
+    "CVE-2021-39275": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache httpd mod_proxy RCE", "confidence": "high"},
+    "CVE-2017-3169": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache httpd RCE", "confidence": "medium"},
+    "CVE-2017-3167": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache httpd RCE", "confidence": "medium"},
+    "CVE-2012-2376": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache httpd RCE", "confidence": "medium"},
+    "CVE-2012-2688": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache httpd RCE", "confidence": "medium"},
+    "CVE-2010-0425": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache httpd RCE", "confidence": "medium"},
+    "CVE-2010-4478": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache-family RCE", "confidence": "low"},
+    "CVE-2012-1823": {"technique": "T1190", "tactic": "Initial Access", "kind": "PHP CGI RCE", "confidence": "high"},
+    "CVE-2012-2311": {"technique": "T1190", "tactic": "Initial Access", "kind": "PHP CGI RCE", "confidence": "high"},
+    "CVE-2012-2329": {"technique": "T1190", "tactic": "Initial Access", "kind": "PHP CGI RCE", "confidence": "medium"},
+    "CVE-2012-2336": {"technique": "T1190", "tactic": "Initial Access", "kind": "PHP CGI RCE", "confidence": "medium"},
+    "CVE-2014-0231": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache httpd RCE", "confidence": "medium"},
+    "CVE-2014-0118": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache httpd RCE", "confidence": "medium"},
+    "CVE-2014-0226": {"technique": "T1190", "tactic": "Initial Access", "kind": "Apache httpd RCE", "confidence": "medium"},
+    "CVE-2018-19518": {"technique": "T1190", "tactic": "Initial Access", "kind": "PHP IMAP RCE", "confidence": "medium"},
+    "CVE-2018-20783": {"technique": "T1190", "tactic": "Initial Access", "kind": "PHP RCE", "confidence": "medium"},
+    "CVE-2023-38408": {"technique": "T1190", "tactic": "Initial Access", "kind": "OpenSSH ssh-agent RCE", "confidence": "high"}
+  },
+  "_note": "All entries are RCE initial-access techniques (T1190). Post-initial-access techniques per host come from the alert-asserted G3 pairs, NOT from this CVE map. Convergence where an alert-asserted T1190 AND a curated CVE->T1190 coexist is recorded as cross-corroborated initial access in the v2 deliverable."
+}

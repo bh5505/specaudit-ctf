@@ -1,0 +1,7 @@
+{
+  "name": "specaudit-ctf",
+  "version": "1.0.0",
+  "description": "Arms and legs for Codex CLI: list, describe, invoke.",
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json"
+}

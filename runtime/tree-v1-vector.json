@@ -1,0 +1,19 @@
+{
+  "schema": "specaudit.ctf.producer-tree.vector.v1",
+  "domain_utf8": "specaudit.ctf.producer-tree.v1",
+  "encoding": "kind byte; little-endian u64 path length; UTF-8 path; for files, little-endian u64 size and raw SHA-256",
+  "directories": [
+    "nested",
+    "unicode"
+  ],
+  "files_hex": {
+    "alpha.txt": "616c7068610a",
+    "nested/beta.bin": "00ff10",
+    "unicode/é.txt": "6374660a"
+  },
+  "normalized_modes": {
+    "directories": "0555",
+    "files": "0444"
+  },
+  "expected_sha256": "sha256:22f5a35071d36e251978e53ee3f3299e180418673dc0c5cadb2db6f488a90fd7"
+}

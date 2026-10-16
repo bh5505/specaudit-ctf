@@ -1,0 +1,66 @@
+{
+  "schema": "specaudit.detect-key.v1",
+  "canary": "INSTRUCTOR-CANARY-DETECT-01-EXPECTED",
+  "cases": {
+    "positive": {
+      "stages": {
+        "rule_exists": "met",
+        "events_collected": "met",
+        "rule_fired": "met",
+        "analyst_acted": "met",
+        "outcome_retested": "met"
+      },
+      "retest_result": "effective"
+    },
+    "missing-telemetry": {
+      "stages": {
+        "rule_exists": "met",
+        "events_collected": "not_met",
+        "rule_fired": "unknown",
+        "analyst_acted": "unknown",
+        "outcome_retested": "unknown"
+      },
+      "retest_result": "unknown"
+    },
+    "benign-near-miss": {
+      "stages": {
+        "rule_exists": "met",
+        "events_collected": "not_met",
+        "rule_fired": "unknown",
+        "analyst_acted": "unknown",
+        "outcome_retested": "unknown"
+      },
+      "retest_result": "unknown"
+    },
+    "blocked": {
+      "stages": {
+        "rule_exists": "met",
+        "events_collected": "met",
+        "rule_fired": "blocked",
+        "analyst_acted": "unknown",
+        "outcome_retested": "unknown"
+      },
+      "retest_result": "unknown"
+    },
+    "alert-untriaged": {
+      "stages": {
+        "rule_exists": "met",
+        "events_collected": "met",
+        "rule_fired": "met",
+        "analyst_acted": "not_met",
+        "outcome_retested": "unknown"
+      },
+      "retest_result": "unknown"
+    },
+    "retest-failed": {
+      "stages": {
+        "rule_exists": "met",
+        "events_collected": "met",
+        "rule_fired": "met",
+        "analyst_acted": "met",
+        "outcome_retested": "met"
+      },
+      "retest_result": "ineffective"
+    }
+  }
+}

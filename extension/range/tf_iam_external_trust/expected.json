@@ -1,0 +1,51 @@
+{
+  "exposure": {
+    "id": "demo-exp-external-trust",
+    "kind": "open_trust",
+    "asset_id": "external-trust",
+    "asset_name": "demo-external-trust-role",
+    "severity": "critical",
+    "summary": "aws_iam_role external-trust trusts an external principal without requiring MFA"
+  },
+  "path": [
+    {
+      "from": "external-principal",
+      "to": "external-trust",
+      "via": "sts:AssumeRole",
+      "auth": "none"
+    }
+  ],
+  "impact": {
+    "id": "demo-imp-external-trust",
+    "kind": "identity_compromise",
+    "asset_id": "external-trust",
+    "severity": "critical",
+    "summary": "An external principal can assume demo-external-trust-role without MFA"
+  },
+  "exposures": [
+    {
+      "id": "demo-exp-external-trust",
+      "kind": "open_trust",
+      "asset_id": "external-trust",
+      "asset_name": "demo-external-trust-role",
+      "severity": "critical",
+      "summary": "aws_iam_role external-trust trusts an external principal without requiring MFA",
+      "path": [
+        {
+          "from": "external-principal",
+          "to": "external-trust",
+          "via": "sts:AssumeRole",
+          "auth": "none"
+        }
+      ],
+      "impact": {
+        "id": "demo-imp-external-trust",
+        "kind": "identity_compromise",
+        "asset_id": "external-trust",
+        "severity": "critical",
+        "summary": "An external principal can assume demo-external-trust-role without MFA"
+      }
+    }
+  ],
+  "chains": []
+}

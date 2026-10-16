@@ -1,0 +1,33 @@
+{
+  "track": "lab-knowledge-01-attack-mapping",
+  "seed": null,
+  "fixtures": [
+    "tf_s3_public_access",
+    "tf_cloudtrail_disabled",
+    "tf_iam_open"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-knowledge-t1530-public-storage",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "high",
+      "rationale": "aws_s3_bucket s3-public is reachable without auth, which enables T1530 because the technique describes adversaries collecting data from cloud storage objects through direct APIs or misconfigured storage.",
+      "traces_to": "extension/range/tf_s3_public_access/input/main.tf public-read ACL maps to ATT&CK T1530 because unauthenticated internet principals can read objects in demo-public-bucket."
+    },
+    {
+      "finding_key": "demo-knowledge-t1562-008-cloud-logs",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "high",
+      "rationale": "aws_cloudtrail trail-main is disabled, which enables T1562.008 because the technique describes adversaries disabling or modifying cloud logging to limit the data collected on their activities and avoid detection.",
+      "traces_to": "extension/range/tf_cloudtrail_disabled/input/main.tf disabled trail maps to ATT&CK T1562.008 because control-plane events are left without a durable audit record."
+    },
+    {
+      "finding_key": "demo-knowledge-t1078-wildcard-accounts",
+      "control": "threat mapping: adversary technique for planted exposure",
+      "severity": "critical",
+      "rationale": "aws_iam_policy iam-open grants Action=* on Resource=*, which enables T1078 because the technique describes adversaries obtaining and abusing credentials of existing accounts for initial access, persistence, privilege escalation, or defense evasion.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf wildcard identity policy maps to ATT&CK T1078 because an attached principal can act on every resource with the policy's unrestricted permissions."
+    }
+  ]
+}

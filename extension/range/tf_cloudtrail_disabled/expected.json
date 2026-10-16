@@ -1,0 +1,51 @@
+{
+  "exposure": {
+    "id": "demo-exp-trail-main",
+    "kind": "monitoring_gap",
+    "asset_id": "trail-main",
+    "asset_name": "demo-main-trail",
+    "severity": "high",
+    "summary": "aws_cloudtrail trail-main is disabled; control-plane events go unrecorded"
+  },
+  "path": [
+    {
+      "from": "any-principal",
+      "to": "trail-main",
+      "via": "cloudtrail:StopLogging",
+      "auth": "principal"
+    }
+  ],
+  "impact": {
+    "id": "demo-imp-trail-main",
+    "kind": "detection_gap",
+    "asset_id": "trail-main",
+    "severity": "high",
+    "summary": "Activity involving demo-main-trail leaves no durable audit trail"
+  },
+  "exposures": [
+    {
+      "id": "demo-exp-trail-main",
+      "kind": "monitoring_gap",
+      "asset_id": "trail-main",
+      "asset_name": "demo-main-trail",
+      "severity": "high",
+      "summary": "aws_cloudtrail trail-main is disabled; control-plane events go unrecorded",
+      "path": [
+        {
+          "from": "any-principal",
+          "to": "trail-main",
+          "via": "cloudtrail:StopLogging",
+          "auth": "principal"
+        }
+      ],
+      "impact": {
+        "id": "demo-imp-trail-main",
+        "kind": "detection_gap",
+        "asset_id": "trail-main",
+        "severity": "high",
+        "summary": "Activity involving demo-main-trail leaves no durable audit trail"
+      }
+    }
+  ],
+  "chains": []
+}

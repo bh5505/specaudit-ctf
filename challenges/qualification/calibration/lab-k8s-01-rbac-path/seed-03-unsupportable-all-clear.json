@@ -1,0 +1,76 @@
+{
+  "schema": "specaudit.ctf.calibration-seed.v1",
+  "pilot": "lab-k8s-01-rbac-path",
+  "seed_id": "03-unsupportable-all-clear",
+  "anchored_sample": {
+    "description": "Unsupportable all-clear anchored sample: treats the reported path as confirmed access, converts the unknown RED read into 'denied' from absence of a record, and declares no exposure with untested 'none material'. The instructor KEY calls fabricated access and concealed missing checks hard failures; provisional score 0.",
+    "submission_schema": "free-form human workpaper (lab-k8s-01 ships no machine submission schema)",
+    "submission_digest": "sha256:5a832806fd1c9aa79edef989a6cf8435691864804427d680910c331062c79897",
+    "submission": {
+      "subject": "system:serviceaccount:blue:reviewer (synthetic)",
+      "period": "capture 2026-09-21T10:05:00Z (synthetic)",
+      "criterion": "k8s_path_evidence/fixture/README.md contract; lab-k8s-01 instructor rubric anchors",
+      "branch_assessments": [
+        {
+          "case_id": "blue-secret-read",
+          "verdict": "confirmed accessible path, no exposure",
+          "statement": "The reported path proves the service account can read the demo secret and no exposure resulted.",
+          "evidence": [
+            "blue-secret-read",
+            "secret:blue:demo"
+          ]
+        },
+        {
+          "case_id": "red-binding-create",
+          "verdict": "denied, therefore impossible",
+          "statement": "The creation was denied, so no escalation path can exist.",
+          "evidence": [
+            "red-binding-create",
+            "rb:red:admin-binding"
+          ]
+        },
+        {
+          "case_id": "red-secret-read-unknown",
+          "verdict": "denied (no record of access means no access)",
+          "statement": "Absence of an SSAR record is treated as proof the read did not happen.",
+          "evidence": [
+            "red-secret-read-unknown"
+          ]
+        }
+      ],
+      "untested": [
+        "none material"
+      ],
+      "limitations": [
+        "none material"
+      ],
+      "retest": [
+        "none required"
+      ],
+      "overall": "bounded-conclusion"
+    },
+    "machine_check": {
+      "kind": "capture-reference",
+      "expectation": {
+        "ids": [
+          "blue-secret-read",
+          "secret:blue:demo",
+          "red-binding-create",
+          "rb:red:admin-binding",
+          "red-secret-read-unknown"
+        ]
+      }
+    }
+  },
+  "rubric_dimensions_touched": [
+    "fabricated access / concealed missing checks (hard failure)"
+  ],
+  "adjudication": {
+    "original_score": "0/10 provisional (hard failure: fabricated access, concealed missing checks)",
+    "adjusted_score": null,
+    "reviewer": "calibration-seed",
+    "rationale": "Cited ids resolve against the shipped fixture: the calibrated failure is the reasoning (absence read as denial), not missing references.",
+    "decided_on": "2026-10-13"
+  },
+  "note": "author sample awaiting FIRST human double-scoring; not a rescoring loop"
+}

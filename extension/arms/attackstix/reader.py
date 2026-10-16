@@ -1,0 +1,405 @@
+"""Offline STIX 2.1 bundle reader for the attack-stix-data arm.
+
+Stdlib-only, in-process, fail-closed: anything unexpected in the file
+raises :class:`BundleError`, which the arm converts into an evaluated
+non-success. Object projections are deliberately narrow (stable field
+lists, truncated descriptions) so output shape stays bounded and
+comparable across bundles.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import stat
+from dataclasses import dataclass, field
+from typing import Any
+
+from .policy import DESCRIPTION_CHARS, MAX_BUNDLE_BYTES
+
+# These limits apply before json.loads builds a Python object graph. The
+# byte cap alone does not bound a tiny JSON document made of millions of
+# empty containers or an excessively deep tree.
+MAX_JSON_DEPTH = 64
+MAX_JSON_CONTAINERS = 500_000
+MAX_JSON_SEPARATORS = 2_000_000
+MAX_BUNDLE_OBJECTS = 100_000
+
+# Verified against the official mitreattack-python constants
+# (mitreattack/constants.py, MITRE_ATTACK_ID_SOURCE_NAMES): the ATT&CK
+# external id rides external_references with one of these source names.
+MITRE_ATTACK_ID_SOURCE_NAMES = frozenset(
+    {"mitre-attack", "mobile-attack", "mitre-mobile-attack", "mitre-ics-attack"}
+)
+
+# Relationship types this arm may return. The corpus also carries
+# revocations and derived relationships; those stay off the allowlist.
+ALLOWED_RELATIONSHIP_TYPES = frozenset({"uses", "subtechnique-of", "mitigates"})
+
+_SOFTWARE_TYPES = ("tool", "malware")
+_CVE_SOURCE_NAMES = frozenset({"cve", "cve-reference"})
+
+
+class BundleError(ValueError):
+    """The bundle file is not a readable STIX 2.1 bundle."""
+
+
+@dataclass(frozen=True)
+class Subject:
+    """One lookupable object: technique, software, or group."""
+
+    stix_id: str
+    kind: str  # technique | software | group
+    attack_id: str | None
+    name: str
+    aliases: tuple[str, ...] = field(default_factory=tuple)
+
+
+def load_bundle(path: Any) -> dict[str, Any]:
+    """Parse and index a local STIX 2.1 bundle file."""
+    try:
+        # Open once, without following a swapped symlink or blocking on a
+        # FIFO, then validate the descriptor actually being read.
+        nonblocking = getattr(os, "O_NONBLOCK", None)
+        nofollow = getattr(os, "O_NOFOLLOW", None)
+        if nonblocking is None or nofollow is None:
+            raise BundleError("bundle reader requires no-follow and nonblocking file opens")
+        flags = os.O_RDONLY | nonblocking | nofollow
+        descriptor = os.open(path, flags)
+        with os.fdopen(descriptor, "rb") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise BundleError("bundle must be a regular file")
+            raw = handle.read(MAX_BUNDLE_BYTES + 1)
+    except OSError as exc:
+        raise BundleError(f"bundle could not be read: {exc}") from exc
+    return load_bundle_bytes(raw)
+
+
+def load_bundle_bytes(raw: bytes) -> dict[str, Any]:
+    """Parse and index one immutable bundle byte snapshot."""
+    if len(raw) > MAX_BUNDLE_BYTES:
+        raise BundleError(f"bundle exceeds the {MAX_BUNDLE_BYTES} byte read cap")
+    _check_json_structure(raw)
+    try:
+        # Strict decode: a bundle with invalid UTF-8 is corrupted data,
+        # not content to silently U+FFFD-replace (sweep 9, bot finding).
+        text = raw.decode("utf-8", errors="strict")
+    except UnicodeDecodeError as exc:
+        raise BundleError(f"bundle is not valid UTF-8: {exc}") from exc
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, RecursionError) as exc:
+        raise BundleError(f"bundle is not valid JSON: {exc}") from exc
+    if not isinstance(data, dict) or data.get("type") != "bundle":
+        raise BundleError("bundle must be a STIX object with type 'bundle'")
+    objects = data.get("objects")
+    if not isinstance(objects, list):
+        raise BundleError("bundle must carry an objects list")
+    if len(objects) > MAX_BUNDLE_OBJECTS:
+        raise BundleError(f"bundle exceeds the {MAX_BUNDLE_OBJECTS} object cap")
+
+    subjects: list[Subject] = []
+    by_id: dict[str, dict[str, Any]] = {}
+    for row in objects:
+        if not isinstance(row, dict) or not isinstance(row.get("id"), str):
+            # A corrupt bundle (truncated download, bad merge) is not a
+            # partial corpus: fail the load so the arm returns an
+            # evaluated failure instead of answering from half an index.
+            raise BundleError("bundle objects must carry a string id")
+        if row["id"] in by_id:
+            raise BundleError(f"duplicate bundle object id: {row['id']}")
+        by_id[row["id"]] = row
+        subject = _subject_from(row)
+        if subject is not None:
+            subjects.append(subject)
+
+    relationships = [
+        row
+        for row in objects
+        if isinstance(row, dict)
+        and row.get("type") == "relationship"
+        and isinstance(row.get("relationship_type"), str)
+        and row["relationship_type"] in ALLOWED_RELATIONSHIP_TYPES
+        and isinstance(row.get("source_ref"), str)
+        and isinstance(row.get("target_ref"), str)
+    ]
+    return {
+        "subjects": subjects,
+        "by_id": by_id,
+        "relationships": relationships,
+    }
+
+
+def _check_json_structure(raw: bytes) -> None:
+    """Bound container allocation and nesting without interpreting JSON.
+
+    JSON punctuation is ASCII, so scanning bytes is enough here. Escaped
+    quotes and brackets inside strings are ignored; json.loads still owns
+    syntax validation after this resource check.
+    """
+    in_string = False
+    escaped = False
+    depth = 0
+    containers = 0
+    separators = 0
+    for byte in raw:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif byte == 0x5C:  # backslash
+                escaped = True
+            elif byte == 0x22:  # quote
+                in_string = False
+        elif byte == 0x22:
+            in_string = True
+        elif byte in (0x7B, 0x5B):  # { [
+            depth += 1
+            containers += 1
+            if depth > MAX_JSON_DEPTH:
+                raise BundleError(f"bundle exceeds the {MAX_JSON_DEPTH} JSON depth cap")
+            if containers > MAX_JSON_CONTAINERS:
+                raise BundleError(
+                    f"bundle exceeds the {MAX_JSON_CONTAINERS} JSON container cap"
+                )
+        elif byte in (0x7D, 0x5D):  # } ]
+            depth -= 1
+        elif byte in (0x2C, 0x3A):  # , :
+            separators += 1
+            if separators > MAX_JSON_SEPARATORS:
+                raise BundleError(
+                    f"bundle exceeds the {MAX_JSON_SEPARATORS} JSON separator cap"
+                )
+
+
+def _subject_from(row: dict[str, Any]) -> Subject | None:
+    stype = row.get("type")
+    stix_id = row["id"]
+    if stype == "attack-pattern":
+        return Subject(
+            stix_id=stix_id,
+            kind="technique",
+            attack_id=_attack_id_of(row),
+            name=str(row.get("name") or ""),
+            aliases=_aliases(row),
+        )
+    if stype in _SOFTWARE_TYPES:
+        return Subject(
+            stix_id=stix_id,
+            kind="software",
+            attack_id=None,
+            name=str(row.get("name") or ""),
+            aliases=_aliases(row),
+        )
+    if stype == "intrusion-set":
+        return Subject(
+            stix_id=stix_id,
+            kind="group",
+            attack_id=None,
+            name=str(row.get("name") or ""),
+            aliases=_aliases(row),
+        )
+    return None
+
+
+def _aliases(row: dict[str, Any]) -> tuple[str, ...]:
+    raw = row.get("aliases") or row.get("x_mitre_aliases") or []
+    if not isinstance(raw, list):
+        return ()
+    return tuple(str(item) for item in raw if isinstance(item, str))
+
+
+def _attack_id_of(row: dict[str, Any]) -> str | None:
+    return _external_id_of(row, tuple(MITRE_ATTACK_ID_SOURCE_NAMES))
+
+
+def _external_id_of(row: dict[str, Any], source: Any) -> str | None:
+    refs = row.get("external_references")
+    if not isinstance(refs, list):
+        return None
+    names = set(source) if isinstance(source, (list, tuple, frozenset, set)) else {source}
+    for ref in refs:
+        if not isinstance(ref, dict):
+            continue
+        # isinstance first: a list/dict source_name is unhashable and
+        # would raise TypeError out of set membership.
+        if (
+            isinstance(ref.get("source_name"), str)
+            and ref["source_name"] in names
+            and isinstance(ref.get("external_id"), str)
+            and ref["external_id"]
+        ):
+            return ref["external_id"]
+    return None
+
+
+def find_cve_objects(index: dict[str, Any], cve_id: str) -> list[dict[str, Any]]:
+    """Return stable projections of objects that reference an exact CVE id."""
+    wanted = cve_id.upper()
+    matches: list[dict[str, Any]] = []
+    for row in index["by_id"].values():
+        refs = row.get("external_references")
+        if not isinstance(refs, list):
+            continue
+        if not any(
+            isinstance(ref, dict)
+            and isinstance(ref.get("source_name"), str)
+            and ref["source_name"].casefold() in _CVE_SOURCE_NAMES
+            and isinstance(ref.get("external_id"), str)
+            and ref["external_id"].upper() == wanted
+            for ref in refs
+        ):
+            continue
+        projected: dict[str, Any] = {
+            "cve_id": wanted,
+            "stix_id": row["id"],
+            "type": str(row.get("type") or ""),
+            "name": str(row.get("name") or ""),
+            "description": _truncate(row.get("description")),
+            "external_references": [dict(ref) for ref in refs if isinstance(ref, dict)],
+        }
+        projected.update(
+            (key, value) for key, value in row.items() if key.startswith("x_mitre_")
+        )
+        matches.append(projected)
+    matches.sort(key=lambda row: (row["type"], row["stix_id"]))
+    return matches
+
+
+def find_technique(
+    index: dict[str, Any], *, attack_id: str | None = None, name: str | None = None
+) -> Subject | None:
+    if attack_id is not None:
+        wanted = attack_id.strip().upper()
+        for subject in index["subjects"]:
+            if subject.kind == "technique" and (subject.attack_id or "").upper() == wanted:
+                return subject
+        return None
+    return _by_name(index, "technique", name)
+
+
+def find_software(index: dict[str, Any], name: str) -> Subject | None:
+    return _by_name(index, "software", name)
+
+
+def find_group(index: dict[str, Any], name: str) -> Subject | None:
+    return _by_name(index, "group", name)
+
+
+def _by_name(
+    index: dict[str, Any], kind: str, name: str | None
+) -> Subject | None:
+    if not isinstance(name, str) or not name.strip():
+        return None
+    wanted = name.strip().casefold()
+    for subject in index["subjects"]:
+        if subject.kind != kind:
+            continue
+        if subject.name.casefold() == wanted:
+            return subject
+        if any(alias.casefold() == wanted for alias in subject.aliases):
+            return subject
+    return None
+
+
+def relationships_for(
+    index: dict[str, Any],
+    subject: Subject,
+    *,
+    relationship_type: str | None = None,
+) -> list[dict[str, Any]]:
+    """Relationships touching the subject, endpoints projected."""
+    rows: list[dict[str, Any]] = []
+    for rel in index["relationships"]:
+        if relationship_type and rel["relationship_type"] != relationship_type:
+            continue
+        if rel["source_ref"] != subject.stix_id and rel["target_ref"] != subject.stix_id:
+            continue
+        rows.append(
+            {
+                "relationship_type": rel["relationship_type"],
+                "source": _endpoint(index, rel["source_ref"]),
+                "target": _endpoint(index, rel["target_ref"]),
+            }
+        )
+    rows.sort(key=lambda row: (row["relationship_type"], _sort_key(row["source"]), _sort_key(row["target"])))
+    return rows
+
+
+def _sort_key(endpoint: dict[str, Any]) -> tuple[str, str]:
+    return (str(endpoint.get("kind") or ""), str(endpoint.get("label") or endpoint.get("stix_id") or ""))
+
+
+def _endpoint(index: dict[str, Any], stix_id: str) -> dict[str, Any]:
+    row = index["by_id"].get(stix_id)
+    if row is None:
+        return {"stix_id": stix_id, "kind": "unknown", "label": None}
+    subject = _subject_from(row)
+    if subject is None:
+        return {
+            "stix_id": stix_id,
+            "kind": str(row.get("type") or "unknown"),
+            "label": str(row.get("name") or "") or None,
+        }
+    return {
+        "stix_id": subject.stix_id,
+        "kind": subject.kind,
+        "label": subject.attack_id or subject.name,
+    }
+
+
+def project_technique(index: dict[str, Any], subject: Subject) -> dict[str, Any]:
+    row = index["by_id"][subject.stix_id]
+    phases = sorted(
+        {
+            str(phase.get("phase_name") or "")
+            for phase in (row.get("kill_chain_phases") or [])
+            if isinstance(phase, dict) and phase.get("phase_name")
+        }
+    )
+    return {
+        "stix_id": subject.stix_id,
+        "attack_id": subject.attack_id,
+        "name": subject.name,
+        "description": _truncate(row.get("description")),
+        "kill_chain_phases": phases,
+        "platforms": _string_list(row.get("x_mitre_platforms")),
+        "is_subtechnique": row.get("x_mitre_is_subtechnique") is True,
+        "deprecated": row.get("x_mitre_deprecated") is True,
+        "revoked": row.get("revoked") is True,
+    }
+
+
+def project_software(index: dict[str, Any], subject: Subject) -> dict[str, Any]:
+    row = index["by_id"][subject.stix_id]
+    return {
+        "stix_id": subject.stix_id,
+        "kind": str(row.get("type") or "tool"),
+        "name": subject.name,
+        "description": _truncate(row.get("description")),
+        "aliases": list(subject.aliases),
+        "platforms": _string_list(row.get("x_mitre_platforms")),
+    }
+
+
+def project_group(index: dict[str, Any], subject: Subject) -> dict[str, Any]:
+    row = index["by_id"][subject.stix_id]
+    return {
+        "stix_id": subject.stix_id,
+        "name": subject.name,
+        "description": _truncate(row.get("description")),
+        "aliases": list(subject.aliases),
+    }
+
+
+def _string_list(raw: Any) -> list[str]:
+    if not isinstance(raw, list):
+        return []
+    return sorted({str(item) for item in raw if isinstance(item, str) and item})
+
+
+def _truncate(raw: Any) -> str | None:
+    if not isinstance(raw, str) or not raw:
+        return None
+    if len(raw) <= DESCRIPTION_CHARS:
+        return raw
+    return raw[: DESCRIPTION_CHARS - 3].rstrip() + "..."

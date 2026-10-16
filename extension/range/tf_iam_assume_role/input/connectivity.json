@@ -1,0 +1,11 @@
+{
+  "kind": "connectivity",
+  "edges": [
+    {
+      "from": "any-principal",
+      "to": "assume-target",
+      "via": "sts:AssumeRole",
+      "auth": "principal"
+    }
+  ]
+}

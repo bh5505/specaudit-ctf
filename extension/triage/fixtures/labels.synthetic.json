@@ -1,0 +1,10 @@
+{
+  "evaluation_scope": "synthetic-format-fixture",
+  "relevant_ids": [
+    "C02",
+    "C03",
+    "C05"
+  ],
+  "k": 3,
+  "query": "missing evidence condition sensor telemetry"
+}

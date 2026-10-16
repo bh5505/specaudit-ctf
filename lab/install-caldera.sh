@@ -1,0 +1,82 @@
+#!/usr/bin/env bash
+# Install and start Apache Caldera (successor home of MITRE CALDERA)
+# at pinned release tag 5.3.0 into the Ubuntu lab lane, venv-isolated,
+# API-only (no --build: that flag shells out to `npm run build` for the
+# Vue UI, which needs Node; the REST/listing plane does not — verified
+# 2026-09-06 on the Ubuntu lane: server listens on 127.0.0.1:8888 in
+# ~35s, /api/v2/abilities lists the stockpile catalog, wrong key 401).
+# Idempotent (re-checks-out the tag every run); run from Windows (Git Bash).
+#
+# Environment (all optional; see lab/local.example.conf):
+#   LAB_UBUNTU_NAME    registered distro name (Ubuntu)
+#   LAB_CALDERA_TAG    release tag to pin (5.3.0)
+#   LAB_CALDERA_KEY    value to rotate api_key_red to BEFORE start
+#                      (default: unset — the shipped ADMIN123 stays,
+#                      which is exactly what the lab-emu-01 challenge
+#                      grades; set it on anything non-disposable)
+set -euo pipefail
+export MSYS_NO_PATHCONV=1
+
+NAME="${LAB_UBUNTU_NAME:-Ubuntu}"
+TAG="${LAB_CALDERA_TAG:-5.3.0}"
+KEY="${LAB_CALDERA_KEY:-}"
+
+wsl -d "$NAME" -u root -e bash -seu -- "$TAG" "$KEY" <<'EOF'
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+TAG="$1"; KEY="$2"
+BASE=/root/caldera
+VENV=/root/caldera-venv
+if [ ! -d "$BASE" ]; then
+  git clone --quiet --recursive --branch "$TAG" --depth 1 \
+    --shallow-submodules https://github.com/apache/caldera.git "$BASE"
+else
+  git -C "$BASE" fetch --quiet --tags origin
+  git -C "$BASE" checkout --quiet "$TAG"
+  git -C "$BASE" reset --hard --quiet "$TAG"
+fi
+if [ -n "$KEY" ]; then
+  # rotate the red API key before start; printf the whole line so KEY
+  # never rides a sed replacement (regex/slash-safe), then verify.
+  python3 - "$BASE/conf/default.yml" "$KEY" <<'PYROT'
+import sys
+path, key = sys.argv[1], sys.argv[2]
+lines = open(path, encoding="utf-8").read().splitlines(True)
+out = []
+replaced = False
+for line in lines:
+    if line.startswith("api_key_red:"):
+        out.append("api_key_red: %s
+" % key)
+        replaced = True
+    else:
+        out.append(line)
+assert replaced, "api_key_red line not found"
+open(path, "w", encoding="utf-8", newline="").writelines(out)
+PYROT
+  grep -Fq -- "api_key_red: $KEY" "$BASE/conf/default.yml"
+fi
+if [ ! -x "$VENV/bin/python" ]; then
+  python3 -m venv "$VENV"
+fi
+# shellcheck disable=SC1091
+source "$VENV/bin/activate"
+pip install --quiet -r "$BASE/requirements.txt"
+# stop any previous instance of THIS server only (scoped kill)
+pkill -f "caldera-venv.*server.py\|$BASE.*server.py" 2>/dev/null || true
+pkill -f "python3 server.py --insecure" 2>/dev/null || true
+sleep 1
+cd "$BASE"
+# --insecure: no TLS on the loopback listener (lab-only posture)
+nohup python3 server.py --insecure > /tmp/caldera-server.log 2>&1 &
+for i in $(seq 1 45); do
+  if curl -s -o /dev/null --max-time 2 http://127.0.0.1:8888/ 2>/dev/null; then
+    echo "[lab] caldera listening on http://127.0.0.1:8888 (after ${i}x2s)"
+    exit 0
+  fi
+  sleep 2
+done
+echo "[lab] caldera did not listen within 90s; log tail:" >&2
+tail -5 /tmp/caldera-server.log >&2
+exit 1
+EOF

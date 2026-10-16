@@ -1,0 +1,11 @@
+{
+  "kind": "asset-config",
+  "assets": [
+    {
+      "id": "trail-main",
+      "type": "aws_cloudtrail",
+      "name": "demo-main-trail",
+      "enabled": false
+    }
+  ]
+}

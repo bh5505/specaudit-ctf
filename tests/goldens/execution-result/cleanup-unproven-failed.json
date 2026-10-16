@@ -1,0 +1,56 @@
+{
+  "schema": "specaudit.ctf.execution-result.v1",
+  "schema_version": 1,
+  "capability_id": "fixture.cleanup-write",
+  "tool": {
+    "name": "fixture-cleanup-write",
+    "version": "1.0.0"
+  },
+  "scope": {
+    "authorized": ["file:///extension/range/tf_s3_public_access"],
+    "touched": ["file:///extension/range/tf_s3_public_access"]
+  },
+  "safety_class": "R1",
+  "side_effects": ["local-write"],
+  "approval_ref": "approval:synthetic-local-write",
+  "roe_ref": "roe:synthetic-range",
+  "budget": {
+    "reserved": {
+      "timeout_ms": 30000,
+      "max_output_bytes": 1048576,
+      "max_tool_steps": 8,
+      "max_spend": null
+    },
+    "spent": {
+      "elapsed_ms": 1800,
+      "output_bytes": 128,
+      "tool_steps": 2,
+      "spend": 0
+    }
+  },
+  "started_at": "2026-08-25T12:00:00Z",
+  "finished_at": "2026-08-25T12:00:02Z",
+  "status": "failed",
+  "transport_ok": true,
+  "artifacts": [
+    {
+      "digest": "sha256:1fa61777032b52af38d63ab38b5e4024e01de821e63224baa5b4cd7d6cdaa22b",
+      "kind": "workspace-diff",
+      "redaction": "credentials-stripped"
+    }
+  ],
+  "coverage": {
+    "attempted": ["fixture.cleanup-write"],
+    "complete": ["fixture.cleanup-write"],
+    "skipped": [],
+    "unsupported": [],
+    "failed": [],
+    "required": ["fixture.cleanup-write"]
+  },
+  "cleanup": {
+    "required": true,
+    "proof_digest": null,
+    "residual": true
+  },
+  "limitations": ["cleanup required but proof digest is missing"]
+}

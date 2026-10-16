@@ -1,0 +1,48 @@
+{
+  "schema": "synthetic-detection-assessment/v1",
+  "case_id": "retest-failed",
+  "technique": {
+    "technique_id": "T1078",
+    "source_path": "extension/arms/attackstix/data/demo-enterprise-sample.json",
+    "source_sha256": "704f253c5754d84c4dd19831c3369e9800165239276a3cb7c23b315d7fe47219"
+  },
+  "scenario": "Exercise window: the synthetic privileged-session attempt reached the audited system, the identity-audit pipeline was collecting throughout the window, and the privileged-session rule had been rolled out to production before the attempt. The records below are the complete captured chain, including the follow-up retest record and its captured result.",
+  "rule": {
+    "id": "rule-privileged-session",
+    "event_kind": "privileged-session",
+    "outcome": "allowed"
+  },
+  "prerequisite": {
+    "datasource": "identity-audit"
+  },
+  "events": [
+    {
+      "id": "evt-a1",
+      "datasource": "identity-audit",
+      "kind": "privileged-session",
+      "outcome": "allowed",
+      "subject": "synthetic-admin"
+    }
+  ],
+  "alerts": [
+    {
+      "id": "alert-a1",
+      "rule_id": "rule-privileged-session",
+      "event_id": "evt-a1"
+    }
+  ],
+  "actions": [
+    {
+      "id": "case-a1",
+      "alert_id": "alert-a1",
+      "decision": "triaged"
+    }
+  ],
+  "retests": [
+    {
+      "id": "retest-a1",
+      "action_id": "case-a1",
+      "result": "ineffective"
+    }
+  ]
+}

@@ -1,0 +1,39 @@
+{
+  "track": "telecom-aws-03-iam-privesc",
+  "seed": null,
+  "fixtures": [
+    "tf_iam_assume_role",
+    "tf_iam_external_trust"
+  ],
+  "total": 4,
+  "findings": [
+    {
+      "finding_key": "demo-iam-assumable-admin-role",
+      "control": "least-privilege: role assumability",
+      "severity": "critical",
+      "rationale": "The admin role is broadly assumable and is attached to the AdministratorAccess policy, so a compromised principal can take over full account access.",
+      "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_role.admin + aws_iam_role_policy_attachment.admin"
+    },
+    {
+      "finding_key": "demo-iam-broad-assume-grant",
+      "control": "least-privilege: sts:AssumeRole grant scope",
+      "severity": "high",
+      "rationale": "The assume_broadly policy grants sts:AssumeRole on every resource instead of limiting the action to named roles.",
+      "traces_to": "extension/range/tf_iam_assume_role/input/main.tf, aws_iam_policy.assume_broadly, Statement[0]"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-principal",
+      "control": "identity boundary: external principal trust",
+      "severity": "critical",
+      "rationale": "The external_trust role trusts a principal outside the local AWS account, allowing that external principal to assume the role.",
+      "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0].Principal"
+    },
+    {
+      "finding_key": "demo-iam-external-trust-no-mfa",
+      "control": "identity boundary: MFA condition on sensitive trust",
+      "severity": "high",
+      "rationale": "The external trust statement has no Condition block requiring MFA, so the external principal can assume the role without MFA.",
+      "traces_to": "extension/range/tf_iam_external_trust/input/main.tf, aws_iam_role.external_trust, Statement[0] (no Condition block)"
+    }
+  ]
+}

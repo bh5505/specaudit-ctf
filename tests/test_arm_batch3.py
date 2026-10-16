@@ -1,0 +1,571 @@
+"""Tests for stratus, osmedeus, zdns, page-fetch, caldera, and gti arms."""
+
+from __future__ import annotations
+
+import json
+import os
+import stat
+import sys
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from extension.arms.caldera import ARM_ID as CALDERA_ID
+from extension.arms.caldera import CalderaArm
+from extension.arms.gti import ALLOWED_TOOLS as GTI_TOOLS
+from extension.arms.gti import ARM_ID as GTI_ID
+from extension.arms.gti import GtiArm
+from extension.arms.osmedeus import ARM_ID as OSMEDEUS_ID
+from extension.arms.osmedeus import OsmedeusArm
+from extension.arms.pagefetch import ARM_ID as PAGE_FETCH_ID
+from extension.arms.pagefetch import PageFetchArm
+from extension.arms.stratus import ARM_ID as STRATUS_ID
+from extension.arms.stratus import StratusArm
+from extension.arms.zdns import ARM_ID as ZDNS_ID
+from extension.arms.zdns import ZdnsArm
+from extension.contract import ArmSpec, NotInstalledError
+
+
+def _spec(arm_id: str) -> ArmSpec:
+    return ArmSpec(
+        id=arm_id,
+        protocols=("cli",),
+        curated=True,
+        notes="Fixture arm.",
+        tier="research",
+    )
+
+
+def _fake_binary(tmp_path: Path, name: str) -> Path:
+    script = tmp_path / f"{name}-payload.py"
+    script.write_text(
+        "import json, sys\nprint(json.dumps({'argv': sys.argv[1:]}))\n",
+        encoding="utf-8",
+    )
+    if os.name == "nt":
+        wrapper = tmp_path / f"{name}.bat"
+        wrapper.write_text(f'@"{sys.executable}" "{script}" %*\n', encoding="utf-8")
+        return wrapper
+    wrapper = tmp_path / name
+    wrapper.write_text(
+        f"#!{sys.executable}\nexec(open(r'{script}').read())\n", encoding="utf-8"
+    )
+    wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
+    return wrapper
+
+
+# --- stratus -------------------------------------------------------------
+
+
+def test_stratus_list_is_local_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "stratus")
+    monkeypatch.setenv("STRATUS_BIN", str(binary))
+    result = StratusArm().invoke(_spec(STRATUS_ID), "list", {})
+    assert result.ok is True
+    assert result.output["argv"] == ["list"]
+
+
+def test_stratus_dispatch_default_off(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "stratus")
+    monkeypatch.setenv("STRATUS_BIN", str(binary))
+    monkeypatch.delenv("STRATUS_DISPATCH_SCOPE", raising=False)
+    result = StratusArm().invoke(
+        _spec(STRATUS_ID), "detonate", {"technique": "aws.exfiltration.s3"}
+    )
+    assert result.ok is False
+    assert "STRATUS_DISPATCH_SCOPE" in result.error
+
+
+def test_stratus_dispatch_armed_runs_and_logs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    binary = _fake_binary(tmp_path, "stratus")
+    monkeypatch.setenv("STRATUS_BIN", str(binary))
+    # The scope binds the technique id (review 2026-09-05: presence-only
+    # arming was stronger docs than mechanism — the technique now goes
+    # through the same target_in_scope containment as host arms).
+    monkeypatch.setenv("STRATUS_DISPATCH_SCOPE", "aws.exfiltration.s3")
+    result = StratusArm().invoke(
+        _spec(STRATUS_ID), "detonate", {"technique": "aws.exfiltration.s3"}
+    )
+    assert result.ok is True
+    assert "aws.exfiltration.s3" in result.output["output"]["argv"]
+    err = capsys.readouterr().err
+    assert "arm=stratus-red-team" in err
+    assert "target=aws.exfiltration.s3" in err
+
+
+def test_stratus_scope_must_name_the_technique(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "stratus")
+    monkeypatch.setenv("STRATUS_BIN", str(binary))
+    monkeypatch.setenv("STRATUS_DISPATCH_SCOPE", "anything-at-all")
+    result = StratusArm().invoke(
+        _spec(STRATUS_ID), "detonate", {"technique": "aws.exfiltration.s3"}
+    )
+    assert result.ok is False
+    assert "outside the armed dispatch scope" in result.error
+
+
+def test_stratus_bad_technique_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "stratus")
+    monkeypatch.setenv("STRATUS_BIN", str(binary))
+    monkeypatch.setenv("STRATUS_DISPATCH_SCOPE", "lab")
+    result = StratusArm().invoke(
+        _spec(STRATUS_ID), "detonate", {"technique": "x; rm -rf /"}
+    )
+    assert result.ok is False
+    assert "technique id must match" in result.error
+
+
+# --- osmedeus ------------------------------------------------------------
+
+
+def test_osmedeus_assets_read(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "osmedeus")
+    monkeypatch.setenv("OSMEDEUS_BIN", str(binary))
+    result = OsmedeusArm().invoke(_spec(OSMEDEUS_ID), "assets", {})
+    assert result.ok is True
+    assert result.output["argv"] == ["assets"]
+
+
+def test_osmedeus_scan_dispatch_gated(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "osmedeus")
+    monkeypatch.setenv("OSMEDEUS_BIN", str(binary))
+    monkeypatch.delenv("OSMEDEUS_DISPATCH_SCOPE", raising=False)
+    result = OsmedeusArm().invoke(
+        _spec(OSMEDEUS_ID), "scan", {"target": "http://lab.internal/"}
+    )
+    assert result.ok is False
+    assert "OSMEDEUS_DISPATCH_SCOPE" in result.error
+    monkeypatch.setenv("OSMEDEUS_DISPATCH_SCOPE", "lab.internal")
+    result = OsmedeusArm().invoke(
+        _spec(OSMEDEUS_ID), "scan", {"target": "http://lab.internal/"}
+    )
+    assert result.ok is True
+    # v5.1.0 flag pin: a URL target selects the url flow (-f url ahead
+    # of -t); the default flow requires a domain target upstream.
+    argv = result.output["output"]["argv"]
+    assert argv == ["scan", "-f", "url", "-t", "http://lab.internal/"]
+    # A hostname target rides the default flow (no -f).
+    result = OsmedeusArm().invoke(
+        _spec(OSMEDEUS_ID), "scan", {"target": "lab.internal"}
+    )
+    assert result.ok is True
+    assert result.output["output"]["argv"] == ["scan", "-t", "lab.internal"]
+    # Out-of-scope target refused.
+    result = OsmedeusArm().invoke(
+        _spec(OSMEDEUS_ID), "scan", {"target": "http://other.example/"}
+    )
+    assert result.ok is False
+    assert "outside the armed dispatch scope" in result.error
+
+
+# --- zdns ----------------------------------------------------------------
+
+
+def test_zdns_lookup_dispatch_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "zdns")
+    monkeypatch.setenv("ZDNS_BIN", str(binary))
+    monkeypatch.delenv("ZDNS_DISPATCH_SCOPE", raising=False)
+    result = ZdnsArm().invoke(
+        _spec(ZDNS_ID), "lookup", {"domain": "example.com"}
+    )
+    assert result.ok is False
+    assert "ZDNS_DISPATCH_SCOPE" in result.error
+    monkeypatch.setenv("ZDNS_DISPATCH_SCOPE", "example.com")
+    result = ZdnsArm().invoke(
+        _spec(ZDNS_ID), "lookup", {"domain": "example.com", "record_type": "MX"}
+    )
+    assert result.ok is True
+    assert result.output["output"]["argv"] == ["MX", "example.com"]
+
+
+def test_zdns_record_type_validated(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "zdns")
+    monkeypatch.setenv("ZDNS_BIN", str(binary))
+    monkeypatch.setenv("ZDNS_DISPATCH_SCOPE", "example.com")
+    result = ZdnsArm().invoke(
+        _spec(ZDNS_ID), "lookup", {"domain": "example.com", "record_type": "X"}
+    )
+    assert result.ok is False
+    assert "record_type" in result.error
+    result = ZdnsArm().invoke(
+        _spec(ZDNS_ID), "lookup", {"domain": "example.com/junk"}
+    )
+    assert result.ok is False
+    assert "invalid characters" in result.error
+
+
+# --- page-fetch ----------------------------------------------------------
+
+
+def test_page_fetch_dispatch_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "page-fetch")
+    monkeypatch.setenv("PAGE_FETCH_BIN", str(binary))
+    monkeypatch.delenv("PAGE_FETCH_DISPATCH_SCOPE", raising=False)
+    result = PageFetchArm().invoke(
+        _spec(PAGE_FETCH_ID), "fetch", {"url": "http://10.10.0.1/"}
+    )
+    assert result.ok is False
+    assert "PAGE_FETCH_DISPATCH_SCOPE" in result.error
+    monkeypatch.setenv("PAGE_FETCH_DISPATCH_SCOPE", "10.10.0.0/16")
+    result = PageFetchArm().invoke(
+        _spec(PAGE_FETCH_ID), "fetch", {"url": "http://10.10.0.1/"}
+    )
+    assert result.ok is True
+    # Upstream reads URLs from stdin only (verified in detectify/
+    # page-fetch main.go 2026-09-05): argv carries no target at all —
+    # the stdin-fed delivery itself is pinned in test_stdin_hygiene.
+    assert result.output["output"]["argv"] == []
+
+
+def test_page_fetch_non_http_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "page-fetch")
+    monkeypatch.setenv("PAGE_FETCH_BIN", str(binary))
+    monkeypatch.setenv("PAGE_FETCH_DISPATCH_SCOPE", "*")  # blanket refused later
+    result = PageFetchArm().invoke(
+        _spec(PAGE_FETCH_ID), "fetch", {"url": "file:///etc/passwd"}
+    )
+    assert result.ok is False
+    assert "http(s)" in result.error
+
+
+# --- caldera -------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _caldera_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CALDERA_API_KEY", "caldera-fixture-key")
+
+
+class _Resp:
+    def __init__(self, payload: bytes = b'{"ok": true}') -> None:
+        self._payload = payload
+
+    def read(self, _n: int = -1) -> bytes:
+        return self._payload
+
+    def __enter__(self) -> "_Resp":
+        return self
+
+    def __exit__(self, *args: Any) -> None:
+        return None
+
+
+class _Urlopen:
+    def __init__(self) -> None:
+        self.calls: list[dict[str, Any]] = []
+
+    def __call__(self, req: Any, timeout: float | None = None) -> _Resp:
+        self.calls.append(
+            {
+                "url": req.full_url,
+                "method": req.get_method(),
+                "headers": dict(req.headers),
+                "body": req.data,
+            }
+        )
+        return _Resp()
+
+
+def _caldera(urlopen: _Urlopen | None = None) -> CalderaArm:
+    return CalderaArm(
+        endpoint="http://127.0.0.1:8765", urlopen=urlopen or _Urlopen()
+    )
+
+
+def test_caldera_needs_endpoint_and_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("CALDERA_ENDPOINT", raising=False)
+    monkeypatch.delenv("CALDERA_API_KEY", raising=False)
+    arm = CalderaArm()
+    assert arm.installed(_spec(CALDERA_ID)) is False
+    with pytest.raises(NotInstalledError):
+        arm.invoke(_spec(CALDERA_ID), "abilities", {})
+    monkeypatch.setenv("CALDERA_ENDPOINT", "http://127.0.0.1:8765")
+    monkeypatch.delenv("CALDERA_API_KEY", raising=False)
+    assert CalderaArm().installed(_spec(CALDERA_ID)) is False
+
+
+_OP_UUID = "01234567-89ab-cdef-0123-456789abcdef"
+
+
+def test_caldera_read_views(monkeypatch: pytest.MonkeyPatch) -> None:
+    urlopen = _Urlopen()
+    result = _caldera(urlopen).invoke(_spec(CALDERA_ID), "abilities", {})
+    assert result.ok is True
+    call = urlopen.calls[0]
+    assert call["method"] == "GET"
+    assert call["url"].endswith("/api/v2/abilities")
+    # Upstream auth_svc reads the literal header name KEY (urllib
+    # capitalizes header keys in its captured Request.headers).
+    assert call["headers"].get("Key")
+
+
+def test_caldera_read_args_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    result = _caldera().invoke(
+        _spec(CALDERA_ID), "abilities", {"x": 1}
+    )
+    assert result.ok is False
+    assert "no arguments" in result.error
+
+
+def test_caldera_operation_views_take_one_uuid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    urlopen = _Urlopen()
+    for action, suffix in (
+        ("operation", f"/api/v2/operations/{_OP_UUID}"),
+        ("operation_links", f"/api/v2/operations/{_OP_UUID}/links"),
+        ("operation_facts", f"/api/v2/facts/{_OP_UUID}"),
+    ):
+        key = "operation_id" if action == "operation_facts" else "id"
+        result = _caldera(urlopen).invoke(
+            _spec(CALDERA_ID), action, {key: _OP_UUID}
+        )
+        assert result.ok is True, action
+        assert urlopen.calls[-1]["url"].endswith(suffix), action
+
+
+def test_caldera_operation_views_refuse_bad_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    urlopen = _Urlopen()
+    for bad in ("not-a-uuid", "../../etc", "", "01234567-89ab-cdef-0123"):
+        result = _caldera(urlopen).invoke(
+            _spec(CALDERA_ID), "operation", {"id": bad}
+        )
+        assert result.ok is False, bad
+        assert "UUID" in result.error
+    # Extra keys refuse even alongside a valid UUID; wrong key name and
+    # non-string values refuse on the sibling views too.
+    result = _caldera(urlopen).invoke(
+        _spec(CALDERA_ID), "operation", {"id": _OP_UUID, "x": 1}
+    )
+    assert result.ok is False
+    assert (
+        _caldera(urlopen).invoke(
+            _spec(CALDERA_ID), "operation_facts", {"id": _OP_UUID}
+        ).ok
+        is False
+    )
+    assert (
+        _caldera(urlopen).invoke(
+            _spec(CALDERA_ID), "operation_links", {"id": 1234}
+        ).ok
+        is False
+    )
+    assert urlopen.calls == []
+
+
+def test_caldera_results_view_retired(monkeypatch: pytest.MonkeyPatch) -> None:
+    # The legacy /api/results path matched no documented upstream route;
+    # it is refused, superseded by the per-operation views.
+    urlopen = _Urlopen()
+    result = _caldera(urlopen).invoke(_spec(CALDERA_ID), "results", {})
+    assert result.ok is False
+    assert "not on any tier" in result.error
+    assert urlopen.calls == []
+
+
+def test_caldera_list_tools_carries_caveats(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _caldera().invoke(_spec(CALDERA_ID), "list_tools", {})
+    assert result.ok is True
+    assert "operation_facts" in result.output["read_views"]
+    assert "results" not in result.output["read_views"]
+    assert "report is POST-only" in result.output["caveats"]
+
+
+def test_caldera_schedule_dispatch(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.delenv("CALDERA_DISPATCH_SCOPE", raising=False)
+    urlopen = _Urlopen()
+    result = _caldera(urlopen).invoke(
+        _spec(CALDERA_ID), "schedule_operation", {"operation": "op-1"}
+    )
+    assert result.ok is False
+    assert "CALDERA_DISPATCH_SCOPE" in result.error
+    assert urlopen.calls == []
+
+    monkeypatch.setenv("CALDERA_DISPATCH_SCOPE", "lab-agents")
+    result = _caldera(urlopen).invoke(
+        _spec(CALDERA_ID), "schedule_operation", {"operation": "op 1"}
+    )
+    assert result.ok is True
+    call = urlopen.calls[0]
+    assert call["method"] == "POST"
+    # Verified upstream route: POST /api/v2/operations with a JSON body
+    # naming the operation (the old /api/operations/<name>/schedule
+    # path matched no upstream route).
+    assert call["url"].endswith("/api/v2/operations")
+    assert '{"name": "op 1"}' == call["body"].decode("utf-8")
+    err = capsys.readouterr().err
+    assert "arm=caldera" in err and "target=unknown" in err
+
+
+def test_caldera_bad_operation_name_refused(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CALDERA_DISPATCH_SCOPE", "lab")
+    result = _caldera().invoke(
+        _spec(CALDERA_ID), "schedule_operation", {"operation": "op/../../x"}
+    )
+    assert result.ok is False
+    assert "operation id must match" in result.error
+
+
+# --- gti -----------------------------------------------------------------
+
+
+def test_gti_inventory_pinned() -> None:
+    # 36-tool official inventory re-verified from source 2026-09-06:
+    # 32 reads admitted, 4 mutating exactly blocked (the three
+    # collection writers + analyse_file, whose upstream docstring is
+    # "Upload and analyse the file in VirusTotal... shared with the
+    # community"). Pinned so upstream drift is a deliberate re-pin.
+    from extension.arms.gti.policy import BLOCKED_TOOLS as GTI_BLOCKED
+    from extension.invoke_profiles import _GTI_READ_ACTIONS
+
+    assert len(GTI_TOOLS) == 32
+    assert len(GTI_BLOCKED) == 4
+    assert not (GTI_TOOLS & GTI_BLOCKED)
+    assert GTI_BLOCKED == frozenset(
+        {
+            "create_collection",
+            "update_collection_attributes",
+            "update_iocs_in_collection",
+            "analyse_file",
+        }
+    )
+    # Registry/handler set-equality (cross-review MAJOR): a typo'd
+    # action name would keep both count pins green while the profile
+    # is handler-refused - this pins the transcription.
+    assert set(_GTI_READ_ACTIONS) == {"list_tools"} | set(GTI_TOOLS)
+    assert len(_GTI_READ_ACTIONS) == len(set(_GTI_READ_ACTIONS)) == 33
+
+
+BLOCKED_GTI_NAMES = (
+    "analyse_file",
+    "create_collection",
+    "update_collection_attributes",
+    "update_iocs_in_collection",
+)
+
+
+@pytest.mark.parametrize("blocked_name", sorted(BLOCKED_GTI_NAMES))
+def test_gti_mutating_tools_refused_even_when_listed(
+    blocked_name: str,
+) -> None:
+    session = FakeGtiSession(
+        tools=[{"name": n} for n in ("get_domain_report", blocked_name)]
+    )
+    result = _gti(session).invoke(_spec(GTI_ID), blocked_name, {})
+    assert result.ok is False
+    assert "blocked" in result.error
+    assert session.calls == []
+
+
+class FakeGtiSession:
+    def __init__(self, tools: list[dict[str, Any]] | None = None) -> None:
+        self.tools = tools or [{"name": name} for name in GTI_TOOLS]
+        self.calls: list[tuple[str, dict]] = []
+
+    def connect(self) -> None:
+        return None
+
+    def list_tools(self) -> list[dict[str, Any]]:
+        return list(self.tools)
+
+    def call_tool(
+        self, name: str, arguments: dict | None = None
+    ) -> dict[str, Any]:
+        self.calls.append((name, dict(arguments or {})))
+        return {"content": [{"type": "text", "text": json.dumps({"ok": name})}]}
+
+    def close(self) -> None:
+        return None
+
+
+def _gti(session: FakeGtiSession) -> GtiArm:
+    # Validation-only stand-in (the factory replaces the session); the
+    # arm is remote-https so the endpoint must be https non-loopback.
+    return GtiArm(
+        endpoint="https://gti-front.example.invalid:9",
+        session_factory=lambda url, timeout=10.0: session,
+    )
+
+
+def test_gti_allowlisted_lookup() -> None:
+    session = FakeGtiSession()
+    result = _gti(session).invoke(
+        _spec(GTI_ID), "get_domain_report", {"domain": "example.com"}
+    )
+    assert result.ok is True
+    assert session.calls == [("get_domain_report", {"domain": "example.com"})]
+
+
+def test_gti_unknown_tool_refused() -> None:
+    session = FakeGtiSession()
+    result = _gti(session).invoke(_spec(GTI_ID), "launch_attack", {})
+    assert result.ok is False
+    assert "not on the allowlist" in result.error
+
+
+def test_gti_list_tools_reports_no_dispatch_tier() -> None:
+    result = _gti(FakeGtiSession()).invoke(_spec(GTI_ID), "list_tools", {})
+    assert result.ok is True
+    assert result.output["dispatch_tier"] == "none"
+    assert {t["name"] for t in result.output["tools"]} == set(GTI_TOOLS)
+
+
+def test_gti_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("GTI_MCP_ENDPOINT", raising=False)
+    arm = GtiArm()
+    assert arm.installed(_spec(GTI_ID)) is False
+    with pytest.raises(NotInstalledError):
+        arm.invoke(_spec(GTI_ID), "get_domain_report", {})
+
+
+def test_osmedeus_flag_shaped_target_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "osmedeus")
+    monkeypatch.setenv("OSMEDEUS_BIN", str(binary))
+    monkeypatch.setenv("OSMEDEUS_DISPATCH_SCOPE", "lab")
+    result = OsmedeusArm().invoke(_spec(OSMEDEUS_ID), "scan", {"target": "-h"})
+    assert result.ok is False
+    assert "flag-shaped" in result.error
+
+
+def test_zdns_flag_shaped_domain_refused(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "zdns")
+    monkeypatch.setenv("ZDNS_BIN", str(binary))
+    monkeypatch.setenv("ZDNS_DISPATCH_SCOPE", "example.com")
+    result = ZdnsArm().invoke(_spec(ZDNS_ID), "lookup", {"domain": "-h"})
+    assert result.ok is False
+    assert "flag-shaped" in result.error

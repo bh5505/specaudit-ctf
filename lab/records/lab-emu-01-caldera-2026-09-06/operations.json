@@ -1,0 +1,68 @@
+{
+  "approval_ref": "operator://endpoint/CALDERA_ENDPOINT",
+  "artifacts": [
+    {
+      "digest": "sha256:4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "kind": "policy-report",
+      "redaction": "credentials-stripped"
+    }
+  ],
+  "budget": {
+    "reserved": {
+      "max_output_bytes": 1048576,
+      "max_spend": null,
+      "max_tool_steps": 1,
+      "timeout_ms": 10000
+    },
+    "spent": {
+      "elapsed_ms": 0,
+      "output_bytes": 2,
+      "spend": 0,
+      "tool_steps": 1
+    }
+  },
+  "capability_id": "caldera.operations",
+  "cleanup": {
+    "proof_digest": null,
+    "required": false,
+    "residual": false
+  },
+  "coverage": {
+    "attempted": [
+      "caldera.operations"
+    ],
+    "complete": [
+      "caldera.operations"
+    ],
+    "failed": [],
+    "required": [
+      "caldera.operations"
+    ],
+    "skipped": [],
+    "unsupported": []
+  },
+  "finished_at": "2026-09-06T17:32:32Z",
+  "limitations": [],
+  "roe_ref": "doc://README#remote-read-admission",
+  "safety_class": "R1",
+  "schema": "specaudit.ctf.execution-result.v1",
+  "schema_version": 1,
+  "scope": {
+    "authorized": [
+      "policy://extension/arms/caldera"
+    ],
+    "touched": [
+      "policy://extension/arms/caldera"
+    ]
+  },
+  "side_effects": [
+    "network-egress"
+  ],
+  "started_at": "2026-09-06T17:32:32Z",
+  "status": "complete",
+  "tool": {
+    "name": "specaudit-ctf",
+    "version": "0.1.0"
+  },
+  "transport_ok": true
+}

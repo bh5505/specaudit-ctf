@@ -1,0 +1,11 @@
+{
+  "track": "telecom-aws-04-network-exposure",
+  "seed": null,
+  "fixtures": ["tf_sg_open_ingress", "tf_s3_policy_blocked_trap"],
+  "total": 3,
+  "findings": [
+    {"finding_key": "demo-sg-open-admin-port", "control": "network containment: administrative shell exposure", "severity": "high", "rationale": "The security group ingress rule exposes TCP port 22 (SSH) to the entire internet (0.0.0.0/0), allowing administrative shell exposure.", "traces_to": "extension/range/tf_sg_open_ingress/input/main.tf, aws_security_group.admin, ingress 0.0.0.0/0 tcp/22"},
+    {"finding_key": "demo-sg-open-db-port", "control": "network containment: database engine exposure", "severity": "critical", "rationale": "The security group ingress rule exposes TCP port 3306 (MySQL) to the entire internet (0.0.0.0/0), allowing database engine exposure.", "traces_to": "extension/range/tf_sg_open_ingress/input/main.tf, aws_security_group.db, ingress 0.0.0.0/0 tcp/3306"},
+    {"finding_key": "demo-trap-anonymous-policy-contained", "control": "defense-in-depth: public access block neutralizes an anonymous grant", "severity": "low", "rationale": "An anonymous S3 bucket policy allowing public access is neutralized by a public access block, preventing actual exposure.", "traces_to": "extension/range/tf_s3_policy_blocked_trap/input/main.tf, aws_s3_bucket_policy.trap neutralized by aws_s3_bucket_public_access_block.trap"}
+  ]
+}

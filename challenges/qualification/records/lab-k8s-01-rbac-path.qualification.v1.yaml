@@ -1,0 +1,47 @@
+# Qualification record: Kubernetes RBAC path pilot (design-ready).
+# A record is a gate inventory: every gate is enumerated, none is satisfied.
+schema: specaudit.ctf.qualification-record.v1
+id: lab-k8s-01-rbac-path
+pilot: lab-k8s-01-rbac-path
+status: design-ready
+review_lanes:
+  - lane: technical
+    state: "assigned, unstaffed, wholly operator-gated"
+  - lane: safety-operator
+    state: "assigned, unstaffed, wholly operator-gated"
+  - lane: instructional
+    state: "assigned, unstaffed, wholly operator-gated"
+learner_context_separation:
+  state: proven
+  # Only the tests that actually cover THIS pilot. This pilot's key is
+  # enumerated and canaried (INSTRUCTOR-CANARY-K8S-01), direct reads are
+  # typed-refused, and prepare refuses this challenge. The mediated-block
+  # case dispatches the review-01 key, not this one, so it is not cited.
+  evidence_refs:
+    - tests/test_containment_instructor_plane.py::test_instructor_plane_enumerated
+    - tests/test_containment_instructor_plane.py::test_direct_read_of_instructor_material_is_typed_refused
+    - tests/test_containment_instructor_plane.py::test_instructor_key_challenges_are_not_preparable
+  notes: >-
+    Canary INSTRUCTOR-CANARY-K8S-01 is asserted for this pilot's key;
+    direct reads of instructor material are typed-refused at the acquisition
+    gate; prepare refuses this challenge, so its key cannot enter an exported
+    packet. The operator copies only k8s_path_evidence/fixture/ into learner
+    context and holds this key outside any learner, target or agent mount.
+calibration:
+  state: fixtures-shipped-human-scoring-open
+  packet: challenges/qualification/calibration/lab-k8s-01-rbac-path/
+dry_run:
+  state: procedure-shipped-not-executed
+  runbook: challenges/qualification/dry-run/runbook.md
+reset:
+  state: determinism-proven
+  evidence_refs:
+    - tests/test_containment_suite.py::test_rerun_determinism_and_ledger_retry_identity
+honest_limits:
+  - "No review lane is staffed; every lane state is assigned, unstaffed, wholly operator-gated. No person has accepted any review duty."
+  - "Calibration seeds are machine-discriminated author samples (reviewer calibration-seed, adjusted_score null). No human double-scoring has occurred; counting a seed as calibrated review is refused by construction (qualification/loader.py)."
+  - "The dry-run procedure is shipped and has never been executed; no learner-path dry-run evidence exists for this pilot."
+  - "The shipped inferred graph edge is a tool inference: a can_get edge is an allowed-check candidate, never proof that a secret was read or that permission remained valid. No formal machine submission schema exists for the human workpaper; calibration seeds are free-form documents reference-checked against the shipped capture fixture only."
+  - "Hash validation does not make a mutable packet immutable after the read; the operator must distribute a read-only packet and preserve the raw bytes for independent review."
+  - "Reset determinism is proven for the containment rerun test in this checkout only; reset for this pilot means restoring clean checkout bytes."
+  - "This record itself is not a promotion signal: status stays design-ready until the operator gate is passed."

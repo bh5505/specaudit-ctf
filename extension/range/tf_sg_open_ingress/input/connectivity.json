@@ -1,0 +1,17 @@
+{
+  "kind": "connectivity",
+  "edges": [
+    {
+      "from": "internet",
+      "to": "sg-admin",
+      "via": "tcp/22",
+      "auth": "none"
+    },
+    {
+      "from": "internet",
+      "to": "sg-db",
+      "via": "tcp/3306",
+      "auth": "none"
+    }
+  ]
+}

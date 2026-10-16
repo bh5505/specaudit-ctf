@@ -1,0 +1,39 @@
+{
+  "track": "lab-code-01-semgrep-review",
+  "lane": "planted-code",
+  "seed": 123,
+  "fixtures": [
+    "challenges/lab-code-01-semgrep-review/planted/app.py"
+  ],
+  "total": 4,
+  "findings": [
+    {
+      "finding_key": "demo-code-hardcoded-credential",
+      "control": "secret management: no hardcoded credentials in source",
+      "severity": "high",
+      "rationale": "A service token is assigned from a string literal in source - any reader of the repository holds the credential, and rotation requires a code change.",
+      "traces_to": "challenges/lab-code-01-semgrep-review/planted/app.py, SERVICE_TOKEN assignment (hardcoded credential)"
+    },
+    {
+      "finding_key": "demo-code-command-injection",
+      "control": "command execution: no shell invocation with untrusted input",
+      "severity": "critical",
+      "rationale": "User-controlled input is interpolated into a shell command string executed via sh -c, so input can append arbitrary shell operators and commands.",
+      "traces_to": "challenges/lab-code-01-semgrep-review/planted/app.py, run_report_generator subprocess.run sh -c interpolation"
+    },
+    {
+      "finding_key": "demo-code-eval-input",
+      "control": "code execution: no eval of untrusted input",
+      "severity": "critical",
+      "rationale": "An untrusted expression is passed to eval - direct arbitrary code execution within the process.",
+      "traces_to": "challenges/lab-code-01-semgrep-review/planted/app.py, evaluate_expression eval call"
+    },
+    {
+      "finding_key": "demo-code-path-traversal",
+      "control": "file access: path containment for user-named files",
+      "severity": "high",
+      "rationale": "A user-named filename is joined to a base directory with no containment check, so ../ sequences escape the base and read arbitrary files.",
+      "traces_to": "challenges/lab-code-01-semgrep-review/planted/app.py, read_user_file os.path.join without containment"
+    }
+  ]
+}

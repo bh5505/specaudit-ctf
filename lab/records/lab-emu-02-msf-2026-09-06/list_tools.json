@@ -1,0 +1,68 @@
+{
+  "approval_ref": null,
+  "artifacts": [
+    {
+      "digest": "sha256:0387500112aa2f1a4fbf41f4862e99eb28606f5d71d4ebf3187c933a9494173e",
+      "kind": "policy-report",
+      "redaction": "credentials-stripped"
+    }
+  ],
+  "budget": {
+    "reserved": {
+      "max_output_bytes": 1048576,
+      "max_spend": null,
+      "max_tool_steps": 1,
+      "timeout_ms": 30000
+    },
+    "spent": {
+      "elapsed_ms": 10000,
+      "output_bytes": 12471,
+      "spend": 0,
+      "tool_steps": 1
+    }
+  },
+  "capability_id": "metasploit-mcp.list_tools",
+  "cleanup": {
+    "proof_digest": null,
+    "required": false,
+    "residual": false
+  },
+  "coverage": {
+    "attempted": [
+      "metasploit-mcp.list_tools"
+    ],
+    "complete": [
+      "metasploit-mcp.list_tools"
+    ],
+    "failed": [],
+    "required": [
+      "metasploit-mcp.list_tools"
+    ],
+    "skipped": [],
+    "unsupported": []
+  },
+  "finished_at": "2026-09-06T17:34:14Z",
+  "limitations": [],
+  "roe_ref": null,
+  "safety_class": "R0",
+  "schema": "specaudit.ctf.execution-result.v1",
+  "schema_version": 1,
+  "scope": {
+    "authorized": [
+      "policy://extension/arms/metasploit-mcp"
+    ],
+    "touched": [
+      "policy://extension/arms/metasploit-mcp"
+    ]
+  },
+  "side_effects": [
+    "local-read"
+  ],
+  "started_at": "2026-09-06T17:34:04Z",
+  "status": "complete",
+  "tool": {
+    "name": "specaudit-ctf",
+    "version": "0.1.0"
+  },
+  "transport_ok": true
+}

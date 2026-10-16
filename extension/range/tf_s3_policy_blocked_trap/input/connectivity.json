@@ -1,0 +1,11 @@
+{
+  "kind": "connectivity",
+  "edges": [
+    {
+      "from": "any-principal",
+      "to": "trap-bucket",
+      "via": "s3:GetObject",
+      "auth": "blocked"
+    }
+  ]
+}

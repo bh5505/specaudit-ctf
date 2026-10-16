@@ -1,0 +1,51 @@
+{
+  "exposure": {
+    "id": "demo-exp-data-lake",
+    "kind": "unencrypted_storage",
+    "asset_id": "data-lake",
+    "asset_name": "demo-data-lake",
+    "severity": "high",
+    "summary": "aws_s3_bucket data-lake stores objects without server-side encryption"
+  },
+  "path": [
+    {
+      "from": "any-principal",
+      "to": "data-lake",
+      "via": "s3:GetObject",
+      "auth": "principal"
+    }
+  ],
+  "impact": {
+    "id": "demo-imp-data-lake",
+    "kind": "data_at_rest_exposure",
+    "asset_id": "data-lake",
+    "severity": "high",
+    "summary": "Objects on demo-data-lake persist without encryption at rest"
+  },
+  "exposures": [
+    {
+      "id": "demo-exp-data-lake",
+      "kind": "unencrypted_storage",
+      "asset_id": "data-lake",
+      "asset_name": "demo-data-lake",
+      "severity": "high",
+      "summary": "aws_s3_bucket data-lake stores objects without server-side encryption",
+      "path": [
+        {
+          "from": "any-principal",
+          "to": "data-lake",
+          "via": "s3:GetObject",
+          "auth": "principal"
+        }
+      ],
+      "impact": {
+        "id": "demo-imp-data-lake",
+        "kind": "data_at_rest_exposure",
+        "asset_id": "data-lake",
+        "severity": "high",
+        "summary": "Objects on demo-data-lake persist without encryption at rest"
+      }
+    }
+  ],
+  "chains": []
+}

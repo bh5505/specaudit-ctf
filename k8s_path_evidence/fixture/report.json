@@ -1,0 +1,38 @@
+{
+  "meta": {"tool": "k8scout", "version": "0.0.0-synthetic", "timestamp": "2026-09-21T10:00:00Z", "timeout_s": 30},
+  "identity": {"username": "system:serviceaccount:blue:reviewer", "namespace": "blue", "sa_name": "reviewer"},
+  "permissions": {
+    "ssrr_by_namespace": {"blue": [{"verbs": ["get"], "resources": ["secrets"]}]},
+    "ssar_checks": [
+      {"verb": "get", "resource": "secrets", "namespace": "blue", "allowed": true, "reason": "synthetic check"},
+      {"verb": "create", "resource": "rolebindings", "namespace": "red", "allowed": false, "reason": "synthetic deny"}
+    ]
+  },
+  "cluster_objects": {"namespaces": [{"name": "blue", "status": "Active"}, {"name": "red", "status": "Active"}]},
+  "graph": {
+    "nodes": [
+      {"id": "sa:blue:reviewer", "kind": "ServiceAccount", "namespace": "blue", "name": "reviewer", "risk_score": 3},
+      {"id": "rb:blue:read-binding", "kind": "RoleBinding", "namespace": "blue", "name": "read-binding", "risk_score": 3},
+      {"id": "r:blue:secret-reader", "kind": "Role", "namespace": "blue", "name": "secret-reader", "risk_score": 5},
+      {"id": "secret:blue:demo", "kind": "Secret", "namespace": "blue", "name": "demo", "risk_score": 5},
+      {"id": "rb:red:admin-binding", "kind": "RoleBinding", "namespace": "red", "name": "admin-binding", "risk_score": 9}
+    ],
+    "edges": [
+      {"from": "sa:blue:reviewer", "to": "rb:blue:read-binding", "kind": "granted_by"},
+      {"from": "rb:blue:read-binding", "to": "r:blue:secret-reader", "kind": "bound_to"},
+      {"from": "r:blue:secret-reader", "to": "secret:blue:demo", "kind": "can_get", "inferred": true}
+    ]
+  },
+  "risk_findings": [{
+    "id": "synthetic-01", "rule_id": "PRIV-GET-SECRETS", "severity": "HIGH",
+    "score": 7.0, "title": "Possible BLUE secret access", "description": "Reported path through role binding; no secret value accessed.",
+    "evidence": ["synthetic RBAC graph"], "mitigation": "Review BLUE secret read permission.",
+    "affected_nodes": ["sa:blue:reviewer", "r:blue:secret-reader", "secret:blue:demo"],
+    "attack_path": [
+      {"node": {"id": "sa:blue:reviewer", "kind": "ServiceAccount", "name": "reviewer", "namespace": "blue", "risk_score": 3}, "hop": 0},
+      {"node": {"id": "rb:blue:read-binding", "kind": "RoleBinding", "name": "read-binding", "namespace": "blue", "risk_score": 3}, "edge": {"from": "sa:blue:reviewer", "to": "rb:blue:read-binding", "kind": "granted_by"}, "hop": 1},
+      {"node": {"id": "r:blue:secret-reader", "kind": "Role", "name": "secret-reader", "namespace": "blue", "risk_score": 5}, "edge": {"from": "rb:blue:read-binding", "to": "r:blue:secret-reader", "kind": "bound_to"}, "hop": 2},
+      {"node": {"id": "secret:blue:demo", "kind": "Secret", "name": "demo", "namespace": "blue", "risk_score": 5}, "edge": {"from": "r:blue:secret-reader", "to": "secret:blue:demo", "kind": "can_get", "inferred": true}, "hop": 3}
+    ]
+  }]
+}

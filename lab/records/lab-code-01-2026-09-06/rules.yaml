@@ -1,0 +1,25 @@
+rules:
+  - id: hardcoded-credential
+    languages: [python]
+    severity: ERROR
+    message: credential assigned from a string literal
+    patterns:
+      - pattern: $T = "..."
+      - metavariable-regex:
+          metavariable: $T
+          regex: (?i).*(token|key|secret|password).*
+  - id: shell-injection
+    languages: [python]
+    severity: ERROR
+    message: untrusted input interpolated into a shell command
+    pattern: subprocess.run([...,"sh","-c",f"...{$X}"], ...)
+  - id: eval-input
+    languages: [python]
+    severity: ERROR
+    message: eval of untrusted input
+    pattern: eval(...)
+  - id: path-traversal
+    languages: [python]
+    severity: WARNING
+    message: user-named file joined without containment
+    pattern: os.path.join($BASE, $USERINPUT)

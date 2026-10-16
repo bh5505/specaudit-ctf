@@ -1,0 +1,11 @@
+{
+  "track": "telecom-aws-02-iam-s3-misconfig",
+  "seed": null,
+  "fixtures": ["tf_iam_open", "tf_s3_public_access"],
+  "total": 3,
+  "findings": [
+    {"finding_key": "demo-iam-wildcard-action", "control": "least-privilege: action scope", "severity": "critical", "rationale": "The IAM policy allows all actions ('*') on a resource, violating the principle of least privilege.", "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action"},
+    {"finding_key": "demo-iam-wildcard-resource", "control": "least-privilege: resource containment", "severity": "high", "rationale": "The IAM policy grants access to all resources ('*'), which provides overly broad permissions.", "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Resource"},
+    {"finding_key": "demo-iam-to-exposure-chain", "control": "defense-in-depth: identity-to-exposure chain", "severity": "high", "rationale": "An IAM policy with wildcard actions and resources is chained with an S3 bucket configured for public-read access, creating a potential exposure.", "traces_to": "tf_iam_open Statement[0] (Action/Resource '*') chained with tf_s3_public_access aws_s3_bucket.public_bucket acl = 'public-read'"}
+  ]
+}

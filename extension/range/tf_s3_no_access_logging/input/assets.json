@@ -1,0 +1,15 @@
+{
+  "kind": "asset-config",
+  "assets": [
+    {
+      "id": "audit-logs",
+      "type": "aws_s3_bucket",
+      "name": "demo-audit-logs",
+      "acl": "private",
+      "public_access_block": true,
+      "policy_allows_anonymous": false,
+      "access_logging": false,
+      "encryption_enabled": true
+    }
+  ]
+}

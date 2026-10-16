@@ -1,0 +1,27 @@
+You are an auditor head attempting rehearsal challenge telecom-aws-06-chain-rehearsal through the specaudit-ctf MCP server.
+
+This track rehearses the flagship four-stage chain rehearsal: internet-reachable ingress chaining into an assumable role, compounding with the identity and S3 violations across fixtures. Everything is synthetic: no live accounts, no credentials, planted violations only.
+
+Use ONLY the specaudit-ctf MCP tools (list, describe, invoke, run_range) and the Write tool for the final deliverable.
+
+Steps:
+1. Call run_range with arm_ids [] to load the synthetic fixture roster and confirm the track's fixtures.
+2. Reason over the planted violations in the fixtures named below (the run_range report and describe give you the surface; use invoke on catalog reads where it helps your reasoning).
+3. Optionally invoke agent-wiz list_tools {} to confirm the maintained floor, and one curated arm of your choice to observe honest envelope behavior on a scanner-less host.
+4. Write your claimed findings as valid JSON (no prose outside it, no markdown fences) to found.json, with this shape - fixtures list and the findings array filled per below. IMPORTANT: every string value must be a valid JSON string (escape or avoid embedded double quotes).
+
+{
+  "track": "telecom-aws-06-chain-rehearsal",
+  "seed": null,
+  "fixtures": ["tf_chain_ingress_role", "tf_iam_open", "tf_s3_public_access"],
+  "total": 5,
+  "findings": [
+    {"finding_key": "demo-chain-sg-open-admin", "control": "network containment: administrative shell exposure", "severity": "high", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf, aws_security_group.jump, ingress 0.0.0.0/0 tcp/22"},
+    {"finding_key": "demo-chain-role-assumable", "control": "least-privilege: role assumability", "severity": "critical", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_chain_ingress_role/input/main.tf, aws_iam_role.escalation + aws_iam_role_policy_attachment.escalation"},
+    {"finding_key": "demo-chain-internet-to-identity", "control": "defense-in-depth: exposure-to-identity chain", "severity": "critical", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_chain_ingress_role/input/connectivity.json, edge sg-jump -> role-escalate via sts:AssumeRole"},
+    {"finding_key": "demo-chain-iam-open-to-s3-public", "control": "defense-in-depth: identity-to-exposure chain", "severity": "high", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_iam_open/input/main.tf Statement[0] chained with extension/range/tf_s3_public_access/input/main.tf public-read ACL"},
+    {"finding_key": "demo-chain-iam-wildcard", "control": "least-privilege: wildcard identity policy", "severity": "critical", "rationale": "<one sentence in your own words citing the evidence line>", "traces_to": "extension/range/tf_iam_open/input/main.tf, aws_iam_policy.wildcard, Statement[0].Action and Statement[0].Resource"}
+  ]
+}
+
+Write every rationale and traces_to in your own words based on what the tools showed you - do not copy this template's placeholder text. Then stop. Do not write any other file.

@@ -1,0 +1,17 @@
+{
+  "expected_total": 3,
+  "extras": [],
+  "hits": [
+    "demo-emu-msf-module-catalog-enumerable",
+    "demo-emu-msf-no-active-sessions",
+    "demo-emu-msf-no-listeners"
+  ],
+  "invalid": [],
+  "misses": [],
+  "passed": true,
+  "schema": "specaudit.ctf.grade.v1",
+  "score": 1.0,
+  "severity_mismatches": [],
+  "track": "lab-emu-02-msf-listings",
+  "track_match": true
+}

@@ -1,0 +1,31 @@
+{
+  "track": "lab-web-01-dast-surface",
+  "seed": 123,
+  "fixtures": [
+    "lab-target golden rootfs (planted web content under lab/target/)"
+  ],
+  "total": 3,
+  "findings": [
+    {
+      "finding_key": "demo-web-dir-listing",
+      "control": "web hardening: directory indexing disabled",
+      "severity": "medium",
+      "rationale": "Fetching /notes/ on the spawned target returns an auto-generated directory index titled Directory listing for /notes/, disclosing the served tree's structure.",
+      "traces_to": "lab/target/ golden rootfs plants /srv/lab-www/notes/ with no index.html, so the python http.server listener auto-indexes the directory"
+    },
+    {
+      "finding_key": "demo-web-stale-file-exposed",
+      "control": "web hardening: no stale content in the served tree",
+      "severity": "low",
+      "rationale": "The listing links redeploy-checklist.txt and the file is directly retrievable, serving superseded ops content to any prober.",
+      "traces_to": "lab/target/notes/redeploy-checklist.txt (planted stale file reachable via the /notes/ listing)"
+    },
+    {
+      "finding_key": "demo-web-server-header",
+      "control": "web hardening: implementation disclosure",
+      "severity": "low",
+      "rationale": "Every response on both listeners carries the default identification header naming SimpleHTTP and the runtime version, so the implementation is disclosed to any prober.",
+      "traces_to": "lab/target/start-services.sh, the python3 -m http.server listeners whose default responses carry the implementation Server header"
+    }
+  ]
+}

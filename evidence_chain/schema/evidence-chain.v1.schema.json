@@ -1,0 +1,115 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "specaudit.ctf.evidence-chain.v1",
+  "title": "specaudit CTF adjudication evidence chain (v1)",
+  "description": "Five separately-attributable layers (raw custody, observations, inference, adjudication, workpaper) plus sibling machine/human verdicts and inherited limitations. Every layer body lives outside the chain; the chain carries digests and attribution only. evidence_class values are carried through unchanged; verdicts remain siblings and no override field is admitted. The chain authenticates nothing cryptographically and proves no custody.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "schema_version", "raw", "observations", "inference", "adjudication", "workpaper", "machine_verdict", "human_verdict", "inherited_limitations"],
+  "properties": {
+    "schema": {"const": "specaudit.ctf.evidence-chain.v1"},
+    "schema_version": {"const": 1},
+    "raw": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {"$ref": "#/definitions/rawItem"}
+    },
+    "observations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {"$ref": "#/definitions/observation"}
+    },
+    "inference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "author_role", "statement_count"],
+      "properties": {
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "author_role": {"const": "analyst"},
+        "statement_count": {"type": "integer", "minimum": 1, "maximum": 10000}
+      }
+    },
+    "adjudication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "reviewer", "original_score", "adjusted_score", "rationale", "decided_on", "inference_digest"],
+      "properties": {
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "reviewer": {"type": "string", "minLength": 1, "maxLength": 256},
+        "original_score": {"type": "string", "minLength": 1, "maxLength": 256, "description": "the original score is ALWAYS retained"},
+        "adjusted_score": {"type": ["string", "null"], "minLength": 1, "maxLength": 256},
+        "rationale": {"type": "string", "minLength": 1, "maxLength": 256},
+        "decided_on": {"type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$", "description": "ISO date; must not lie in the future relative to the verifier's as_of"},
+        "inference_digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "must equal the inference layer digest"}
+      }
+    },
+    "workpaper": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "conclusion"],
+      "properties": {
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "conclusion": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    },
+    "machine_verdict": {
+      "oneOf": [
+        {"type": "null"},
+        {"$ref": "#/definitions/verdict"}
+      ]
+    },
+    "human_verdict": {
+      "oneOf": [
+        {"type": "null"},
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "digest"],
+          "properties": {
+            "source": {"const": "rubric"},
+            "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+          }
+        }
+      ]
+    },
+    "inherited_limitations": {
+      "type": "array",
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {"type": "string", "minLength": 1, "maxLength": 256}
+    }
+  },
+  "definitions": {
+    "rawItem": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "locator", "custody_note"],
+      "properties": {
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"},
+        "locator": {"type": "string", "minLength": 1, "maxLength": 256, "description": "advisory audit locator; not identity and not custody"},
+        "custody_note": {"type": "string", "minLength": 1, "maxLength": 256}
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["digest", "evidence_class"],
+      "properties": {
+        "observation_id": {"type": "string", "minLength": 1, "maxLength": 256},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$", "description": "must be present in the raw layer"},
+        "evidence_class": {"enum": ["declared", "observed", "inferred"], "description": "carried through unchanged; chaining never upgrades"}
+      }
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "digest"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1, "maxLength": 256},
+        "digest": {"type": "string", "pattern": "^sha256:[0-9a-f]{64}$"}
+      }
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "kind": "asset-config",
+  "assets": [
+    {
+      "id": "trap-bucket",
+      "type": "aws_s3_bucket",
+      "name": "demo-trap-bucket",
+      "acl": "private",
+      "public_access_block": true,
+      "policy_allows_anonymous": true,
+      "access_logging": true,
+      "encryption_enabled": true
+    }
+  ]
+}

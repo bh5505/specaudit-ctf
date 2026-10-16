@@ -1,0 +1,20 @@
+{
+  "track": "telecom-aws-06-chain-rehearsal",
+  "seed": 123,
+  "fixtures": [
+    "tf_chain_ingress_role",
+    "tf_iam_open",
+    "tf_s3_public_access"
+  ],
+  "stage": 3,
+  "total": 1,
+  "findings": [
+    {
+      "finding_key": "demo-chain-iam-open-to-s3-public",
+      "control": "defense-in-depth: identity-to-exposure chain",
+      "severity": "high",
+      "rationale": "An identity holding the wildcard policy can read every object in the public-read bucket: the chain spans two fixtures and neither fixture shows it alone.",
+      "traces_to": "extension/range/tf_iam_open/input/main.tf Statement[0] chained with extension/range/tf_s3_public_access/input/main.tf public-read ACL"
+    }
+  ]
+}

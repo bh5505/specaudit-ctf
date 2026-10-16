@@ -1,0 +1,196 @@
+# Governance register
+
+This directory is a repository-maintainer surface. It records module, source,
+runtime, relationship, currentness, and promotion evidence; it grants no
+execution authority and is not imported by `extension` or the sealed runtime.
+The executable admission authority remains
+`extension.invoke_profiles.INVOKE_PROFILES`.
+
+`register.v1.yaml` is deliberately partial. Its detailed records cover the 14
+research readers added in PR 97: 14 `list_tools` capabilities and 38 local-data
+actions. Its inventory section separately binds the exact semantic snapshot of
+all 227 admitted profiles (including eight offline learning-operator
+profiles and one inline pack-analysis action) so removal or profile drift cannot look like a clean
+governance check. The source records are research candidates, not selected or
+admitted upstream material. Their `research-mapping` relationships assert no
+consumption, compatibility, provenance, custody, license, or data-rights claim.
+
+For this PR 97 slice, the checker also loads `extension/coverage.yaml` against
+the independently pinned canonical coverage-schema bytes. It requires the exact
+14 reader ids and their `arm` / `[cli]` / curated / research classifications,
+reconciles each classification with all 52 detailed register and authoritative
+profile records, binds every real specialized handler's canonical immediate
+truthy-payload refusal structure, and exercises both `list_tools` and
+`tools/list`. The full 68-row catalog is not globally frozen: the report binds
+the exact catalog bytes and its complete semantic snapshot, while the literal
+governance baseline freezes only the 14 PR 97 reader classifications.
+
+The three statuses stay independent:
+
+- a module status never promotes a source or runtime capability;
+- selecting or admitting a source never admits or promotes an action; and
+- an admitted or maintained runtime action never makes learning material
+  shipped.
+
+The date-window portion of currentness is derived from `reviewed_on` and
+`review_due_on` at a caller-supplied `--as-of` date. There is no stored
+`current: true` flag. V1 records explicit drift triggers but has no observation
+source proving that a listed trigger did not fire, so even an otherwise valid
+date window reports `drift-triggers-unverified` and cannot satisfy `current`.
+The initial records also intentionally have no completed currentness review, so
+a current or complete check fails visibly.
+
+From a development checkout with the dev dependencies installed:
+
+```bash
+# Validates the closed schemas, exact inventory, PR97 roster, catalog rows,
+# live discovery aliases, profile contracts, relationships, and promotions.
+python3 -m governance check --scope pr97-readers --require integrity \
+  --as-of 2026-09-08 --format json
+
+# The default completeness requirement is intentionally nonzero until GOV-01
+# covers the complete module/source/runtime architecture and currentness queue.
+python3 -m governance check --as-of 2026-09-08 --format json
+```
+
+## Register v2 — complete inventory (2026-10-13)
+
+`register.v2.yaml` (schema `governance/schema/register.v2.schema.json`,
+byte-pinned by the checker) extends the frozen v1 foundation additively. The
+v1 file, the v1 schema, and every v1 validation rule are unchanged; the
+reader-safety register and all v1 tests keep validating the v1 bytes. v2 is
+opt-in through an explicit version flag — the loaded document never selects
+its own validator:
+
+```bash
+python3 -m governance check --register-version 2 --scope full-v2 \
+  --require integrity --as-of 2026-10-13 --format json   # exit 0
+python3 -m governance check --register-version 2 --scope full-v2 \
+  --require current --as-of 2026-10-13 --format json     # exit 0
+python3 -m governance check --register-version 2 --scope full-v2 \
+  --require complete --as-of 2026-10-13 --format json    # exit 0
+```
+
+What v2 adds, and what it still refuses to claim:
+
+- **Roster completeness**: all 29 program modules (FND/AUD/CYC/TEL/capstones
+  from `PROGRAM.md`), all 109 source rows (42 R-register candidates, 12
+  supplemental S-families, 9 decided E1 pilot sources with their
+  `source-decisions-2026-10-03.md` pins, and the 46 authoritative
+  source-spine entries as `reference`-status rows), and detailed runtime
+  records for the full 227-capability authoritative inventory. The PR97 slice
+  is carried forward value-identically: the checker projects it back to v1
+  shape, re-runs the untouched v1 rules on it, and additionally compares every
+  row against the frozen v1 file (currentness is deliberately upgraded; all
+  other fields must match exactly).
+- **Per-candidate admission evidence**: the fourteen research-reader families
+  carry canonical upstream custodian, verified immutable revision (tags or
+  pinned commits from the 2026-10-13 primary-source review), supported-range
+  honesty, code license separated from data/content rights, and a
+  compatibility-schema correspondence record with known losses and explicit
+  unknown semantics. Unresolved rights cells stay `OPEN` strings; see
+  `docs/governance/source-verification-2026-10-13.md` for the evidence
+  record behind every row.
+- **Currentness with trigger checks**: every row's review window carries a
+  reviewer and one recorded check per drift trigger, with a controlled
+  `checked_via` vocabulary (`checker-rederived-inventory-reconciliation`,
+  `primary-source-review`, `architecture-review`) and evidence references
+  that must resolve to real repository headings. The report labels its basis
+  `attributed-review-and-rederived-checks`: trigger checks are attributed
+  review records and machine re-derivations, not proof that an upstream did
+  not change. The recurring queue section binds per-class cadences to every
+  row's window.
+- **Promotion refusal unchanged**: v2 contains zero promotion events and
+  refuses them, refuses `selected`/`admitted` sources, refuses `shipped`
+  modules, and requires empty `promotion_evidence` everywhere. The one
+  maintained and the experimental runtime tiers predate the register; their
+  rows carry optional `tier_provenance` notes that are inert by construction
+  — the authoritative `INVOKE_PROFILES` tier is reconciled on every check and
+  no register note can authorize or override it (a dedicated test strips all
+  provenance and re-passes every requirement).
+- **`repository_complete: true` means register coverage only** — every module,
+  source family, and admitted capability rowed, reviewed, and queued. It is
+  not a shipping, admission, catalog, or maintained-support claim, and it
+  changes no runtime surface.
+
+v2 uses larger register-only parse budgets (1 MiB bytes, 40,000 nodes, 1 MiB
+total strings); the v1 and coverage budgets are untouched.
+
+### Operator-authorized source promotions (2026-10-14)
+
+The first promotions exist under the [promotion
+authorization](../docs/governance/promotion-authorization-2026-10-14.md):
+R01 vulnify and R43 security-detections-mcp are **admitted** for their
+pinned first-party synthetic DATA-01/DATA-02 slices (the upstream aggregate
+database and upstream rule corpora stay outside the admission), and ten
+families (R02 R03 R08 R17 R25 R33 R34 R35 R36 R42) are **selected** for
+recorded-export import. R15 and R38 stay research with recorded refusal
+decisions. The checker's `V2_AUTHORIZED_PROMOTIONS` table is a frozen
+allowlist — not evidence by itself: each accepted decision must bind the
+operator authorization heading, the upstream-verified pin, and (for admitted
+rows) a digest re-derivable from bytes on disk. Any promotion outside the
+table, any field drift from an anchor, any unanchored or orphan event, and
+every module/runtime promotion path remain integrity failures. Adding a
+future promotion requires editing the anchor table in code — a register
+edit alone can never authorize one. The PR97-slice fidelity rule masks
+exactly the promotion-affected fields on promoted rows; everything else on
+those rows must still equal the frozen v1 register.
+
+Exit `0` means the explicitly requested requirement passed, `1` means the
+register has semantic/currentness/completeness gaps, and `2` means the register,
+schema, arguments, or other input is invalid. Schema-valid validation reports
+state both requested and stored scopes, the requested requirement, every
+completeness dimension, the register revision, exact register/schema byte
+digests, the authoritative profile-snapshot digest, and the coverage catalog's
+exact-byte and semantic-snapshot digests. Register, coverage, and schema inputs
+are read through bounded regular-file descriptors with final-component symlinks
+refused and pre/post identity checked. These hashes identify the bytes read; they
+neither sign those bytes nor make the checkout immutable. The loaders reject
+external schema references, aliases, duplicate keys, non-finite numbers, unsafe
+Unicode, and over-budget input trees. Relationship evidence is restricted to
+existing repo-relative ATX CommonMark headings. Evidence documents are capped at
+128 KiB and 20,000 logical lines. Because v1 evidence fragments are ASCII,
+heading-slug validation accepts ASCII text and removable non-ASCII dash
+punctuation; any other non-ASCII heading text is rejected rather than guessed.
+The v1 stored scope is fixed to `pr97-readers`; `full` is a permitted requested
+target, while the default full/complete check remains nonzero until a later
+schema owns the complete module/source/runtime anchors. Alternate `--schema` and
+`--coverage-schema` paths may relocate their canonical schemas but cannot
+redefine them: their bytes must match the independently pinned digests.
+`--coverage` may likewise select the catalog snapshot whose bytes the report
+identifies. Argument errors fail loudly on stderr with exit `2` and may use
+argparse's plain text; loader/input errors use a validation-error JSON object on
+stderr. Silence is never success.
+
+For Python callers, `validate_register(registry, inventory, ...)` retains its
+original call shape and strictly loads the canonical coverage snapshot when the
+new third argument is omitted. `CoverageInventory`, `load_coverage_inventory`,
+and `snapshot_coverage_catalog` are exported for callers that need to validate
+an explicit alternate snapshot.
+
+## Reader safety register
+
+The checkout-only [reader-safety register](../safety/README.md) inventories
+requirements that remain permanently unverified by the checkout for the named
+PR97 caller-file reader surfaces. Its integrity check proves only
+correspondence to those named PR97 checkout surfaces. It provisions no approved
+input root, stable nofollow snapshot, trusted custody/classification, egress
+denial, ambient-credential isolation, independent hard kill/monitoring,
+untrusted-content boundary, or grader-plane separation. It grants no authority
+and does not satisfy `SAFE-01`. The checkout cannot produce a passing `ready`
+result.
+
+That safety inventory is not `EVID-01` trusted observation, custody, or grading
+evidence; `GOV-01` source/runtime promotion or currentness; or `DATA-01` /
+`DATA-02` source admission, rights, snapshot, and denied-egress evidence. Those
+gates remain independent.
+
+The promotion-event shape reserves the subject and contract digests,
+implementation revision, reviewer, exercised path, regression result, supported
+versions, source revisions, and accepted limitations needed by a future
+verifier. V1 checks internal consistency only: it cannot authenticate a reviewer
+or prove that a named artifact, regression, or path exists and was exercised.
+It therefore refuses every nonempty promotion event and every state that needs
+promotion with `promotion-verifier-unimplemented`. No v1 promotion is
+authoritative. Research records legitimately have no promotion event, and the
+three registers remain independent.

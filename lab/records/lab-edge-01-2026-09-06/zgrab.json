@@ -1,0 +1,69 @@
+{
+  "approval_ref": "operator://dispatch-scope/ZGRAB2_DISPATCH_SCOPE",
+  "artifacts": [
+    {
+      "digest": "sha256:bad23b60d8d05be89d3ab3c312af7d794a31f1bff8e5df04fb887eb85264cd0d",
+      "kind": "policy-report",
+      "redaction": "credentials-stripped"
+    }
+  ],
+  "budget": {
+    "reserved": {
+      "max_output_bytes": 1048576,
+      "max_spend": null,
+      "max_tool_steps": 1,
+      "timeout_ms": 60000
+    },
+    "spent": {
+      "elapsed_ms": 0,
+      "output_bytes": 2834,
+      "spend": 0,
+      "tool_steps": 1
+    }
+  },
+  "capability_id": "zgrab2.scan",
+  "cleanup": {
+    "proof_digest": null,
+    "required": false,
+    "residual": false
+  },
+  "coverage": {
+    "attempted": [
+      "zgrab2.scan"
+    ],
+    "complete": [
+      "zgrab2.scan"
+    ],
+    "failed": [],
+    "required": [
+      "zgrab2.scan"
+    ],
+    "skipped": [],
+    "unsupported": []
+  },
+  "finished_at": "2026-09-06T17:17:28Z",
+  "limitations": [],
+  "roe_ref": "doc://README#dispatch-doctrine",
+  "safety_class": "R1",
+  "schema": "specaudit.ctf.execution-result.v1",
+  "schema_version": 1,
+  "scope": {
+    "authorized": [
+      "policy://extension/arms/zgrab2"
+    ],
+    "touched": [
+      "policy://extension/arms/zgrab2"
+    ]
+  },
+  "side_effects": [
+    "subprocess",
+    "network-egress"
+  ],
+  "started_at": "2026-09-06T17:17:28Z",
+  "status": "complete",
+  "tool": {
+    "name": "specaudit-ctf",
+    "version": "0.1.0"
+  },
+  "transport_ok": true
+}

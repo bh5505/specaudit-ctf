@@ -1,0 +1,700 @@
+# Extension
+
+Arms, legs, and alternative-head surface for the specaudit-ctf
+collaboration cut.
+
+This tree is the public attach surface:
+
+- `coverage.yaml` — classified survey map (not a ship list)
+- `contract.py` — fail-closed `list` / `describe` / `invoke`
+- `arms/` — 49 specialized handlers (families below)
+- `heads/` — Claude Code CLI, Codex CLI, and other-agent-CLI profiles
+- `range/` — synthetic fixtures only
+- `mcp_server.py` — stdio MCP for four tools (`list`, `describe`,
+  `invoke`, `run_range`)
+- `arms/dispatch.py` — two-tier scope gate
+- `observations.py` / `observation_profiles.py` — opt-in, pure trusted-side
+  binding for four exact singleton reader results; not an invocation surface
+
+A validation client may attach the same CLI or MCP surface later.
+
+## Operational target analysis
+
+The existing `learning-operator.analyze_pack` invoke action connects pack
+findings to permission paths, Kubernetes prerequisites, workpaper review,
+detection records, captured agent behavior and triage order. It calls the core
+`pipeline.prioritize_targets` implementation; it does not run bundled samples.
+Cloud and other non-IP findings remain in the handoff alongside network targets.
+
+Use the [core analysis contract](../docs/operator-learning-arm.md) for the
+argument schema and CLI/MCP invocation. Successful attached calls include the
+bounded, digest-checked report in a second text block so the head can act on the
+analysis. The v1 execution envelope and four MCP tool names remain unchanged.
+External validation uses the existing scoped arms and operator authorization.
+
+## Opt-in trusted observations
+
+The default runtime does not import or call the observation sidecar.
+`extension.observations` exposes five explicit functions:
+
+- `issue_source_admission(...)` creates a deterministic, per-attempt source
+  admission for the byte-compatible v1 `vulnify.lookup` contract;
+- `issue_profile_source_admission(...)` requires an exact capability and
+  subject plus validator-held raw bytes and caller-supplied source, authority,
+  custody, revision, time, producer and validity fields; it routes vulnify to
+  v1 and the two newer singleton profiles to v2;
+- `verify_source_admission(...)` re-parses those raw bytes and checks the
+  complete admission plus its content-derived id;
+- `derive_trusted_observation(...)` accepts a semantic-complete execution
+  envelope, exact policy-report bytes and exact raw bytes, or raises with typed
+  reason codes; and
+- `verify_trusted_observation(...)` re-derives the complete document and also
+  rejects ids present in the validator-supplied replay set.
+
+The replay set is a required argument; an explicitly empty set is appropriate
+only before the first accepted observation in a new durable ledger.
+The observation id is a stable replay identity derived from the schema,
+version, capability and validator-created attempt id; it is not a content
+digest. Each profile permits one accepted observation per attempt, so neither
+re-verification time nor a numerically equivalent envelope encoding can mint a
+fresh identity. The admission and binding digests plus full re-derivation—not
+the observation id—detect document or evidence mismatch.
+
+The frozen sidecar registry contains exactly `vulnify.lookup`,
+`security-detections-mcp.get_rule`, `rubeus.telemetry`, and `gpohound.policy`.
+Each accepts only its exact singleton action and selector, exactly one
+`policy-report` artifact,
+and its declared source formats: JSON/JSONL/YAML for vulnify, JSON/YAML/YML for a
+detection-rule index, JSON/JSONL for deweaponized Rubeus telemetry, and
+JSON/YAML/YML for GPOHound policy evidence. The raw
+parsers are shared with the arms, so the selected record, exact-byte
+digest/length and normalized full-record digest are independently recomputed
+rather than accepted from result prose. The v1 vulnify schemas remain closed
+and unchanged; the two v2 profiles use separate closed Draft-07 schemas.
+The GPOHound profile uses separate closed v3 Draft-07 schemas; neither later
+version widens the published v1 or v2 schemas. Callers must still use the
+runtime verifiers for cross-field time
+ordering/duration, content identities, replay and byte bindings. The runtime
+has no `jsonschema` dependency.
+
+An admission validity interval is limited to 24 hours. This is a maximum, not
+a freshness claim; operators should use the shortest interval their run needs.
+
+The sidecar performs no I/O, clock read, dispatch, persistence or state
+mutation. The caller supplies already-acquired immutable bytes and all times.
+It does not add a CLI/MCP tool, invocation profile, catalog row or manifest;
+does not modify execution-result v1, traces or fixture grading; and grants no
+finding, workpaper, lifecycle, support-tier, rights or source-promotion
+authority. Every observation remains source-declared with applicability
+explicitly not assessed. A rule observation exposes only its id, name and a
+`definition_digest` over the full replayed rule record (including those id and
+name fields); it establishes neither deployment nor operating effectiveness. A
+telemetry observation retains the bounded event projection and indicator
+`type` fields while omitting indicator `value` fields; other caller-supplied
+prose remains untrusted. It establishes neither event authenticity nor event
+time, and it does not infer compromise. A GPOHound observation exposes the
+policy id, name, declared status, and a `definition_digest` over the full
+replayed policy record. It does not establish application, effective access,
+security/WMI-filter applicability, item-level targeting, or policy-conflict
+resolution. Execution-result v1 does not retain invocation arguments, so v3
+binds the returned record to the admitted policy id without claiming whether
+the arm selected it by id or by its unique name.
+
+The custody fields are assertions by the trusted validator. Execution-result
+v1 does not say whether a result carrying an attempt id also used
+`--artifact-dir`, so this pure helper cannot prove descriptor-relative Mode-A
+acquisition. `validator-attested-mode-a` must be backed by the operator's
+actual Mode-A receipt/read and retained replay state. The admission JSON is
+content-bound but unsigned; the trusted caller still owns issuer
+authentication, pre-attempt creation, channel custody and durable append-only
+storage. R01, R08, R36 and R43 remain unselected research sources with
+unreviewed rights in the partial governance register, so no default admission
+exists for any of the four profiles.
+
+## Asset reconnaissance
+
+`asset-recon` provides one association graph across CT, forward/reverse DNS,
+ASN/registry and optional Shodan evidence. Its `plan`, `parse`, `ct`, `ptr`,
+`discover`, `probe` and `list_tools` actions use the existing `invoke` boundary.
+Offline planning/import and recursive evidence discovery are separate from
+provider egress and independently armed explicit-target observations.
+
+The [asset reconnaissance guide](../docs/scope-recon.md) is the single action,
+scope/exclusion, provenance, confidence, limitations and exercise reference.
+Exclusions override seeds; candidates and confidence never grant probe
+authority. Adapter presence is not a support promotion, and this arm introduces
+no MCP tool or change to fixture grading.
+
+`ct`, `ptr` and `discover` declare the union of local-read, subprocess and
+network-egress effects; an offline fixture invocation still carries that
+conservative profile. `probe` declares subprocess/network-egress and requires
+eligible explicit global IP targets. Planning, parsing and metadata stay local.
+The guide includes the exact offline and Mode A custody commands; no persistent
+cache or browser/screenshot surface is shipped.
+
+## Coverage catalog
+
+CLI arms cap combined stdout and stderr bytes during execution and refuse a
+truncated result. The bounded runner requires POSIX process groups and refuses
+to launch on unsupported platforms. It kills same-group descendants on cap,
+timeout, and normal completion, including children retaining pipe handles.
+Processes deliberately detached into a new session are outside that cleanup
+guarantee; this runner is an output budget, not an operating-system sandbox.
+
+`coverage.yaml` classifies each surveyed product as:
+
+- `head` — alternative agent or CLI head
+- `arm` — invocable tool, scanner, MCP, or CLI adapter
+- `methodology-only` — specification, curriculum, or teach-only knowledge
+
+Every row has a support `tier`: `research` | `experimental` |
+`maintained` | `held`. `curated: true` is a **deprecated**
+compatibility flag meaning a specialized handler exists in this cut;
+it is **not** `tier: maintained`. **49 arms are curated; zero rows
+are held (the HTTP-MCP held set closed 2026-09-04); exactly one
+capability is maintained — the agent-wiz
+read tier `agent-wiz.list_tools` (X5-PROMOTE, doc 13 evidence gate).**
+Methodology-only rows are never curated and never maintained. `held` is never invocable and carries
+`held_reason` (a tier that currently has zero live rows; the gate
+stays enforced and fixture-pinned). research/experimental presence is not a validator
+support promise. A row on the map is not a promise that an adapter is
+implemented; in this cut every arm row has a specialized handler.
+
+Schema: [schema/coverage.schema.json](schema/coverage.schema.json).
+
+### The research register is not this catalog
+
+[PROGRAM.md](../PROGRAM.md) at the repository root includes a register of
+**proposed** resources and integration directions. For an operator it is
+reading material, and nothing more:
+
+- it is **not** `coverage.yaml` — a register entry adds no row here by itself;
+- it is **not** a specialized handler — only candidates separately present in
+  this catalog and `arms/` have an implementation;
+- it is **not** an admitted action — only exact actions separately present in
+  `invoke_profiles.py` carry safety, scope, side-effect, budget, cleanup, and
+  version metadata; and
+- it is **not** maintained support — all newly selected candidate readers stay
+  at the research tier.
+
+Take current truth from the shipped surfaces instead: `python -m
+extension list`, `python -m extension describe <id>`, `python -m
+extension availability`, and the per-arm caveats below. Installing or
+discovering a candidate arms nothing by itself — a binary on PATH or an
+MCP server listing a tool is not authorization, and dispatch-class
+actions still require their own `*_DISPATCH_SCOPE`. Any external data or
+tool from that register must clear the admission checklist in
+[PROGRAM.md](../PROGRAM.md#admission-checklist) before it is used here at all.
+
+### Curated arms by family
+
+**Offline operator assessment** (`tier: research`):
+
+- `learning-operator` — six inline, bounded PR4 review actions over graph,
+  Kubernetes, workpaper, agent, detection and captured triage packets. `sample`
+  returns editable synthetic requests; `list_tools` discovers the contract.
+  No caller path, provider call, upstream collector/executor or grader authority
+  is exposed through MCP. See [operator procedure](../docs/operator-learning-arm.md).
+
+**In-process reconnaissance** (`tier: research`):
+
+- `asset-recon` — local planning and fixture analysis; separately granted
+  provider collection and explicit-target probes. See the
+  [unified procedure](../docs/scope-recon.md).
+
+**In-process caller-file readers** (`tier: research`, R0 local-read actions;
+no dispatch tier):
+
+These actions parse an operator-selected local file or directory. Their
+`list_tools` calls read static repository policy and are synthetic-only; their
+data actions are deliberately `synthetic_only: false` because local and
+read-only does not mean the supplied evidence is synthetic. The v1 manifest
+still has a static policy URI in `touched_scope`, not the dynamic caller path;
+that field is not proof of file custody. Input containment, content digests,
+source attribution and data rights remain separate gates. The opt-in sidecar
+above binds one caller artifact only for its three frozen singleton profiles,
+and only when a trusted validator supplies a separate pre-attempt admission and
+the exact raw and Mode-A result bytes; it does not make other reader results
+trusted.
+
+The checkout-only [reader-safety register](../safety/README.md) inventories
+requirements that remain permanently unverified by the checkout for these
+named PR97 reader surfaces. Its integrity check proves only correspondence to
+the named PR97 checkout surfaces. It provisions no approved input root, stable
+nofollow snapshot, trusted custody/classification, egress denial,
+ambient-credential isolation, independent hard kill/monitoring,
+untrusted-content boundary, or grader-plane separation. It grants no authority
+and does not satisfy `SAFE-01`. It is also not
+`EVID-01` observation/custody/grading evidence, `GOV-01` promotion/currentness,
+or `DATA-01` / `DATA-02` source admission, rights, snapshot, or denied-egress
+evidence; those gates remain independent.
+
+- `attack-stix-data` — exact `technique`, `software`, `group`, and bounded
+  `relationships` reads over a local STIX bundle; no downloader or broad
+  enumeration.
+- `security-detections-mcp` — `list_rules`, `search_rules`, and `get_rule` over
+  an operator-supplied local detection index; no rule generation, mutation,
+  deployment, or hosted fallback. The exact-byte digest is not source custody;
+  revision and corpus licensing remain operator gates.
+- `agentseal` — `analyze` and `list_scenarios` over a static fixture; no active
+  mode, and every result must retain the specific configuration evidence.
+- `vulnify` — `lookup` and `list_vulns` over a frozen local vulnerability
+  snapshot. This is a first-party bounded reader mapped to the research
+  candidate; it does not run the upstream service, claim upstream schema
+  compatibility, or bundle upstream code/data. Snapshot identity, source
+  attribution, and reuse rights remain explicit operator inputs.
+- `leonidas` — `technique` and `list_techniques` over a declarative corpus;
+  executor bodies remain inert text. The arm obtains or uses no cloud
+  credentials and refuses secret-shaped fields, but operators must still keep
+  credentials out of supplied prose and corpus values.
+- `specterops-skills` — `skill` and `list_skills`; retained instructions must
+  keep bounded mapping/step fields distinct, and skill prose grants no
+  authority. Mapping accuracy and upstream correspondence remain operator
+  gates.
+- `detection-in-the-cloud` — `playbook`, `list_playbooks`, and `list_rules`;
+  operators must bind definition revisions, and a listed rule is never
+  evidence of operating effectiveness. `list_playbooks` identifies only its
+  deterministic name/format listing; file-reading actions identify parsed
+  bytes.
+- `pentestkit` — `result`, `list_results`, and `summary`; first-pass, tuned, and
+  held-out results stay separate, and failures stay in the denominator.
+- `collinear` — `scenario`, `list_scenarios`, and `verify`; expected findings
+  and trace keys are omitted from scenario views, while `verify` returns only
+  exact-match pass/fail. Empty instructor answer sets are rejected rather than
+  treated as an all-clear. Caller files and submissions remain untrusted;
+  attempt limits, custody, and instructor-plane separation are external gates.
+- `ad-pathfinder` — `path`, `list_paths`, and `list_datasources`; missing
+  datasource coverage means not assessed, an empty export is rejected rather
+  than reported assessed, a blocked path is not compromise, and operators must
+  exclude real credentials or sensitive identifiers from accepted text fields.
+- `gpohound` — `policy`, `list_policies`, and `list_links`; filtered-out policy
+  is not effective access, and uncovered security/WMI filters and item-level
+  targeting remain limitations.
+- `claude-ad` — `technique`, `list_techniques`, and `list_prerequisites`;
+  prerequisites, observations, and inference stay distinct, and framework
+  mappings are not compliance claims.
+- `numasec` — `finding`, `list_findings`, and `list_transitions`; verified state
+  requires a structurally continuous actor/reason history, but actor strings
+  and status remain unauthenticated caller assertions. The reader does not
+  mutate or refresh the ledger.
+- `rubeus` — `telemetry`, `list_telemetry`, and `list_indicators` over
+  deweaponized records; the reader performs no collection/ticket operation and
+  projects/redacts its output, but operators must still exclude real secrets.
+  Legitimate administration is not automatically compromise.
+- `m365pwned` — `case_study`, `list_case_studies`, and `list_permissions` over
+  educational consent cases; no live tenant/mailbox/file access, and permission
+  claims still require API-owner verification.
+
+**MCP** (`tier: research` on the hardened transport; specialized
+session per arm, not a generic transport):
+
+- `burp-mcp` — research, fully usable on the free Community Edition;
+  HTTP+SSE on the hardened transport; literal
+  loopback endpoints only (`127.0.0.1`/`[::1]`, http or https);
+  history (incl. regex variants)/codec/Organizer/config-export/
+  scanner-Collaborator (Pro)/random-text reads admitted as
+  capabilities; the server auto-starts with Burp (enabled defaults
+  true, persists in the BApp's extension data);
+  no edition gating (unavailable tools refused by the server surface)
+- `semgrep-mcp` — research; first-party CLI scans (inline rule pack
+  required - no registry `p/` or URL rules; `SEMGREP_SCAN_ROOT`
+  containment) admitted as `semgrep_scan`, plus MCP reads over an
+  operator-configured https endpoint on the hardened transport
+- `prowler-mcp` — research; streamable-HTTP (the `/mcp` path rides
+  the endpoint URL) on the hardened transport, over the first-party
+  OSS server (prowler-cloud/prowler `mcp_server/`); endpoint policy
+  is the explicit union — operator-fronted https for self-hosted
+  remote OR literal-loopback `127.0.0.1`/`[::1]` http for the
+  first-party local default (upstream ships no TLS); install is
+  gated by the endpoint env alone (the server never reads AWS
+  credentials — hub/docs are unauthenticated, tenant tools use a
+  server-held key toward api.prowler.com); exact-name admission of
+  43 read lookups (10 hub + 2 docs + 31 tenant reads) pinned from
+  source; the 18 mutating tools and the hosted-only `prowler_cloud_*`
+  namespace are exactly blocked
+- `google-mcp-security` — research; GTI lookups over the official
+  gti-mcp server at an operator-configured https endpoint via the
+  hardened transport; all 32 allowlisted tools are reads (re-verified
+  against the current official 36-tool inventory 2026-09-06); the 4
+  mutating tools are exactly blocked — the three collection writers
+  and `analyse_file` (upstream docstring: uploaded samples are
+  "shared with the community"); no dispatch tier
+- `metasploit-mcp` — research; SSE over the operator-run local server
+  (literal-loopback endpoints only); exploit/payload/session/listener
+  listings admitted as read capabilities; execution tools are admitted as R1
+  network-egress profiles and remain gated by `METASPLOIT_DISPATCH_SCOPE` at
+  the handler
+
+**CLI read** (no dispatch tier):
+
+- `checkov` — fixed-argv terraform scan; `--skip-download`;
+  `CHECKOV_SCAN_ROOT` must stay inside the packaged range
+- `garak` — `list_probes` / `list_detectors` / local `report`;
+  target-bound install; open-ended probe dispatch blocked
+- `mitreattack-python` — local STIX-to-Excel; network downloader on
+  no tier
+
+**CLI dispatch-only** (no meaningful read surface):
+
+- `wapiti` — `WAPITI_DISPATCH_SCOPE`
+- `commix` — `COMMIX_DISPATCH_SCOPE`
+- `zdns` — `ZDNS_DISPATCH_SCOPE`
+- `page-fetch` — `PAGE_FETCH_DISPATCH_SCOPE`
+
+**CLI / native two-tier** (reads unarmed; dispatch scope-gated):
+
+- `zaproxy` — native JSON API views; scans gated by
+  `ZAP_DISPATCH_SCOPE`
+- `vuls` — local `report`/`summary`; `scan` is scope-presence
+  (`VULS_DISPATCH_SCOPE`)
+- `stratus-red-team` — local technique list; warmup/detonate/revert
+  gated by `STRATUS_DISPATCH_SCOPE`
+- `osmedeus` — local asset reads; scan gated by
+  `OSMEDEUS_DISPATCH_SCOPE`
+- `caldera` — allowlisted v2 GET reads (incl. per-operation
+  chain); `schedule_operation` gated by `CALDERA_DISPATCH_SCOPE`
+  (path provisional upstream)
+- `routersploit` — dispatch-only `run`
+- `sniper` — dispatch-only `scan`
+- `zgrab2` — `list_modules` read; stdin `scan`
+- `dark-moon` — `log` read; `campaign`/`run` dispatch (CLI launcher;
+  MCP names unbound)
+- `pyrit` — `list_scenarios` read; `scan` dispatch (`pyrit_scan` only)
+- `deepsec` — unarmed `scan` (matcher; mutates workspace); `process`
+  dispatch; path-scoped
+- `vvah` — `estimate` is a free read; `doctor` live-probes backends
+  (may spend tokens); `scan`/`remediate` dispatch; path-scoped
+- `ai-deep-sast` — `--skip-llm` `scan` and `dry_run` reads; `ai_scan`
+  dispatch; path-scoped
+- `agent-wiz` — `extract`/`visualize` reads; `analyze` dispatch;
+  path-scoped
+
+## CLI
+
+From the repository root:
+
+```text
+python -m extension list
+python -m extension describe <id>
+python -m extension invoke <id> <action> ['{"k":"v"}'] [--attempt-id attempt-<hex>] [--artifact-dir ABSOLUTE_DIR]
+```
+
+Examples:
+
+```text
+python -m extension describe burp-mcp
+python -m extension describe checkov
+python -m extension invoke agent-wiz list_tools
+```
+
+`invoke` is fail-closed: unknown ids, non-arms, methodology-only rows,
+held arms, non-curated arms, and uninstalled curated arms are hard
+errors. Do not invent a fallback card. `list` / `describe` include
+`tier` and stay catalog JSON. `invoke` stdout is
+`specaudit.ctf.execution-result.v1`. Process exit 0 is not `complete`.
+`transport_ok` is informational: it means the tool invocation/response
+transport succeeded, not that artifact custody succeeded. A zero-step
+pre-invocation refusal reports no touched scope and `none` effects. If an
+entered arm throws, its failed envelope reports the admitted profile's touched
+scope and side effects as conservative bounds and explicitly records that
+effects may be partial or unknown; those fields do not prove every declared
+effect occurred. Optional
+`--attempt-id` / `--artifact-dir` are Mode A. `--artifact-dir` must be
+an absolute, existing, real, empty per-attempt Unix directory; the
+producer binds it before dispatch. Malformed attempt ids, invalid or
+non-empty artifact directories, and unsupported Mode-A platforms fail
+before execution and may report only on stderr (no result envelope).
+Omit both flags for portable Mode B.
+
+The X2-PUB CLI manifest admits the in-process `list_tools` policy reads
+registered in `invoke_profiles.py`, the caller-file actions enumerated above,
+plus — since
+the 2026-09-01/02/03/05 dispatch-class admissions — the scope-gated R1
+profiles (`nmap.scan`, `zaproxy.ascan_scan`, `zaproxy.spider_scan`,
+`zgrab2.scan`, `wapiti.scan`, `zdns.lookup`, `pyrit.scan`,
+`routersploit.run`, `osmedeus.scan`, `page-fetch.fetch`,
+`commix.scan`, `semgrep-mcp.semgrep_scan`, `vuls.scan`,
+`stratus-red-team.warmup/detonate/revert`) with honest
+manifest truth: default-off behind the arm's arming gate
+(`*_DISPATCH_SCOPE`, or `SEMGREP_SCAN_ROOT` containment for the local
+`semgrep_scan`),
+`synthetic_only: false`, declared side effects (`subprocess`+
+`network-egress` for the CLI arms; `network-egress` only for the ZAP
+API profiles; `subprocess` only for `semgrep_scan`). Any action without an admitted profile is still refused before
+`Extension.invoke`; nothing may borrow fabricated R0/local-read
+metadata. Since X4-PUB the stdio MCP
+`invoke` tool enforces the same registry through the shared
+`extension.dispatch` and returns the same `execution-result.v1`
+envelope as the CLI (timestamps differ per run); the direct library
+surface keeps its existing gates.
+
+Catalog `invoke` of an unconfigured admitted arm emits the honest
+`arm is not installed` failure envelope. All five HTTP-MCP rows are
+admitted research integrations: `burp-mcp`,
+`google-mcp-security`, `semgrep-mcp`, `prowler-mcp` (exact-name
+reads), and `metasploit-mcp` (listing reads).
+Burp is not installed unless
+`BURP_MCP_ENDPOINT` is set to a literal-loopback (`127.0.0.1` or
+`[::1]`) HTTP+SSE MCP URL; a configured endpoint that is unreachable fails the handler
+with an error. Burp tool calls work on the free Community Edition (no
+edition gating; unavailable tools are refused by the server surface).
+SSE endpoint
+with CR/LF is refused, oversized SSE frames are rejected, and error
+payloads redact credential substrings.
+
+Semgrep (`semgrep-mcp`) is installed only when `SEMGREP_MCP_ENDPOINT`
+names a streamable-HTTP MCP URL. Only scan and findings/AST/language
+reads are allowlisted; `semgrep_scan` additionally requires an inline
+rule pack in `args.config` — registry refs (`auto`, `p/...`) and URLs
+are refused so scans never egress for rules.
+
+Checkov is installed when `CHECKOV_BIN` (or `checkov` on PATH) exists.
+Only `scan` runs, with a fully fixed argv and `--skip-download`; the
+scan root is contained to the packaged synthetic range
+(`CHECKOV_SCAN_ROOT` inside that tree only).
+
+Prowler (`prowler-mcp`) is installed when `PROWLER_MCP_ENDPOINT`
+names a policy-valid endpoint (https for self-hosted remote, or
+literal-loopback `http://127.0.0.1:8000/mcp` for the first-party
+local server; no client credential exists for this arm). Exact-name
+admission of 43 read lookups, pinned from the first-party OSS
+server source (10 `prowler_hub_*` + 2 `prowler_docs_*` + 31 tenant
+`prowler_*` reads); the 18 mutating tools (scan triggers,
+mutelist/integration/provider writers, role setting) and the
+hosted-only `prowler_cloud_*` namespace are refused even when the
+server lists them, and any unknown name fails closed as
+not-allowlisted.
+
+Garak is installed only when a binary (`GARAK_BIN` or PATH) AND an
+explicit `GARAK_TARGET` binding exist. Only `list_probes`,
+`list_detectors` (fixed argv) and `report` (reads the newest JSONL
+from `GARAK_REPORT_DIR` locally) run; open-ended probe dispatch is
+blocked.
+
+## Two-tier dispatch
+
+Read-only surfaces are the default tier: listings, findings reads,
+report reads, path-contained local scans. Dispatch-class actions —
+exploit run, scan launch, detonate, live DNS resolution, page fetch,
+AI process, source mutation — are refused by default with a message
+naming the arming env var. Arming is scope-binding:
+`<ARM>_DISPATCH_SCOPE` must name explicit CIDRs, IPs, hostnames, or
+URI prefixes (`*`, `0.0.0.0/0`, `::/0` are refused at parse, including
+prefixlen-0 canonicalization). Host targets are matched exactly or by
+CIDR containment; session- or technique-bound actions authorize on
+scope presence and audit `session:<id>` / the technique id. Every
+allowed dispatch writes a `[dispatch]` stderr audit line and stamps
+its Result with scope and target.
+
+**Host-scoped** (hostname/URL into `authorize`): `zaproxy`
+(`ZAP_DISPATCH_SCOPE`), `wapiti` (`WAPITI_DISPATCH_SCOPE`), `commix`
+(`COMMIX_DISPATCH_SCOPE`), `osmedeus` (`OSMEDEUS_DISPATCH_SCOPE`),
+`zdns` (`ZDNS_DISPATCH_SCOPE`), `page-fetch`
+(`PAGE_FETCH_DISPATCH_SCOPE`), `routersploit`
+(`ROUTERSPLOIT_DISPATCH_SCOPE`), `sniper` (`SNIPER_DISPATCH_SCOPE`),
+`zgrab2` (`ZGRAB2_DISPATCH_SCOPE`), `dark-moon`
+(`DARK_MOON_DISPATCH_SCOPE`), `pyrit` (`PYRIT_DISPATCH_SCOPE`).
+`metasploit-mcp` `run_exploit` / `run_auxiliary_module` host-match
+RHOSTS/RHOST.
+
+**Scope-presence** (no host match; audit a synthetic or unknown
+target): `vuls` (`VULS_DISPATCH_SCOPE`), `stratus-red-team`
+(`STRATUS_DISPATCH_SCOPE`), `caldera` (`CALDERA_DISPATCH_SCOPE`).
+`metasploit-mcp` `run_post_module`, `generate_payload`,
+`send_session_command`, `terminate_session`, `start_listener`, and
+`stop_job` authorize on scope presence only — a session command
+cannot prove which host that session is on.
+
+**Path-scoped** (authorize on scope presence, contain the filesystem
+separately): `deepsec` (`DEEPSEC_DISPATCH_SCOPE`), `vvah`
+(`VVAH_DISPATCH_SCOPE`), `ai-deep-sast`
+(`AI_DEEP_SAST_DISPATCH_SCOPE`), `agent-wiz`
+(`AGENT_WIZ_DISPATCH_SCOPE`). Set `FOO_DISPATCH_SCOPE=localhost`
+(any explicit non-blanket item). Containment is `FOO_SCAN_ROOT`, and
+every spawn pins `cwd` to that root (deepsec: the workspace that
+holds `deepsec.config.ts`). **Do not put a repo path in the scope
+env.**
+
+Env table: [root README](../README.md#environment-variables).
+
+Caveats are now the operator contract (`policy.CAVEATS`, catalog
+`notes`, `list_tools`, unarmed `Result.error`, CLI stderr). GUI-only
+remains the only skip class. Default unarmed dispatch is refused until
+scope is set (support-tier `held` is separate: catalog invoke is
+refused).
+
+## Per-arm caveats
+
+One-liners. Full notes live on the catalog row (`describe <id>`).
+
+- `burp-mcp` — only allowlisted reads/utilities; active requests, UI mutations, config writes, Collaborator payload generation, and the live-editor read stay blocked.
+- `semgrep-mcp` — scans need an inline rule pack; no registry/URL rules.
+- `checkov` — scan root must stay inside the packaged range; offline bundle.
+- `prowler-mcp` — exact-name read allowlist pinned from first-party source; mutating tools and the hosted cloud namespace exactly blocked; no cloud orchestration.
+- `garak` — listing and local report only; no probe dispatch.
+- `zaproxy` — view reads unarmed; scan launch is scope-gated.
+- `wapiti` / `commix` — no read-only mode; every scan is dispatch.
+- `mitreattack-python` — local conversion only; no STIX download.
+- `vuls` — report/summary local; `fetch` is on no tier.
+- `stratus-red-team` — detonate/warmup/revert are dispatch.
+- `osmedeus` — recon scan is dispatch.
+- `zdns` — live resolution is the whole surface.
+- `page-fetch` — http(s) URL with a hostname, then host-scope via
+  `PAGE_FETCH_DISPATCH_SCOPE`. Upstream (detectify/page-fetch) reads
+  URLs from stdin only — argv never carries the URL (the arm feeds the
+  validated URL as the single stdin line). Private, metadata, and
+  localhost hosts
+  are allowed if in scope; only the initial URL is scope-checked —
+  redirects, name resolution at fetch time, and rendering subresources
+  are not re-checked (treat the scope as reachable from anything its
+  hosts redirect or reference to, including metadata IPs), and the
+  fetcher may write browser state in its default location.
+- `caldera` — v2 GET reads unarmed (per-operation chain for
+  post-run inspection); scheduling an operation is dispatch (path
+  provisional upstream).
+- `google-mcp-security` — lookups only.
+- `metasploit-mcp` — execution tools are dispatch; session commands cannot prove the session host.
+- `routersploit` — non-interactive `run` **always executes the module** (not check). Default unarmed.
+- `sniper` — scoping `-t` does **not** bound 90+ sub-tools; community binary is root-only and phones home when armed. Composite egress.
+- `zgrab2` — L7 handshake scanner; one host on stdin; closed modules plus optional `--port`.
+- `dark-moon` — autonomous multi-agent pentest; MCP gateway still launches Nuclei/sqlmap/NetExec inside Docker (composite egress). CLI only.
+- `pyrit` — first-party `pyrit_scan` only; requires operator PyRIT config (`~/.pyrit`); scan spends model tokens on the operator-configured endpoints. CoPyRIT GUI is out of scope.
+- `deepsec` — operator runs init out of band; cwd is the `.deepsec` workspace; unarmed `scan` writes matcher state; `process` is agentic and can cost thousands of dollars. Binary must not be npx/pnpm/npm/yarn.
+- `vvah` — 11-stage agentic pipeline; `doctor` live-probes configured
+  backends (may spend tokens); `estimate` spends nothing; `scan` is
+  `--stop-after s9` (no source edit); `remediate` needs
+  `VVAH_ALLOW_REMEDIATE=1` **and** dispatch scope; `validate` is not
+  exposed.
+- `ai-deep-sast` — `--skip-llm` is the safe default and needs a local
+  `AI_DEEP_SAST_SEMGREP_CONFIG` inside the scan root (no registry
+  `p/` default). `ai_scan` runs local Foundation-Sec via
+  llama-completion; frontier deepscan.py is not exposed beyond
+  `dry_run --dry-run`.
+- `agent-wiz` — extract/visualize are local AST/HTML (cwd-contained); `analyze` egresses to OpenAI and needs the OpenAI credential env.
+
+## MCP
+
+From this clone (cwd must be the clone root):
+
+```text
+python -m extension.mcp_server
+```
+
+That process exposes only `list`, `describe`, `invoke`, and `run_range`.
+Do not add inventory, paging, or writeback tools on this process.
+
+`run_range` is the single boundary case to the "no new tools" doctrine:
+it runs the synthetic, seed-stable fixtures (`live_aws: false`), takes
+no path arguments, accepts only curated `arm_ids`, never writes files
+over MCP (`--out` stays CLI-only), and caps its response size. It is an
+exception named here so it is cited as a boundary, not a precedent.
+
+Heads should spawn `heads/<head>/launch_mcp.py` so import does not
+depend on cwd:
+
+```text
+python extension/heads/claude-code/launch_mcp.py
+python extension/heads/codex-cli/launch_mcp.py
+```
+
+A relocated launcher needs `SPECAUDIT_CTF_ROOT` set to the clone root.
+
+## Heads
+
+Attach profiles:
+
+- [heads/claude-code.md](heads/claude-code.md)
+- [heads/codex-cli.md](heads/codex-cli.md)
+- [heads/other-agent-cli.md](heads/other-agent-cli.md)
+
+Claude Code CLI, from this clone:
+
+```text
+claude mcp add --scope project --transport stdio specaudit-ctf -- python extension/heads/claude-code/launch_mcp.py
+```
+
+Or put a project `.mcp.json` in the clone (keep
+`${CLAUDE_PROJECT_DIR}` inside that JSON; it is a client
+substitution, not a shell variable). See the Claude profile.
+
+Codex CLI, prefer a project `.codex/config.toml` in this clone:
+
+```toml
+[mcp_servers.specaudit-ctf]
+command = "python"
+args = ["extension/heads/codex-cli/launch_mcp.py"]
+cwd = "."
+```
+
+User-global `~/.codex/config.toml` must set `cwd` to the absolute
+path of this clone.
+
+Another agent CLI that already has tools can attach the same three
+CLI subcommands, `python -m extension.range`, or the same stdio MCP
+process. A validation client may do the same. This tree does not ship
+a third named head profile.
+
+Bundled skill and plugin files live next to each launcher under
+`heads/claude-code/` and `heads/codex-cli/`. The skill tells the head
+to call only `list`, `describe`, `invoke`, and `run_range`.
+
+## Range
+
+`range/` holds ten synthetic fixtures spanning the misconfiguration
+families (S3 public access, the blocked-policy negative control, S3
+logging/encryption gaps, IAM wildcard policy, assumable admin role,
+external trust, world-open security groups, and a multi-service
+chain). Inputs are fixture asset / connectivity / SAST-like JSON plus
+a tiny Terraform sample. There is no live cloud.
+
+```text
+python -m extension.range
+python -m extension.range --out range-result.json --seed 123
+python -m extension.range --arm-ids "" --seed 7
+python -m extension.range --attempt-id attempt-<hex> --artifact-dir ABSOLUTE_DIR
+```
+
+CLI stdout and `--out` are `specaudit.ctf.execution-result.v1`. Mode A
+(`--artifact-dir`) emits the envelope only on stdout; `--out` combined
+with `--artifact-dir` is rejected before range execution and may report
+only on stderr. The artifact directory must be a fresh empty private
+per-attempt Unix directory bound before dispatch. Process exit 0 if and
+only if the outer envelope `status` is `complete`; inner `ok` does not
+decide it. `transport_ok` is informational: it means the tool
+invocation/response transport succeeded, not that artifact custody
+succeeded. Library `run_range()` still emits a seed-stable
+`range.lifecycle.v3` document
+with `live_aws: false`, `fixtures[].exposure|path|impact` plus the
+per-asset `fixtures[].exposures` rows and `fixtures[].chains` (the
+v3 lifecycle mirror), and coverage lists of attempted / complete /
+skipped / error arm ids. The inner
+lifecycle document is coverage input and a `range-report` artifact
+digest, not a second all-clear: inner `ok` is not the outer status.
+`--seed` applies to that inner run. Document and fixture `status` is
+`complete`, `degraded`, or `failed`; compatibility `ok` is true only
+when `status` is `complete`. A missing arm is still recorded as
+`skipped` (transport errors as `error`); that row is never `complete`.
+Omitted `arm_ids` (`None`) auto-discovers curated arms as optional
+(`degraded` on skip/error). Explicit non-empty `arm_ids` are required
+(`failed` on skip/error). Explicit empty `arm_ids=()` has no arms and
+may be `complete` when lifecycle matches. `matched_expected` stays
+independent: a mismatch is `failed`, and a match cannot hide an arm
+skip/error. Default CLI auto-discovers curated arms and may exit 1 with
+a valid degraded execution-result envelope. MCP JSON-RPC success is
+transport-only; the MCP content document is still `range.lifecycle.v3`.
+No curated arm implements `observe`: every installed or
+endpoint-armed arm refuses it fail-closed (not on any tier), and range
+records `Result.ok=False` as `status=error` — an accidentally
+installed binary cannot turn a skip into a pass.
+
+## Tests
+
+From the repository root:
+
+```text
+python -m pip install -e ".[dev]"
+python -m pytest tests/ -q
+```
+
+`pip install -r requirements-dev.txt` is the equivalent dependency
+set without an editable install.

@@ -1,0 +1,7 @@
+{
+  "name": "specaudit-ctf",
+  "version": "1.0.0",
+  "description": "Arms and legs for Claude Code CLI: list, describe, invoke.",
+  "mcpServers": "./.mcp.json",
+  "skills": "./skills/"
+}

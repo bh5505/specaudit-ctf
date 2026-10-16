@@ -1,0 +1,3 @@
+[head-spawn] head=qwen-code attempt=b222de07e60c0aa4b5de116783898ba2e1015a23d0539a726a773f718ab6562c cmd=/usr/local/bin/qwen timeout=900s
+[head-reap] head=qwen-code exit=0 duration=55.9s
+exercise: exercise complete; range complete (10 fixtures); head passed

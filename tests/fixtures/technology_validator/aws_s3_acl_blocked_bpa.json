@@ -1,0 +1,35 @@
+{
+  "get_public_access_block": {
+    "exit_code": 0,
+    "stdout": {
+      "PublicAccessBlockConfiguration": {
+        "BlockPublicAcls": true,
+        "IgnorePublicAcls": true,
+        "BlockPublicPolicy": true,
+        "RestrictPublicBuckets": true
+      }
+    },
+    "stderr": ""
+  },
+  "get_bucket_acl": {
+    "exit_code": 0,
+    "stdout": {
+      "Owner": {"ID": "0000000000000000000000000000000000000000000000000000000000000000"},
+      "Grants": [
+        {
+          "Grantee": {
+            "Type": "Group",
+            "URI": "http://acs.amazonaws.com/groups/global/AllUsers"
+          },
+          "Permission": "READ"
+        }
+      ]
+    },
+    "stderr": ""
+  },
+  "get_bucket_policy": {
+    "exit_code": 255,
+    "stdout": "",
+    "stderr": "An error occurred (NoSuchBucketPolicy) when calling the GetBucketPolicy operation: The bucket policy does not exist"
+  }
+}

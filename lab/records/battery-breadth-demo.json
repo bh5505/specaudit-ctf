@@ -1,0 +1,75 @@
+{
+  "arms": [],
+  "battery": [
+    {
+      "action": "scan",
+      "arm_id": "checkov",
+      "capability_id": "checkov.scan",
+      "envelope_status": "complete",
+      "status": "complete"
+    },
+    {
+      "action": "semgrep_scan",
+      "arm_id": "semgrep-mcp",
+      "capability_id": "semgrep-mcp.semgrep_scan",
+      "envelope_status": "complete",
+      "status": "complete"
+    },
+    {
+      "action": "technique",
+      "arm_id": "attack-stix-data",
+      "capability_id": "attack-stix-data.technique",
+      "envelope_status": "complete",
+      "status": "complete"
+    },
+    {
+      "action": "scan",
+      "arm_id": "wapiti",
+      "capability_id": "wapiti.scan",
+      "envelope_status": "complete",
+      "status": "complete"
+    },
+    {
+      "action": "scan",
+      "arm_id": "nmap",
+      "capability_id": "nmap.scan",
+      "envelope_status": "complete",
+      "status": "complete"
+    }
+  ],
+  "challenge": "telecom-aws-02-iam-s3-misconfig",
+  "grading": null,
+  "head": null,
+  "live_aws": false,
+  "ok": true,
+  "range": {
+    "chains": [
+      {
+        "ingress_asset": "sg-jump",
+        "kind": "internet_to_identity",
+        "role_asset": "role-escalate",
+        "summary": "Internet-reachable ingress on demo-jump-sg chains into assumable role demo-escalation-role"
+      }
+    ],
+    "fixtures": [
+      "tf_s3_public_access",
+      "tf_iam_open",
+      "tf_iam_assume_role",
+      "tf_iam_external_trust",
+      "tf_sg_open_ingress",
+      "tf_cloudtrail_disabled",
+      "tf_s3_no_access_logging",
+      "tf_s3_policy_blocked_trap",
+      "tf_s3_unencrypted",
+      "tf_chain_ingress_role"
+    ],
+    "full_status": "complete",
+    "matched": true,
+    "ok": true,
+    "status": "complete"
+  },
+  "schema": "exercise.run.v1",
+  "seed": null,
+  "status": "complete",
+  "summary": "exercise complete; range complete (10 fixtures); battery 5/5"
+}
