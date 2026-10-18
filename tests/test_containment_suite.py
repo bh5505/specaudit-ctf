@@ -25,10 +25,15 @@ from containment.enforcer import (
 )
 from containment.fixtures import BUILDERS
 from containment.harness import (
+    HOSTILE_CLASSES,
     POSIX_ONLY_HOSTILE,
+    CaseResult,
     RosterEntry,
     _drain_denials,
     _hostile_path,
+    check_coverage,
+    expected_cells,
+    roster_digest,
     run_canary_case,
     run_case,
     run_matrix,
@@ -315,8 +320,12 @@ def test_hostile_device_file_blocked(containment_env) -> None:
 
 
 def test_win32_matrix_labels_partial_and_skips_posix_only(matrix) -> None:
+    # Legacy rehearsal never reports full by OS: its scope is explicitly
+    # partial-rehearsal (first-data hostile/cleanup/interruption only).
+    assert matrix["platform"]["label"] == "partial"
+    assert matrix["completeness"]["scope"] == "partial-rehearsal"
+    assert matrix["completeness"]["strict"] is False
     if os.name != "nt":
-        assert matrix["platform"]["label"] == "full"
         return
     assert matrix["platform"]["label"] == "partial"
     skipped = {row["case"]: row["reason"] for row in matrix["skipped"]}
@@ -563,8 +572,10 @@ def test_cli_summary_labels_partial_and_exits_zero(containment_env, tmp_path) ->
     assert proc.returncode == 0, proc.stderr[-2000:]
     summary = json.loads(proc.stdout)
     assert summary["schema"] == "specaudit.ctf.containment-matrix.v1"
-    expected_label = "partial" if os.name == "nt" else "full"
-    assert summary["platform"]["label"] == expected_label
+    # Default rehearsal is always partial scope, never full by OS.
+    assert summary["platform"]["label"] == "partial"
+    assert summary["completeness"]["scope"] == "partial-rehearsal"
+    assert summary["completeness"]["strict"] is False
     assert summary["failures"] == []
     assert summary["per_arm"]["vulnify"]["lookup:inroot"] in ("positive", "refusal")
     legal = {"positive", "refusal", "cleanup-ok", "interruption",
@@ -592,3 +603,504 @@ def test_enforcer_denies_checkout_instructor_and_docs_paths(
     # The package roots the guarded jobs import stay readable.
     readable = repo_root / "extension" / "contract.py"
     assert raise_for_event("open", (str(readable), "r", 0), profile) is None
+
+
+# --- Strict complete-matrix mode: scope, counts, caller-supplied roster --
+#
+# The strict slice expands hostile/cleanup/interruption to EVERY supplied
+# data action (reusing fixtures/acquisition/enforcement/ledger), with
+# explicit expected/executed/skipped/missing/duplicate coverage. Fake
+# scheduling tests below use bounded fake workers (no children); only
+# test_strict_full_matrix_canonical_actual runs the real 282-case matrix
+# for empirical containment. Fake green is never mistaken for empirical
+# containment.
+
+
+def _fake_case_runner(
+    profile, *, arm_id, action, payload, hostile=None, variant="inroot",
+    mode="invoke", kill_after=0.5, child_timeout=120.0,
+) -> CaseResult:
+    """Bounded fake worker: scheduling coverage only, no child process."""
+    if variant.startswith("hostile-"):
+        return CaseResult(
+            "blocked", arm_id, action, variant, reason="traversal-refused",
+            gate={"refused": "traversal-refused"},
+            detail={"hostile": variant},
+        )
+    if variant == "cleanup":
+        return CaseResult(
+            "cleanup-ok", arm_id, action, variant,
+            denials=(), exit_code=0, detail={},
+        )
+    if variant == "interrupt":
+        return CaseResult(
+            "interruption", arm_id, action, variant,
+            reason="stopped-mid-run", denials=(), exit_code=-9, detail={},
+        )
+    if variant == "list-tools":
+        return CaseResult(
+            "positive", arm_id, action, variant,
+            denials=(), exit_code=0, detail={},
+        )
+    return CaseResult(
+        "positive", arm_id, action, variant,
+        denials=(), exit_code=0, detail={},
+    )
+
+
+def _fake_canary_runner(profile, *, enforced, child_timeout=60.0) -> CaseResult:
+    variant = "enforced" if enforced else "control"
+    outcome = "held" if enforced else "control-ok"
+    return CaseResult(
+        outcome, "containment", "canary", variant,
+        denials=(), exit_code=0, detail={"attempts": []},
+    )
+
+
+def _small_subset_roster() -> tuple[RosterEntry, ...]:
+    return (
+        RosterEntry("vulnify", "list_tools", None),
+        RosterEntry("vulnify", "list_vulns", "feed"),
+        RosterEntry("vulnify", "lookup", "feed"),
+    )
+
+
+def test_strict_expected_cells_canonical_282_before_execution() -> None:
+    """Canonical identity + BEFORE-execution expected derivation.
+
+    The supplied roster is verified against frozen ARM_BASELINES (14
+    readers, 38 data actions); expected cells are derived from that
+    supplied roster BEFORE any execution, never re-derived from actual
+    executed cells. Strict POSIX expectation is 38*7+14+2 = 282.
+    """
+    roster = _baseline_roster()
+    data = [entry for entry in roster if entry.path_argument is not None]
+    discovery = [entry for entry in roster if entry.path_argument is None]
+    assert len({entry.arm_id for entry in roster}) == 14
+    assert len(data) == 38
+    assert len(discovery) == 14
+    assert len(roster) == 52
+    for entry in data:
+        baseline = safety_check.ARM_BASELINES[entry.arm_id]
+        assert entry.action in baseline["actions"]
+        assert entry.path_argument == baseline["path_argument"]
+    digest = roster_digest(roster)
+    assert digest.startswith("sha256:")
+    assert roster_digest(tuple(reversed(roster))) == digest
+    strict_expected = expected_cells(
+        roster, HOSTILE_CLASSES, True, True, True, True,
+    )
+    assert len(strict_expected) == 38 * 7 + 14 + 2 == 282
+    rehearsal_expected = expected_cells(
+        roster, HOSTILE_CLASSES, True, True, True, False,
+    )
+    assert len(rehearsal_expected) == 38 + 14 + 4 + 1 + 1 + 2 == 60
+    # Every data action has its own hostile/cleanup/interrupt cells.
+    by_cell = {(a, b, v) for (a, b, v) in strict_expected}
+    for entry in data:
+        assert (entry.arm_id, entry.action, "inroot") in by_cell
+        for hostile in HOSTILE_CLASSES:
+            assert (entry.arm_id, entry.action,
+                    f"hostile-{hostile}") in by_cell
+        assert (entry.arm_id, entry.action, "cleanup") in by_cell
+        assert (entry.arm_id, entry.action, "interrupt") in by_cell
+
+
+def test_legacy_rehearsal_scope_is_partial_not_full(matrix) -> None:
+    """Legacy rehearsal never reports full by OS, even with zero failures."""
+    assert matrix["failures"] == []
+    assert matrix["completeness"]["scope"] == "partial-rehearsal"
+    assert matrix["completeness"]["strict"] is False
+    assert matrix["platform"]["label"] == "partial"
+    assert "first data action only" in (
+        matrix["platform"]["partial_reason"] or "")
+
+
+def test_strict_expands_hostile_beyond_first_data_regression(matrix) -> None:
+    """Non-first hostile path: the original first_data-only bug is caught.
+
+    The legacy session matrix (first-data hostile only) MUST lack a
+    hostile cell for a non-first data action; the strict expectation MUST
+    contain it. On the pre-fix code this strict assertion was red (the
+    cell was never scheduled); the fix makes it green.
+    """
+    roster = _baseline_roster()
+    data_entries = [e for e in roster if e.path_argument is not None]
+    assert len(data_entries) >= 2
+    first, second = data_entries[0], data_entries[1]
+    assert (first.arm_id, first.action) != (second.arm_id, second.action)
+    # Legacy rehearsal: only the first data action has hostile cells.
+    assert f"{first.action}:hostile-traversal" in matrix["per_arm"][first.arm_id]
+    second_cells = matrix["per_arm"][second.arm_id]
+    assert f"{second.action}:hostile-traversal" not in second_cells, (
+        "legacy rehearsal must not cover non-first hostile "
+        "(this is the first_data-only bug surface)")
+    # Strict expectation: every data action has every hostile cell.
+    strict_expected = expected_cells(
+        roster, HOSTILE_CLASSES, True, True, True, True,
+    )
+    assert (second.arm_id, second.action,
+            "hostile-traversal") in strict_expected
+    assert (second.arm_id, second.action,
+            "hostile-device-file") in strict_expected
+    assert (second.arm_id, second.action, "cleanup") in strict_expected
+    assert (second.arm_id, second.action, "interrupt") in strict_expected
+
+
+def test_strict_scheduling_fake_complete_small_subset(tmp_path) -> None:
+    """Fake scheduling: small strict subset can be complete for ITS scope."""
+    approved = tmp_path / "approved"
+    scratch = tmp_path / "scratch"
+    approved.mkdir()
+    scratch.mkdir()
+    profile = OperatorProfile(
+        approved_root=str(approved), scratch_root=str(scratch))
+    roster = _small_subset_roster()
+    before = expected_cells(roster, HOSTILE_CLASSES, True, True, True, True)
+    summary = run_matrix(
+        profile, roster, approved / "fixtures", recorded_at=NOW,
+        ledger_path=None, include_canaries=True,
+        strict=True, case_runner=_fake_case_runner,
+        canary_runner=_fake_canary_runner,
+    )
+    comp = summary["completeness"]
+    assert comp["scope"] == "strict-supplied-roster"
+    assert comp["strict"] is True
+    assert comp["supplied_roster"]["entries"] == 3
+    assert comp["supplied_roster"]["data_actions"] == 2
+    assert comp["supplied_roster"]["discovery"] == 1
+    assert comp["supplied_roster"]["digest"] == roster_digest(roster)
+    assert comp["expected"] == len(before) == 2 * 7 + 1 + 2 == 17
+    assert comp["executed"] == 17
+    assert comp["missing"] == []
+    assert comp["duplicate_roster"] == []
+    assert comp["duplicate_results"] == []
+    assert comp["unexpected"] == []
+    assert comp["complete"] is True
+    assert summary["failures"] == []
+
+
+def test_strict_scheduling_fake_omitted_cell_incomplete() -> None:
+    """Removing one fixture/action execution fails strict completeness."""
+    roster = _small_subset_roster()
+    expected = expected_cells(
+        roster, HOSTILE_CLASSES, True, True, True, True)
+    omitted = ("vulnify", "lookup", "cleanup")
+    assert omitted in expected
+    cases = []
+    for (arm_id, action, variant) in expected:
+        if (arm_id, action, variant) == omitted:
+            continue
+        if variant.startswith("hostile-"):
+            cases.append(CaseResult(
+                "blocked", arm_id, action, variant, reason="x"))
+        elif variant == "cleanup":
+            cases.append(CaseResult("cleanup-ok", arm_id, action, variant))
+        elif variant == "interrupt":
+            cases.append(CaseResult("interruption", arm_id, action, variant))
+        elif variant == "enforced":
+            cases.append(CaseResult("held", arm_id, action, variant))
+        elif variant == "control":
+            cases.append(CaseResult("control-ok", arm_id, action, variant))
+        else:
+            cases.append(CaseResult("positive", arm_id, action, variant))
+    report = check_coverage(expected, cases, [], [])
+    assert report["complete"] is False
+    assert "vulnify:lookup:cleanup" in report["missing"]
+    assert any("missing-cells" in reason for reason in report["reasons"])
+
+
+def test_strict_scheduling_fake_absent_fixture_args_incomplete(tmp_path) -> None:
+    """Absent fixture args (unknown action) yield skipped, unevidenced."""
+    approved = tmp_path / "approved"
+    scratch = tmp_path / "scratch"
+    approved.mkdir()
+    scratch.mkdir()
+    profile = OperatorProfile(
+        approved_root=str(approved), scratch_root=str(scratch))
+    roster = (
+        RosterEntry("vulnify", "list_tools", None),
+        RosterEntry("vulnify", "no-such-action", "feed"),
+    )
+    summary = run_matrix(
+        profile, roster, approved / "fixtures", recorded_at=NOW,
+        ledger_path=None, include_canaries=False,
+        strict=True, case_runner=_fake_case_runner,
+        canary_runner=_fake_canary_runner,
+    )
+    comp = summary["completeness"]
+    assert comp["complete"] is False
+    assert comp["skipped"] == 7  # inroot + 4 hostile + cleanup + interrupt
+    assert any(row["reason"] == "no-fixture-args-for-action"
+               for row in summary["skipped"])
+    # Absent fixtures are both skipped (with reason) and missing from
+    # executed cells: unevidenced either way.
+    assert len(comp["missing"]) == 7
+
+
+def test_strict_scheduling_fake_duplicate_roster_incomplete(tmp_path) -> None:
+    """Duplicate supplied roster cell fails strict completeness."""
+    approved = tmp_path / "approved"
+    scratch = tmp_path / "scratch"
+    approved.mkdir()
+    scratch.mkdir()
+    profile = OperatorProfile(
+        approved_root=str(approved), scratch_root=str(scratch))
+    roster = (
+        RosterEntry("vulnify", "list_tools", None),
+        RosterEntry("vulnify", "lookup", "feed"),
+        RosterEntry("vulnify", "lookup", "feed"),
+    )
+    summary = run_matrix(
+        profile, roster, approved / "fixtures", recorded_at=NOW,
+        ledger_path=None, include_canaries=False,
+        strict=True, case_runner=_fake_case_runner,
+        canary_runner=_fake_canary_runner,
+    )
+    comp = summary["completeness"]
+    assert comp["duplicate_roster"] == ["vulnify:lookup"]
+    assert comp["duplicate_results"] != []
+    assert comp["complete"] is False
+    assert any("duplicate-supplied-roster" in r for r in comp["reasons"])
+
+
+def test_strict_scheduling_fake_duplicate_result_incomplete() -> None:
+    """Duplicate result cells fail strict completeness (pure check)."""
+    roster = _small_subset_roster()
+    expected = expected_cells(
+        roster, HOSTILE_CLASSES, True, True, True, True)
+    cases = []
+    for (arm_id, action, variant) in expected:
+        if variant.startswith("hostile-"):
+            cases.append(CaseResult(
+                "blocked", arm_id, action, variant, reason="x"))
+        elif variant == "cleanup":
+            cases.append(CaseResult("cleanup-ok", arm_id, action, variant))
+        elif variant == "interrupt":
+            cases.append(CaseResult("interruption", arm_id, action, variant))
+        elif variant == "enforced":
+            cases.append(CaseResult("held", arm_id, action, variant))
+        elif variant == "control":
+            cases.append(CaseResult("control-ok", arm_id, action, variant))
+        else:
+            cases.append(CaseResult("positive", arm_id, action, variant))
+    cases.append(CaseResult("positive", "vulnify", "lookup", "inroot"))
+    report = check_coverage(expected, cases, [], [])
+    assert report["duplicate_results"] == ["vulnify:lookup:inroot"]
+    assert report["complete"] is False
+
+
+def test_strict_scheduling_fake_dirty_cleanup_incomplete() -> None:
+    """Dirty scratch (cleanup-dirty) is a failure AND incomplete evidence."""
+    roster = _small_subset_roster()
+    expected = expected_cells(
+        roster, HOSTILE_CLASSES, True, True, True, True)
+    cases = []
+    for (arm_id, action, variant) in expected:
+        if (arm_id, action, variant) == ("vulnify", "lookup", "cleanup"):
+            cases.append(CaseResult("cleanup-dirty", arm_id, action, variant))
+        elif variant.startswith("hostile-"):
+            cases.append(CaseResult(
+                "blocked", arm_id, action, variant, reason="x"))
+        elif variant == "cleanup":
+            cases.append(CaseResult("cleanup-ok", arm_id, action, variant))
+        elif variant == "interrupt":
+            cases.append(CaseResult("interruption", arm_id, action, variant))
+        elif variant == "enforced":
+            cases.append(CaseResult("held", arm_id, action, variant))
+        elif variant == "control":
+            cases.append(CaseResult("control-ok", arm_id, action, variant))
+        else:
+            cases.append(CaseResult("positive", arm_id, action, variant))
+    report = check_coverage(expected, cases, [], [])
+    assert report["complete"] is False
+    assert [row["cell"] for row in report["unexpected"]] == [
+        "vulnify:lookup:cleanup"]
+    assert cases[0].failed is False  # sanity: positive is not a failure
+    assert next(c for c in cases if c.variant == "cleanup"
+                and c.arm_id == "vulnify"
+                and c.action == "lookup").failed is True
+
+
+def test_strict_scheduling_fake_truncated_result_incomplete(tmp_path) -> None:
+    """Missing/truncated worker result fails strict completeness."""
+    approved = tmp_path / "approved"
+    scratch = tmp_path / "scratch"
+    approved.mkdir()
+    scratch.mkdir()
+    profile = OperatorProfile(
+        approved_root=str(approved), scratch_root=str(scratch))
+
+    def _truncating_runner(
+        profile, *, arm_id, action, payload, hostile=None, variant="inroot",
+        mode="invoke", kill_after=0.5, child_timeout=120.0,
+    ) -> CaseResult:
+        if (arm_id, action, variant) == ("vulnify", "lookup", "inroot"):
+            # Truncated worker: no result line -> spawn-failure.
+            return CaseResult(
+                "spawn-failure", arm_id, action, variant,
+                reason="missing-worker-result", exit_code=None, detail={},
+            )
+        return _fake_case_runner(
+            profile, arm_id=arm_id, action=action, payload=payload,
+            hostile=hostile, variant=variant, mode=mode,
+            kill_after=kill_after, child_timeout=child_timeout,
+        )
+
+    roster = _small_subset_roster()
+    summary = run_matrix(
+        profile, roster, approved / "fixtures", recorded_at=NOW,
+        ledger_path=None, include_canaries=False,
+        strict=True, case_runner=_truncating_runner,
+        canary_runner=_fake_canary_runner,
+    )
+    comp = summary["completeness"]
+    assert comp["complete"] is False
+    assert any(row["cell"] == "vulnify:lookup:inroot"
+               for row in comp["unexpected"])
+    assert summary["failures"] != []
+
+
+def test_strict_subset_cannot_claim_universal() -> None:
+    """A subset roster proves only its subset, never universal acceptance."""
+    subset = _small_subset_roster()
+    canonical = _baseline_roster()
+    assert len(subset) < len(canonical)
+    assert len([e for e in subset if e.path_argument is not None]) < 38
+    subset_expected = expected_cells(
+        subset, HOSTILE_CLASSES, True, True, True, True)
+    canonical_expected = expected_cells(
+        canonical, HOSTILE_CLASSES, True, True, True, True)
+    assert len(subset_expected) == 17
+    assert len(canonical_expected) == 282
+    assert roster_digest(subset) != roster_digest(canonical)
+
+
+def test_cli_strict_small_complete_exits_zero(containment_env, tmp_path) -> None:
+    """CLI --strict on a small complete subset: exit 0, scope is honest."""
+    import subprocess
+
+    roster_path = tmp_path / "strict-roster.json"
+    roster_path.write_text(json.dumps([
+        {"arm_id": "vulnify", "action": "list_tools", "path_argument": None},
+        {"arm_id": "vulnify", "action": "lookup", "path_argument": "feed"},
+    ]), encoding="utf-8")
+    root = containment_env["root"]
+    env = os.environ.copy()
+    env["PATH"] = str(Path(sys.executable).parent)
+    proc = subprocess.run(
+        [sys.executable, "-m", "containment",
+         "--approved-root", str(root / "strict-approved"),
+         "--scratch-root", str(root / "strict-scratch"),
+         "--fixtures-root", str(root / "strict-approved" / "fixtures"),
+         "--roster-json", str(roster_path),
+         "--recorded-at", NOW.isoformat(),
+         "--strict"],
+        cwd=str(REPO_ROOT), env=env, capture_output=True, text=True,
+        timeout=300,
+    )
+    assert proc.returncode == 0, proc.stderr[-2000:]
+    summary = json.loads(proc.stdout)
+    assert summary["completeness"]["scope"] == "strict-supplied-roster"
+    assert summary["completeness"]["strict"] is True
+    assert summary["completeness"]["complete"] is True
+    assert summary["completeness"]["supplied_roster"]["entries"] == 2
+    assert summary["failures"] == []
+
+
+def test_cli_strict_exits_nonzero_on_incomplete_even_zero_failures(
+    containment_env, tmp_path,
+) -> None:
+    """CLI --strict exits nonzero for incomplete coverage with no failures.
+
+    A duplicated roster row executes twice with allowed outcomes (so
+    failures stay empty) but completeness records the duplicate and the
+    CLI must still exit nonzero.
+    """
+    import subprocess
+
+    roster_path = tmp_path / "dup-roster.json"
+    roster_path.write_text(json.dumps([
+        {"arm_id": "vulnify", "action": "list_tools", "path_argument": None},
+        {"arm_id": "vulnify", "action": "lookup", "path_argument": "feed"},
+        {"arm_id": "vulnify", "action": "lookup", "path_argument": "feed"},
+    ]), encoding="utf-8")
+    root = containment_env["root"]
+    env = os.environ.copy()
+    env["PATH"] = str(Path(sys.executable).parent)
+    proc = subprocess.run(
+        [sys.executable, "-m", "containment",
+         "--approved-root", str(root / "dup-approved"),
+         "--scratch-root", str(root / "dup-scratch"),
+         "--fixtures-root", str(root / "dup-approved" / "fixtures"),
+         "--roster-json", str(roster_path),
+         "--recorded-at", NOW.isoformat(),
+         "--strict"],
+        cwd=str(REPO_ROOT), env=env, capture_output=True, text=True,
+        timeout=300,
+    )
+    summary = json.loads(proc.stdout)
+    assert summary["failures"] == []
+    assert summary["completeness"]["complete"] is False
+    assert summary["completeness"]["duplicate_roster"] == ["vulnify:lookup"]
+    assert proc.returncode != 0
+
+
+def test_strict_full_matrix_canonical_actual(tmp_path_factory) -> None:
+    """Empirical strict matrix: 282 actual outcomes on this POSIX host.
+
+    Independent BEFORE-execution expectation (282 cells from the
+    canonical 14/38 roster) is compared against the real guarded run.
+    In-root cells are positive-or-refusal with zero denials; hostile
+    cells are blocked; cleanup/interrupt/canaries hold their own
+    outcomes. This is the empirical containment evidence; fake green
+    above is scheduling only.
+    """
+    if os.name == "nt":
+        pytest.skip("strict 282-case matrix needs POSIX fixtures")
+    root = tmp_path_factory.mktemp("strict-full")
+    approved = root / "approved"
+    scratch = root / "scratch"
+    approved.mkdir()
+    scratch.mkdir()
+    profile = OperatorProfile(
+        approved_root=str(approved), scratch_root=str(scratch),
+        canaries=(CANARY,),
+    )
+    roster = _baseline_roster()
+    before = expected_cells(
+        roster, HOSTILE_CLASSES, True, True, True, True)
+    assert len(before) == 282
+    summary = run_matrix(
+        profile, roster, approved / "fixtures", recorded_at=NOW,
+        ledger_path=root / "strict-attempts.jsonl",
+        strict=True, kill_after=0.2, child_timeout=120.0,
+    )
+    comp = summary["completeness"]
+    assert comp["scope"] == "strict-supplied-roster"
+    assert comp["supplied_roster"]["entries"] == 52
+    assert comp["supplied_roster"]["data_actions"] == 38
+    assert comp["supplied_roster"]["discovery"] == 14
+    assert comp["expected"] == 282
+    assert comp["executed"] == 282
+    assert comp["missing"] == []
+    assert comp["duplicate_roster"] == []
+    assert comp["duplicate_results"] == []
+    assert comp["unexpected"] == []
+    assert comp["complete"] is True
+    assert summary["platform"]["label"] == "full"
+    assert summary["failures"] == [], summary["failures"][:3]
+    assert summary["cases"] == 282
+    # Positive-or-refusal preserved separately (never faked to success).
+    assert summary["counts"].get("positive", 0) + summary["counts"].get(
+        "refusal", 0) == 38 + 14
+    assert summary["counts"].get("blocked", 0) == 38 * 4
+    assert summary["counts"].get("cleanup-ok", 0) == 38
+    assert summary["counts"].get("interruption", 0) == 38
+    assert summary["counts"].get("held", 0) == 1
+    assert summary["counts"].get("control-ok", 0) == 1
+    # Non-first hostile coverage holds empirically (the fixed bug).
+    data_entries = [e for e in roster if e.path_argument is not None]
+    second = data_entries[1]
+    assert summary["per_arm"][second.arm_id][
+        f"{second.action}:hostile-traversal"] == "blocked"

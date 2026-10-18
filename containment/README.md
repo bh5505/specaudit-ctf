@@ -30,13 +30,49 @@ containment an operator chains before pointing any arm at hostile input:
    below — this is the kernel-enforced E1 floor beneath layer 2, not a
    replacement for it.
 
+## Rehearsal vs strict scope (counts, caller roster, positive vs refusal)
+
+The default `run_matrix` rehearsal covers hostile/cleanup/interruption
+for the FIRST data action only: 38 in-root data actions + 14
+`list_tools` smokes + 4 hostile + 1 cleanup + 1 interrupt + 2 canaries =
+60 POSIX cases. Its completeness scope is `partial-rehearsal` and the
+CLI labels it `partial` — never `full` simply because `os.name` is
+POSIX.
+
+`run_matrix(..., strict=True)` (`python -m containment --strict`)
+expands the same hostile/cleanup/interruption slice to EVERY supplied
+data action, reusing the existing fixtures, acquisition gate,
+enforcement, and ledger: 38x7 + 14 + 2 = 282 POSIX cases with the
+canonical 14-reader/38-data roster and the default four hostile classes
+plus cleanup plus interrupt. The summary carries explicit
+expected/executed/skipped/missing/duplicate coverage, the supplied
+roster count/digest, and the scope `strict-supplied-roster`.
+
+The package never imports `safety.check`: the caller supplies the
+frozen roster. A caller-supplied subset proves only that subset, never
+universal SAFE acceptance; a full-baseline claim needs an independent
+comparison against the canonical 14/38 roster in tests/evidence, not a
+re-derivation of expected cells from actually executed cells. Strict
+completeness fails closed on absent fixture args, omitted execution
+cells, duplicate roster or result cells, truncated or missing worker
+results, dirty cleanup, unexpected outcomes, and skips (skips count as
+unevidenced). `--strict` exits nonzero for incomplete coverage even
+with zero runtime failures.
+
+In-root `positive` (arm ok) OR policy `refusal` (arm policy refused a
+minimal input) is preserved separately with zero child denials — a
+valid containment result, never claimed as successful consumption. The
+worker deliberately bypasses normal catalog/dispatch admission (arm-layer
+rehearsal, like the governance probes); interruption kills the delayed
+child before its handler runs, not mid-parse.
+
 ## What the suite proves (empirically, in this checkout)
 
-- All 14 baseline arms x 38 data actions (`+1 list_tools` smoke per arm,
-  which adds no path signal: discovery carries no input path to acquire
-  or deny) run in-root under the guard with **zero enforcer denials**,
-  ending `positive` (arm ok) or `refusal` (arm policy refused a minimal
-  input — a valid containment result, never faked into a success).
+- Strict mode with the canonical roster: all 38 data actions x (1
+  in-root + 4 hostile + 1 cleanup + 1 interrupt) plus 14 `list_tools`
+  smokes (discovery carries no input path to acquire or deny) plus 2
+  canaries = 282 POSIX cases, with the per-variant outcomes above and
+  zero enforcer denials outside the enforced canary.
 - The four escape probes (loopback socket, subprocess, write-open, symlink)
   are all denied in the enforced canary child; the same probes in a
   CONTROL child WITHOUT the hook run host-native (subprocess succeeds),
@@ -54,9 +90,10 @@ containment an operator chains before pointing any arm at hostile input:
   direct and reader-mediated access are typed-refused; canary strings
   (`INSTRUCTOR-CANARY-*`) are absent from `exercise_operator` prepare
   exports, and a deliberate leak fixture proves the detector fires.
-- Interruption (parent `stop_case` kill mid-run), cleanup (scratch
-  byte-identical after a run), rerun determinism, and per-case custody
-  retention (acquisition records live in the outside detail documents).
+- Interruption (parent `stop_case` kills the delayed child before its
+  handler), cleanup (scratch byte-identical after a run), rerun
+  determinism, and per-case custody retention (acquisition records live
+  in the outside detail documents, referenced by digest).
 
 ## What it does NOT prove (honest limits)
 
@@ -70,10 +107,12 @@ containment an operator chains before pointing any arm at hostile input:
   audit-hook plane remains the evidence layer, and the two compose.)
 - **Not adversarial-process-proof.** The child is repo code under
   hostile inputs, not a committed adversary co-designing escapes; in a
-  checkout layout the runtime read allowlist includes the repo tree
-  itself (the child must be able to import `extension`), so repo-internal
-  reads are admitted and the instructor-plane boundary at the enforcer
-  layer is complete only for an installed-wheel runtime layout.
+  checkout layout the runtime read allowlist admits exactly four package
+  directories (`containment`, `extension`, `reader_evidence`,
+  `attempt_ledger` — see `_REPO_PACKAGE_DIRS` in
+  `containment/enforcer.py`), not the entire checkout, so reads elsewhere
+  in the repo (instructor keys, contracts, docs, tests) are denied even
+  though they live inside the repository tree.
 - **HZ-INPUT-PATH-UNBOUND remains open** for direct in-process arm use
   without this harness/guard: an arm invoked in-process with a hostile
   path and no acquisition gate is not contained by anything in this
@@ -82,6 +121,18 @@ containment an operator chains before pointing any arm at hostile input:
   (`platform-unsupported`: no `os.O_NOFOLLOW`), so admitted cases proceed
   with the gate refusal recorded honestly and the CLI labels the run
   `partial`; symlink-escape and device-file hostile classes are POSIX-only.
+- **Accepted-context OS proof remains OPEN.** The `os_isolation`
+  namespace tests are 10 kernel-denied skips on hosts that refuse the
+  namespaces; Python audit hooks are not OS proof. No claim is made that
+  all profiles are accepted, that grading is integrated, that
+  redirect/subresource coverage holds, that credentials are isolated, or
+  that interruption lands mid-parse (it kills the delayed child before
+  its handler).
+- **Frozen v1 safety stays unverified; W0 helper declarations do not
+  close SAFE.** The `containment_evidence` declared-record helpers
+  authenticate nothing; this unit supplies full Python-plane
+  scheduling/evidence only (282 actual outcomes on POSIX), not W2,
+  activation, or real targets.
 
 ## OS-enforced E1 isolation (Linux/WSL)
 
@@ -184,7 +235,15 @@ per OPERATIONS.md; nothing here grants it.
 ```bash
 # the matrix (roster JSON: [{"arm_id","action","path_argument"},...];
 # the package never imports safety.check — the caller supplies the roster)
+# default: 60-case rehearsal (partial-rehearsal); --strict: 282-case
+# complete matrix for the canonical 14/38 roster on POSIX
 python -m containment \
+  --approved-root /srv/operator/approved \
+  --scratch-root /srv/operator/scratch \
+  --fixtures-root /srv/operator/approved/fixtures \
+  --roster-json roster.json \
+  --ledger /srv/operator/containment-attempts.jsonl
+python -m containment --strict \
   --approved-root /srv/operator/approved \
   --scratch-root /srv/operator/scratch \
   --fixtures-root /srv/operator/approved/fixtures \

@@ -3,9 +3,13 @@
 Requires an explicit roster JSON (the package never imports
 ``safety.check``): ``[{"arm_id": ..., "action": ..., "path_argument": ...},
 ...]`` where ``path_argument`` is null for discovery-only rows. Prints the
-run_matrix summary JSON and exits 0 only when the run has zero failures.
-On win32 the label is ``partial`` (POSIX-only hostile classes are skipped
-with reasons, not silently dropped).
+run_matrix summary JSON. Default (rehearsal) exits 0 only when the run has
+zero failures; its completeness scope is ``partial-rehearsal`` (hostile /
+cleanup / interruption cover the first data action only). ``--strict``
+expands that slice to every supplied data action and exits nonzero for
+incomplete coverage even with zero runtime failures. The label is
+``full`` only for a strict run with complete coverage on POSIX; every
+other run is ``partial`` with an explicit reason.
 """
 from __future__ import annotations
 
@@ -52,6 +56,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                         help="containment-LOCAL attempt ledger file (operator-rehearsal lane)")
     parser.add_argument("--no-canaries", action="store_true",
                         help="skip the enforced and control canary children")
+    parser.add_argument("--strict", action="store_true",
+                        help="strict complete-matrix mode: hostile/cleanup/"
+                             "interruption for every supplied data action; "
+                             "exit nonzero when coverage is incomplete")
     parser.add_argument("--recorded-at", default=None,
                         help="ISO datetime for ledger rows (defaults to now: the CLI owns the clock)")
     args = parser.parse_args(list(argv) if argv is not None else None)
@@ -71,9 +79,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         recorded_at=recorded_at,
         ledger_path=Path(args.ledger) if args.ledger else None,
         include_canaries=not args.no_canaries,
+        strict=args.strict,
     )
     print(json.dumps(summary, indent=2, sort_keys=True))
-    return 0 if not summary["failures"] else 1
+    if summary["failures"]:
+        return 1
+    if args.strict and not summary["completeness"]["complete"]:
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
