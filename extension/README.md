@@ -599,6 +599,46 @@ python extension/heads/codex-cli/launch_mcp.py
 
 A relocated launcher needs `SPECAUDIT_CTF_ROOT` set to the clone root.
 
+### Explicit outbound stdio environments
+
+The optional generic `McpTransport(stdio_cmds=..., stdio_envs=...)` client
+starts each configured stdio child with generated `LANG=C.UTF-8` and
+`LC_ALL=C.UTF-8`, without copying the parent environment. On Windows it also
+copies only the case-insensitively located, absolute `SystemRoot` bootstrap
+under its canonical name; missing or ambiguous bootstrap values refuse spawn.
+Native Windows execution has not been verified.
+
+`stdio_envs` is an optional keyword-only mapping from an exact configured arm
+id to a mapping of authorized string names and values. A caller can provide
+an arm's required credential/configuration variables explicitly, for example
+`stdio_envs={arm_id: {"APP_TOKEN": authorized_token}}`. Values are copied at
+construction and scrubbed from returned text, including child error text and
+response content; the transport does not log or serialize the configuration.
+Empty values are allowed. The operator owns authorization and custody of
+every supplied value. File-backed credentials and application defaults still
+need separate containment.
+
+Executables must be absolute paths. To use a bare executable name, that arm
+must explicitly supply `PATH` with at most 16 distinct absolute directories;
+relative paths, empty search entries and parent-directory traversal refuse
+configuration. Each environment allows at most 64 variables and 32 KiB of
+UTF-8 names/values. Malformed/non-string/NUL values, duplicate or case-ambiguous
+names, unmatched/empty-command arm ids, and an environment bound to both an
+HTTP endpoint and a stdio command refuse configuration before spawn. Generated
+locale variables, cwd markers, `SystemRoot`, interpreter startup/loader
+variables, `GIT_CONFIG*`, proxy variables and names containing `TRACE` are
+reserved. A configured HTTP endpoint otherwise retains its existing behavior;
+the new environment contract applies only to outbound stdio children.
+
+This boundary preserves command argv, newline-delimited JSON-RPC input,
+timeout, response/error translation and the existing post-capture stdout cap.
+It does not provide an in-flight memory/output bound or descendant cleanup.
+It does not change the inbound MCP server, harness-worker boundary, real-head
+launchers or trace variables. File access, cwd/UID, network access, descendant
+lifetime, OS isolation and native Windows verification remain separate work.
+Configuring a transport does not authorize an arm: the Extension admission and
+specialized-handler requirements continue to apply.
+
 ## Heads
 
 Attach profiles:

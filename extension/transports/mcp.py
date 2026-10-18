@@ -3,8 +3,13 @@
 from __future__ import annotations
 
 import json
+import ntpath
+import os
+import posixpath
+import re
 import subprocess
-from typing import Any, Mapping, Sequence
+from collections.abc import Mapping, Sequence
+from typing import Any
 from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 
@@ -16,6 +21,19 @@ from ..contract import (
 )
 
 _MAX_BYTES = 1024 * 1024
+_MAX_ENV_BYTES = 32 * 1024
+_MAX_ENV_VARS = 64
+_MAX_PATH_DIRS = 16
+_ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}\Z")
+_GENERATED_ENV = {"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
+_RESERVED_ENV = {
+    "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "PWD", "OLDPWD", "CDPATH",
+    "ENV", "BASH_ENV", "BASHOPTS", "SHELLOPTS", "NODE_OPTIONS", "NODE_PATH",
+    "RUBYOPT", "RUBYLIB", "PERL5OPT", "PERL5LIB",
+    "SYSTEMROOT", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS",
+    "GCONV_PATH", "LOCPATH", "ZDOTDIR",
+}
+_RESERVED_PREFIXES = ("PYTHON", "LD_", "DYLD_", "GIT_CONFIG", "GIT_TRACE")
 
 
 class McpTransport:
@@ -27,6 +45,8 @@ class McpTransport:
         stdio_cmds: Mapping[str, Sequence[str]] | None = None,
         token: str | None = None,
         timeout: float = 10.0,
+        *,
+        stdio_envs: Mapping[str, Mapping[str, str]] | None = None,
     ) -> None:
         self._endpoints = {
             key: value.strip()
@@ -36,9 +56,12 @@ class McpTransport:
         # Preserve explicit empty list vs absent: empty argv means
         # "configured but not installed" (parity with CliTransport which
         # uses `is not None`). Discard only when value is None/missing.
-        self._stdio_cmds = {
-            key: list(value) for key, value in (stdio_cmds or {}).items() if value is not None
-        }
+        self._stdio_cmds = _stdio_commands(stdio_cmds)
+        self._stdio_envs = _stdio_environments(
+            stdio_envs, self._stdio_cmds, self._endpoints
+        )
+        for arm_id, argv in self._stdio_cmds.items():
+            _validate_executable(argv, self._stdio_envs[arm_id])
         self.token = token
         self.timeout = timeout
 
@@ -53,6 +76,7 @@ class McpTransport:
     ) -> Result:
         endpoint = self._endpoints.get(spec.id)
         stdio_cmd = self._stdio_cmds.get(spec.id)
+        environment = self._stdio_envs.get(spec.id, {}) if not endpoint else {}
         if not endpoint and not stdio_cmd:
             raise NotInstalledError(spec.id)
         payload = {
@@ -66,14 +90,17 @@ class McpTransport:
                 body = self._call_http(endpoint, payload)
             else:
                 assert stdio_cmd is not None
-                body = self._call_stdio(stdio_cmd, payload)
+                body = self._call_stdio(stdio_cmd, payload, environment)
         except Exception as exc:  # noqa: BLE001 - surface as Result, stay closed
+            error = str(exc)
+            if not endpoint:
+                error = _redact(error, environment)
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error=str(exc),
+                error=error,
             )
         if not isinstance(body, dict):
             return Result(
@@ -88,8 +115,8 @@ class McpTransport:
                 ok=False,
                 arm_id=spec.id,
                 action=action,
-                output=body.get("error"),
-                error=_error_text(body.get("error")),
+                output=_redact(body.get("error"), environment),
+                error=_redact(_error_text(body.get("error")), environment),
             )
         result = body.get("result")
         if not isinstance(result, dict):
@@ -97,7 +124,7 @@ class McpTransport:
                 ok=False,
                 arm_id=spec.id,
                 action=action,
-                output=result,
+                output=_redact(result, environment),
                 error="malformed tool result",
             )
         if result.get("isError"):
@@ -105,14 +132,14 @@ class McpTransport:
                 ok=False,
                 arm_id=spec.id,
                 action=action,
-                output=result,
-                error=_result_error_text(result),
+                output=_redact(result, environment),
+                error=_redact(_result_error_text(result), environment),
             )
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
-            output=result,
+            output=_redact(result, environment),
             error=None,
         )
 
@@ -140,16 +167,19 @@ class McpTransport:
             raise RuntimeError(f"response exceeds {_MAX_BYTES} bytes")
         return json.loads(raw.decode("utf-8"))
 
-    def _call_stdio(self, argv: Sequence[str], payload: dict[str, Any]) -> Any:
+    def _call_stdio(
+        self, argv: Sequence[str], payload: dict[str, Any], configured_env: Mapping[str, str]
+    ) -> Any:
         line = json.dumps(payload) + "\n"
         proc = subprocess.run(
-            list(argv),
+            _resolved_stdio_argv(argv, configured_env),
             input=line,
             capture_output=True,
             text=True,
             encoding="utf-8",
             timeout=self.timeout,
             check=False,
+            env={**_minimal_stdio_environment(), **configured_env},
         )
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or f"exit {proc.returncode}").strip()
@@ -166,6 +196,173 @@ class McpTransport:
                     raise RuntimeError(f"response exceeds {_MAX_BYTES} bytes")
                 return parsed
         raise RuntimeError("no JSON-RPC response")
+
+
+def _mapping_items(value: Any, label: str) -> list[tuple[Any, Any]]:
+    if not isinstance(value, Mapping):
+        raise ValueError(f"{label} must be a mapping")
+    items = list(value.items())
+    seen: set[str] = set()
+    for key, _ in items:
+        if not isinstance(key, str) or not key or key.strip() != key or "\0" in key:
+            raise ValueError(f"{label} requires nonempty string keys")
+        if key in seen:
+            raise ValueError(f"{label} contains duplicate keys")
+        seen.add(key)
+    return items
+
+
+def _stdio_commands(value: Any) -> dict[str, list[str]]:
+    commands: dict[str, list[str]] = {}
+    for arm_id, argv in _mapping_items({} if value is None else value, "stdio_cmds"):
+        # Keep the existing absent/None and explicitly empty argv contracts.
+        if argv is None:
+            continue
+        if not isinstance(argv, Sequence) or isinstance(argv, (str, bytes)):
+            raise ValueError("stdio argv must be a sequence of strings")
+        if any(not isinstance(item, str) or "\0" in item for item in argv):
+            raise ValueError("stdio argv must contain only NUL-free strings")
+        commands[arm_id] = list(argv)
+    return commands
+
+
+def _stdio_environments(
+    value: Any, commands: Mapping[str, Sequence[str]], endpoints: Mapping[str, str]
+) -> dict[str, dict[str, str]]:
+    environments = {arm_id: {} for arm_id in commands}
+    for arm_id, configured in _mapping_items({} if value is None else value, "stdio_envs"):
+        if arm_id not in commands or not commands[arm_id]:
+            raise ValueError("stdio environment requires a matching nonempty command")
+        if arm_id in endpoints:
+            raise ValueError("stdio environment is ambiguous with an HTTP endpoint")
+        items = _mapping_items(configured, "stdio environment")
+        if len(items) > _MAX_ENV_VARS:
+            raise ValueError("stdio environment exceeds variable limit")
+        copied: dict[str, str] = {}
+        names: set[str] = set()
+        total = 0
+        for name, entry in items:
+            folded = name.upper()
+            if not _ENV_NAME.fullmatch(name) or folded in names:
+                raise ValueError("stdio environment has invalid or ambiguous names")
+            if name != "PATH" and folded == "PATH":
+                raise ValueError("stdio environment PATH must use its canonical name")
+            if (
+                folded in _RESERVED_ENV or folded.startswith(_RESERVED_PREFIXES)
+                or folded.endswith("_PROXY") or "TRACE" in folded
+            ):
+                raise ValueError("stdio environment contains a reserved variable")
+            if not isinstance(entry, str) or "\0" in entry:
+                raise ValueError("stdio environment values must be NUL-free strings")
+            try:
+                total += len(name.encode("utf-8")) + len(entry.encode("utf-8")) + 2
+            except UnicodeEncodeError:
+                raise ValueError("stdio environment requires UTF-8 strings") from None
+            if total > _MAX_ENV_BYTES:
+                raise ValueError("stdio environment exceeds byte limit")
+            names.add(folded)
+            copied[name] = entry
+        if "PATH" in copied:
+            parts = copied["PATH"].split(os.pathsep)
+            if (
+                len(parts) > _MAX_PATH_DIRS
+                or len({_path_key(part) for part in parts}) != len(parts)
+                or any(
+                    not part or not _absolute_path(part)
+                    or ".." in re.split(r"[/\\]", part)
+                    for part in parts
+                )
+            ):
+                raise ValueError("stdio PATH requires distinct absolute directories")
+        environments[arm_id] = copied
+    return environments
+
+
+def _validate_executable(argv: Sequence[str], environment: Mapping[str, str]) -> None:
+    if not argv:
+        return
+    executable = argv[0]
+    if _absolute_path(executable):
+        return
+    if not executable or "/" in executable or "\\" in executable or "PATH" not in environment:
+        raise ValueError("stdio executable must be absolute or a bare name with explicit PATH")
+
+
+def _absolute_path(value: str) -> bool:
+    if os.name == "nt":
+        return ntpath.isabs(value) and bool(ntpath.splitdrive(value)[0])
+    return posixpath.isabs(value)
+
+
+def _path_key(value: str) -> str:
+    if os.name == "nt":
+        return ntpath.normcase(ntpath.normpath(value))
+    return posixpath.normpath(value)
+
+
+def _resolved_stdio_argv(
+    argv: Sequence[str], environment: Mapping[str, str]
+) -> list[str]:
+    if _absolute_path(argv[0]):
+        return list(argv)
+    # Resolve ourselves: on Windows CreateProcess may search using the parent
+    # PATH even when a child env is supplied. Never consult ambient PATHEXT.
+    names = [argv[0]]
+    if os.name == "nt" and not ntpath.splitext(argv[0])[1]:
+        names.extend([argv[0] + ".exe", argv[0] + ".com"])
+    for directory in environment["PATH"].split(os.pathsep):
+        for name in names:
+            candidate = os.path.join(directory, name)
+            if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                return [candidate, *argv[1:]]
+    raise RuntimeError("stdio executable not found in explicit PATH")
+
+
+def _minimal_stdio_environment() -> dict[str, str]:
+    environment = dict(_GENERATED_ENV)
+    if os.name == "nt":
+        # Windows needs its OS directory for side-by-side assembly loading.
+        # Read only this bootstrap field; never copy the parent environment.
+        roots = [value for key, value in os.environ.items() if key.upper() == "SYSTEMROOT"]
+        if len(roots) != 1 or "\0" in roots[0] or not _absolute_path(roots[0]):
+            raise ValueError("Windows stdio requires one absolute SystemRoot bootstrap")
+        environment["SystemRoot"] = roots[0]
+    return environment
+
+
+def _redact(value: Any, environment: Mapping[str, str]) -> Any:
+    """Do not surface explicitly supplied environment values in child responses."""
+    secrets = sorted(set(environment.values()) - {""}, key=len, reverse=True)
+    if not secrets:
+        return value
+
+    def text(item: str) -> str:
+        for secret in secrets:
+            item = item.replace(secret, "[redacted]")
+        return item
+
+    # The JSON parser already limits nesting. Avoid imposing a second, lower
+    # recursion limit while sanitizing an otherwise accepted response.
+    root: list[Any] = [None]
+    pending: list[tuple[Any, Any, Any]] = [(root, 0, value)]
+    while pending:
+        parent, key, item = pending.pop()
+        if isinstance(item, dict):
+            copied: dict[str, Any] = {}
+            parent[key] = copied
+            pending.extend((copied, text(name), child) for name, child in item.items())
+        elif isinstance(item, list):
+            children: list[Any] = [None] * len(item)
+            parent[key] = children
+            pending.extend((children, index, child) for index, child in enumerate(item))
+        elif isinstance(item, str):
+            parent[key] = text(item)
+        elif isinstance(item, (int, float, bool)):
+            encoded = json.dumps(item)
+            parent[key] = "[redacted]" if any(secret in encoded for secret in secrets) else item
+        else:
+            parent[key] = item
+    return root[0]
 
 
 def _error_text(error: Any) -> str:
