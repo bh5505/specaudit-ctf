@@ -15902,9 +15902,9 @@ promotion_events:
   implementation_revision: a8f595d8b9c9a03ea76b49f32b071b732cc85538
   subject_digest: sha256:daf199cdaf01dfa050b26ade1822292df49ab48a99ffd1408055fa71186a8eb5
   contract_digest: sha256:2108b61d02ebabe623f667091efcafc86e55cd253cb6677ae1a12b50ff5b5439
-  regression_case: tests/test_synthetic_readers.py
+  regression_case: tests/test_arm_batch8.py
   verification_result: operator-authorized
-  exercised_path: tests/test_synthetic_readers.py
+  exercised_path: tests/test_arm_batch8.py
   supported_versions:
   - tag v1.2.0 at 110ce06aeb182dff11b51abd3047b0157f290a64 (verified 2026-10-13)
   source_revisions:
@@ -15922,9 +15922,9 @@ promotion_events:
   implementation_revision: a8f595d8b9c9a03ea76b49f32b071b732cc85538
   subject_digest: sha256:5ebc2c8d080cb7b986011a46f5db97486beb75f8fb5700bfe47d5e5ca2c0e058
   contract_digest: sha256:8d2035da6884c3503cddb248e330861fcb967a135538ed35f1558ef0e7aa505b
-  regression_case: tests/test_synthetic_readers.py
+  regression_case: tests/test_arm_batch7.py
   verification_result: operator-authorized
-  exercised_path: tests/test_synthetic_readers.py
+  exercised_path: tests/test_arm_batch7.py
   supported_versions:
   - commit e655f93ab694c446b76672efe6e71e62aac0b7b8 (verified 2026-10-13)
   source_revisions:
@@ -15942,9 +15942,9 @@ promotion_events:
   implementation_revision: a8f595d8b9c9a03ea76b49f32b071b732cc85538
   subject_digest: sha256:1202cf10fd903422f5f8052d9fc2c283eaa3cd609c406d92fc55df1fae18ad58
   contract_digest: sha256:ad348e8f5cec81e12e6764df13764ee34fdcaa4de1bcfab2b71313ee8239adde
-  regression_case: tests/test_synthetic_readers.py
+  regression_case: tests/test_arm_batch8.py
   verification_result: operator-authorized
-  exercised_path: tests/test_synthetic_readers.py
+  exercised_path: tests/test_arm_batch8.py
   supported_versions:
   - commit 096d0effbee28653c4705a9ea973266b24d6e2a5 (verified 2026-10-13)
   source_revisions:
@@ -15962,9 +15962,9 @@ promotion_events:
   implementation_revision: a8f595d8b9c9a03ea76b49f32b071b732cc85538
   subject_digest: sha256:bef5f944d92adbd78355fd70341343df19c6c6a2428423315a457ade38e2ea26
   contract_digest: sha256:6d8c00cdde3ea572b1ebfc6f169d629a0324078c9ae7d753001895abb031ba2c
-  regression_case: tests/test_synthetic_readers.py
+  regression_case: tests/test_arm_batch8.py
   verification_result: operator-authorized
-  exercised_path: tests/test_synthetic_readers.py
+  exercised_path: tests/test_arm_batch8.py
   supported_versions:
   - tag v1.2.1 at 1237a2f3515aebbd5260383c7088aa0ea806b600 (verified 2026-10-13)
   source_revisions:
@@ -15982,9 +15982,9 @@ promotion_events:
   implementation_revision: a8f595d8b9c9a03ea76b49f32b071b732cc85538
   subject_digest: sha256:ff3028d5d8705788da80314b3e99070ce6ce50e70ef5e097e868605ade001f34
   contract_digest: sha256:963d9f7f232105c8856218cb2fb510ced504031df7899088fdc47141549a43e1
-  regression_case: tests/test_synthetic_readers.py
+  regression_case: tests/test_arm_batch8.py
   verification_result: operator-authorized
-  exercised_path: tests/test_synthetic_readers.py
+  exercised_path: tests/test_arm_batch8.py
   supported_versions:
   - commit 73efec51207f6f740cb398e1c490e5edd60c1113 (verified 2026-10-13)
   source_revisions:
@@ -16002,9 +16002,9 @@ promotion_events:
   implementation_revision: a8f595d8b9c9a03ea76b49f32b071b732cc85538
   subject_digest: sha256:fe6547a6049f3dc34812976c4ffc238f2f4e70cf9a14e559a40f541b36e83423
   contract_digest: sha256:f16ccfb143f5eab8833ff84df61c1fcd7cff966eb5482353abd5affa2a188f58
-  regression_case: tests/test_synthetic_readers.py
+  regression_case: tests/test_arm_batch7.py
   verification_result: operator-authorized
-  exercised_path: tests/test_synthetic_readers.py
+  exercised_path: tests/test_arm_batch7.py
   supported_versions:
   - commit 77ec6bd17e65a111b30fc490476f28cb29308a0f (verified 2026-10-13)
   source_revisions:
@@ -16022,9 +16022,9 @@ promotion_events:
   implementation_revision: a8f595d8b9c9a03ea76b49f32b071b732cc85538
   subject_digest: sha256:449c33db6aae8be3b89d1009bd18993a34dfe13efc99412af645ab958c279591
   contract_digest: sha256:57a69514098b32f58a418b1681ee8dfdf5ca87ad60d1a37caa2ad59c71472459
-  regression_case: tests/test_synthetic_readers.py
+  regression_case: tests/test_arm_batch7.py
   verification_result: operator-authorized
-  exercised_path: tests/test_synthetic_readers.py
+  exercised_path: tests/test_arm_batch7.py
   supported_versions:
   - generating commit 77ec6bd17e65a111b30fc490476f28cb29308a0f plus site snapshot 2026-10-13
   source_revisions:
@@ -16042,9 +16042,9 @@ promotion_events:
   implementation_revision: a8f595d8b9c9a03ea76b49f32b071b732cc85538
   subject_digest: sha256:679db021347b15f375c83d24b4824d46e37a974df5dbd4aa55800407d5feb226
   contract_digest: sha256:fd1bde9f80ce17ad212ce651f20c40c2d6b63d050f4d5343be84d21fc8e0946a
-  regression_case: tests/test_synthetic_readers.py
+  regression_case: tests/test_arm_batch7.py
   verification_result: operator-authorized
-  exercised_path: tests/test_synthetic_readers.py
+  exercised_path: tests/test_arm_batch7.py
   supported_versions:
   - tag v0.10.0 at 7c2a22891465ac4c00bd45f4a50c742aa4651275 (verified 2026-10-13)
   source_revisions:
@@ -16062,9 +16062,9 @@ promotion_events:
   implementation_revision: a8f595d8b9c9a03ea76b49f32b071b732cc85538
   subject_digest: sha256:85af48ee04f8d2bf4272c0be37efce5d13bc424d1ee01b45c2857829c44883a8
   contract_digest: sha256:2b5000b9b905f6a17df9b3acdf0dab09d0c05790b7e9676480096577989bb801
-  regression_case: tests/test_synthetic_readers.py
+  regression_case: tests/test_arm_batch8.py
   verification_result: operator-authorized
-  exercised_path: tests/test_synthetic_readers.py
+  exercised_path: tests/test_arm_batch8.py
   supported_versions:
   - head commit 74215f68ea70bd6a66c008da91bf5fe21d20b154 (verified 2026-10-13)
   source_revisions:
@@ -16082,9 +16082,9 @@ promotion_events:
   implementation_revision: a8f595d8b9c9a03ea76b49f32b071b732cc85538
   subject_digest: sha256:09063fa30852de6c28bd55671f073efd64092543af5588f1b53a2ff4b6298526
   contract_digest: sha256:080f23cc721986d434ab35d7e869ef8f2a600edde648bbd2db128e00f26ee4df
-  regression_case: tests/test_synthetic_readers.py
+  regression_case: tests/test_arm_batch7.py
   verification_result: operator-authorized
-  exercised_path: tests/test_synthetic_readers.py
+  exercised_path: tests/test_arm_batch7.py
   supported_versions:
   - commit ac492b2a8613c85acee4d7b6cdec1a7abd14ce7f (verified 2026-10-13)
   source_revisions:

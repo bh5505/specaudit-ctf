@@ -2028,6 +2028,75 @@ def _check_evidence_ref(
         )
 
 
+def _check_promotion_test_ref(
+    value: Any,
+    *,
+    path: str,
+    code: str,
+    issues: list[ValidationIssue],
+) -> None:
+    """Bound a promotion regression/exercised path to a real repo test file.
+
+    This checks citation resolvability only: the file must be a bounded
+    repo-relative ``tests/*.py`` file path that resolves inside the repository to
+    a real regular file. Absolute paths, traversal segments, backslashes,
+    symlink escapes, directories, and missing files all fail. Existence is
+    never execution proof: it does not claim the test ran or covered the
+    promotion.
+    """
+
+    if not isinstance(value, str):
+        _add(
+            issues, "integrity", code, path,
+            "promotion test reference must be a string",
+        )
+        return
+    if any(
+        unicodedata.category(char) in {"Cc", "Cf", "Cs"} for char in value
+    ):
+        _add(
+            issues, "integrity", code, path,
+            "promotion test reference contains a control, format, or surrogate character",
+        )
+        return
+    # These event citations identify files. Accepting an unchecked pytest
+    # selector would let a nonexistent test node masquerade as a resolved ref.
+    if ":" in value:
+        _add(
+            issues, "integrity", code, path,
+            "promotion test reference must identify a file, not a test selector or drive",
+        )
+        return
+    file_text = value
+    relative = PurePosixPath(file_text)
+    if (
+        not file_text
+        or "\\" in file_text
+        or relative.is_absolute()
+        or any(part in {"", ".", ".."} for part in file_text.split("/"))
+        or relative.suffix.lower() != ".py"
+        or len(relative.parts) < 2
+        or relative.parts[0] != "tests"
+    ):
+        _add(
+            issues, "integrity", code, path,
+            "promotion test reference must be a bounded repo-relative tests/*.py path",
+        )
+        return
+    candidate = REPOSITORY_ROOT.joinpath(*relative.parts)
+    try:
+        resolved = candidate.resolve(strict=True)
+        resolved.relative_to(REPOSITORY_ROOT)
+        if not resolved.is_file():
+            raise OSError(f"not a regular file: {resolved}")
+    except (OSError, ValueError, RuntimeError) as exc:
+        _add(
+            issues, "integrity", code, path,
+            f"promotion test file is unavailable or escapes the repository: {exc}",
+        )
+        return
+
+
 def _check_currentness(
     owner_ref: str,
     currentness: Mapping[str, Any],
@@ -3401,6 +3470,26 @@ V2_EXPECTED_MODULE_IDS = frozenset(
 # code (review- and test-gated); a register edit alone can never authorize.
 V2_AUTHORIZATION_DOC = "docs/governance/promotion-authorization-2026-10-14.md"
 V2_AUTHORIZATION_DATE = "2026-10-14"
+# Corrected citation (U-GOV.a, 2026-10-18): the 2026-10-14 source-event records
+# recorded "tests/test_synthetic_readers.py" for the ten selected families,
+# but that file is absent from the verified public baseline. The per-source
+# pointers below preserve the original pins/terms and only correct the
+# citation to a real, source-relevant regression file in the verified baseline.
+# The correction itself is documented in
+# docs/governance/w1a-source-evidence-and-inventory-2026-10-18.md; it asserts
+# no new admission and no claim that the corrected file ran on 2026-10-14.
+V2_SELECTED_TEST_PATH: Mapping[str, str] = {
+    "R02": "tests/test_arm_batch8.py",
+    "R03": "tests/test_arm_batch7.py",
+    "R08": "tests/test_arm_batch8.py",
+    "R17": "tests/test_arm_batch8.py",
+    "R25": "tests/test_arm_batch8.py",
+    "R33": "tests/test_arm_batch7.py",
+    "R34": "tests/test_arm_batch7.py",
+    "R35": "tests/test_arm_batch7.py",
+    "R36": "tests/test_arm_batch8.py",
+    "R42": "tests/test_arm_batch7.py",
+}
 V2_AUTHORIZED_PROMOTIONS: Mapping[str, Mapping[str, Any]] = {
     "R01": {
         "to_status": "admitted",
@@ -3416,6 +3505,7 @@ V2_AUTHORIZED_PROMOTIONS: Mapping[str, Mapping[str, Any]] = {
             "sha256:a9a42f040c4a3c6fb761f9019736107e96ff6948c3f291f26ddb749026bcf62b",
         ),
         "regression_case": "tests/test_vulnify_lookup.py",
+        "exercised_path": "tests/test_vulnify_lookup.py",
     },
     "R43": {
         "to_status": "admitted",
@@ -3431,6 +3521,7 @@ V2_AUTHORIZED_PROMOTIONS: Mapping[str, Mapping[str, Any]] = {
             "sha256:c148a5185543f1d7c7c4d4c8bbd9f1659612f9e5b2844cba9822bbc4a2581fcf",
         ),
         "regression_case": "tests/test_reader_evidence.py",
+        "exercised_path": "tests/test_reader_evidence.py",
     },
     **{
         source_id: {
@@ -3446,7 +3537,8 @@ V2_AUTHORIZED_PROMOTIONS: Mapping[str, Mapping[str, Any]] = {
             ),
             "required_pin": pin,
             "required_digests": (),
-            "regression_case": "tests/test_synthetic_readers.py",
+            "regression_case": V2_SELECTED_TEST_PATH[source_id],
+            "exercised_path": V2_SELECTED_TEST_PATH[source_id],
         }
         for source_id, pin in {
             "R02": "110ce06aeb182dff11b51abd3047b0157f290a64",
@@ -4231,6 +4323,29 @@ def validate_register_v2(
                         f"source:{source_id}",
                         "promotion must cite its anchor regression case",
                     )
+                if event.get("exercised_path") != anchor["exercised_path"]:
+                    _add(
+                        issues,
+                        "integrity",
+                        "promotion-anchor-mismatch",
+                        f"source:{source_id}",
+                        "promotion must cite its anchor exercised path",
+                    )
+                # Citation resolvability only: both references must name a
+                # bounded repo-contained real test file. This never proves
+                # the test ran or covered the promotion.
+                _check_promotion_test_ref(
+                    event.get("regression_case"),
+                    path=f"source:{source_id}",
+                    code="invalid-regression-ref",
+                    issues=issues,
+                )
+                _check_promotion_test_ref(
+                    event.get("exercised_path"),
+                    path=f"source:{source_id}",
+                    code="invalid-exercised-path-ref",
+                    issues=issues,
+                )
     anchor_event_ids = {
         evidence_ref
         for source_id, row in sources.items()

@@ -136,6 +136,18 @@ edit alone can never authorize one. The PR97-slice fidelity rule masks
 exactly the promotion-affected fields on promoted rows; everything else on
 those rows must still equal the frozen v1 register.
 
+U-GOV.a correction (2026-10-18): the 2026-10-14 decision cited
+`tests/test_synthetic_readers.py` for the ten selected families, but that
+file is absent from the verified public baseline. The anchor table now freezes the corrected
+per-source citations (R03/R33/R34/R35/R42 →
+`tests/test_arm_batch7.py`; R02/R08/R17/R25/R36 →
+`tests/test_arm_batch8.py`) and the checker additionally requires both
+`regression_case` and `exercised_path` to resolve to bounded
+repo-contained real `tests/*.py` files; existence is not execution proof.
+History (`decided_on`, reviewer, revision, digests, authorization text) is
+unchanged — see
+[the correction and inventory](../docs/governance/w1a-source-evidence-and-inventory-2026-10-18.md).
+
 Exit `0` means the explicitly requested requirement passed, `1` means the
 register has semantic/currentness/completeness gaps, and `2` means the register,
 schema, arguments, or other input is invalid. Schema-valid validation reports
