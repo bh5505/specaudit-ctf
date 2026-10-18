@@ -669,6 +669,198 @@ def _detail_path(ledger_path: Path, case: CaseResult) -> Path:
 HOSTILE_CLASSES = ("traversal", "absolute-out-of-root", "symlink-escape",
                    "device-file")
 POSIX_ONLY_HOSTILE = frozenset({"symlink-escape", "device-file"})
+
+# Strict complete-matrix coverage: explicit expected/executed/skipped/
+# missing/duplicate cells. The package never imports safety.check; the
+# caller supplies the frozen roster and this module derives the expected
+# cells from that supplied roster BEFORE execution (never re-derived from
+# the actually executed cells). A caller-supplied subset can only prove
+# that subset, never universal SAFE acceptance: the summary labels scope
+# and the supplied roster count/digest explicitly.
+_STRICT_SCOPE = "strict-supplied-roster"
+_REHEARSAL_SCOPE = "partial-rehearsal"
+
+
+def _expected_outcomes_for_variant(variant: str) -> frozenset:
+    """Legal outcomes for one cell variant (positive/refusal preserved)."""
+    if variant == "list-tools":
+        return frozenset({"positive", "refusal"})
+    if variant == "inroot":
+        return frozenset({"positive", "refusal"})
+    if variant.startswith("hostile-"):
+        return frozenset({"blocked"})
+    if variant == "cleanup":
+        return frozenset({"cleanup-ok"})
+    if variant == "interrupt":
+        return frozenset({"interruption"})
+    if variant == "enforced":
+        return frozenset({"held"})
+    if variant == "control":
+        return frozenset({"control-ok"})
+    return frozenset()
+
+
+def _cell_key(arm_id: str, action: str, variant: str) -> str:
+    return f"{arm_id}:{action}:{variant}"
+
+
+def roster_digest(roster: Sequence[RosterEntry]) -> str:
+    """Stable digest of the SUPPLIED roster (order-insensitive)."""
+    rows = sorted(
+        (
+            {"arm_id": entry.arm_id, "action": entry.action,
+             "path_argument": entry.path_argument}
+            for entry in roster
+        ),
+        key=lambda row: (
+            row["arm_id"], row["action"], row["path_argument"] or ""),
+    )
+    canonical = json.dumps(rows, sort_keys=True, separators=(",", ":"))
+    return "sha256:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def expected_cells(
+    roster: Sequence[RosterEntry],
+    hostile_classes: Sequence[str] = HOSTILE_CLASSES,
+    include_canaries: bool = True,
+    cleanup_first: bool = True,
+    interrupt_first: bool = True,
+    strict: bool = False,
+) -> list[tuple[str, str, str]]:
+    """Expected (arm_id, action, variant) cells derived BEFORE execution.
+
+    Legacy (strict=False): one inroot/list-tools cell per roster entry,
+    plus the four hostile classes + cleanup + interrupt for the FIRST data
+    entry only (the small rehearsal); the caller flags select both the
+    expectation and the execution there. Strict (strict=True): the
+    MANDATORY controls -- the standard four hostile classes, cleanup,
+    interruption, and both canaries -- for EVERY supplied data action
+    plus the discovery/canary cells, independently of the
+    execution-selection flags. Suppressing execution still leaves those
+    cells expected, so the omission surfaces as missing/incomplete.
+    With the canonical 14-reader/38-data roster and the default
+    four hostile classes plus cleanup plus interrupt, strict POSIX
+    expectation is 38*7+14+2 = 282 cells.
+    """
+    if strict:
+        hostile_classes = HOSTILE_CLASSES
+        include_canaries = True
+        cleanup_first = True
+        interrupt_first = True
+    cells: list[tuple[str, str, str]] = []
+    for entry in roster:
+        if entry.path_argument is None:
+            cells.append((entry.arm_id, entry.action, "list-tools"))
+        elif not strict:
+            cells.append((entry.arm_id, entry.action, "inroot"))
+        else:
+            cells.append((entry.arm_id, entry.action, "inroot"))
+            for hostile in hostile_classes:
+                cells.append(
+                    (entry.arm_id, entry.action, f"hostile-{hostile}"))
+            if cleanup_first:
+                cells.append((entry.arm_id, entry.action, "cleanup"))
+            if interrupt_first:
+                cells.append((entry.arm_id, entry.action, "interrupt"))
+    if not strict:
+        first_data = next(
+            (entry for entry in roster if entry.path_argument is not None),
+            None,
+        )
+        if first_data is not None:
+            for hostile in hostile_classes:
+                cells.append((
+                    first_data.arm_id, first_data.action,
+                    f"hostile-{hostile}"))
+            if cleanup_first:
+                cells.append(
+                    (first_data.arm_id, first_data.action, "cleanup"))
+            if interrupt_first:
+                cells.append(
+                    (first_data.arm_id, first_data.action, "interrupt"))
+    if include_canaries:
+        cells.append(("containment", "canary", "enforced"))
+        cells.append(("containment", "canary", "control"))
+    return cells
+
+
+def _duplicate_roster_keys(
+    roster: Sequence[RosterEntry],
+) -> list[str]:
+    seen: dict[str, int] = {}
+    for entry in roster:
+        key = f"{entry.arm_id}:{entry.action}"
+        seen[key] = seen.get(key, 0) + 1
+    return sorted(key for key, count in seen.items() if count > 1)
+
+
+def check_coverage(
+    expected: Sequence[tuple[str, str, str]],
+    cases: Sequence[CaseResult],
+    skipped: Sequence[Mapping[str, Any]],
+    duplicate_roster: Sequence[str],
+) -> dict[str, Any]:
+    """Pure scheduling-coverage check (no children, no fixtures).
+
+    Compares the BEFORE-execution ``expected`` cells against the
+    actually executed ``cases``. Fails closed (``complete=False``) on
+    missing/extra cells, duplicate roster or result cells, unexpected
+    outcomes for a variant, and any skip (skips count as unevidenced).
+    Used by ``run_matrix`` and directly by scheduling tests with
+    monkeypatched fake runners confined to tests; empirical containment
+    still needs the real matrix.
+    """
+    expected_keys = [_cell_key(a, b, v) for (a, b, v) in expected]
+    expected_set = set(expected_keys)
+    executed_keys = [_cell_key(c.arm_id, c.action, c.variant) for c in cases]
+    executed_set = set(executed_keys)
+    missing = list(dict.fromkeys(k for k in expected_keys if k not in executed_set))
+    extra = sorted(k for k in executed_set if k not in expected_set)
+    seen_counts: dict[str, int] = {}
+    for key in executed_keys:
+        seen_counts[key] = seen_counts.get(key, 0) + 1
+    duplicate_results = sorted(
+        key for key, count in seen_counts.items() if count > 1)
+    unexpected: list[dict[str, str]] = []
+    for case in cases:
+        allowed = _expected_outcomes_for_variant(case.variant)
+        if case.outcome not in allowed:
+            unexpected.append({
+                "cell": _cell_key(case.arm_id, case.action, case.variant),
+                "outcome": case.outcome,
+                "expected": ",".join(sorted(allowed)) if allowed else "",
+            })
+    unexpected.sort(key=lambda row: row["cell"])
+    reasons: list[str] = []
+    if list(duplicate_roster):
+        reasons.append(
+            "duplicate-supplied-roster:" + ",".join(sorted(duplicate_roster)))
+    if missing:
+        reasons.append(f"missing-cells:{len(missing)}")
+    if extra:
+        reasons.append(f"extra-cells:{len(extra)}")
+    if duplicate_results:
+        reasons.append("duplicate-result-cells:" + ",".join(duplicate_results))
+    if unexpected:
+        reasons.append(f"unexpected-outcomes:{len(unexpected)}")
+    if list(skipped):
+        reasons.append(f"skipped-cells:{len(list(skipped))}")
+    complete = not (
+        missing or extra or list(duplicate_roster) or duplicate_results
+        or unexpected or list(skipped)
+    )
+    return {
+        "expected": len(expected_keys),
+        "executed": len(executed_keys),
+        "skipped": len(list(skipped)),
+        "missing": missing,
+        "extra": extra,
+        "duplicate_roster": sorted(duplicate_roster),
+        "duplicate_results": duplicate_results,
+        "unexpected": unexpected,
+        "complete": complete,
+        "reasons": reasons,
+    }
 RENAME_INTO_ROOT_IS_ENFORCER_LAYER = (
     "rename-into-root is policed at the audit-hook layer (the acquisition "
     "gate is read-only by construction), so it appears in the canary and "
@@ -728,6 +920,7 @@ def run_matrix(
     cleanup_first: bool = True,
     child_timeout: float = 120.0,
     kill_after: float = 0.5,
+    strict: bool = False,
 ) -> dict[str, Any]:
     """Run the explicit roster and return the JSON summary.
 
@@ -735,8 +928,28 @@ def run_matrix(
     frozen roster (tests pass literals derived from
     ``safety.check.ARM_BASELINES`` at test time). Fixtures materialize
     under ``fixtures_root``, which must lie inside the approved root.
-    The summary counts every case: failures are never dropped, and the
-    win32 label is ``partial`` because POSIX-only hostile classes skip.
+    The summary counts every case: failures are never dropped.
+
+    ``strict=False`` (default) keeps the legacy small rehearsal: one
+    inroot/list-tools cell per roster entry plus hostile/cleanup/
+    interruption for the FIRST data entry only, with scope
+    ``partial-rehearsal``. ``strict=True`` requires the MANDATORY
+    controls -- the standard four hostile classes, cleanup,
+    interruption, and both canaries -- for EVERY supplied data action
+    plus the discovery/canary cells (strict complete-matrix mode),
+    reusing the same fixtures, acquisition gate, enforcement, and
+    ledger. The execution-selection flags (``hostile_classes``,
+    ``include_canaries``, ``cleanup_first``, ``interrupt_first``) only
+    select which runs execute; omitted runs stay expected and surface
+    as missing/incomplete with a ``partial`` platform label and a
+    nonzero strict CLI exit even with zero runtime failures. Strict
+    completeness fails closed on absent fixture args, omitted execution
+    cells, duplicate roster or result cells, truncated or missing worker
+    results, dirty cleanup, unexpected outcomes, and skips (skips count
+    as unevidenced). The ``platform`` label reports ``full`` only for a
+    strict run with complete coverage on POSIX; every other run reports
+    ``partial`` with an explicit reason -- never ``full`` simply because
+    ``os.name`` is POSIX.
     """
     import attempt_ledger.ledger as ledger
 
@@ -778,6 +991,16 @@ def run_matrix(
             )
         return case
 
+    # Expected cells are derived BEFORE execution from the SUPPLIED roster
+    # only (never re-derived from the actually executed cells). In strict
+    # mode the expectation carries the mandatory controls independently
+    # of the execution-selection flags below.
+    _expected = expected_cells(
+        roster, hostile_classes, include_canaries,
+        cleanup_first, interrupt_first, strict,
+    )
+    _duplicate_roster = _duplicate_roster_keys(roster)
+
     fixtures: dict[str, tuple[str, dict[str, dict[str, Any]]]] = {}
 
     def fixture_for(arm_id: str) -> tuple[str, dict[str, dict[str, Any]]]:
@@ -785,61 +1008,110 @@ def run_matrix(
             fixtures[arm_id] = build_fixture(arm_id, approved)
         return fixtures[arm_id]
 
-    for entry in roster:
-        if entry.path_argument is None:
-            # Discovery smoke: no path signal exists to acquire or deny.
-            record(run_case(
-                profile, arm_id=entry.arm_id, action=entry.action,
-                payload={}, variant="list-tools", child_timeout=child_timeout,
-            ))
-            continue
-        input_path, args_by_action = fixture_for(entry.arm_id)
-        payload = args_by_action.get(entry.action)
-        if payload is None:
+    def _run_hostile(
+        arm_id: str, action: str, payload: Mapping[str, Any], hostile: str,
+    ) -> None:
+        path_key = _hostile_payload_key(payload, arm_id)
+        if os.name == "nt" and hostile in POSIX_ONLY_HOSTILE:
             skipped.append({
-                "case": f"{entry.arm_id}:{entry.action}",
-                "reason": "no-fixture-args-for-action",
+                "case": _cell_key(arm_id, action, f"hostile-{hostile}"),
+                "reason": "posix-only (symlink/fifo fixtures need POSIX)",
             })
-            continue
+            return
+        hostile_payload = dict(payload)
+        hostile_payload[path_key] = _hostile_path(profile, hostile)
+        _materialize_hostile_fixture(profile, hostile, content_canary=(
+            profile.canaries[0] if profile.canaries else "containment-probe"))
         record(run_case(
-            profile, arm_id=entry.arm_id, action=entry.action,
-            payload=payload, variant="inroot", child_timeout=child_timeout,
+            profile, arm_id=arm_id, action=action,
+            payload=hostile_payload, hostile=hostile,
+            variant=f"hostile-{hostile}",
         ))
 
-    first_data = next((entry for entry in roster if entry.path_argument is not None),
-                      None)
-    if first_data is not None:
-        input_path, args_by_action = fixture_for(first_data.arm_id)
-        action = first_data.action
-        payload = dict(args_by_action[action])
-        path_key = _hostile_payload_key(payload, first_data.arm_id)
-        for hostile in hostile_classes:
-            if os.name == "nt" and hostile in POSIX_ONLY_HOSTILE:
+    if not strict:
+        for entry in roster:
+            if entry.path_argument is None:
+                # Discovery smoke: no path signal exists to acquire or deny.
+                record(run_case(
+                    profile, arm_id=entry.arm_id, action=entry.action,
+                    payload={}, variant="list-tools",
+                    child_timeout=child_timeout,
+                ))
+                continue
+            _input_path, args_by_action = fixture_for(entry.arm_id)
+            payload = args_by_action.get(entry.action)
+            if payload is None:
                 skipped.append({
-                    "case": f"{first_data.arm_id}:{action}:hostile-{hostile}",
-                    "reason": "posix-only (symlink/fifo fixtures need POSIX)",
+                    "case": f"{entry.arm_id}:{entry.action}",
+                    "reason": "no-fixture-args-for-action",
                 })
                 continue
-            hostile_payload = dict(payload)
-            hostile_payload[path_key] = _hostile_path(profile, hostile)
-            _materialize_hostile_fixture(profile, hostile, content_canary=(
-                profile.canaries[0] if profile.canaries else "containment-probe"))
             record(run_case(
-                profile, arm_id=first_data.arm_id, action=action,
-                payload=hostile_payload, hostile=hostile, variant=f"hostile-{hostile}",
-            ))
-        if cleanup_first:
-            record(run_case(
-                profile, arm_id=first_data.arm_id, action=action,
-                payload=payload, variant="cleanup", mode="cleanup-watch",
+                profile, arm_id=entry.arm_id, action=entry.action,
+                payload=payload, variant="inroot",
                 child_timeout=child_timeout,
             ))
-        if interrupt_first:
+
+        first_data = next(
+            (entry for entry in roster if entry.path_argument is not None),
+            None)
+        if first_data is not None:
+            _input_path, args_by_action = fixture_for(first_data.arm_id)
+            action = first_data.action
+            payload = dict(args_by_action[action])
+            for hostile in hostile_classes:
+                _run_hostile(first_data.arm_id, action, payload, hostile)
+            if cleanup_first:
+                record(run_case(
+                    profile, arm_id=first_data.arm_id, action=action,
+                    payload=payload, variant="cleanup", mode="cleanup-watch",
+                    child_timeout=child_timeout,
+                ))
+            if interrupt_first:
+                record(run_case(
+                    profile, arm_id=first_data.arm_id, action=action,
+                    payload=payload, variant="interrupt", mode="interrupt",
+                    kill_after=kill_after, child_timeout=child_timeout,
+                ))
+    else:
+        for entry in roster:
+            if entry.path_argument is None:
+                record(run_case(
+                    profile, arm_id=entry.arm_id, action=entry.action,
+                    payload={}, variant="list-tools",
+                    child_timeout=child_timeout,
+                ))
+                continue
+            _input_path, args_by_action = fixture_for(entry.arm_id)
+            payload = args_by_action.get(entry.action)
+            if payload is None:
+                for (_e_arm, _e_action, _e_variant) in _expected:
+                    if _e_arm == entry.arm_id and _e_action == entry.action:
+                        skipped.append({
+                            "case": _cell_key(
+                                _e_arm, _e_action, _e_variant),
+                            "reason": "no-fixture-args-for-action",
+                        })
+                continue
             record(run_case(
-                profile, arm_id=first_data.arm_id, action=action,
-                payload=payload, variant="interrupt", mode="interrupt",
-                kill_after=kill_after, child_timeout=child_timeout,
+                profile, arm_id=entry.arm_id, action=entry.action,
+                payload=payload, variant="inroot",
+                child_timeout=child_timeout,
             ))
+            for hostile in hostile_classes:
+                _run_hostile(entry.arm_id, entry.action, payload, hostile)
+            if cleanup_first:
+                record(run_case(
+                    profile, arm_id=entry.arm_id, action=entry.action,
+                    payload=payload, variant="cleanup", mode="cleanup-watch",
+                    child_timeout=child_timeout,
+                ))
+            if interrupt_first:
+                record(run_case(
+                    profile, arm_id=entry.arm_id, action=entry.action,
+                    payload=payload, variant="interrupt", mode="interrupt",
+                    kill_after=kill_after, child_timeout=child_timeout,
+                ))
 
     if include_canaries:
         record(run_canary_case(profile, enforced=True))
@@ -864,16 +1136,70 @@ def run_matrix(
                 "outcome": case.outcome,
                 "reason": case.reason or "",
             })
+    _coverage = check_coverage(
+        _expected, cases, skipped, _duplicate_roster)
+    _missing = _coverage["missing"]
+    _extra = _coverage["extra"]
+    _duplicate_results = _coverage["duplicate_results"]
+    _unexpected = _coverage["unexpected"]
+    _reasons = _coverage["reasons"]
+    _complete = _coverage["complete"]
+    _expected_keys = [_cell_key(a, b, v) for (a, b, v) in _expected]
+    _executed_set = {
+        _cell_key(c.arm_id, c.action, c.variant) for c in cases}
+    _data_actions = sum(1 for entry in roster if entry.path_argument is not None)
+    _discovery = sum(1 for entry in roster if entry.path_argument is None)
+    completeness = {
+        "scope": _STRICT_SCOPE if strict else _REHEARSAL_SCOPE,
+        "strict": strict,
+        "supplied_roster": {
+            "entries": len(roster),
+            "data_actions": _data_actions,
+            "discovery": _discovery,
+            "digest": roster_digest(roster),
+        },
+        "expected": _coverage["expected"],
+        "executed": _coverage["executed"],
+        "skipped": _coverage["skipped"],
+        "missing": _missing,
+        "extra": _extra,
+        "duplicate_roster": _coverage["duplicate_roster"],
+        "duplicate_results": _duplicate_results,
+        "unexpected": _unexpected,
+        "complete": _complete,
+        "reasons": _reasons,
+    }
+    if strict and _complete and os.name != "nt":
+        _label = "full"
+        _partial_reason = None
+    elif not strict:
+        _label = "partial"
+        _partial_reason = (
+            "legacy rehearsal covers hostile/cleanup/interruption for the "
+            "first data action only; use strict=True for the complete matrix"
+        )
+    elif os.name == "nt":
+        _label = "partial"
+        _partial_reason = (
+            "symlink-escape and device-file hostile classes require POSIX"
+        )
+    else:
+        _label = "partial"
+        _partial_reason = (
+            "; ".join(_reasons) if _reasons else "incomplete coverage")
     summary = {
         "schema": "specaudit.ctf.containment-matrix.v1",
         "platform": {
             "system": os.name,
-            "label": "partial" if os.name == "nt" else "full",
-            "partial_reason": (
-                "symlink-escape and device-file hostile classes require POSIX"
-                if os.name == "nt" else None
-            ),
+            "label": _label,
+            "partial_reason": _partial_reason,
         },
+        "completeness": completeness,
+        "expected_cells": [
+            {"arm_id": a, "action": b, "variant": v}
+            for (a, b, v) in _expected
+        ],
+        "executed_cells": sorted(_executed_set),
         "counts": dict(sorted(counts.items())),
         "per_arm": {arm: dict(sorted(actions.items()))
                     for arm, actions in sorted(per_arm.items())},
