@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import ast
+import errno
 import json
+import subprocess
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -195,6 +198,98 @@ def test_stdio_timeout_remains_failure() -> None:
     result = _transport("import time; time.sleep(1)", timeout=0.05).invoke(SPEC, "ping", {})
     assert not result.ok
     assert "timed out" in result.error
+
+
+@pytest.mark.parametrize("credential", [
+    "synthetic-unicode-凭据", "synthetic-'single\"double-quote",
+    "synthetic-backslash-\\value", "synthetic-newline-\nvalue",
+])
+def test_timeout_argv_redacted_before_exception_escaping(credential: str) -> None:
+    timeout = 0.05
+    transport = McpTransport(
+        stdio_cmds={ARM: [sys.executable, "-c", "import time; time.sleep(1)", credential]},
+        stdio_envs={ARM: {"APP_TOKEN": credential}}, timeout=timeout,
+    )
+    result = transport.invoke(SPEC, "ping", {})
+    assert not result.ok
+    assert result.output is None
+    command = result.error.removeprefix("Command '").removesuffix(
+        f"' timed out after {timeout} seconds"
+    )
+    assert ast.literal_eval(command)[-1] == "[redacted]"
+
+
+@pytest.mark.parametrize("credential", [
+    "synthetic-unicode-凭据", "synthetic-'single\"double-quote",
+    "synthetic-backslash-\\value", "synthetic-newline-\nvalue",
+])
+def test_missing_filename_redacted_before_exception_escaping(
+    credential: str, tmp_path: Path,
+) -> None:
+    missing = str(tmp_path / ("absent-" + credential))
+    transport = McpTransport(
+        stdio_cmds={ARM: [missing]}, stdio_envs={ARM: {"APP_TOKEN": credential}},
+    )
+    result = transport.invoke(SPEC, "ping", {})
+    assert not result.ok
+    assert result.output is None
+    assert "No such file or directory" in result.error
+    rendered_filename = result.error.rsplit(": ", 1)[-1]
+    assert ast.literal_eval(rendered_filename) == str(tmp_path / "absent-[redacted]")
+
+
+@pytest.mark.parametrize("credential", [
+    "synthetic-unicode-凭据", "synthetic-'single\"double-quote",
+    "synthetic-backslash-\\value", "synthetic-newline-\nvalue",
+])
+@pytest.mark.parametrize("kind", ["timeout-tuple", "two-filenames", "bytes-filename", "message-only", "ordinary"])
+def test_structured_process_exception_fields_redacted(
+    credential: str, kind: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if kind == "timeout-tuple":
+        exception = subprocess.TimeoutExpired((sys.executable, credential), 1)
+        expected = str(subprocess.TimeoutExpired([sys.executable, "[redacted]"], 1))
+    elif kind == "two-filenames":
+        exception = OSError(errno.ENOENT, "missing " + credential, credential, None, credential)
+        expected = str(OSError(errno.ENOENT, "missing [redacted]", "[redacted]", None, "[redacted]"))
+    elif kind == "bytes-filename":
+        exception = FileNotFoundError(errno.ENOENT, "missing", credential.encode("utf-8"))
+        expected = str(FileNotFoundError(errno.ENOENT, "missing", b"[redacted]"))
+    elif kind == "message-only":
+        exception = OSError("missing " + credential)
+        expected = "missing [redacted]"
+    else:
+        exception = ValueError("ordinary " + credential)
+        expected = "ordinary [redacted]"
+
+    def refuse(*args, **kwargs):
+        raise exception
+
+    monkeypatch.setattr(mcp.subprocess, "run", refuse)
+    result = _transport("", environment={"APP_TOKEN": credential}).invoke(SPEC, "ping", {})
+    assert not result.ok
+    assert result.output is None
+    assert result.error == expected
+
+
+def test_absent_exception_filenames_remain_absent(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(*args, **kwargs):
+        raise OSError(errno.EACCES, "permission denied")
+
+    monkeypatch.setattr(mcp.subprocess, "run", refuse)
+    result = _transport("", environment={"APP_CONFIG": "null"}).invoke(SPEC, "ping", {})
+    assert not result.ok
+    assert result.error == str(OSError(errno.EACCES, "permission denied"))
+
+
+def test_rendered_os_error_gets_final_numeric_redaction(monkeypatch: pytest.MonkeyPatch) -> None:
+    def refuse(*args, **kwargs):
+        raise OSError(errno.EACCES, "permission denied")
+
+    monkeypatch.setattr(mcp.subprocess, "run", refuse)
+    result = _transport("", environment={"APP_CONFIG": str(errno.EACCES)}).invoke(SPEC, "ping", {})
+    assert not result.ok
+    assert result.error == "[Errno [redacted]] permission denied"
 
 
 def test_stdout_total_cap_includes_trailing_output() -> None:

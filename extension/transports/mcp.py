@@ -92,9 +92,7 @@ class McpTransport:
                 assert stdio_cmd is not None
                 body = self._call_stdio(stdio_cmd, payload, environment)
         except Exception as exc:  # noqa: BLE001 - surface as Result, stay closed
-            error = str(exc)
-            if not endpoint:
-                error = _redact(error, environment)
+            error = str(exc) if endpoint else _stdio_exception_text(exc, environment)
             return Result(
                 ok=False,
                 arm_id=spec.id,
@@ -367,18 +365,42 @@ def _redact(value: Any, environment: Mapping[str, str]) -> Any:
             copied: dict[str, Any] = {}
             parent[key] = copied
             pending.extend((copied, text(name), child) for name, child in item.items())
-        elif isinstance(item, list):
+        elif isinstance(item, (list, tuple)):
             children: list[Any] = [None] * len(item)
             parent[key] = children
             pending.extend((children, index, child) for index, child in enumerate(item))
         elif isinstance(item, str):
             parent[key] = text(item)
+        elif isinstance(item, bytes):
+            for secret in secrets:
+                item = item.replace(secret.encode("utf-8"), b"[redacted]")
+            parent[key] = item
         elif item is None or isinstance(item, (int, float, bool)):
             encoded = json.dumps(item)
             parent[key] = "[redacted]" if any(secret in encoded for secret in secrets) else item
         else:
             parent[key] = item
     return root[0]
+
+
+def _stdio_exception_text(exc: Exception, environment: Mapping[str, str]) -> str:
+    """Sanitize raw process-error fields before their repr/escaping is applied."""
+    if isinstance(exc, subprocess.TimeoutExpired):
+        safe_command = _redact(exc.cmd, environment)
+        safe_timeout = _redact(exc.timeout, environment)
+        return _redact(str(subprocess.TimeoutExpired(safe_command, safe_timeout)), environment)
+    if isinstance(exc, OSError):
+        if exc.errno is None and exc.strerror is None:
+            return _redact(str(OSError(*_redact(list(exc.args), environment))), environment)
+        safe_error = OSError(
+            exc.errno,
+            _redact(exc.strerror, environment) if exc.strerror is not None else None,
+            _redact(exc.filename, environment) if exc.filename is not None else None,
+            getattr(exc, "winerror", None),
+            _redact(exc.filename2, environment) if exc.filename2 is not None else None,
+        )
+        return _redact(str(safe_error), environment)
+    return _redact(str(exc), environment)
 
 
 def _error_text(error: Any) -> str:
