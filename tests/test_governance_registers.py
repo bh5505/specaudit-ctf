@@ -2907,10 +2907,17 @@ def test_validation_never_cross_promotes_other_registers(registry, inventory) ->
 def test_checkout_configuration_and_static_imports_keep_governance_separate() -> None:
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     package_find = pyproject["tool"]["setuptools"]["packages"]["find"]
-    # The 2026-10-13 evidence/evaluation packets added three operator-facing
-    # packages to the shipped wheel; governance and safety deliberately stay
-    # checkout-only and absent from this include list.
-    assert set(package_find["include"]) == {"extension*", "score*", "exercise*", "learning*", "graph_evidence*", "review_workpaper*", "k8s_path_evidence*", "reader_evidence*", "attempt_ledger*", "evidence_chain*", "tools"}
+    # Evidence/evaluation and W0 add operator-facing helper packages. Keep
+    # their exact allowlist explicit; governance and safety remain checkout-only.
+    assert set(package_find["include"]) == {
+        "extension*", "score*", "exercise*", "learning*", "graph_evidence*",
+        "review_workpaper*", "k8s_path_evidence*", "reader_evidence*",
+        "attempt_ledger*", "evidence_chain*", "tools", "capability_records*",
+        "audit_workpaper*", "caller_path_binding*", "candidate_admission*",
+        "challenger_head*", "containment_evidence*", "deliverable_substrate*",
+        "formal_assessment*", "frozen_slices*", "promotion_verifier*",
+        "telecom_case*",
+    }
     assert not any("governance" in pattern for pattern in package_find["include"])
 
     for path in (ROOT / "extension").rglob("*.py"):
