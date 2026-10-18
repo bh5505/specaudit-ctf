@@ -6,10 +6,13 @@ Requires an explicit roster JSON (the package never imports
 run_matrix summary JSON. Default (rehearsal) exits 0 only when the run has
 zero failures; its completeness scope is ``partial-rehearsal`` (hostile /
 cleanup / interruption cover the first data action only). ``--strict``
-expands that slice to every supplied data action and exits nonzero for
-incomplete coverage even with zero runtime failures. The label is
-``full`` only for a strict run with complete coverage on POSIX; every
-other run is ``partial`` with an explicit reason.
+requires the mandatory controls -- the standard four hostile classes,
+cleanup, interruption, and both canaries -- for every supplied data
+action plus the discovery/canary cells, and exits nonzero for incomplete
+coverage even with zero runtime failures; execution flags such as
+``--no-canaries`` only omit runs, leaving them missing/incomplete. The
+label is ``full`` only for a strict run with complete coverage on POSIX;
+every other run is ``partial`` with an explicit reason.
 """
 from __future__ import annotations
 

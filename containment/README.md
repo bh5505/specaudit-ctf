@@ -40,11 +40,17 @@ CLI labels it `partial` — never `full` simply because `os.name` is
 POSIX.
 
 `run_matrix(..., strict=True)` (`python -m containment --strict`)
-expands the same hostile/cleanup/interruption slice to EVERY supplied
-data action, reusing the existing fixtures, acquisition gate,
-enforcement, and ledger: 38x7 + 14 + 2 = 282 POSIX cases with the
-canonical 14-reader/38-data roster and the default four hostile classes
-plus cleanup plus interrupt. The summary carries explicit
+requires the MANDATORY controls -- the standard four hostile classes,
+cleanup, interruption, and both canaries -- for EVERY supplied data
+action plus the discovery/canary cells, reusing the existing fixtures,
+acquisition gate, enforcement, and ledger: 38x7 + 14 + 2 = 282 POSIX
+cases with the canonical 14-reader/38-data roster and the default four
+hostile classes plus cleanup plus interrupt. Execution-selection flags
+(`hostile_classes`, `include_canaries`, `cleanup_first`,
+`interrupt_first`, CLI `--no-canaries`) only select which runs execute;
+omitted runs stay expected and surface as missing/incomplete with a
+`partial` platform label (strict CLI exits nonzero even with zero
+runtime failures). The summary carries explicit
 expected/executed/skipped/missing/duplicate coverage, the supplied
 roster count/digest, and the scope `strict-supplied-roster`.
 

@@ -607,13 +607,15 @@ def test_enforcer_denies_checkout_instructor_and_docs_paths(
 
 # --- Strict complete-matrix mode: scope, counts, caller-supplied roster --
 #
-# The strict slice expands hostile/cleanup/interruption to EVERY supplied
-# data action (reusing fixtures/acquisition/enforcement/ledger), with
-# explicit expected/executed/skipped/missing/duplicate coverage. Fake
-# scheduling tests below use bounded fake workers (no children); only
-# test_strict_full_matrix_canonical_actual runs the real 282-case matrix
-# for empirical containment. Fake green is never mistaken for empirical
-# containment.
+# The strict slice requires the mandatory four hostile classes, cleanup,
+# interruption, and both canaries for EVERY supplied data action (reusing
+# fixtures/acquisition/enforcement/ledger), with explicit
+# expected/executed/skipped/missing/duplicate coverage. Scheduling tests
+# below monkeypatch containment.harness.run_case/run_canary_case with
+# bounded fakes confined to tests (no children, no production injection);
+# only test_strict_full_matrix_canonical_actual runs the real 282-case
+# matrix for empirical containment. Fake green is never mistaken for
+# empirical containment.
 
 
 def _fake_case_runner(
@@ -721,8 +723,8 @@ def test_strict_expands_hostile_beyond_first_data_regression(matrix) -> None:
 
     The legacy session matrix (first-data hostile only) MUST lack a
     hostile cell for a non-first data action; the strict expectation MUST
-    contain it. On the pre-fix code this strict assertion was red (the
-    cell was never scheduled); the fix makes it green.
+    contain it. This checks the expected cell set; the actual strict-matrix
+    test below separately verifies execution for non-first data actions.
     """
     roster = _baseline_roster()
     data_entries = [e for e in roster if e.path_argument is not None]
@@ -747,8 +749,13 @@ def test_strict_expands_hostile_beyond_first_data_regression(matrix) -> None:
     assert (second.arm_id, second.action, "interrupt") in strict_expected
 
 
-def test_strict_scheduling_fake_complete_small_subset(tmp_path) -> None:
-    """Fake scheduling: small strict subset can be complete for ITS scope."""
+def test_strict_scheduling_fake_complete_small_subset(tmp_path, monkeypatch) -> None:
+    """Fake scheduling: small strict subset can be complete for ITS scope.
+
+    Monkeypatched fakes only; not empirical containment evidence.
+    """
+    import containment.harness as harness
+
     approved = tmp_path / "approved"
     scratch = tmp_path / "scratch"
     approved.mkdir()
@@ -757,11 +764,12 @@ def test_strict_scheduling_fake_complete_small_subset(tmp_path) -> None:
         approved_root=str(approved), scratch_root=str(scratch))
     roster = _small_subset_roster()
     before = expected_cells(roster, HOSTILE_CLASSES, True, True, True, True)
+    monkeypatch.setattr(harness, "run_case", _fake_case_runner)
+    monkeypatch.setattr(harness, "run_canary_case", _fake_canary_runner)
     summary = run_matrix(
         profile, roster, approved / "fixtures", recorded_at=NOW,
         ledger_path=None, include_canaries=True,
-        strict=True, case_runner=_fake_case_runner,
-        canary_runner=_fake_canary_runner,
+        strict=True,
     )
     comp = summary["completeness"]
     assert comp["scope"] == "strict-supplied-roster"
@@ -810,8 +818,17 @@ def test_strict_scheduling_fake_omitted_cell_incomplete() -> None:
     assert any("missing-cells" in reason for reason in report["reasons"])
 
 
-def test_strict_scheduling_fake_absent_fixture_args_incomplete(tmp_path) -> None:
-    """Absent fixture args (unknown action) yield skipped, unevidenced."""
+def test_strict_scheduling_fake_absent_fixture_args_incomplete(
+    tmp_path, monkeypatch,
+) -> None:
+    """Absent fixture args (unknown action) yield skipped, unevidenced.
+
+    Monkeypatched fakes only; not empirical containment evidence. Strict
+    expectation keeps the mandatory controls, so the omitted canaries are
+    additionally missing.
+    """
+    import containment.harness as harness
+
     approved = tmp_path / "approved"
     scratch = tmp_path / "scratch"
     approved.mkdir()
@@ -822,24 +839,36 @@ def test_strict_scheduling_fake_absent_fixture_args_incomplete(tmp_path) -> None
         RosterEntry("vulnify", "list_tools", None),
         RosterEntry("vulnify", "no-such-action", "feed"),
     )
+    monkeypatch.setattr(harness, "run_case", _fake_case_runner)
+    monkeypatch.setattr(harness, "run_canary_case", _fake_canary_runner)
     summary = run_matrix(
         profile, roster, approved / "fixtures", recorded_at=NOW,
         ledger_path=None, include_canaries=False,
-        strict=True, case_runner=_fake_case_runner,
-        canary_runner=_fake_canary_runner,
+        strict=True,
     )
     comp = summary["completeness"]
     assert comp["complete"] is False
+    assert comp["expected"] == 1 + 7 + 2 == 10
     assert comp["skipped"] == 7  # inroot + 4 hostile + cleanup + interrupt
     assert any(row["reason"] == "no-fixture-args-for-action"
                for row in summary["skipped"])
     # Absent fixtures are both skipped (with reason) and missing from
-    # executed cells: unevidenced either way.
-    assert len(comp["missing"]) == 7
+    # executed cells; the suppressed canaries are missing as well:
+    # unevidenced either way.
+    assert len(comp["missing"]) == 9
+    assert "containment:canary:enforced" in comp["missing"]
+    assert "containment:canary:control" in comp["missing"]
 
 
-def test_strict_scheduling_fake_duplicate_roster_incomplete(tmp_path) -> None:
-    """Duplicate supplied roster cell fails strict completeness."""
+def test_strict_scheduling_fake_duplicate_roster_incomplete(
+    tmp_path, monkeypatch,
+) -> None:
+    """Duplicate supplied roster cell fails strict completeness.
+
+    Monkeypatched fakes only; not empirical containment evidence.
+    """
+    import containment.harness as harness
+
     approved = tmp_path / "approved"
     scratch = tmp_path / "scratch"
     approved.mkdir()
@@ -851,11 +880,12 @@ def test_strict_scheduling_fake_duplicate_roster_incomplete(tmp_path) -> None:
         RosterEntry("vulnify", "lookup", "feed"),
         RosterEntry("vulnify", "lookup", "feed"),
     )
+    monkeypatch.setattr(harness, "run_case", _fake_case_runner)
+    monkeypatch.setattr(harness, "run_canary_case", _fake_canary_runner)
     summary = run_matrix(
         profile, roster, approved / "fixtures", recorded_at=NOW,
         ledger_path=None, include_canaries=False,
-        strict=True, case_runner=_fake_case_runner,
-        canary_runner=_fake_canary_runner,
+        strict=True,
     )
     comp = summary["completeness"]
     assert comp["duplicate_roster"] == ["vulnify:lookup"]
@@ -922,8 +952,15 @@ def test_strict_scheduling_fake_dirty_cleanup_incomplete() -> None:
                 and c.action == "lookup").failed is True
 
 
-def test_strict_scheduling_fake_truncated_result_incomplete(tmp_path) -> None:
-    """Missing/truncated worker result fails strict completeness."""
+def test_strict_scheduling_fake_truncated_result_incomplete(
+    tmp_path, monkeypatch,
+) -> None:
+    """Missing/truncated worker result fails strict completeness.
+
+    Monkeypatched fakes only; not empirical containment evidence.
+    """
+    import containment.harness as harness
+
     approved = tmp_path / "approved"
     scratch = tmp_path / "scratch"
     approved.mkdir()
@@ -948,11 +985,12 @@ def test_strict_scheduling_fake_truncated_result_incomplete(tmp_path) -> None:
         )
 
     roster = _small_subset_roster()
+    monkeypatch.setattr(harness, "run_case", _truncating_runner)
+    monkeypatch.setattr(harness, "run_canary_case", _fake_canary_runner)
     summary = run_matrix(
         profile, roster, approved / "fixtures", recorded_at=NOW,
         ledger_path=None, include_canaries=False,
-        strict=True, case_runner=_truncating_runner,
-        canary_runner=_fake_canary_runner,
+        strict=True,
     )
     comp = summary["completeness"]
     assert comp["complete"] is False
@@ -1104,3 +1142,128 @@ def test_strict_full_matrix_canonical_actual(tmp_path_factory) -> None:
     second = data_entries[1]
     assert summary["per_arm"][second.arm_id][
         f"{second.action}:hostile-traversal"] == "blocked"
+
+
+# --- Strict mandatory-control regressions (P1) + injection removal (P2) --
+#
+# Scheduling fakes below are monkeypatched module globals only (no child);
+# only test_strict_full_matrix_canonical_actual above is empirical
+# containment evidence. Strict expectations always carry the mandatory
+# four hostile classes, cleanup, interruption, and both canaries for the
+# supplied roster; omitting their execution leaves missing cells.
+
+
+def _suppressed_flag_cases():
+    return {
+        "no-hostiles": ((), True, True, True),
+        "subset-hostiles": (("traversal",), True, True, True),
+        "no-canaries": (HOSTILE_CLASSES, False, True, True),
+        "no-cleanup": (HOSTILE_CLASSES, True, False, True),
+        "no-interruption": (HOSTILE_CLASSES, True, True, False),
+    }
+
+
+def test_strict_expected_cells_mandatory_despite_suppression() -> None:
+    """Strict expectation keeps mandatory controls despite suppression flags."""
+    roster = _small_subset_roster()
+    full = expected_cells(
+        roster, HOSTILE_CLASSES, True, True, True, True)
+    assert len(full) == 2 * 7 + 1 + 2 == 17
+    for name, (hostiles, canaries, cleanup, interrupt) in (
+            _suppressed_flag_cases().items()):
+        suppressed = expected_cells(
+            roster, hostiles, canaries, cleanup, interrupt, True)
+        assert suppressed == full, name
+        assert len(suppressed) == 17, name
+
+
+@pytest.mark.parametrize(
+    "name,flags", list(_suppressed_flag_cases().items()))
+def test_strict_suppressed_execution_reports_missing(
+    tmp_path, monkeypatch, name, flags,
+) -> None:
+    """Each omitted required control is missing, not silently complete."""
+    import containment.harness as harness
+
+    hostiles, canaries, cleanup, interrupt = flags
+    approved = tmp_path / "approved"
+    scratch = tmp_path / "scratch"
+    approved.mkdir()
+    scratch.mkdir()
+    profile = OperatorProfile(
+        approved_root=str(approved), scratch_root=str(scratch))
+    roster = _small_subset_roster()
+    monkeypatch.setattr(harness, "run_case", _fake_case_runner)
+    monkeypatch.setattr(harness, "run_canary_case", _fake_canary_runner)
+    summary = run_matrix(
+        profile, roster, approved / "fixtures", recorded_at=NOW,
+        ledger_path=None, hostile_classes=hostiles,
+        include_canaries=canaries, cleanup_first=cleanup,
+        interrupt_first=interrupt, strict=True,
+    )
+    comp = summary["completeness"]
+    assert comp["expected"] == 17, name
+    assert comp["complete"] is False, name
+    assert comp["missing"] != [], name
+    assert summary["platform"]["label"] == "partial", name
+    assert summary["platform"]["partial_reason"], name
+
+
+def test_cli_strict_no_canaries_exits_nonzero_despite_zero_failures(
+    tmp_path,
+) -> None:
+    """CLI --strict --no-canaries is incomplete with zero runtime failures."""
+    import subprocess
+
+    roster_path = tmp_path / "nocan-roster.json"
+    roster_path.write_text(json.dumps([
+        {"arm_id": "vulnify", "action": "list_tools", "path_argument": None},
+        {"arm_id": "vulnify", "action": "lookup", "path_argument": "feed"},
+    ]), encoding="utf-8")
+    approved = tmp_path / "approved"
+    scratch = tmp_path / "scratch"
+    env = os.environ.copy()
+    env["PATH"] = str(Path(sys.executable).parent)
+    proc = subprocess.run(
+        [sys.executable, "-m", "containment",
+         "--approved-root", str(approved),
+         "--scratch-root", str(scratch),
+         "--fixtures-root", str(approved / "fixtures"),
+         "--roster-json", str(roster_path),
+         "--recorded-at", NOW.isoformat(),
+         "--strict", "--no-canaries"],
+        cwd=str(REPO_ROOT), env=env, capture_output=True, text=True,
+        timeout=300,
+    )
+    summary = json.loads(proc.stdout)
+    assert summary["failures"] == []
+    assert summary["completeness"]["complete"] is False
+    assert summary["completeness"]["expected"] == 1 + 7 + 2 == 10
+    assert any("containment:canary:" in cell
+               for cell in summary["completeness"]["missing"])
+    assert summary["platform"]["label"] == "partial"
+    assert proc.returncode != 0
+
+
+def test_run_matrix_rejects_injected_runners(tmp_path) -> None:
+    """run_matrix has no production runner-injection parameters."""
+    import inspect
+
+    import containment.harness as harness
+
+    params = inspect.signature(harness.run_matrix).parameters
+    assert "case_runner" not in params
+    assert "canary_runner" not in params
+    approved = tmp_path / "approved"
+    scratch = tmp_path / "scratch"
+    approved.mkdir()
+    scratch.mkdir()
+    profile = OperatorProfile(
+        approved_root=str(approved), scratch_root=str(scratch))
+    with pytest.raises(TypeError):
+        harness.run_matrix(
+            profile, _small_subset_roster(), approved / "fixtures",
+            recorded_at=NOW, strict=True,
+            case_runner=_fake_case_runner,  # type: ignore[call-arg]
+            canary_runner=_fake_canary_runner,  # type: ignore[call-arg]
+        )

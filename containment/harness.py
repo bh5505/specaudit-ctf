@@ -731,12 +731,22 @@ def expected_cells(
 
     Legacy (strict=False): one inroot/list-tools cell per roster entry,
     plus the four hostile classes + cleanup + interrupt for the FIRST data
-    entry only (the small rehearsal). Strict (strict=True): the same
-    hostile/cleanup/interruption slice expanded to EVERY supplied data
-    action. With the canonical 14-reader/38-data roster and the default
+    entry only (the small rehearsal); the caller flags select both the
+    expectation and the execution there. Strict (strict=True): the
+    MANDATORY controls -- the standard four hostile classes, cleanup,
+    interruption, and both canaries -- for EVERY supplied data action
+    plus the discovery/canary cells, independently of the
+    execution-selection flags. Suppressing execution still leaves those
+    cells expected, so the omission surfaces as missing/incomplete.
+    With the canonical 14-reader/38-data roster and the default
     four hostile classes plus cleanup plus interrupt, strict POSIX
     expectation is 38*7+14+2 = 282 cells.
     """
+    if strict:
+        hostile_classes = HOSTILE_CLASSES
+        include_canaries = True
+        cleanup_first = True
+        interrupt_first = True
     cells: list[tuple[str, str, str]] = []
     for entry in roster:
         if entry.path_argument is None:
@@ -796,8 +806,9 @@ def check_coverage(
     actually executed ``cases``. Fails closed (``complete=False``) on
     missing/extra cells, duplicate roster or result cells, unexpected
     outcomes for a variant, and any skip (skips count as unevidenced).
-    Used by ``run_matrix`` and directly by scheduling tests with bounded
-    fake workers; empirical containment still needs the real matrix.
+    Used by ``run_matrix`` and directly by scheduling tests with
+    monkeypatched fake runners confined to tests; empirical containment
+    still needs the real matrix.
     """
     expected_keys = [_cell_key(a, b, v) for (a, b, v) in expected]
     expected_set = set(expected_keys)
@@ -910,8 +921,6 @@ def run_matrix(
     child_timeout: float = 120.0,
     kill_after: float = 0.5,
     strict: bool = False,
-    case_runner: Any = None,
-    canary_runner: Any = None,
 ) -> dict[str, Any]:
     """Run the explicit roster and return the JSON summary.
 
@@ -924,16 +933,23 @@ def run_matrix(
     ``strict=False`` (default) keeps the legacy small rehearsal: one
     inroot/list-tools cell per roster entry plus hostile/cleanup/
     interruption for the FIRST data entry only, with scope
-    ``partial-rehearsal``. ``strict=True`` expands the hostile/cleanup/
-    interruption slice to EVERY supplied data action (strict
-    complete-matrix mode), reusing the same fixtures, acquisition gate,
-    enforcement, and ledger. Strict completeness fails closed on absent
-    fixture args, omitted execution cells, duplicate roster or result
-    cells, truncated or missing worker results, dirty cleanup, unexpected
-    outcomes, and skips (skips count as unevidenced). The ``platform``
-    label reports ``full`` only for a strict run with complete coverage
-    on POSIX; every other run reports ``partial`` with an explicit
-    reason -- never ``full`` simply because ``os.name`` is POSIX.
+    ``partial-rehearsal``. ``strict=True`` requires the MANDATORY
+    controls -- the standard four hostile classes, cleanup,
+    interruption, and both canaries -- for EVERY supplied data action
+    plus the discovery/canary cells (strict complete-matrix mode),
+    reusing the same fixtures, acquisition gate, enforcement, and
+    ledger. The execution-selection flags (``hostile_classes``,
+    ``include_canaries``, ``cleanup_first``, ``interrupt_first``) only
+    select which runs execute; omitted runs stay expected and surface
+    as missing/incomplete with a ``partial`` platform label and a
+    nonzero strict CLI exit even with zero runtime failures. Strict
+    completeness fails closed on absent fixture args, omitted execution
+    cells, duplicate roster or result cells, truncated or missing worker
+    results, dirty cleanup, unexpected outcomes, and skips (skips count
+    as unevidenced). The ``platform`` label reports ``full`` only for a
+    strict run with complete coverage on POSIX; every other run reports
+    ``partial`` with an explicit reason -- never ``full`` simply because
+    ``os.name`` is POSIX.
     """
     import attempt_ledger.ledger as ledger
 
@@ -975,10 +991,10 @@ def run_matrix(
             )
         return case
 
-    _case_fn = case_runner if case_runner is not None else run_case
-    _canary_fn = canary_runner if canary_runner is not None else run_canary_case
     # Expected cells are derived BEFORE execution from the SUPPLIED roster
-    # only (never re-derived from the actually executed cells).
+    # only (never re-derived from the actually executed cells). In strict
+    # mode the expectation carries the mandatory controls independently
+    # of the execution-selection flags below.
     _expected = expected_cells(
         roster, hostile_classes, include_canaries,
         cleanup_first, interrupt_first, strict,
@@ -1006,7 +1022,7 @@ def run_matrix(
         hostile_payload[path_key] = _hostile_path(profile, hostile)
         _materialize_hostile_fixture(profile, hostile, content_canary=(
             profile.canaries[0] if profile.canaries else "containment-probe"))
-        record(_case_fn(
+        record(run_case(
             profile, arm_id=arm_id, action=action,
             payload=hostile_payload, hostile=hostile,
             variant=f"hostile-{hostile}",
@@ -1016,7 +1032,7 @@ def run_matrix(
         for entry in roster:
             if entry.path_argument is None:
                 # Discovery smoke: no path signal exists to acquire or deny.
-                record(_case_fn(
+                record(run_case(
                     profile, arm_id=entry.arm_id, action=entry.action,
                     payload={}, variant="list-tools",
                     child_timeout=child_timeout,
@@ -1030,7 +1046,7 @@ def run_matrix(
                     "reason": "no-fixture-args-for-action",
                 })
                 continue
-            record(_case_fn(
+            record(run_case(
                 profile, arm_id=entry.arm_id, action=entry.action,
                 payload=payload, variant="inroot",
                 child_timeout=child_timeout,
@@ -1046,13 +1062,13 @@ def run_matrix(
             for hostile in hostile_classes:
                 _run_hostile(first_data.arm_id, action, payload, hostile)
             if cleanup_first:
-                record(_case_fn(
+                record(run_case(
                     profile, arm_id=first_data.arm_id, action=action,
                     payload=payload, variant="cleanup", mode="cleanup-watch",
                     child_timeout=child_timeout,
                 ))
             if interrupt_first:
-                record(_case_fn(
+                record(run_case(
                     profile, arm_id=first_data.arm_id, action=action,
                     payload=payload, variant="interrupt", mode="interrupt",
                     kill_after=kill_after, child_timeout=child_timeout,
@@ -1060,7 +1076,7 @@ def run_matrix(
     else:
         for entry in roster:
             if entry.path_argument is None:
-                record(_case_fn(
+                record(run_case(
                     profile, arm_id=entry.arm_id, action=entry.action,
                     payload={}, variant="list-tools",
                     child_timeout=child_timeout,
@@ -1077,7 +1093,7 @@ def run_matrix(
                             "reason": "no-fixture-args-for-action",
                         })
                 continue
-            record(_case_fn(
+            record(run_case(
                 profile, arm_id=entry.arm_id, action=entry.action,
                 payload=payload, variant="inroot",
                 child_timeout=child_timeout,
@@ -1085,21 +1101,21 @@ def run_matrix(
             for hostile in hostile_classes:
                 _run_hostile(entry.arm_id, entry.action, payload, hostile)
             if cleanup_first:
-                record(_case_fn(
+                record(run_case(
                     profile, arm_id=entry.arm_id, action=entry.action,
                     payload=payload, variant="cleanup", mode="cleanup-watch",
                     child_timeout=child_timeout,
                 ))
             if interrupt_first:
-                record(_case_fn(
+                record(run_case(
                     profile, arm_id=entry.arm_id, action=entry.action,
                     payload=payload, variant="interrupt", mode="interrupt",
                     kill_after=kill_after, child_timeout=child_timeout,
                 ))
 
     if include_canaries:
-        record(_canary_fn(profile, enforced=True))
-        record(_canary_fn(profile, enforced=False))
+        record(run_canary_case(profile, enforced=True))
+        record(run_canary_case(profile, enforced=False))
 
     counts: dict[str, int] = {}
     per_arm: dict[str, dict[str, str]] = {}
