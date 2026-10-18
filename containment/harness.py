@@ -132,15 +132,67 @@ class GuardedRun:
     denials: tuple[Mapping[str, Any], ...]
 
 
+# Fixed runtime values owned by this harness for every guarded worker
+# child (U-SAFE.b). The set is deliberately closed: thread caps are
+# deterministic single-thread values, and the startup/encoding/
+# breakpoint keys are neutralized here rather than inherited.
+_FIXED_RUNTIME_ENV = {
+    "PYTHONUTF8": "1",
+    "PYTHONDONTWRITEBYTECODE": "1",  # no __pycache__ writes: checkout imports stay read-only
+    "PYTHONNOUSERSITE": "1",  # no ~/.local user-site imports
+    "PYTHONSAFEPATH": "1",  # no cwd/script-dir on sys.path; the checkout arrives via PYTHONPATH only
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONCOERCECLOCALE": "0",
+    "PYTHONBREAKPOINT": "0",  # breakpoint() hook disabled
+    "OMP_NUM_THREADS": "1",
+    "OPENBLAS_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+}
+
+# Single documented non-secret OS bootstrap key copied (by
+# case-insensitive name, emitted as one canonical key) on Windows only,
+# where the interpreter needs the system directory for side-by-side
+# assemblies. The worker argv[0] is an absolute interpreter path spawned
+# with shell=False, so no shell or extension-list lookup (WINDIR,
+# COMSPEC, PATHEXT) is needed; the worker has no justified ambient temp
+# dependency, so TEMP/TMP are dropped like all other ambient keys.
+# Values pass through verbatim and are never logged. Everything else
+# ambient -- cloud/provider credentials, trace keys, profiles, proxies,
+# Python startup/config, loader injection -- is dropped. Windows was not
+# executed for this unit (POSIX host); no native Windows execution is
+# claimed.
+_WINDOWS_BOOTSTRAP_KEYS = frozenset({
+    "systemroot",
+})
+# Canonical emission key for the single Windows bootstrap passthrough.
+_WINDOWS_SYSTEMROOT_KEY = "SystemRoot"
+
+
+def _worker_interpreter() -> str:
+    """Absolute path of the current interpreter (the worker argv[0])."""
+    return os.path.abspath(sys.executable)
+
+
 def _child_env(profile: OperatorProfile, denial_write_fd: int) -> dict[str, str]:
-    env = os.environ.copy()
+    """Minimal fixed environment for a guarded worker child (U-SAFE.b).
+
+    Starts from nothing ambient -- no ``os.environ`` inheritance, no
+    secret-name denylist, no prefix filter, no caller override. Audit
+    hooks cannot stop a child from reading its own environment, so
+    secrets must never be transported there in the first place. Every
+    key is either generated per spawn (profile JSON, denial fd/handle)
+    or a fixed runtime value owned above. Suppressed by absence:
+    PYTHONSTARTUP, PYTHONHOME, PYTHONWARNINGS, PYTHONMALLOC and other
+    Python startup/config, proxy (``*_PROXY``), loader-injection
+    (``LD_PRELOAD``, ``LD_LIBRARY_PATH``, ``DYLD_*``), cloud/provider
+    credentials, profiles, and all other ambient keys.
+    """
+    env = dict(_FIXED_RUNTIME_ENV)
     # Interpreter-only PATH: the child must start, but never find host
     # tooling (mirrors the suite's hermetic-PATH promise).
-    env["PATH"] = str(Path(sys.executable).parent)
+    env["PATH"] = str(Path(_worker_interpreter()).parent)
     env["PYTHONPATH"] = str(REPO_ROOT)
-    env["PYTHONUTF8"] = "1"
-    # No __pycache__ writes: imports of the checkout stay read-only.
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
     env["CONTAINMENT_PROFILE_JSON"] = profile.to_json()
     if os.name == "nt":
         # pass_fds is not supported on Windows; the handle VALUE is
@@ -149,6 +201,9 @@ def _child_env(profile: OperatorProfile, denial_write_fd: int) -> dict[str, str]
 
         os.set_inheritable(denial_write_fd, True)
         env["CONTAINMENT_DENIAL_HANDLE"] = str(int(msvcrt.get_osfhandle(denial_write_fd)))
+        for key, value in os.environ.items():
+            if key.lower() in _WINDOWS_BOOTSTRAP_KEYS:
+                env.setdefault(_WINDOWS_SYSTEMROOT_KEY, value)
     else:
         env["CONTAINMENT_DENIAL_FD"] = str(denial_write_fd)
     return env
@@ -179,7 +234,7 @@ def _spawn_worker(
     else:
         popen_kwargs["pass_fds"] = (denial_write_fd,)
     proc = subprocess.Popen(
-        [sys.executable, "-m", WORKER_MODULE], **popen_kwargs
+        [_worker_interpreter(), "-m", WORKER_MODULE], **popen_kwargs
     )
     try:
         if stdin_payload is None:

@@ -29,8 +29,10 @@ from containment.harness import (
     POSIX_ONLY_HOSTILE,
     CaseResult,
     RosterEntry,
+    _child_env,
     _drain_denials,
     _hostile_path,
+    _worker_interpreter,
     check_coverage,
     expected_cells,
     roster_digest,
@@ -490,27 +492,18 @@ def test_range_under_guard_zero_write_denials_outside_scratch(
     import subprocess
 
     profile = containment_env["profile"]
-    env = os.environ.copy()
-    env["PATH"] = str(Path(sys.executable).parent)
-    env["PYTHONPATH"] = str(REPO_ROOT)
-    env["PYTHONUTF8"] = "1"
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-    env["CONTAINMENT_PROFILE_JSON"] = profile.to_json()
     read_fd, write_fd = os.pipe()
+    # Production helper: this manual spawn must carry exactly what the
+    # harness transports to every guarded worker (U-SAFE.b).
+    env = _child_env(profile, write_fd)
     kwargs: dict = dict(stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE, cwd=str(REPO_ROOT), env=env)
     if os.name == "nt":
-        import msvcrt
-
-        os.set_inheritable(write_fd, True)
-        env["CONTAINMENT_DENIAL_HANDLE"] = str(
-            int(msvcrt.get_osfhandle(write_fd)))
         kwargs["close_fds"] = False
     else:
-        env["CONTAINMENT_DENIAL_FD"] = str(write_fd)
         kwargs["pass_fds"] = (write_fd,)
     proc = subprocess.Popen(
-        [sys.executable, "-m", "containment.worker"], **kwargs)
+        [_worker_interpreter(), "-m", "containment.worker"], **kwargs)
     try:
         proc.stdin.write((json.dumps({"kind": "range-cli"}) + "\n").encode())
         proc.stdin.flush()
@@ -540,6 +533,270 @@ def test_range_under_guard_zero_write_denials_outside_scratch(
     assert marker, "worker must emit a result line"
     exit_code = json.loads(marker[-1].removeprefix("CONTAINMENT-RESULT "))["exit_code"]
     assert exit_code in (0, 1)
+
+
+# --- U-SAFE.b: harness-spawned worker environment transport ---------------
+#
+# The guarded worker child starts from a fixed minimal environment
+# (containment.harness._child_env): nothing ambient is inherited, there
+# is no secret-name denylist or prefix filter, and the caller cannot
+# override owned keys. These regressions pollute the PARENT with
+# synthetic markers across every suppressed category, then observe via
+# safe in-child predicates that marker values and keys are absent unless
+# the fixed runtime environment deliberately owns the key. The real child
+# observer computes inside the child and returns only safe booleans and
+# unexpected KEY NAMES (marker-value-present, required-key-set and
+# owned-value predicates, unexpected synthetic key names); it never
+# serializes or prints a complete child environment and returns no
+# environment values, so a regression cannot leak ambient values into
+# output or a pytest assertion diff. The unit check compares key sets and
+# uses aggregate booleans for owned values/marker absence (no direct dict
+# equality). Synthetic marker text only; no real secret values appear,
+# and assertions never interpolate environment values into messages. The
+# single Windows SystemRoot passthrough is pinned by literal below but
+# executed only on POSIX here; no native Windows execution is claimed.
+
+
+_SAFE_B_MARK = "U-SAFE-B-SYNTHETIC"
+
+
+def _safe_b_parent_pollution() -> dict[str, str]:
+    """Synthetic parent-only markers across every suppressed category.
+
+    The single Windows SystemRoot passthrough is omitted on Windows:
+    polluting it would break child startup for reasons unrelated to
+    isolation, and it is the one narrow key the harness deliberately
+    copies there. All other Windows shell/temp names (WINDIR, COMSPEC,
+    PATHEXT, TEMP, TMP) stay polluted everywhere to prove they drop.
+    """
+    keys = [
+        # cloud/provider credentials
+        "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN",
+        "GOOGLE_APPLICATION_CREDENTIALS", "AZURE_CLIENT_SECRET",
+        "GITHUB_TOKEN", "OPENAI_API_KEY",
+        # grading-side trace transport (server process only, never worker)
+        "SPECAUDIT_CTF_MCP_TRACE_KEY", "SPECAUDIT_CTF_MCP_TRACE",
+        "SPECAUDIT_CTF_MCP_TRACE_ATTEMPT",
+        # arbitrary secret names (no denylist: unknown names drop too)
+        "ACME_ARBITRARY_SECRET_XYZ", "NOT_A_REAL_PREFIX_42_SECRET",
+        # inherited profiles/config
+        "AWS_PROFILE", "AWS_CONFIG_FILE", "AWS_SHARED_CREDENTIALS_FILE",
+        "KUBECONFIG", "AZURE_CONFIG_DIR", "BOTO_CONFIG",
+        # proxies (upper- and lowercase)
+        "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+        "http_proxy", "https_proxy", "all_proxy", "no_proxy",
+        # Python startup/config
+        "PYTHONSTARTUP", "PYTHONHOME", "PYTHONWARNINGS", "PYTHONMALLOC",
+        "PYTHONDEBUG", "PYTHONVERBOSE", "PYTHONDEVMODE", "PYTHONOPTIMIZE",
+        "PYTHONHASHSEED", "PYTHONTRACEMALLOC", "PYTHONFAULTHANDLER",
+        # loader injection
+        "LD_PRELOAD", "LD_LIBRARY_PATH",
+        "DYLD_INSERT_LIBRARIES", "DYLD_LIBRARY_PATH",
+        # misc ambient identity
+        "HOME", "USER", "TMPDIR",
+        # Removed Windows shell/temp names (dropped everywhere: absolute
+        # interpreter with shell=False needs no shell lookup; no ambient
+        # temp dependency)
+        "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP",
+        # Windows bootstrap name (dropped on POSIX; the single
+        # SystemRoot passthrough on Windows only)
+        "SystemRoot",
+        # hostile overrides of harness-owned keys (owned values must win)
+        "PATH", "PYTHONPATH", "PYTHONUTF8", "PYTHONDONTWRITEBYTECODE",
+        "PYTHONNOUSERSITE", "PYTHONSAFEPATH", "PYTHONIOENCODING",
+        "PYTHONCOERCECLOCALE", "PYTHONBREAKPOINT",
+        "OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+        "CONTAINMENT_PROFILE_JSON", "CONTAINMENT_DENIAL_FD",
+        "CONTAINMENT_DENIAL_HANDLE",
+    ]
+    if os.name == "nt":
+        import containment.harness as harness
+
+        keys = [key for key in keys
+                if key.lower() not in harness._WINDOWS_BOOTSTRAP_KEYS]
+    return {key: f"{_SAFE_B_MARK}-{key}-01" for key in keys}
+
+
+def _safe_b_pollute_parent(monkeypatch, pollution: dict[str, str]) -> None:
+    for key, value in pollution.items():
+        monkeypatch.setenv(key, value)
+
+
+@pytest.mark.skipif(os.name == "nt", reason=(
+    "worker env transport executed on POSIX here; "
+    "Windows bootstrap copy documented but not executed"))
+def test_child_env_owns_transport_and_drops_ambient(
+    tmp_path, monkeypatch,
+) -> None:
+    """_child_env is exactly the fixed owned set under a hostile parent.
+
+    Key-set equality plus aggregate booleans only: no direct dict
+    equality, so a regression cannot render ambient values in a pytest
+    introspection diff. Synthetic marker text only in the absence check.
+    """
+    import containment.harness as harness
+
+    profile = OperatorProfile(
+        approved_root=str(tmp_path / "approved"),
+        scratch_root=str(tmp_path / "scratch"),
+    )
+    pollution = _safe_b_parent_pollution()
+    _safe_b_pollute_parent(monkeypatch, pollution)
+    read_fd, write_fd = os.pipe()
+    try:
+        env = _child_env(profile, write_fd)
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(read_fd)
+        with contextlib.suppress(OSError):
+            os.close(write_fd)
+    owned = dict(harness._FIXED_RUNTIME_ENV)
+    owned["PATH"] = str(Path(_worker_interpreter()).parent)
+    owned["PYTHONPATH"] = str(harness.REPO_ROOT)
+    owned["CONTAINMENT_PROFILE_JSON"] = profile.to_json()
+    owned["CONTAINMENT_DENIAL_FD"] = str(write_fd)
+    keys_ok = set(env) == set(owned)
+    assert keys_ok
+    owned_values_ok = all(env[key] == owned[key] for key in owned)
+    assert owned_values_ok
+    unexpected_keys = [key for key in pollution if key not in owned]
+    unexpected_absent = not any(key in env for key in unexpected_keys)
+    assert unexpected_absent
+    marker_absent = not any(
+        _SAFE_B_MARK in value for value in env.values())
+    assert marker_absent
+
+
+@pytest.mark.skipif(os.name == "nt", reason=(
+    "worker env transport executed on POSIX here; "
+    "Windows bootstrap copy documented but not executed"))
+def test_spawned_child_environment_has_no_parent_markers(tmp_path, monkeypatch) -> None:
+    """A real child spawned with the production env carries no markers.
+
+    The observer computes inside the child and returns only safe
+    booleans and unexpected KEY NAMES; the complete child environment is
+    never serialized and no environment value leaves the child, so a
+    regression cannot leak ambient values into output or a diff.
+    """
+    import subprocess
+
+    import containment.harness as harness
+
+    profile = OperatorProfile(
+        approved_root=str(tmp_path / "approved"),
+        scratch_root=str(tmp_path / "scratch"),
+    )
+    pollution = _safe_b_parent_pollution()
+    _safe_b_pollute_parent(monkeypatch, pollution)
+    interpreter = _worker_interpreter()
+    assert os.path.isabs(interpreter)
+    read_fd, write_fd = os.pipe()
+    try:
+        env = _child_env(profile, write_fd)
+        expected = dict(harness._FIXED_RUNTIME_ENV)
+        expected["PATH"] = str(Path(interpreter).parent)
+        expected["PYTHONPATH"] = str(harness.REPO_ROOT)
+        expected["CONTAINMENT_PROFILE_JSON"] = profile.to_json()
+        expected["CONTAINMENT_DENIAL_FD"] = str(write_fd)
+        unexpected_keys = sorted(
+            key for key in pollution if key not in expected)
+        observer = (
+            "import json,os,sys;"
+            "expected=json.loads(sys.argv[1]);"
+            "unexpected=json.loads(sys.argv[2]);"
+            "mark=sys.argv[3];"
+            "marker_present=any(mark in v for v in os.environ.values()"
+            " if isinstance(v,str));"
+            "keys_ok=set(os.environ)==set(expected);"
+            "owned_ok=all(os.environ.get(k)==expected[k] for k in expected);"
+            "unexpected_present=sorted(k for k in unexpected"
+            " if k in os.environ);"
+            "sys.stdout.write(json.dumps({\"marker_present\":marker_present,"
+            "\"keys_ok\":keys_ok,\"owned_ok\":owned_ok,"
+            "\"unexpected_keys\":unexpected_present}))"
+        )
+        proc = subprocess.run(
+            [interpreter, "-c", observer,
+             json.dumps(expected), json.dumps(unexpected_keys),
+             _SAFE_B_MARK],
+            env=env, cwd=str(harness.REPO_ROOT),
+            capture_output=True, text=True, timeout=120,
+        )
+    finally:
+        with contextlib.suppress(OSError):
+            os.close(read_fd)
+        with contextlib.suppress(OSError):
+            os.close(write_fd)
+    assert proc.returncode == 0
+    report = json.loads(proc.stdout)
+    assert report["marker_present"] is False
+    assert report["keys_ok"] is True
+    assert report["owned_ok"] is True
+    assert report["unexpected_keys"] == []
+
+
+def test_polluted_parent_environment_preserves_reader_and_mcp_behavior(
+    containment_env, matrix, monkeypatch,
+) -> None:
+    """Real reader/MCP transport still works under a hostile parent env.
+
+    The worker must start (absolute interpreter, checkout import path,
+    UTF-8 mode), receive its profile, and report denials on the pipe --
+    all from the fixed environment, with the parent fully polluted.
+    """
+    _safe_b_pollute_parent(monkeypatch, _safe_b_parent_pollution())
+    profile = containment_env["profile"]
+    feed = Path(profile.approved_root) / "vulnify" / "feed.json"
+    case = run_case(
+        profile, arm_id="vulnify", action="lookup",
+        payload={"feed": str(feed), "cve_id": "CVE-2024-0001"},
+        variant="env-isolation-probe",
+    )
+    assert case.outcome in ("positive", "refusal")
+    assert case.denials == ()
+    in_root = guarded_call(
+        profile, tool="invoke",
+        arguments=invoke_arguments(
+            entry_id="vulnify", action="lookup",
+            args={"feed": str(feed), "cve_id": "CVE-2024-0001"}),
+    )
+    assert in_root.response["result"]["isError"] is False
+    assert in_root.response["result"]["structuredContent"]["status"] == "complete"
+    assert in_root.denials == ()
+    outside = containment_env["root"] / "env-probe-outside"
+    outside.mkdir(parents=True, exist_ok=True)
+    (outside / "leak-feed.json").write_text(
+        json.dumps([{"cve_id": "CVE-9999-0002"}]), encoding="utf-8")
+    denied = guarded_call(
+        profile, tool="invoke",
+        arguments=invoke_arguments(
+            entry_id="vulnify", action="lookup",
+            args={"feed": str(outside / "leak-feed.json"),
+                  "cve_id": "CVE-9999-0002"}),
+    )
+    assert denied.response["result"]["isError"] is True
+    assert denied.denials
+    assert denied.denials[0]["event"] == "open"
+
+
+def test_windows_bootstrap_environment_allowlist_stays_narrow() -> None:
+    """The Windows-only passthrough stays the single SystemRoot literal.
+
+    Only the side-by-side-assembly directory survives: the worker uses
+    an absolute interpreter with shell=False and has no justified
+    ambient temp dependency, so WINDIR/COMSPEC/PATHEXT/TEMP/TMP stay
+    dropped. Matched case-insensitively, emitted as one canonical key.
+    No execution and no native Windows claim: Windows was not executed
+    for this unit (POSIX host). Any widening must update the harness
+    docstring, the containment README scope, and this literal together.
+    """
+    import containment.harness as harness
+
+    assert set(harness._WINDOWS_BOOTSTRAP_KEYS) == {
+        "systemroot",
+    }
+    assert harness._WINDOWS_SYSTEMROOT_KEY == "SystemRoot"
 
 
 # --- CLI surface -----------------------------------------------------------

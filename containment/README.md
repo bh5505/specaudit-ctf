@@ -140,6 +140,48 @@ child before its handler runs, not mid-parse.
   scheduling/evidence only (282 actual outcomes on POSIX), not W2,
   activation, or real targets.
 
+## Harnessed worker environment transport (U-SAFE.b)
+
+Every guarded worker (`containment.worker`, and the guarded MCP server
+/ range CLI which ride the same spawn helper) starts with a fixed
+minimal environment built by `containment.harness._child_env` — never
+from `os.environ`. Audit hooks cannot stop a child from reading its own
+environment, so secrets must never be transported there at all: there is
+no secret-name denylist, no prefix filter, and no caller override.
+
+Fixed owned keys (POSIX): `PATH` (interpreter directory only),
+`PYTHONPATH` (checkout root), `PYTHONUTF8=1`,
+`PYTHONDONTWRITEBYTECODE=1`, `PYTHONNOUSERSITE=1`, `PYTHONSAFEPATH=1`,
+`PYTHONIOENCODING=utf-8`, `PYTHONCOERCECLOCALE=0`, `PYTHONBREAKPOINT=0`,
+deterministic single-thread caps (`OMP_NUM_THREADS`,
+`OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS`, `NUMEXPR_NUM_THREADS` = 1),
+the serialized `CONTAINMENT_PROFILE_JSON`, and the POSIX denial fd
+(`CONTAINMENT_DENIAL_FD`) or Windows denial handle
+(`CONTAINMENT_DENIAL_HANDLE`). Suppressed by absence: `PYTHONSTARTUP`,
+`PYTHONHOME`, `PYTHONWARNINGS`, `PYTHONMALLOC` and other Python
+startup/config, proxy (`*_PROXY`), loader injection (`LD_PRELOAD`,
+`LD_LIBRARY_PATH`, `DYLD_*`), cloud/provider credentials, trace keys,
+profiles, and all other ambient keys. The worker `argv[0]` is the
+absolute current interpreter (via `_worker_interpreter`, also used by
+the manual range-worker spawn). Environment values are never printed or
+persisted in evidence or errors, and regression observers never
+serialize a complete child environment: the in-child check returns only
+safe booleans and unexpected key names. On Windows only, the single
+documented non-secret OS bootstrap key (`SystemRoot`, matched
+case-insensitively and emitted as one canonical `SystemRoot`) needed
+for side-by-side assemblies is copied verbatim; `WINDIR`/`COMSPEC`/
+`PATHEXT` are unneeded (absolute interpreter, `shell=False`) and
+`TEMP`/`TMP` have no justified ambient temp dependency, so all stay
+dropped. Windows was not executed for this unit (POSIX host); no native
+Windows execution is claimed.
+
+Scope, stated exactly: this proves only harness-spawned worker
+environment transport. It does not prove file-based credential
+isolation, native (non-Python) I/O, ordinary MCP/head launchers,
+exercise/real-head secret transport, accepted learner/operator context,
+redirects/subresources, mid-parse interruption, Windows execution, or OS
+namespaces. It does not close SAFE or W1.
+
 ## OS-enforced E1 isolation (Linux/WSL)
 
 `containment/os_isolation.py` + `containment/isolate_launcher.sh` are a
