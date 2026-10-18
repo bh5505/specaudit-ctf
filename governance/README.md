@@ -206,3 +206,161 @@ It therefore refuses every nonempty promotion event and every state that needs
 promotion with `promotion-verifier-unimplemented`. No v1 promotion is
 authoritative. Research records legitimately have no promotion event, and the
 three registers remain independent.
+
+## Attributed review history (U-GOV.b, 2026-10-18)
+
+`governance/reviews.py` is a revision-bound attributed review-history
+verifier, separate from the `governance check` promotion/currentness
+checker above. It reconciles the full authoritative population —
+109 sources + 29 modules + 227 runtimes = 365 entities, each with three
+declared triggers = 1,095 entity/trigger pairs — against the committed
+initial import `governance/reviews/2026-10-13.attributed.json`
+(schema `governance/schema/review-evidence.v1.schema.json`, closed).
+
+Every record's evidence files and its authoritative
+`governance/register.v2.yaml` resolve from offline local Git objects at
+that record's exact 40-hex `inspected_revision` (absolute binary,
+subprocess argv, local `cat-file`/`ls-tree` only, no fetch or network),
+never from the working tree and never from a caller-supplied path. Git
+runs with a fresh closed environment (no ambient copy): neutral
+system/global config, `GIT_NO_LAZY_FETCH=1`, prompts and optional locks
+disabled, deterministic C locale, `--no-replace-objects` before `-C`,
+and stdin closed, so ambient `GIT_DIR`/`GIT_WORK_TREE`/
+`GIT_OBJECT_DIRECTORY`/config redirection, local replace refs, and lazy
+promisor fetches cannot change the result; legitimate linked-worktree
+discovery still resolves from the filesystem. Only `cat-file`/`ls-tree`
+are admitted; anything else is refused. The former `--register` and
+`--review-schema` overrides are removed: the CLI accepts only
+`--history`, `--as-of`, and `--require`, the schema is always the
+digest-pinned canonical bytes, and each record reconciles against its
+own revision-bound epoch register (parsed and semantically validated
+with Draft7 FormatChecker, including duplicate identities, exact
+per-class trigger sets, and one-check-per-trigger cardinality). Exact
+source and module IDs are checked against the frozen v2 authorities;
+runtime rows must match their sorted 227-ID inventory, preserve
+`capability_id == arm_id + "." + action`, and match the independently
+pinned genesis roster in every appended epoch. Coordinated substitutions
+therefore fail even when all 365 entity and 1,095 pair counts stay the
+same. A revision must be a commit, each tree entry a regular blob
+(symlinks/submodules refused), sizes bounded, and digests, lengths, and
+heading anchors checked against the exact blob bytes; missing
+commits/paths, ambiguous or non-blob entries, decode/parse failures,
+oversized blobs, and digest differences fail closed. Blobs are cached
+per unique revision/path pair, so Git never runs per observation. The
+pinned schema file is traversed from an anchored repository directory
+fd with no-follow semantics for every component and `O_NONBLOCK` on the
+final open (FIFO/device substitution is refused without hanging); the
+history file itself stays an explicit bounded input with no
+repository-custody claim. That no-follow directory-fd custody path is
+verified on POSIX; native Windows verifier compatibility is not yet
+established.
+
+Strict duplicate-key JSON parsing applies throughout, and every NaN,
+infinity, and overflow-to-infinity value (including JSON `1e999`) is
+rejected recursively before schema validation. The checker fails closed
+on malformed/unknown/duplicate/missing entities or triggers, changed
+referenced evidence bytes, future observations, broken predecessor
+links, an altered pinned initial history, and unsupported positive
+outcomes.
+
+The committed artifact faithfully imports the already recorded
+2026-10-13 attribution from the canonical register and
+`docs/governance/source-verification-2026-10-13.md`, and distinguishes:
+
+- `reviewed_on: 2026-10-13` — imported historical attribution;
+- `recorded_on: 2026-10-18` — the actual import record;
+- the inspected revision (`7499dd12cdc87efc93d7a53d51b5dd785a27221d`)
+  with sha256-bound evidence files as recorded on 2026-10-18.
+
+This JSON artifact, its checker, and their hashes did not exist on
+October 13. The source document's historical wording discrepancy is
+preserved as an explicit limitation: it says 30 module rows while the
+verified current population is 29. The canonical initial record digest
+is pinned independently in `governance/reviews.py`; later records bind
+their predecessor digest. The immutable envelope identity (`schema`,
+`schema_version`, exact `history_id`) is pinned together with the
+genesis record — in code and, via a `const`, in the closed schema —
+while only records may append. Historical declarations, newly executed
+checks, unknown outcomes, and limitations stay in separate sections.
+Reviewer attribution is evidence, not authentication.
+
+Epoch trigger semantics are exact for v1 (a policy change needs a
+later explicit version, not silent acceptance): source rows carry exactly
+`upstream-revision-change`, `license-or-data-rights-change`,
+`link-or-availability-change`; module rows carry exactly
+`criteria-or-threat-change`, `scenario-or-grading-change`,
+`dependency-or-source-change`; runtime rows carry exactly
+`profile-contract-change`, `implementation-or-dependency-change`,
+`supported-version-change`. Exactly one `trigger_check` is required per
+declared trigger (duplicate checks fail even when other fields differ;
+orphan check names fail), and exactly 1,095 pairs are required per
+epoch. Coverage/count reporting describes the latest record, never the
+union of earlier complete observations, so a latest-record gap stays
+visible.
+
+Epoch currentness dates are validated with Draft7 FormatChecker plus
+semantic checks: every `reviewed_on`/`review_due_on` must be a real
+calendar date, `reviewed_on` < `review_due_on`, and `reviewed_on` cannot
+be after the enclosing record's `recorded_on`. Each due must equal its
+`reviewed_on` plus the epoch queue cadence (source 90 days, module 182
+days, runtime 90 days), and those three values are fixed v1 policy:
+rewriting a cadence and every matching due consistently still fails
+integrity and requires a later explicit version. `next_review_on` must
+equal the earliest governed due date, so the recorded cadence is
+actually verified. For
+`historical-declaration` observations, `observed_on` must equal that
+entity's epoch `reviewed_on` as well as the record `reviewed_on`.
+
+The base checker hashes currentness into promotion subject/contract
+digests, so this unit never rewrites those frozen snapshots and never
+overlays effective currentness. The initial import establishes
+integrity and full coverage only: schema/history v1 defines no
+independently verifiable executed-result protocol, so
+`recurring_operation_ok` remains false for every history — including a
+different/descendant/unrelated commit with all 1,095 observations
+relabeled to `executed-check`, advanced dates, and copied pass
+declarations, which is still a replay. A record asserting recurrence
+true fails integrity as an unsupported positive. `--require recurrence`
+stays an honest explicit exit-1 requirement; a future version enables
+it only by defining and binding a closed executed-result artifact whose
+dated results reconcile one-to-one to all governed pairs. Strict
+chronology is integrity, independent of recurrence: each record needs
+`recorded_on >= reviewed_on`, and a successor whose dates move
+backwards or overlap its predecessor fails. Reported next dues:
+source/runtime `2027-01-11`, module `2027-04-13` for the initial import.
+For later valid epochs, each class field reports its earliest obligation
+from the latest validated epoch; a staggered later deadline cannot hide
+an earlier row. No W2, admission, or promotion work is implemented here,
+and no forward ancestry is added as an integrity policy: ancestry alone
+is not specified and does not fix recurrence.
+
+```bash
+python3 -m governance.reviews check \
+  --history governance/reviews/2026-10-13.attributed.json \
+  --as-of 2026-10-18 --require integrity   # exit 0
+python3 -m governance.reviews check \
+  --history governance/reviews/2026-10-13.attributed.json \
+  --as-of 2026-10-18 --require coverage    # exit 0
+python3 -m governance.reviews check \
+  --history governance/reviews/2026-10-13.attributed.json \
+  --as-of 2026-10-18 --require recurrence  # exit 1: not established
+```
+
+Exit `0` means only the requested requirement passed; `1` means the
+history has gaps for it; `2` means the history, schema, arguments, or
+Git environment are invalid. Causal coverage lives in
+`tests/test_governance_reviews.py`: tmp history copies plus synthetic
+offline Git clones for every historical-file transition (never a
+tracked-file write), including the empty-commit relabel construction
+(different/descendant/unrelated commits, all 1,095 relabeled
+observations, advanced dates, copied passes, asserted-true refusal),
+ambient repository/object/config redirection, local replace refs,
+missing promisor blobs without fetch, exact trigger sets with one
+removed trigger/check/observation (1,094), duplicate versus orphan
+checks, latest-record counts, invalid-calendar/inverted/future windows,
+due cadence and queue-next enforcement, historical observed_on binding,
+substitute/duplicate registers, substitute schemas with unknown fields
+and `1e999`, revision-bound evidence across later working-tree edits,
+missing/wrong revisions and blobs, symlink substitution, FIFO refusal
+without hanging, backdated successors, and renamed envelopes. No test
+claims a satisfiable positive recurrence in v1.
