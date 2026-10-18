@@ -67,6 +67,10 @@ reported as unknown, with coverage counts, rather than treated as a clean
 result. Every row stays in the denominator, including refusals, timeouts,
 failures, stops and abstentions.
 
+False review burden is an unweighted count: each benign row adjudicated present
+counts once regardless of its severity label. It does not estimate review time
+or apply a severity weight.
+
 The label's `evaluation_split` is separate from the ledger's legacy assistance
 classification. Joint strata preserve lane and assistance distinctions rather
 than reconstructing comparisons from marginal counts. Retry labels can bind a

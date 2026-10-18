@@ -2,7 +2,9 @@
 
 Completion describes execution, never correctness. Critical misses are true
 high/critical subjects adjudicated ``absent``; false review burden is benign
-subjects adjudicated ``present``. ``unknown`` (the default) contributes to
+subjects adjudicated ``present``. False review burden is an unweighted count;
+each such row counts once regardless of its severity label. ``unknown``
+(the default) contributes to
 explicit unknown coverage, never either numerator. Neither attempt_class nor
 outcome (including failed grades, which can mean extra findings) supplies a
 prediction. Truth, severity and disposition are independent caller labels;

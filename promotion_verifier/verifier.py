@@ -157,7 +157,7 @@ def verify_promotion(record: Any) -> PromotionResult:
         not missing
         and not invalid
         and not extra
-        and len(reasons) == 0
+        and not reasons
     )
     return PromotionResult(
         version=PROMOTION_VERSION,

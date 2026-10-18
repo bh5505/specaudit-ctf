@@ -163,7 +163,7 @@ def validate_candidate_admission(record: Any) -> CandidateAdmissionResult:
                 "list of bounded references"
             )
 
-    valid = not missing and not invalid and not extra and len(reasons) == 0
+    valid = not missing and not invalid and not extra and not reasons
     return CandidateAdmissionResult(
         version=CANDIDATE_ADMISSION_VERSION,
         valid=valid,
