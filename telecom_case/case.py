@@ -1,9 +1,17 @@
-"""Telecom assurance case validation (TEL-01..TEL-09)."""
+"""Structural telecom case records for TEL-01..TEL-09.
+
+case_id is a bounded stable ID. Trust zones, criteria, evidence references and
+limitations are nonempty flat reference lists. Narrative sections are bounded
+nonempty recursive text/list/mapping content. No case assets, evidence truth,
+control effectiveness, governed admission or telecom activation are verified.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Mapping
+
+from capability_records import is_concrete_content, is_reference_list, is_stable_id
 
 TELECOM_CASE_VERSION = "specaudit.ctf.telecom-case.v1"
 
@@ -43,57 +51,43 @@ class TelecomCaseResult:
     missing: tuple[str, ...]
     invalid: tuple[str, ...]
     reasons: tuple[str, ...]
+    limits: tuple[str, ...] = (
+        "Structural case completeness only; evidence truth and control effectiveness are unverified.",
+        "No governed TEL case delivery, admission or telecom activation is established.",
+    )
 
 
-def _nonempty(v: Any) -> bool:
-    if isinstance(v, str):
-        return bool(v.strip())
-    if isinstance(v, (list, tuple, Mapping)):
-        return len(v) > 0
-    return v is not None
+_REFERENCE_LIST_FIELDS = frozenset({"trust_zones", "criteria", "evidence", "limitations"})
 
 
 def validate_telecom_case(doc: Any) -> TelecomCaseResult:
-    reasons: list[str] = []
-    missing: list[str] = []
-    invalid: list[str] = []
-
+    """Check section values without interpreting a case's assurance conclusion."""
     if not isinstance(doc, Mapping):
         raise TelecomCaseError("case must be a mapping")
-
-    for f in REQUIRED_TEL_FIELDS:
-        if f not in doc:
-            missing.append(f)
-            reasons.append(f"missing field: {f}")
-
+    missing = sorted(REQUIRED_TEL_FIELDS - set(doc))
+    reasons = [f"missing field: {field}" for field in missing]
+    invalid: list[str] = []
     extra = set(doc) - REQUIRED_TEL_FIELDS
     if extra:
-        reasons.append(f"unexpected fields: {sorted(extra)}")
-
-    if "tel_module" in doc:
-        tm = doc.get("tel_module")
-        if tm not in TEL_MODULES:
-            invalid.append("tel_module")
-            reasons.append(f"tel_module must be one of {sorted(TEL_MODULES)}")
-
-    for f in ("architecture", "trust_zones", "management_plane", "telemetry",
-              "criteria", "threat_model", "procedure", "evidence", "limitations",
-              "conclusion"):
-        if f in doc and not _nonempty(doc.get(f)):
-            invalid.append(f)
-            reasons.append(f"{f} must be nonempty")
-
-    if "criteria" in doc and isinstance(doc.get("criteria"), (list, tuple)):
-        if not all(isinstance(x, str) and x.strip() for x in doc["criteria"]):
-            invalid.append("criteria")
-            reasons.append("criteria entries must be nonempty strings")
-
-    valid = not missing and not invalid and not extra and len(reasons) == 0
+        reasons.append(f"unexpected fields: {sorted(map(repr, extra))}")
+    for field in sorted(REQUIRED_TEL_FIELDS & set(doc)):
+        value = doc[field]
+        if field == "case_id":
+            accepted = is_stable_id(value)
+        elif field == "tel_module":
+            accepted = isinstance(value, str) and value in TEL_MODULES
+        elif field in _REFERENCE_LIST_FIELDS:
+            accepted = is_reference_list(value)
+        else:
+            accepted = is_concrete_content(value)
+        if not accepted:
+            invalid.append(field)
+            reasons.append(f"{field} does not meet its bounded structural contract")
     return TelecomCaseResult(
         version=TELECOM_CASE_VERSION,
-        valid=valid,
-        missing=tuple(sorted(missing)),
-        invalid=tuple(sorted(set(invalid))),
+        valid=not reasons,
+        missing=tuple(missing),
+        invalid=tuple(invalid),
         reasons=tuple(reasons),
     )
 

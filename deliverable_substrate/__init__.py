@@ -1,8 +1,7 @@
-"""Deliverable substrate validation (PACK-01 exit intent).
+"""Structural component and artifact-reference validation.
 
-Validates that a learning-pack deliverable carries all required components:
-learner brief, evidence manifest, instructor key, benign control, limitations,
-rubric, and reset/retention instructions.  Pure and fail-closed.
+A valid result does not establish PACK-01 admission, asset custody, bytes,
+learner/key access isolation, reset execution or assessment completion.
 """
 
 from .substrate import (

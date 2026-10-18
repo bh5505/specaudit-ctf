@@ -108,3 +108,67 @@ def test_extra_keys_rejected():
     d["extra"] = 1
     r = validate_vuln_slice(d)
     assert r.valid is False
+
+
+@pytest.mark.parametrize("factory,validator", [
+    (_vuln, validate_vuln_slice), (_rule, validate_rule_slice),
+])
+@pytest.mark.parametrize("value", [
+    "not-a-time", " 2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z\n",
+    "2026-02-30T00:00:00Z", "2026-01-01", "2026-01-01T00:00:00",
+    "2026-01-01T24:00:00Z", "2026-01-01T00:00:00+00:60",
+    "2026-01-01T00:00:00+24:00", "2026-01-01T00:00:00.1234567Z", None,
+])
+def test_source_timestamp_requires_explicit_real_zoned_time(factory, validator, value):
+    d = factory()
+    d["source_timestamp"] = value
+    assert validator(d).valid is False
+
+
+@pytest.mark.parametrize("factory,validator", [
+    (_vuln, validate_vuln_slice), (_rule, validate_rule_slice),
+])
+@pytest.mark.parametrize("field", ["snapshot_digest", "records_digest"])
+@pytest.mark.parametrize("value", ["sha256:" + "z" * 64, "sha256:" + "A" * 64])
+def test_digest_alphabet_is_checked(factory, validator, field, value):
+    d = factory()
+    d[field] = value
+    assert validator(d).valid is False
+
+
+@pytest.mark.parametrize("factory,validator", [
+    (_vuln, validate_vuln_slice), (_rule, validate_rule_slice),
+])
+@pytest.mark.parametrize("field", ["slice_id", "source_id", "source_revision"])
+@pytest.mark.parametrize("value", [" ", " x ", "x" * 1025])
+def test_source_identity_is_bounded(factory, validator, field, value):
+    d = factory()
+    d[field] = value
+    assert validator(d).valid is False
+
+
+@pytest.mark.parametrize("factory,validator", [
+    (_vuln, validate_vuln_slice), (_rule, validate_rule_slice),
+])
+def test_negative_control_placeholders_fail(factory, validator):
+    d = factory()
+    d["negative_controls"] = [" "]
+    assert validator(d).valid is False
+
+
+def test_old_timestamp_and_offset_are_structurally_valid_without_freshness_claim():
+    d = _vuln()
+    d["source_timestamp"] = "2000-01-01T01:00:00+01:00"
+    r = validate_vuln_slice(d)
+    assert r.valid is True
+    assert d["stale_semantics"] == "stale"
+    assert any("freshness" in limit for limit in r.limits)
+
+
+@pytest.mark.parametrize("factory,validator", [
+    (_vuln, validate_vuln_slice), (_rule, validate_rule_slice),
+])
+def test_mixed_type_extra_keys_report_invalid(factory, validator):
+    d = factory()
+    d.update({1: "invalid key", "extra": "unexpected"})
+    assert validator(d).valid is False

@@ -1,7 +1,7 @@
-"""Telecom assurance case validation (TEL-01..TEL-09).
+"""Structural telecom assurance case validation for TEL-01..TEL-09.
 
-Validates that a telecom assurance case document carries the required
-structure for a governed telecom specialization case.  Pure and fail-closed.
+A valid result verifies bounded section shapes only, without establishing
+control effectiveness, actual governed case delivery or telecom activation.
 """
 
 from .case import (

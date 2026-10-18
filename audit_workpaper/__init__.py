@@ -1,10 +1,9 @@
-"""Audit workpaper rubric (AUDIT-01).
+"""Workpaper structural rubric and separate caller-declared human verdict.
 
-Pure, deterministic grading of a human workpaper document against the
-audit-quality criteria in PROGRAM.md / CURRICULUM.md.  No network, no
-subprocess, no clock reads, no stored module state.  The rubric grades
-structure and traceability; it does not replace professional standards
-and does not authenticate any underlying evidence.
+Structure alone leaves human quality pending. An overall pass additionally
+requires attributed adjudication bound to the exact workpaper digest; that
+assertion remains unauthenticated and does not establish calibration or custody.
+See :mod:`audit_workpaper.rubric` for the evidence and reference contracts.
 """
 
 from .rubric import (

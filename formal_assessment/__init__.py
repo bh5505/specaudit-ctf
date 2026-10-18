@@ -1,8 +1,8 @@
-"""Formal assessment validation (U-ASSESS).
+"""Structural typed assessment-reference validation.
 
-Validates that a formal (instructor-hidden) assessment package carries the
-required components: named reviews, learner-context separation, calibration,
-operator dry-run evidence, and answer-key isolation.  Pure and fail-closed.
+A valid result does not authenticate named human reviews, verify calibration,
+prove learner/key isolation or execute a dry-run. Existing qualification and
+isolation machinery remains authoritative for those separate gates.
 """
 
 from .assessment import (

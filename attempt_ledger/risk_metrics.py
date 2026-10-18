@@ -1,54 +1,58 @@
-"""Risk-sensitive metrics over an all-attempt ledger (EVAL-01).
+"""Caller-adjudicated risk metrics over every ledger row (EVAL-01).
 
-This module computes audit-relevant metrics from an attempt ledger without
-dropping any row from the denominator: failures, refusals, timeouts and
-abstentions remain counted.  Lanes (fixture-backed, live-service,
-planted-code, self-study, operator-rehearsal) and assistance states
-(first-pass, assisted, tuned, held-out, none) are never compared as
-equivalent; per-lane and per-assistance numerators are reported against
-their own denominators.
+Completion describes execution, never correctness. Critical misses are true
+high/critical subjects adjudicated ``absent``; false review burden is benign
+subjects adjudicated ``present``. ``unknown`` (the default) contributes to
+explicit unknown coverage, never either numerator. Neither attempt_class nor
+outcome (including failed grades, which can mean extra findings) supplies a
+prediction. Truth, severity and disposition are independent caller labels;
+this module authenticates none of them. Verify the ledger separately first.
 
-Risk-sensitive semantics (THOR-style, re-implemented independently):
-- A "critical miss" is a high-severity TRUE finding that was not completed
-  (missed).  Severity and truth are caller-supplied labels; this module
-  never infers them from tool output.
-- "False review burden" is the count of completed attempts whose subject is
-  labelled benign / non-finding, i.e. work spent reviewing non-issues.
-- Saturated public benchmarks must be labelled ``regression-only`` and are
-  never presented as generalization evidence.
-
-No network, no subprocess, no clock reads, no stored module state.  The
-caller owns all labels and timestamps.  This module does not authenticate
-the ledger (call ``verify_ledger`` first) and does not mutate it.
+Every failure, refusal, timeout, stop and completion remains in the denominator.
+Lane/assistance marginals and joint strata are reported. Optional evaluation_split
+is a label separate from the frozen ledger's historical assistance enum; legacy
+``tuned``/``held-out`` assistance values are retained without reinterpretation.
+Repeated attempt ids are legitimate ledger retries only with distinct row_digest
+bindings. Labels for those retries must identify a row_digest, so one outcome
+cannot silently label every retry. No I/O, clock reads, ledger changes or gates.
 """
 
 from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from typing import Any, Mapping, Sequence
+import re
+from typing import Mapping, Sequence
 
 from .ledger import ATTEMPT_CLASSES, ASSISTANCE, COMPLETION, LANES
 
 HIGH_SEVERITIES = frozenset({"critical", "high"})
+SEVERITIES = HIGH_SEVERITIES | {"medium", "low", "informational", "none"}
+DISPOSITIONS = frozenset({"present", "absent", "unknown"})
+EVALUATION_SPLITS = frozenset({"development", "tuned", "held-out", "regression-only", "unknown"})
 SATURATED_BENCHMARK_LABEL = "regression-only"
+_ATTEMPT_ID = re.compile(r"[a-z0-9][a-z0-9._-]{7,127}\Z")
+_DIGEST = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 
 @dataclass(frozen=True)
 class AttemptLabel:
-    """Caller-supplied labels for one attempt (by attempt_id).
+    """Unauthenticated per-row labels, independent of execution outcome.
 
-    ``severity`` is the caller's severity label for the subject (e.g.
-    "critical"/"high"/"medium"/"low"/"informational"); ``None`` means
-    unlabelled.  ``is_true_finding`` is True/False/None (unknown).
-    ``benchmark_saturated`` marks a subject drawn from a saturated public
-    benchmark so it can be labelled regression-only.
+    is_true_finding and severity supply ground truth. adjudicated_disposition
+    supplies the finding prediction (present / absent / unknown), not a grade
+    pass/fail. row_digest is required when attempt_id has multiple ledger rows.
+    evaluation_split independently labels development/tuned/held-out/regression-
+    only/unknown; omitting it reports unknown rather than inferring from assistance.
     """
 
     attempt_id: str
     severity: str | None = None
     is_true_finding: bool | None = None
     benchmark_saturated: bool = False
+    adjudicated_disposition: str = "unknown"
+    evaluation_split: str = "unknown"
+    row_digest: str | None = None
 
 
 @dataclass(frozen=True)
@@ -67,23 +71,85 @@ class RiskSensitiveMetrics:
     assistance_present: tuple[str, ...]
     saturated_subjects: tuple[str, ...]
     saturated_label: str
+    labelled_attempts: int
+    adjudicated_attempts: int
+    unknown_disposition: int
+    unknown_truth: int
+    unknown_severity: int
+    evaluable_critical_subjects: int
+    unknown_critical_disposition: int
+    evaluable_benign_subjects: int
+    unknown_benign_disposition: int
+    by_lane_assistance: dict[str, dict[str, int]]
+    completions_by_lane_assistance: dict[str, dict[str, int]]
+    critical_misses_by_lane_assistance: dict[str, dict[str, int]]
+    false_review_burden_by_lane_assistance: dict[str, dict[str, int]]
+    adjudicated_by_lane_assistance: dict[str, dict[str, int]]
+    unknown_disposition_by_lane_assistance: dict[str, dict[str, int]]
+    by_evaluation_split: dict[str, int]
+    limitations: tuple[str, ...]
 
 
-def _label_index(labels: Sequence[AttemptLabel] | None) -> dict[str, AttemptLabel]:
-    index: dict[str, AttemptLabel] = {}
-    if not labels:
+def _enum(value: object, choices: frozenset[str], label: str) -> None:
+    if not isinstance(value, str) or value not in choices:
+        raise ValueError(f"unknown {label} {value!r}")
+
+
+def _id(value: object) -> None:
+    if not isinstance(value, str) or not _ATTEMPT_ID.fullmatch(value):
+        raise ValueError("attempt_id must match ledger identity format")
+
+
+def _digest(value: object) -> None:
+    if not isinstance(value, str) or not _DIGEST.fullmatch(value):
+        raise ValueError("row_digest must be sha256:<64 lowercase hex>")
+
+
+def _label_index(labels, rows):
+    index = {}
+    rows_by_id = {}
+    row_keys = set()
+    for row in rows:
+        rows_by_id.setdefault(row["attempt_id"], []).append(row.get("row_digest"))
+        row_keys.add((row["attempt_id"], row.get("row_digest")))
+    if labels is None:
         return index
+    if not isinstance(labels, (list, tuple)):
+        raise TypeError("labels must be a list or tuple of AttemptLabel instances")
     for label in labels:
         if not isinstance(label, AttemptLabel):
             raise TypeError("labels must be AttemptLabel instances")
-        if label.attempt_id in index:
-            raise ValueError(f"duplicate label for attempt_id {label.attempt_id!r}")
-        index[label.attempt_id] = label
+        _id(label.attempt_id)
+        if label.severity is not None:
+            _enum(label.severity, SEVERITIES, "severity")
+        if label.is_true_finding is not None and type(label.is_true_finding) is not bool:
+            raise ValueError("is_true_finding must be True, False or None")
+        if type(label.benchmark_saturated) is not bool:
+            raise ValueError("benchmark_saturated must be a boolean")
+        _enum(label.adjudicated_disposition, DISPOSITIONS, "adjudicated_disposition")
+        _enum(label.evaluation_split, EVALUATION_SPLITS, "evaluation_split")
+        if label.row_digest is not None:
+            _digest(label.row_digest)
+        key = (label.attempt_id, label.row_digest)
+        if label.attempt_id not in rows_by_id or (label.row_digest is not None and key not in row_keys):
+            raise ValueError(f"orphan label for {label.attempt_id!r}")
+        if len(rows_by_id[label.attempt_id]) > 1 and label.row_digest is None:
+            raise ValueError("retry labels require a row_digest")
+        # A digest-specific label and an id-only label for the same unique row
+        # are duplicates too; do not silently choose either one.
+        resolved_digest = label.row_digest if label.row_digest is not None else rows_by_id[label.attempt_id][0]
+        resolved = (label.attempt_id, resolved_digest)
+        if resolved in index:
+            raise ValueError(f"duplicate label for {label.attempt_id!r}")
+        index[resolved] = label
     return index
 
 
-def _is_high_severity(label: AttemptLabel | None) -> bool:
-    return label is not None and label.severity in HIGH_SEVERITIES
+def _joint(counter):
+    out: dict[str, dict[str, int]] = {}
+    for (lane, assistance), count in sorted(counter.items()):
+        out.setdefault(lane, {})[assistance] = count
+    return out
 
 
 def compute_risk_sensitive_metrics(
@@ -92,101 +158,100 @@ def compute_risk_sensitive_metrics(
     *,
     saturated_benchmark_label: str = SATURATED_BENCHMARK_LABEL,
 ) -> RiskSensitiveMetrics:
-    """Compute risk-sensitive metrics over ``rows`` (all attempts retained).
+    """Compute descriptive counts; unknown labels remain visible and unevaluated.
 
-    ``labels`` optionally supplies per-attempt severity/truth/benchmark flags
-    keyed by attempt_id.  Attempts without a label contribute to the
-    denominator and to lane/assistance counts but not to critical-miss or
-    false-review-burden numerators (unknown stays unknown, never an all-clear).
+    Risk numerators need truth AND explicit disposition (plus high/critical
+    severity for misses). A zero with unknown coverage is not an all-clear.
+    All counts, including coverage, use rows rather than distinct subjects.
+    saturated_benchmark_label must remain regression-only.
     """
-    if not isinstance(rows, (list, tuple)) or any(
-        not isinstance(item, Mapping) for item in rows
-    ):
+    if not isinstance(rows, (list, tuple)) or any(not isinstance(row, Mapping) for row in rows):
         raise TypeError("rows must be a list or tuple of row objects")
-
-    label_index = _label_index(labels)
-
-    total = len(rows)
-    completions = 0
-    critical_misses = 0
-    false_review_burden = 0
-
-    by_lane: Counter[str] = Counter()
-    by_assistance: Counter[str] = Counter()
-    completions_by_lane: Counter[str] = Counter()
-    completions_by_assistance: Counter[str] = Counter()
-    critical_misses_by_lane: Counter[str] = Counter()
-    false_review_burden_by_lane: Counter[str] = Counter()
-
-    saturated_subjects: list[str] = []
-
+    if saturated_benchmark_label != SATURATED_BENCHMARK_LABEL:
+        raise ValueError("saturated benchmarks must be labelled regression-only")
+    identities = set()
+    ids = Counter()
     for row in rows:
-        lane = row.get("lane")
-        assistance = row.get("assistance")
-        attempt_class = row.get("attempt_class")
-        attempt_id = row.get("attempt_id")
-        subject = row.get("subject")
-
-        if lane not in LANES:
-            raise ValueError(f"unknown lane {lane!r}")
-        if assistance not in ASSISTANCE:
-            raise ValueError(f"unknown assistance {assistance!r}")
-        if attempt_class not in ATTEMPT_CLASSES:
-            raise ValueError(f"unknown attempt_class {attempt_class!r}")
-
-        by_lane[lane] += 1
-        by_assistance[assistance] += 1
-
-        completed = attempt_class == COMPLETION
-        if completed:
+        _id(row.get("attempt_id"))
+        for key, choices in (("lane", LANES), ("assistance", ASSISTANCE), ("attempt_class", ATTEMPT_CLASSES)):
+            _enum(row.get(key), choices, key)
+        if not isinstance(row.get("subject"), str) or not row["subject"].strip():
+            raise ValueError("subject must be nonempty text")
+        if row.get("row_digest") is not None:
+            _digest(row["row_digest"])
+        identity = (row["attempt_id"], row.get("row_digest"))
+        if identity in identities:
+            raise ValueError("duplicate row identity; retries require distinct row digests")
+        identities.add(identity)
+        ids[row["attempt_id"]] += 1
+    if any(ids[row["attempt_id"]] > 1 and row.get("row_digest") is None for row in rows):
+        raise ValueError("retry rows require distinct row digests")
+    label_index = _label_index(labels, rows)
+    counters = {name: Counter() for name in (
+        "lane", "assistance", "complete_lane", "complete_assistance", "miss_lane", "false_lane",
+        "joint", "complete_joint", "miss_joint", "false_joint", "adjudicated_joint", "unknown_joint", "split",
+    )}
+    completions = critical_misses = false_review_burden = 0
+    labelled = adjudicated = unknown_truth = unknown_severity = 0
+    evaluable_critical = unknown_critical = evaluable_benign = unknown_benign = 0
+    saturated_subjects = set()
+    for row in rows:
+        lane, assistance = row["lane"], row["assistance"]
+        joint = (lane, assistance)
+        counters["lane"][lane] += 1
+        counters["assistance"][assistance] += 1
+        counters["joint"][joint] += 1
+        if row["attempt_class"] == COMPLETION:
             completions += 1
-            completions_by_lane[lane] += 1
-            completions_by_assistance[assistance] += 1
-
-        label = label_index.get(attempt_id) if isinstance(attempt_id, str) else None
-
-        # Critical miss: high-severity TRUE finding not completed.
-        if (
-            label is not None
-            and label.is_true_finding is True
-            and _is_high_severity(label)
-            and not completed
-        ):
-            critical_misses += 1
-            critical_misses_by_lane[lane] += 1
-
-        # False review burden: completed attempt on a benign/non-finding subject.
-        if completed and label is not None and label.is_true_finding is False:
-            false_review_burden += 1
-            false_review_burden_by_lane[lane] += 1
-
-        if label is not None and label.benchmark_saturated and isinstance(
-            subject, str
-        ):
-            saturated_subjects.append(subject)
-
+            counters["complete_lane"][lane] += 1
+            counters["complete_assistance"][assistance] += 1
+            counters["complete_joint"][joint] += 1
+        label = label_index.get((row["attempt_id"], row.get("row_digest")))
+        labelled += label is not None
+        disposition = label.adjudicated_disposition if label is not None else "unknown"
+        known_disposition = disposition != "unknown"
+        adjudicated += known_disposition
+        counters["adjudicated_joint" if known_disposition else "unknown_joint"][joint] += 1
+        unknown_truth += label is None or label.is_true_finding is None
+        unknown_severity += label is None or label.severity is None
+        counters["split"][label.evaluation_split if label else "unknown"] += 1
+        if label is not None and label.is_true_finding is True and label.severity in HIGH_SEVERITIES:
+            evaluable_critical += known_disposition
+            unknown_critical += not known_disposition
+            if disposition == "absent":
+                critical_misses += 1
+                counters["miss_lane"][lane] += 1
+                counters["miss_joint"][joint] += 1
+        if label is not None and label.is_true_finding is False:
+            evaluable_benign += known_disposition
+            unknown_benign += not known_disposition
+            if disposition == "present":
+                false_review_burden += 1
+                counters["false_lane"][lane] += 1
+                counters["false_joint"][joint] += 1
+        if label is not None and label.benchmark_saturated:
+            saturated_subjects.add(row["subject"])
+    ordered = lambda name: dict(sorted(counters[name].items()))
     return RiskSensitiveMetrics(
-        total=total,
-        completions=completions,
-        critical_misses=critical_misses,
-        false_review_burden=false_review_burden,
-        by_lane=dict(sorted(by_lane.items())),
-        by_assistance=dict(sorted(by_assistance.items())),
-        completions_by_lane=dict(sorted(completions_by_lane.items())),
-        completions_by_assistance=dict(sorted(completions_by_assistance.items())),
-        critical_misses_by_lane=dict(sorted(critical_misses_by_lane.items())),
-        false_review_burden_by_lane=dict(sorted(false_review_burden_by_lane.items())),
-        lanes_present=tuple(sorted(by_lane)),
-        assistance_present=tuple(sorted(by_assistance)),
-        saturated_subjects=tuple(sorted(set(saturated_subjects))),
-        saturated_label=saturated_benchmark_label,
+        total=len(rows), completions=completions, critical_misses=critical_misses,
+        false_review_burden=false_review_burden, by_lane=ordered("lane"), by_assistance=ordered("assistance"),
+        completions_by_lane=ordered("complete_lane"), completions_by_assistance=ordered("complete_assistance"),
+        critical_misses_by_lane=ordered("miss_lane"), false_review_burden_by_lane=ordered("false_lane"),
+        lanes_present=tuple(sorted(counters["lane"])), assistance_present=tuple(sorted(counters["assistance"])),
+        saturated_subjects=tuple(sorted(saturated_subjects)), saturated_label=saturated_benchmark_label,
+        labelled_attempts=labelled, adjudicated_attempts=adjudicated, unknown_disposition=len(rows) - adjudicated,
+        unknown_truth=unknown_truth, unknown_severity=unknown_severity,
+        evaluable_critical_subjects=evaluable_critical, unknown_critical_disposition=unknown_critical,
+        evaluable_benign_subjects=evaluable_benign, unknown_benign_disposition=unknown_benign,
+        by_lane_assistance=_joint(counters["joint"]), completions_by_lane_assistance=_joint(counters["complete_joint"]),
+        critical_misses_by_lane_assistance=_joint(counters["miss_joint"]),
+        false_review_burden_by_lane_assistance=_joint(counters["false_joint"]),
+        adjudicated_by_lane_assistance=_joint(counters["adjudicated_joint"]),
+        unknown_disposition_by_lane_assistance=_joint(counters["unknown_joint"]), by_evaluation_split=ordered("split"),
+        limitations=("caller-labels-are-unauthenticated", "execution-completion-is-not-correctness",
+                     "unknown-label-coverage-is-not-an-all-clear", "ledger-integrity-not-verified-here"),
     )
 
 
-__all__ = [
-    "AttemptLabel",
-    "HIGH_SEVERITIES",
-    "RiskSensitiveMetrics",
-    "SATURATED_BENCHMARK_LABEL",
-    "compute_risk_sensitive_metrics",
-]
+__all__ = ["AttemptLabel", "HIGH_SEVERITIES", "RiskSensitiveMetrics", "SATURATED_BENCHMARK_LABEL",
+           "compute_risk_sensitive_metrics", "DISPOSITIONS", "EVALUATION_SPLITS", "SEVERITIES"]

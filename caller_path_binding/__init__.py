@@ -1,9 +1,9 @@
-"""Dynamic caller-path binding and custody (EVID-01 / DATA-01/02).
+"""Pure byte-binding record helper (EVID-01 / DATA-01/02).
 
-Binds the bytes actually read from a caller-selected path (not just the
-path string) to an attempt, with size, digest and collection metadata.
-Pure and fail-closed: the locator is never treated as identity.  No
-network, no subprocess, no clock reads, no stored module state.
+Binds caller-supplied bytes and a locator to an attempt, with size, digest and
+declared collection metadata. It does not read the path or establish custody,
+reader consumption, authentication or grading acceptance. The locator is never
+treated as identity. No network, subprocess, clock reads or stored state.
 """
 
 from .binding import (

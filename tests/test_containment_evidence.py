@@ -66,3 +66,28 @@ def test_non_mapping_bundle_raises():
 def test_non_mapping_controls_raises():
     with pytest.raises(Exception):
         verify_containment({"controls": "x"})
+
+
+def test_failed_extra_control_cannot_be_ignored():
+    bundle = _full_bundle()
+    bundle["controls"]["redirect_boundary"] = {"status": "fail", "evidence": "run:redirect"}
+    result = verify_containment(bundle)
+    assert result.satisfied is False
+    assert "redirect_boundary" in result.controls_failed
+
+
+@pytest.mark.parametrize("evidence", [None, False, [], " ", "bad\x00reference"])
+def test_placeholder_or_malformed_evidence_cannot_pass(evidence):
+    bundle = _full_bundle()
+    bundle["controls"]["denied_egress"]["evidence"] = evidence
+    result = verify_containment(bundle)
+    assert not result.satisfied
+    assert "denied_egress" in result.controls_failed
+
+
+def test_positive_record_result_does_not_claim_safe_01_acceptance():
+    result = verify_containment(_full_bundle())
+    assert result.satisfied
+    assert result.scope == "declared-control-records"
+    assert "measurement-and-artifact-references-not-authenticated" in result.limitations
+    assert "no-containment-enforcement-or-safe-01-acceptance" in result.limitations

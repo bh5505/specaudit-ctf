@@ -1,9 +1,18 @@
-"""Formal assessment validation (U-ASSESS)."""
+"""Validate structural assessment references, not U-ASSESS completion.
+
+Named reviews are {reviewer, review_ref} records. Calibration is a named,
+non-seed reviewer plus evidence_refs. A dry-run needs status="pass", result_ref
+and evidence_refs. Both isolation records need state="proven" and evidence_refs;
+that state is a caller declaration, not a verified isolation result. The
+qualification vocabulary is reused without replacing its loaders or gates.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Mapping
+
+from capability_records import is_reference, is_reference_list, is_stable_id
 
 FORMAL_ASSESSMENT_VERSION = "specaudit.ctf.formal-assessment.v1"
 
@@ -32,78 +41,84 @@ class FormalAssessmentResult:
     missing: tuple[str, ...]
     invalid: tuple[str, ...]
     reasons: tuple[str, ...]
+    limits: tuple[str, ...] = (
+        "Structural references only; named reviewer identity and evidence authenticity are unverified.",
+        "Declared isolation, calibration and dry-run outcomes are not verified execution or assessment completion.",
+    )
 
 
-def _nonempty(v: Any) -> bool:
-    if isinstance(v, str):
-        return bool(v.strip())
-    if isinstance(v, (list, tuple, Mapping)):
-        return len(v) > 0
-    return v is not None
+def _closed_record(value: Any, fields: set[str]) -> bool:
+    return isinstance(value, Mapping) and set(value) == fields
+
+
+def _named_reviews(value: Any) -> bool:
+    return (
+        isinstance(value, (list, tuple))
+        and 0 < len(value) <= 256
+        and all(
+            _closed_record(review, {"reviewer", "review_ref"})
+            and is_reference(review["reviewer"])
+            and is_reference(review["review_ref"])
+            for review in value
+        )
+    )
+
+
+def _isolation(value: Any) -> bool:
+    return (
+        _closed_record(value, {"state", "evidence_refs"})
+        and value["state"] == "proven"
+        and is_reference_list(value["evidence_refs"])
+    )
+
+
+def _calibration(value: Any) -> bool:
+    return (
+        _closed_record(value, {"reviewer", "evidence_refs"})
+        and is_reference(value["reviewer"])
+        and value["reviewer"] != "calibration-seed"
+        and is_reference_list(value["evidence_refs"])
+    )
+
+
+def _dry_run(value: Any) -> bool:
+    return (
+        _closed_record(value, {"status", "result_ref", "evidence_refs"})
+        and value["status"] == "pass"
+        and is_reference(value["result_ref"])
+        and is_reference_list(value["evidence_refs"])
+    )
 
 
 def validate_formal_assessment(doc: Any) -> FormalAssessmentResult:
-    reasons: list[str] = []
-    missing: list[str] = []
-    invalid: list[str] = []
-
+    """Validate bounded typed references without resolving their artifacts."""
     if not isinstance(doc, Mapping):
         raise FormalAssessmentError("assessment must be a mapping")
-
-    for f in REQUIRED_ASSESSMENT_FIELDS:
-        if f not in doc:
-            missing.append(f)
-            reasons.append(f"missing field: {f}")
-
+    missing = sorted(REQUIRED_ASSESSMENT_FIELDS - set(doc))
+    reasons = [f"missing field: {field}" for field in missing]
+    invalid: list[str] = []
     extra = set(doc) - REQUIRED_ASSESSMENT_FIELDS
     if extra:
-        reasons.append(f"unexpected fields: {sorted(extra)}")
-
-    # named_reviews must be a nonempty list of nonempty strings.
-    nr = doc.get("named_reviews")
-    if "named_reviews" in doc:
-        if not isinstance(nr, (list, tuple)) or not nr or any(
-            not isinstance(x, str) or not x.strip() for x in nr
-        ):
-            invalid.append("named_reviews")
-            reasons.append("named_reviews must be nonempty list of nonempty strings")
-
-    # learner_context_separation must be a mapping with evidence.
-    lcs = doc.get("learner_context_separation")
-    if "learner_context_separation" in doc:
-        if not isinstance(lcs, Mapping) or not lcs:
-            invalid.append("learner_context_separation")
-            reasons.append("learner_context_separation must be nonempty mapping")
-        elif not any(isinstance(v, str) and v.strip() for v in lcs.values()):
-            invalid.append("learner_context_separation")
-            reasons.append("learner_context_separation must carry evidence")
-
-    # calibration must be nonempty.
-    cal = doc.get("calibration")
-    if "calibration" in doc and not _nonempty(cal):
-        invalid.append("calibration")
-        reasons.append("calibration must be nonempty")
-
-    # operator_dry_run must be a mapping with status pass.
-    dr = doc.get("operator_dry_run")
-    if "operator_dry_run" in doc:
-        if not isinstance(dr, Mapping) or dr.get("status") != "pass":
-            invalid.append("operator_dry_run")
-            reasons.append("operator_dry_run must be mapping with status 'pass'")
-
-    # answer_key_isolation must be a mapping with evidence.
-    aki = doc.get("answer_key_isolation")
-    if "answer_key_isolation" in doc:
-        if not isinstance(aki, Mapping) or not aki:
-            invalid.append("answer_key_isolation")
-            reasons.append("answer_key_isolation must be nonempty mapping")
-
-    valid = not missing and not invalid and not extra and len(reasons) == 0
+        reasons.append(f"unexpected fields: {sorted(map(repr, extra))}")
+    validators = {
+        "assessment_id": is_stable_id,
+        "named_reviews": _named_reviews,
+        "learner_context_separation": _isolation,
+        "calibration": _calibration,
+        "operator_dry_run": _dry_run,
+        "answer_key_isolation": _isolation,
+        "challenge_authoring_contract": is_reference,
+        "reset_retention": is_reference,
+    }
+    for field in sorted(REQUIRED_ASSESSMENT_FIELDS & set(doc)):
+        if not validators[field](doc[field]):
+            invalid.append(field)
+            reasons.append(f"{field} does not meet its bounded structural contract")
     return FormalAssessmentResult(
         version=FORMAL_ASSESSMENT_VERSION,
-        valid=valid,
-        missing=tuple(sorted(missing)),
-        invalid=tuple(sorted(set(invalid))),
+        valid=not reasons,
+        missing=tuple(missing),
+        invalid=tuple(invalid),
         reasons=tuple(reasons),
     )
 

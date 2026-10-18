@@ -1,10 +1,10 @@
-"""Containment evidence verification (SAFE-01).
+"""Structural checks for declared containment-result records.
 
-Validates an evidence bundle recording empirical containment test outcomes
-(denied egress, no mutation, sandbox boundaries, ground-truth isolation,
-cleanup) and reports whether SAFE-01 acceptance criteria are satisfied.
-Pure and fail-closed: missing or failed controls are not satisfied.  No
-network, no subprocess, no clock reads, no stored module state.
+Checks required control names, reference fields and reported outcomes. A
+positive result means those declared records satisfy this helper's format;
+it does not authenticate measurements, enforce containment, or satisfy SAFE-01.
+Run and retain the existing containment suite separately. No network,
+subprocess, clock reads or stored module state.
 """
 
 from .verify import (
