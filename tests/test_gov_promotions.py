@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 from datetime import date
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import pytest
 import yaml
@@ -194,3 +195,160 @@ def test_runtime_and_module_promotions_still_refused(
     assert not report.integrity_ok
     assert "module-shipped-refused" in _codes(report)
     assert "promotion-verifier-unimplemented" in _codes(report)
+
+
+EXPECTED_SELECTED_TEST_PATH = {
+    "R02": "tests/test_arm_batch8.py",
+    "R03": "tests/test_arm_batch7.py",
+    "R08": "tests/test_arm_batch8.py",
+    "R17": "tests/test_arm_batch8.py",
+    "R25": "tests/test_arm_batch8.py",
+    "R33": "tests/test_arm_batch7.py",
+    "R34": "tests/test_arm_batch7.py",
+    "R35": "tests/test_arm_batch7.py",
+    "R36": "tests/test_arm_batch8.py",
+    "R42": "tests/test_arm_batch7.py",
+}
+
+
+def _event(document, source_id):
+    return next(
+        e for e in document["promotion_events"]
+        if e["subject"] == f"source:{source_id}"
+    )
+
+
+def test_selected_citations_resolve_to_source_relevant_files(v2_registry) -> None:
+    # Full-population check against the frozen anchor table: every selected
+    # event cites its source-relevant batch file in BOTH fields, and each
+    # file exists. Existence is citation resolvability only, not execution.
+    assert set(EXPECTED_SELECTED_TEST_PATH) == {
+        sid for sid, anchor in V2_AUTHORIZED_PROMOTIONS.items()
+        if anchor["to_status"] == "selected"
+    }
+    for source_id, expected in EXPECTED_SELECTED_TEST_PATH.items():
+        anchor = V2_AUTHORIZED_PROMOTIONS[source_id]
+        assert anchor["regression_case"] == expected
+        assert anchor["exercised_path"] == expected
+        event = _event(v2_registry.document, source_id)
+        assert event["regression_case"] == expected
+        assert event["exercised_path"] == expected
+        assert (REPO_ROOT / expected).is_file()
+    # The corrected citation must not reintroduce the missing file.
+    raw = (REPO_ROOT / "governance" / "register.v2.yaml").read_text()
+    assert "test_synthetic_readers" not in raw
+    # Admitted-slice regressions stay valid and unchanged.
+    assert V2_AUTHORIZED_PROMOTIONS["R01"]["regression_case"] == "tests/test_vulnify_lookup.py"
+    assert V2_AUTHORIZED_PROMOTIONS["R43"]["regression_case"] == "tests/test_reader_evidence.py"
+    assert _event(v2_registry.document, "R01")["regression_case"] == "tests/test_vulnify_lookup.py"
+    assert _event(v2_registry.document, "R43")["regression_case"] == "tests/test_reader_evidence.py"
+
+
+def test_event_only_regression_drift_fails_anchor(
+    v2_registry, inventory, coverage, v1_registry
+) -> None:
+    # Unrelated-source mapping: R02's anchor is batch8; pointing its event
+    # alone at batch7 (a real file for other sources) must fail the anchor.
+    document = copy.deepcopy(dict(v2_registry.document))
+    _event(document, "R02")["regression_case"] = "tests/test_arm_batch7.py"
+    report = _validate(document, inventory, coverage, v1_registry)
+    assert not report.integrity_ok
+    assert "promotion-anchor-mismatch" in _codes(report)
+    # batch7 exists, so the existence guard alone passes here.
+    assert "invalid-regression-ref" not in _codes(report)
+
+
+def test_exercised_path_only_drift_fails_anchor(
+    v2_registry, inventory, coverage, v1_registry
+) -> None:
+    document = copy.deepcopy(dict(v2_registry.document))
+    _event(document, "R02")["exercised_path"] = "tests/test_arm_batch7.py"
+    report = _validate(document, inventory, coverage, v1_registry)
+    assert not report.integrity_ok
+    assert "promotion-anchor-mismatch" in _codes(report)
+    assert "invalid-exercised-path-ref" not in _codes(report)
+
+
+def test_matching_nonexistent_anchor_and_event_fails_existence_guard(
+    v2_registry, inventory, coverage, v1_registry, monkeypatch
+) -> None:
+    # Same nonexistent path in BOTH anchor and event: the string comparison
+    # passes, so only the new existence guard can fail.
+    import governance.check as gov_check
+
+    bad = "tests/test_no_such_regression_probe.py"
+    assert not (REPO_ROOT / bad).exists()
+    patched = copy.deepcopy(dict(V2_AUTHORIZED_PROMOTIONS))
+    patched["R02"] = dict(patched["R02"])
+    patched["R02"]["regression_case"] = bad
+    patched["R02"]["exercised_path"] = bad
+    monkeypatch.setattr(gov_check, "V2_AUTHORIZED_PROMOTIONS", patched)
+    document = copy.deepcopy(dict(v2_registry.document))
+    _event(document, "R02")["regression_case"] = bad
+    _event(document, "R02")["exercised_path"] = bad
+    report = _validate(document, inventory, coverage, v1_registry)
+    assert not report.integrity_ok
+    codes = _codes(report)
+    assert "promotion-anchor-mismatch" not in codes
+    assert "invalid-regression-ref" in codes
+    assert "invalid-exercised-path-ref" in codes
+
+
+@pytest.mark.parametrize("bad", [
+    "/abs/tests/test_arm_batch7.py",
+    "tests/../governance/check.py",
+    "tests",
+    "governance/check.py",
+    "tests/test_arm_batch7.py::",
+    "tests/test_arm_batch7.py::NonexistentTestNode",
+    "tests//test_arm_batch7.py",
+    "tests/./test_arm_batch7.py",
+])
+def test_bounded_test_refs_reject_escape_and_nonfiles(
+    v2_registry, inventory, coverage, v1_registry, monkeypatch, bad
+) -> None:
+    import governance.check as gov_check
+
+    patched = copy.deepcopy(dict(V2_AUTHORIZED_PROMOTIONS))
+    patched["R03"] = dict(patched["R03"])
+    patched["R03"]["regression_case"] = bad
+    patched["R03"]["exercised_path"] = bad
+    monkeypatch.setattr(gov_check, "V2_AUTHORIZED_PROMOTIONS", patched)
+    document = copy.deepcopy(dict(v2_registry.document))
+    _event(document, "R03")["regression_case"] = bad
+    _event(document, "R03")["exercised_path"] = bad
+    report = _validate(document, inventory, coverage, v1_registry)
+    assert not report.integrity_ok
+    codes = _codes(report)
+    assert "promotion-anchor-mismatch" not in codes
+    assert ("invalid-regression-ref" in codes
+            or "invalid-exercised-path-ref" in codes)
+
+
+def test_symlink_escape_fails_existence_guard(
+    v2_registry, inventory, coverage, v1_registry, monkeypatch, tmp_path
+) -> None:
+    import governance.check as gov_check
+
+    outside = tmp_path / "outside_test.py"
+    outside.write_text("# Synthetic artifact outside the repository.\n")
+    with TemporaryDirectory(prefix=".ugova-", dir=REPO_ROOT / "tests") as probe:
+        link = Path(probe) / "escape.py"
+        try:
+            link.symlink_to(outside)
+        except (OSError, NotImplementedError) as exc:
+            pytest.skip(f"host cannot create the synthetic symlink: {exc}")
+        bad = link.relative_to(REPO_ROOT).as_posix()
+        patched = copy.deepcopy(dict(V2_AUTHORIZED_PROMOTIONS))
+        patched["R03"] = dict(patched["R03"])
+        patched["R03"]["regression_case"] = bad
+        patched["R03"]["exercised_path"] = bad
+        monkeypatch.setattr(gov_check, "V2_AUTHORIZED_PROMOTIONS", patched)
+        document = copy.deepcopy(dict(v2_registry.document))
+        _event(document, "R03")["regression_case"] = bad
+        _event(document, "R03")["exercised_path"] = bad
+        report = _validate(document, inventory, coverage, v1_registry)
+        assert not report.integrity_ok
+        codes = _codes(report)
+        assert "invalid-regression-ref" in codes
+        assert "invalid-exercised-path-ref" in codes
