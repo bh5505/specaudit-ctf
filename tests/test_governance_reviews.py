@@ -319,6 +319,20 @@ def test_cli_reports_requirements_separately_and_deterministically() -> None:
     assert repeat.stdout == first.stdout
 
 
+def test_cli_help_preserves_argparse_contract() -> None:
+    completed = subprocess.run(
+        [sys.executable, "-m", "governance.reviews", "--help"],
+        capture_output=True,
+        text=True,
+        cwd=str(ROOT),
+        env={**os.environ, "PATH": _REAL_PATH},
+    )
+    assert completed.returncode == 0
+    assert completed.stderr == ""
+    assert completed.stdout.startswith("usage:")
+    assert "Attributed review-history verifier" in completed.stdout
+
+
 def test_review_schema_is_canonical_and_pinned() -> None:
     schema, digest = load_review_schema()
     assert digest == reviews.CANONICAL_REVIEW_SCHEMA_SHA256

@@ -1092,7 +1092,7 @@ def _check_repo_relative_file(
         return None
     if any(part in {"", ".", ".."} for part in relative.parts):
         return None
-    if not value or any(
+    if any(
         unicodedata.category(char) in {"Cc", "Cf", "Cs"} for char in value
     ):
         return None
@@ -2434,7 +2434,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         }
         print(json.dumps(payload, allow_nan=False, sort_keys=True), file=sys.stderr)
         return 2
-    except (Exception, SystemExit) as exc:
+    except Exception as exc:
         payload = {
             "schema": ERROR_SCHEMA_ID,
             "ok": False,
