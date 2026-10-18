@@ -3565,6 +3565,61 @@ _V2_PROMOTION_AFFECTED_FIELDS = (
 )
 V2_PROMOTION_REVIEWER = "repository-operator"
 V2_PROMOTION_IMPLEMENTATION_REVISION = "a8f595d8b9c9a03ea76b49f32b071b732cc85538"
+# Complete historical event snapshots after the U-GOV.a citation correction.
+# Each literal binds the exact source/event identity and every event field via
+# _canonical_json (including list order). Never derive these expected digests
+# from the register being validated or from the mutable authorization table.
+# This verifies fidelity to the recorded decisions, not execution or identity.
+V2_AUTHORIZED_PROMOTION_EVENTS: Mapping[str, tuple[str, str]] = {
+    "R01": (
+        "promotion-r01-admission",
+        "sha256:ef02ff6b36bd47880cb39ec88898dd435db17c5719b5df541cde5ad73d0b3d36",
+    ),
+    "R02": (
+        "promotion-r02-selection",
+        "sha256:aa6ace0acb6fa5d76120cb067ddd882acdbbe93912e6240b6fdd73a5771da783",
+    ),
+    "R03": (
+        "promotion-r03-selection",
+        "sha256:8099592af4740120472fe41db4d4d73048e14ab90217a7c69a7cf4c46f35560e",
+    ),
+    "R08": (
+        "promotion-r08-selection",
+        "sha256:cc335d813c94fd24dc23c88455dbdb413e9138d852853758025e4f0536f9c186",
+    ),
+    "R17": (
+        "promotion-r17-selection",
+        "sha256:3c7713e5120312512ebae7e5f9a9f0583a853253eda074d90bc7c658d824be50",
+    ),
+    "R25": (
+        "promotion-r25-selection",
+        "sha256:b1da974368b6440b702f3cd93d32ae7b47783108015b628955f79dac6b372029",
+    ),
+    "R33": (
+        "promotion-r33-selection",
+        "sha256:74258dbe1883720a876ddec282423c3fdfa79665aad5fb9b8066cc7b1482618f",
+    ),
+    "R34": (
+        "promotion-r34-selection",
+        "sha256:712a64120dccd05443334930159f3355b13395ff412c87bd316601945120e4de",
+    ),
+    "R35": (
+        "promotion-r35-selection",
+        "sha256:ac3e408e1e04abfde2111a8262c252809aa255f6750313b5b9abb0e425fffa5b",
+    ),
+    "R36": (
+        "promotion-r36-selection",
+        "sha256:0237176eb02b55873003cc505ac21112f4be44f373cf87ea40fa2365c9393dd8",
+    ),
+    "R42": (
+        "promotion-r42-selection",
+        "sha256:a78630d43db305ab87e5c2eb5dc05222293e878184d5e9ef719e6d9fd0fe0880",
+    ),
+    "R43": (
+        "promotion-r43-admission",
+        "sha256:84d9e17c12e88e6fb235cdfe165eee2ba78668ecee251bb0cbbb6207e248cb6b",
+    ),
+}
 V2_EXPECTED_SOURCE_IDS = frozenset(
     {
         *(f"R{n:02d}" for n in range(1, 44) if n != 10),
@@ -3879,8 +3934,9 @@ def validate_register_v2(
     The PR97 slice is re-validated with the untouched v1 checker through a
     strict v1 projection, then cross-checked against the frozen v1 register
     file.  v2 adds full-inventory roster/reconciliation checks, currentness
-    reviews with per-trigger checks, the review queue, and keeps every
-    promotion path refused: no row, event, or provenance note can promote.
+    reviews with per-trigger checks, and the review queue. Source decisions
+    are limited to the twelve frozen historical events; every module/runtime
+    promotion path remains refused, and no provenance note can promote.
     """
 
     if scope != V2_SCOPE_ID:
@@ -4149,6 +4205,40 @@ def validate_register_v2(
     events_by_id = _index_unique(
         promotion_events, name="promotion_events", issues=issues
     )
+    expected_event_ids = {
+        event_id for event_id, _ in V2_AUTHORIZED_PROMOTION_EVENTS.values()
+    }
+    if (
+        set(events_by_id) != expected_event_ids
+        or len(promotion_events) != len(expected_event_ids)
+    ):
+        _add(
+            issues,
+            "integrity",
+            "promotion-event-roster-mismatch",
+            "promotion_events",
+            "expected exactly the twelve recorded source promotion events; "
+            f"missing={sorted(expected_event_ids - set(events_by_id))!r}; "
+            f"extra={sorted(set(events_by_id) - expected_event_ids)!r}",
+        )
+    for source_id, (event_id, event_digest) in V2_AUTHORIZED_PROMOTION_EVENTS.items():
+        if sources.get(source_id, {}).get("promotion_evidence") != [event_id]:
+            _add(
+                issues,
+                "integrity",
+                "promotion-reference-mismatch",
+                f"source:{source_id}",
+                f"expected exactly one reference to the recorded event {event_id!r}",
+            )
+        event = events_by_id.get(event_id)
+        if event is not None and _sha256(event) != event_digest:
+            _add(
+                issues,
+                "integrity",
+                "promotion-event-snapshot-mismatch",
+                f"promotion_event:{event_id}",
+                f"event differs from the complete recorded decision for source:{source_id}",
+            )
     for anchor_source_id, anchor in sorted(V2_AUTHORIZED_PROMOTIONS.items()):
         _check_evidence_ref(
             anchor["authorization_anchor"],

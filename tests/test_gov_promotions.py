@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
 from datetime import date
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -13,6 +15,7 @@ import yaml
 from extension.invoke_profiles import INVOKE_PROFILES
 from governance.check import (
     V2_AUTHORIZED_PROMOTIONS,
+    V2_AUTHORIZED_PROMOTION_EVENTS,
     V2_AUTHORIZATION_DOC,
     load_coverage_inventory,
     load_register,
@@ -216,6 +219,179 @@ def _event(document, source_id):
         e for e in document["promotion_events"]
         if e["subject"] == f"source:{source_id}"
     )
+
+
+def test_complete_event_snapshots_bind_the_exact_historical_population(v2_registry) -> None:
+    expected_ids = {
+        "R01": "promotion-r01-admission",
+        "R02": "promotion-r02-selection",
+        "R03": "promotion-r03-selection",
+        "R08": "promotion-r08-selection",
+        "R17": "promotion-r17-selection",
+        "R25": "promotion-r25-selection",
+        "R33": "promotion-r33-selection",
+        "R34": "promotion-r34-selection",
+        "R35": "promotion-r35-selection",
+        "R36": "promotion-r36-selection",
+        "R42": "promotion-r42-selection",
+        "R43": "promotion-r43-admission",
+    }
+    assert set(V2_AUTHORIZED_PROMOTION_EVENTS) == set(expected_ids)
+    assert set(V2_AUTHORIZED_PROMOTIONS) == set(expected_ids)
+    assert len(v2_registry.document["promotion_events"]) == len(expected_ids)
+    for source_id, expected_id in expected_ids.items():
+        event = _event(v2_registry.document, source_id)
+        event_id, frozen_digest = V2_AUTHORIZED_PROMOTION_EVENTS[source_id]
+        assert event_id == event["id"] == expected_id
+        assert _source(v2_registry.document, source_id)["promotion_evidence"] == [expected_id]
+        canonical = json.dumps(
+            event, allow_nan=False, ensure_ascii=True, separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        assert "sha256:" + hashlib.sha256(canonical).hexdigest() == frozen_digest
+
+
+@pytest.mark.parametrize("source_id", [
+    "R01", "R02", "R03", "R08", "R17", "R25",
+    "R33", "R34", "R35", "R36", "R42", "R43",
+])
+@pytest.mark.parametrize(("field", "replacement"), [
+    ("from_status", "experimental"),
+    ("verification_result", "pass"),
+    ("supported_versions", ["unverified-version"]),
+    ("source_revisions", ["f" * 40]),
+])
+def test_previously_unchecked_event_fields_fail_for_every_source(
+    v2_registry, inventory, coverage, v1_registry, source_id, field, replacement
+) -> None:
+    # Each mutation is schema-valid and changes only this event field. The
+    # complete literal snapshot supplies the authority, never the input row.
+    document = copy.deepcopy(dict(v2_registry.document))
+    _event(document, source_id)[field] = copy.deepcopy(replacement)
+    report = _validate(document, inventory, coverage, v1_registry)
+    assert not report.integrity_ok
+    assert "promotion-event-snapshot-mismatch" in _codes(report)
+
+
+@pytest.mark.parametrize(("field", "replacement"), [
+    ("id", "promotion-r02-renamed"),
+    ("subject", "source:R43"),
+    ("to_status", "admitted"),
+    ("decided_on", "2026-10-15"),
+    ("reviewer", "another-reviewer"),
+    ("implementation_revision", "f" * 40),
+    ("subject_digest", "sha256:" + "0" * 64),
+    ("contract_digest", "sha256:" + "0" * 64),
+    ("regression_case", "tests/test_arm_batch7.py"),
+    ("exercised_path", "tests/test_arm_batch7.py"),
+    ("limitations_accepted", ["unreviewed-limitation"]),
+])
+def test_remaining_event_fields_are_also_frozen(
+    v2_registry, inventory, coverage, v1_registry, field, replacement
+) -> None:
+    # Together with the four-field full-population matrix, this exercises
+    # every field in the closed promotion-event schema independently.
+    document = copy.deepcopy(dict(v2_registry.document))
+    _event(document, "R02")[field] = replacement
+    report = _validate(document, inventory, coverage, v1_registry)
+    assert not report.integrity_ok
+    expected = (
+        "promotion-event-roster-mismatch" if field == "id"
+        else "promotion-event-snapshot-mismatch"
+    )
+    assert expected in _codes(report)
+
+
+def test_event_list_and_object_key_reordering_preserve_fidelity(
+    v2_registry, inventory, coverage, v1_registry
+) -> None:
+    document = copy.deepcopy(dict(v2_registry.document))
+    document["promotion_events"] = [
+        dict(reversed(list(event.items())))
+        for event in reversed(document["promotion_events"])
+    ]
+    report = _validate(document, inventory, coverage, v1_registry)
+    assert report.ok, sorted(_codes(report))
+
+
+def test_arrays_inside_historical_events_preserve_their_recorded_order(
+    v2_registry, inventory, coverage, v1_registry
+) -> None:
+    document = copy.deepcopy(dict(v2_registry.document))
+    _event(document, "R02")["limitations_accepted"].reverse()
+    report = _validate(document, inventory, coverage, v1_registry)
+    assert not report.integrity_ok
+    assert "promotion-event-snapshot-mismatch" in _codes(report)
+
+
+@pytest.mark.parametrize("source_id", ["R01", "R02"])
+@pytest.mark.parametrize("scenario", [
+    "cloned-event", "duplicate-event-id", "duplicate-reference", "missing-event",
+    "missing-reference", "renamed-event", "cross-source-reference",
+    "unreferenced-extra-event",
+])
+def test_event_identity_and_reference_cardinality_fail_closed(
+    v2_registry, inventory, coverage, v1_registry, source_id, scenario
+) -> None:
+    document = copy.deepcopy(dict(v2_registry.document))
+    event = _event(document, source_id)
+    row = _source(document, source_id)
+    original_id = event["id"]
+    if scenario == "cloned-event":
+        clone = copy.deepcopy(event)
+        clone["id"] = original_id + "-clone"
+        document["promotion_events"].append(clone)
+        row["promotion_evidence"].append(clone["id"])
+        expected_codes = {"promotion-event-roster-mismatch", "promotion-reference-mismatch"}
+    elif scenario == "duplicate-event-id":
+        document["promotion_events"].append(copy.deepcopy(event))
+        expected_codes = {"promotion-event-roster-mismatch", "duplicate-id"}
+    elif scenario == "duplicate-reference":
+        row["promotion_evidence"].append(original_id)
+        expected_codes = {"promotion-reference-mismatch"}
+    elif scenario == "missing-event":
+        document["promotion_events"].remove(event)
+        expected_codes = {"promotion-event-roster-mismatch", "unknown-promotion-evidence"}
+    elif scenario == "missing-reference":
+        row["promotion_evidence"] = []
+        expected_codes = {"promotion-reference-mismatch", "promotion-evidence-missing"}
+    elif scenario == "renamed-event":
+        event["id"] = original_id + "-replacement"
+        row["promotion_evidence"] = [event["id"]]
+        expected_codes = {"promotion-event-roster-mismatch", "promotion-reference-mismatch"}
+    elif scenario == "cross-source-reference":
+        other_id = "R43" if source_id == "R01" else "R03"
+        other = _source(document, other_id)
+        row["promotion_evidence"], other["promotion_evidence"] = (
+            other["promotion_evidence"], row["promotion_evidence"]
+        )
+        expected_codes = {"promotion-reference-mismatch", "promotion-subject-mismatch"}
+    else:
+        clone = copy.deepcopy(event)
+        clone["id"] = original_id + "-orphan"
+        document["promotion_events"].append(clone)
+        expected_codes = {"promotion-event-roster-mismatch", "orphan-promotion-evidence"}
+    report = _validate(document, inventory, coverage, v1_registry)
+    assert not report.integrity_ok
+    assert expected_codes <= _codes(report)
+
+
+def test_row_and_event_coediting_cannot_redefine_the_historical_snapshot(
+    v2_registry, inventory, coverage, v1_registry
+) -> None:
+    from governance.check import _governance_subject_digest, _source_contract_digest
+
+    document = copy.deepcopy(dict(v2_registry.document))
+    row = _source(document, "R02")
+    row["selected_revision"] += " with unreviewed scope expansion"
+    event = _event(document, "R02")
+    event["subject_digest"] = _governance_subject_digest(row)
+    event["contract_digest"] = _source_contract_digest(row)
+    report = _validate(document, inventory, coverage, v1_registry)
+    assert not report.integrity_ok
+    assert "promotion-event-snapshot-mismatch" in _codes(report)
+    assert "promotion-subject-digest-mismatch" not in _codes(report)
+    assert "promotion-contract-digest-mismatch" not in _codes(report)
 
 
 def test_selected_citations_resolve_to_source_relevant_files(v2_registry) -> None:
