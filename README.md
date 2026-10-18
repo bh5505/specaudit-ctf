@@ -75,6 +75,11 @@ and [individual evaluator APIs](docs/offline-learning-workflows.md) are supporti
 references. Candidate surveys and self-study examples are not alternative
 operator workflows or evidence that an upstream tool executed.
 
+The [pending-capability Python helpers](docs/pending-capability-helpers.md)
+provide record checks and calculations for campaign development. Their results
+do not grant admission, establish empirical containment, or complete a campaign
+exit gate; the document states the evidence each helper actually checks.
+
 ## Install
 
 Python 3.11 or later.
