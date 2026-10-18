@@ -111,12 +111,13 @@ class McpTransport:
                 error="malformed JSON-RPC response",
             )
         if "error" in body and body["error"] is not None:
+            safe_error = _redact(body.get("error"), environment)
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
-                output=_redact(body.get("error"), environment),
-                error=_redact(_error_text(body.get("error")), environment),
+                output=safe_error,
+                error=_error_text(safe_error),
             )
         result = body.get("result")
         if not isinstance(result, dict):
@@ -128,12 +129,13 @@ class McpTransport:
                 error="malformed tool result",
             )
         if result.get("isError"):
+            safe_result = _redact(result, environment)
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
-                output=_redact(result, environment),
-                error=_redact(_result_error_text(result), environment),
+                output=safe_result,
+                error=_result_error_text(safe_result),
             )
         return Result(
             ok=True,
@@ -282,9 +284,16 @@ def _validate_executable(argv: Sequence[str], environment: Mapping[str, str]) ->
     if not argv:
         return
     executable = argv[0]
+    drive, tail = ntpath.splitdrive(executable)
+    if os.name == "nt" and ":" in tail:
+        raise ValueError("stdio executable must not use an alternate data stream")
     if _absolute_path(executable):
         return
-    if not executable or "/" in executable or "\\" in executable or "PATH" not in environment:
+    if (
+        not executable or executable in {".", ".."}
+        or drive or ":" in executable or "/" in executable
+        or "\\" in executable or "PATH" not in environment
+    ):
         raise ValueError("stdio executable must be absolute or a bare name with explicit PATH")
 
 
@@ -303,6 +312,7 @@ def _path_key(value: str) -> str:
 def _resolved_stdio_argv(
     argv: Sequence[str], environment: Mapping[str, str]
 ) -> list[str]:
+    _validate_executable(argv, environment)
     if _absolute_path(argv[0]):
         return list(argv)
     # Resolve ourselves: on Windows CreateProcess may search using the parent
@@ -313,6 +323,12 @@ def _resolved_stdio_argv(
     for directory in environment["PATH"].split(os.pathsep):
         for name in names:
             candidate = os.path.join(directory, name)
+            path_module = ntpath if os.name == "nt" else posixpath
+            if (
+                not _absolute_path(candidate)
+                or _path_key(path_module.dirname(path_module.normpath(candidate))) != _path_key(directory)
+            ):
+                raise RuntimeError("stdio executable escaped its explicit PATH directory")
             if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
                 return [candidate, *argv[1:]]
     raise RuntimeError("stdio executable not found in explicit PATH")
@@ -357,7 +373,7 @@ def _redact(value: Any, environment: Mapping[str, str]) -> Any:
             pending.extend((children, index, child) for index, child in enumerate(item))
         elif isinstance(item, str):
             parent[key] = text(item)
-        elif isinstance(item, (int, float, bool)):
+        elif item is None or isinstance(item, (int, float, bool)):
             encoded = json.dumps(item)
             parent[key] = "[redacted]" if any(secret in encoded for secret in secrets) else item
         else:

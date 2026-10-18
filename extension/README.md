@@ -613,7 +613,9 @@ id to a mapping of authorized string names and values. A caller can provide
 an arm's required credential/configuration variables explicitly, for example
 `stdio_envs={arm_id: {"APP_TOKEN": authorized_token}}`. Values are copied at
 construction and scrubbed from returned text, including child error text and
-response content; the transport does not log or serialize the configuration.
+structured response values before error rendering; the transport does not log
+or serialize the configuration. JSON primitive echoes are also scrubbed when
+their JSON representation contains a supplied value.
 Empty values are allowed. The operator owns authorization and custody of
 every supplied value. File-backed credentials and application defaults still
 need separate containment.
@@ -621,8 +623,10 @@ need separate containment.
 Executables must be absolute paths. To use a bare executable name, that arm
 must explicitly supply `PATH` with at most 16 distinct absolute directories;
 relative paths, empty search entries and parent-directory traversal refuse
-configuration. Each environment allows at most 64 variables and 32 KiB of
-UTF-8 names/values. Malformed/non-string/NUL values, duplicate or case-ambiguous
+configuration. Windows drive-relative and alternate-data-stream executable
+names refuse configuration; resolved search candidates must retain their
+chosen absolute parent directory. Each environment allows at most 64 variables
+and 32 KiB of UTF-8 names/values. Malformed/non-string/NUL values, duplicate or case-ambiguous
 names, unmatched/empty-command arm ids, and an environment bound to both an
 HTTP endpoint and a stdio command refuse configuration before spawn. Generated
 locale variables, cwd markers, `SystemRoot`, interpreter startup/loader

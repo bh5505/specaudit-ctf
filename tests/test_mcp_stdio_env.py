@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from extension.contract import ArmSpec, Catalog, CatalogEntry, Extension
+from extension.contract import ArmSpec, Catalog, CatalogEntry, Extension, ExtensionError, NotCuratedError
 from extension.transports import mcp
 from extension.transports.mcp import McpTransport
 
@@ -217,6 +217,32 @@ def test_configured_values_scrubbed_from_result_and_error(script: str) -> None:
     assert "[redacted]" in serialized
 
 
+@pytest.mark.parametrize("credential", [
+    "synthetic-unicode-密钥-凭据", "synthetic-quoted-\"credential\"",
+    "synthetic-backslash-\\credential", "synthetic-newline-\ncredential",
+])
+@pytest.mark.parametrize("kind", ["rpc-error", "tool-error"])
+def test_structured_errors_redacted_before_rendering(credential: str, kind: str) -> None:
+    script = (
+        "import json,os; secret=os.environ['APP_TOKEN']; "
+        + ("body={'error': {'data': {'nested': secret}}}; " if kind == "rpc-error" else
+           "body={'result': {'isError': True, 'content': [{'text': {'nested': secret}}]}}; ")
+        + "print(json.dumps(body))"
+    )
+    result = _transport(script, environment={"APP_TOKEN": credential}).invoke(SPEC, "ping", {})
+    assert not result.ok
+    if kind == "rpc-error":
+        assert result.output == {"data": {"nested": "[redacted]"}}
+        assert json.loads(result.error) == result.output
+    else:
+        assert result.output == {
+            "isError": True, "content": [{"text": {"nested": "[redacted]"}}],
+        }
+        assert result.error == "{'nested': '[redacted]'}"
+    assert credential not in json.dumps(result.output, ensure_ascii=False)
+    assert credential not in result.error
+
+
 def test_response_classification_precedes_redaction() -> None:
     result = _transport(
         "print('{\"result\": {\"ok\": true}}')", environment={"APP_CONFIG": "result"},
@@ -229,6 +255,16 @@ def test_numeric_response_echo_is_redacted() -> None:
     result = _transport(
         "import json,os; print(json.dumps({'result': {'echo': int(os.environ['APP_CONFIG'])}}))",
         environment={"APP_CONFIG": "928471"},
+    ).invoke(SPEC, "ping", {})
+    assert result.ok
+    assert result.output == {"echo": "[redacted]"}
+
+
+@pytest.mark.parametrize("configured", ["null", "true", "false", "9138", "19.25"])
+def test_json_primitive_response_echo_is_redacted(configured: str) -> None:
+    result = _transport(
+        "import json,os; print(json.dumps({'result': {'echo': json.loads(os.environ['APP_CONFIG'])}}))",
+        environment={"APP_CONFIG": configured},
     ).invoke(SPEC, "ping", {})
     assert result.ok
     assert result.output == {"echo": "[redacted]"}
@@ -258,6 +294,19 @@ def test_transport_injected_at_existing_extension_handler_seam() -> None:
     result = extension.invoke(ARM, "ping", {})
     assert result.ok, result.error
     assert result.output == {"authorized": True}
+
+
+@pytest.mark.parametrize("curated", [False, True])
+def test_generic_extension_transport_preserves_admission_refusals(
+    curated: bool, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = CatalogEntry(id=ARM, kind="arm", protocols=("mcp",), curated=curated, notes="Synthetic fixture.", tier="research")
+    transport = _transport("raise AssertionError('must not spawn')")
+    monkeypatch.setattr(mcp.subprocess, "run", lambda *a, **kw: pytest.fail("spawned refused generic transport"))
+    extension = Extension(catalog=Catalog([entry]), arms={}, transports={"mcp": transport})
+    error_type = ExtensionError if curated else NotCuratedError
+    with pytest.raises(error_type):
+        extension.invoke(ARM, "ping", {})
 
 
 def test_legacy_positional_constructor_and_empty_argv_preserved() -> None:
@@ -295,6 +344,37 @@ def test_windows_path_resolution_uses_fixed_candidates(monkeypatch: pytest.Monke
         "C:\\allowed\\fixture.exe", "literal-arg",
     ]
     assert visited == ["C:\\allowed\\fixture", "C:\\allowed\\fixture.exe"]
+
+
+@pytest.mark.parametrize("executable", [
+    "C:fixture.exe", "C:fixture", "fixture.exe:stream", ":fixture.exe", ".", "..",
+    "C:\\allowed\\fixture.exe:stream", "\\\\server\\share\\fixture.exe:stream",
+])
+def test_windows_drive_relative_and_stream_executables_refused(
+    executable: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(mcp, "os", SimpleNamespace(name="nt", pathsep=";"))
+    with pytest.raises(ValueError):
+        McpTransport(
+            stdio_cmds={ARM: [executable]}, stdio_envs={ARM: {"PATH": "D:\\allowed"}},
+        )
+    with pytest.raises(ValueError):
+        mcp._resolved_stdio_argv([executable], {"PATH": "D:\\allowed"})
+
+
+@pytest.mark.parametrize("candidate", ["C:fixture.exe", "D:\\outside\\fixture.exe", "D:\\allowed\\.."])
+def test_windows_resolved_candidate_must_stay_in_search_directory(
+    candidate: str, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    windows = SimpleNamespace(
+        name="nt", pathsep=";", X_OK=1, access=lambda *a: pytest.fail("outside access"),
+        path=SimpleNamespace(
+            join=lambda *a: candidate, isfile=lambda *a: pytest.fail("outside stat"),
+        ),
+    )
+    monkeypatch.setattr(mcp, "os", windows)
+    with pytest.raises(RuntimeError, match="escaped"):
+        mcp._resolved_stdio_argv(["fixture.exe"], {"PATH": "D:\\allowed"})
 
 
 def test_windows_path_refuses_case_aliased_directories(monkeypatch: pytest.MonkeyPatch) -> None:
