@@ -100,9 +100,10 @@ What v2 adds, and what it still refuses to claim:
   review records and machine re-derivations, not proof that an upstream did
   not change. The recurring queue section binds per-class cadences to every
   row's window.
-- **Promotion refusal unchanged**: v2 contains zero promotion events and
-  refuses them, refuses `selected`/`admitted` sources, refuses `shipped`
-  modules, and requires empty `promotion_evidence` everywhere. The one
+- **Promotion boundary**: the initial v2 baseline contained zero promotion
+  events and refused `selected`/`admitted` sources. The twelve source
+  exceptions recorded on 2026-10-14 are described below; `shipped` modules
+  and module/runtime promotion evidence remain refused. The one
   maintained and the experimental runtime tiers predate the register; their
   rows carry optional `tier_provenance` notes that are inert by construction
   — the authoritative `INVOKE_PROFILES` tier is reconciled on every check and
@@ -147,6 +148,18 @@ repo-contained real `tests/*.py` files; existence is not execution proof.
 History (`decided_on`, reviewer, revision, digests, authorization text) is
 unchanged — see
 [the correction and inventory](../docs/governance/w1a-source-evidence-and-inventory-2026-10-18.md).
+
+U-GOV.c (2026-10-18) additionally freezes each of those twelve complete
+historical events with a literal source-to-event-ID mapping and canonical JSON
+SHA-256 digest, independent of the supplied register. Every promoted source
+must reference its one recorded event exactly once; missing, extra, renamed,
+cloned, duplicate, or cross-source events/references fail integrity. The digest
+covers every field, including `from_status`, `verification_result`,
+`supported_versions`, and `source_revisions`, and preserves array order. It
+checks fidelity to the recorded decisions after the citation correction; it
+does not authenticate the operator, prove regression execution, clear rights,
+or authorize another promotion. Changing a historical snapshot requires a
+reviewed code change as well as the register change.
 
 Exit `0` means the explicitly requested requirement passed, `1` means the
 register has semantic/currentness/completeness gaps, and `2` means the register,
