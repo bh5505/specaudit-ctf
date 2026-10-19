@@ -72,6 +72,46 @@ explicitly:
 - grade with `python -m exercise --attempt-dir <dir> --expected
   <contract>` (key in `SPECAUDIT_CTF_MCP_TRACE_KEY`).
 
+### Runner child environment (bounded)
+
+The runner does not copy its ambient environment into the head. It spawns
+`claude` with an explicit allowlist: base names that locate the binary and
+per-user CLI state (`PATH`, `HOME`/Windows profile names, config/temp/locale
+names) plus this head's explicit auth/config names (`ANTHROPIC_API_KEY`,
+`ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN`,
+`CLAUDE_CONFIG_DIR`, and the `CLAUDE_CODE_USE_BEDROCK` /
+`CLAUDE_CODE_USE_VERTEX` selectors). AWS credentials are copied only when
+`CLAUDE_CODE_USE_BEDROCK` selects Bedrock; Google credentials only when
+`CLAUDE_CODE_USE_VERTEX` selects Vertex. File-backed logins continue to work
+through `HOME`/config names. Explicit operator opt-in below can also pass a
+provider credential without a selector; the operator must ensure it is meant
+for this head.
+
+The minted trace facts travel in the private `--mcp-config` per-server `env`
+map, never in the head's environment. Stale `SPECAUDIT_CTF_MCP_TRACE*`
+values, `EXERCISE_HEAD_*` arming/control values, unrelated ambient
+credentials, proxies, and loader/injection variables are not copied by default.
+
+An operator may opt in additional credential/configuration env NAMES with
+`EXERCISE_HEAD_EXTRA_ENV` (comma/whitespace separated; at most 64 names and
+32 KiB of copied names/values; total child environment at most 128 KiB).
+Trace, arming/control, loader/injection, base/head-auth, and arbitrary proxy
+names are reserved. `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and `ALL_PROXY`
+may be named explicitly for proxy-only hosts; lowercase spellings also work
+when named and present with the same spelling on POSIX. Excess copies
+fail before any spawn. Values are copied verbatim from the runner environment and are
+never written into the argv, MCP, or attempt fields. The retained child
+stderr tail (at most 400 characters, only on failure or a non-zero exit) is
+scrubbed of copied secret values and credential-file paths. All opt-in
+values are treated as sensitive, including proxy/configuration values. If any
+copied sensitive value is shorter than 8 characters, the whole stderr tail is
+suppressed.
+The operator owns their authorization and custody, and a credential file
+still needs separate containment.
+
+This bounds the child's initial environment only. It is not an OS sandbox and
+makes no file, network, cwd, descendant, or in-flight containment claim.
+
 ## Plugin and skill
 
 Bundled layout:

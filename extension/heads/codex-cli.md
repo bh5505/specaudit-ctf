@@ -95,6 +95,41 @@ The trace is written by the MCP server; the head only writes
 --expected <contract>` (key in `SPECAUDIT_CTF_MCP_TRACE_KEY` on the
 grading side).
 
+### Runner child environment (bounded)
+
+The runner does not copy its ambient environment into `codex`. It builds an
+explicit allowlist from base names (`PATH`, `HOME`/Windows profile names,
+config/temp/locale names) and this head's auth/config names
+(`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG_ID` /
+`OPENAI_ORGANIZATION`, `OPENAI_PROJECT_ID` / `OPENAI_PROJECT`, `CODEX_HOME`).
+File-backed ChatGPT logins continue to work through `HOME`/`CODEX_HOME`.
+
+The runner then adds the three minted `SPECAUDIT_CTF_MCP_TRACE*` values to
+that bounded set; the host-config preflight above remains mandatory so codex
+forwards exactly those names to the `specaudit-ctf` server. Stale parent
+trace values, `EXERCISE_HEAD_*` arming/control values, unrelated ambient
+credentials, proxies, and loader/injection variables are not copied by default.
+
+An operator may opt in additional credential/configuration env NAMES with
+`EXERCISE_HEAD_EXTRA_ENV` (comma/whitespace separated; at most 64 names and
+32 KiB of copied names/values; total child environment at most 128 KiB).
+Trace, arming/control, loader/injection, base/head-auth, and arbitrary proxy
+names are reserved. `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and `ALL_PROXY`
+may be named explicitly for proxy-only hosts; lowercase spellings also work
+when named and present with the same spelling on POSIX. Excess copies
+fail before any spawn. Values are copied verbatim from the runner environment and are
+never written into the argv, MCP, or attempt fields. The retained child
+stderr tail (at most 400 characters, only on failure or a non-zero exit) is
+scrubbed of copied secret values and credential-file paths. All opt-in
+values are treated as sensitive, including proxy/configuration values. If any
+copied sensitive value is shorter than 8 characters, the whole stderr tail is
+suppressed.
+The operator owns their authorization and custody, and a credential file
+still needs separate containment.
+
+This bounds the child's initial environment only. It is not an OS sandbox and
+makes no file, network, cwd, descendant, or in-flight containment claim.
+
 ## Plugin and skill
 
 Bundled layout:
