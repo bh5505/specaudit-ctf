@@ -1,0 +1,259 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/bh5505/specaudit-ctf/governance/schema/review-result.v1.schema.json",
+  "title": "specaudit.ctf.governance.review-result.v1",
+  "description": "Checkout-only executed-review-result protocol for the bounded campaign unit U-GOV.d. It defines the closed shape of one genuine re-review cycle: dated executed-check results reconciled one-to-one to the governed 365 entities and 1,095 entity/trigger pairs, with sha256-bound revision-resolvable evidence. Protocol only: it grants no admission, promotion, shipment, support, custody, or recurring-operation claim; reviewer attribution is evidence, not authentication. No executed cycle has been performed under this protocol; the committed history therefore still reports recurrence false.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "schema_version",
+    "result_id",
+    "governed_history_id",
+    "governed_record_digest",
+    "reviewed_on",
+    "recorded_on",
+    "reviewer",
+    "inspected_revision",
+    "evidence",
+    "execution_source",
+    "results",
+    "record_checks",
+    "unknown_outcomes",
+    "limitations",
+    "asserts"
+  ],
+  "properties": {
+    "schema": {
+      "const": "specaudit.ctf.governance.review-result.v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "governed_history_id": {
+      "const": "attributed-review-history-v1"
+    },
+    "governed_record_digest": {
+      "$ref": "#/definitions/digest"
+    },
+    "result_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[a-z0-9][a-z0-9._-]*$"
+    },
+    "reviewed_on": {
+      "$ref": "#/definitions/date_string"
+    },
+    "recorded_on": {
+      "$ref": "#/definitions/date_string"
+    },
+    "reviewer": {
+      "$ref": "#/definitions/nonempty_string"
+    },
+    "inspected_revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 16,
+      "items": {
+        "$ref": "#/definitions/evidence_binding"
+      }
+    },
+    "execution_source": {
+      "type": "string",
+      "pattern": "^governance/reviews/executed/[0-9]{4}-[0-9]{2}-[0-9]{2}\\.[a-z0-9-]+\\.json$",
+      "maxLength": 256
+    },
+    "results": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 4096,
+      "items": {
+        "$ref": "#/definitions/result"
+      }
+    },
+    "record_checks": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "$ref": "#/definitions/record_check"
+      }
+    },
+    "unknown_outcomes": {
+      "type": "array",
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/definitions/nonempty_string"
+      }
+    },
+    "limitations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 256,
+      "items": {
+        "$ref": "#/definitions/nonempty_string"
+      }
+    },
+    "asserts": {
+      "$ref": "#/definitions/asserts"
+    }
+  },
+  "definitions": {
+    "nonempty_string": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 8192,
+      "pattern": ".*\\S.*"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "date_string": {
+      "type": "string",
+      "format": "date",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+    },
+    "entity_ref": {
+      "type": "string",
+      "pattern": "^(module|source|runtime):[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "evidence_binding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256",
+        "byte_length"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._/-]*\\.(md|yaml|json)$"
+        },
+        "sha256": {
+          "$ref": "#/definitions/digest"
+        },
+        "byte_length": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2097152
+        }
+      }
+    },
+    "result": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "entity",
+        "trigger",
+        "basis",
+        "outcome",
+        "observed_on",
+        "checked_via",
+        "evidence_ref",
+        "detail"
+      ],
+      "properties": {
+        "entity": {
+          "$ref": "#/definitions/entity_ref"
+        },
+        "trigger": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "basis": {
+          "const": "executed-check"
+        },
+        "outcome": {
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "observed_on": {
+          "$ref": "#/definitions/date_string"
+        },
+        "checked_via": {
+          "enum": [
+            "checker-rederived-inventory-reconciliation",
+            "primary-source-review",
+            "architecture-review"
+          ]
+        },
+        "evidence_ref": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "detail": {
+          "$ref": "#/definitions/nonempty_string"
+        }
+      }
+    },
+    "execution_source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "reviewed_on", "reviewer", "results"],
+      "properties": {
+        "schema": {"const": "specaudit.ctf.governance.executed-result-source.v1"},
+        "reviewed_on": {"$ref": "#/definitions/date_string"},
+        "reviewer": {"$ref": "#/definitions/nonempty_string"},
+        "results": {
+          "type": "array",
+          "minItems": 1095,
+          "maxItems": 1095,
+          "items": {"$ref": "#/definitions/result"}
+        }
+      }
+    },
+    "record_check": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "check",
+        "result",
+        "detail"
+      ],
+      "properties": {
+        "check": {
+          "$ref": "#/definitions/nonempty_string"
+        },
+        "result": {
+          "enum": [
+            "pass",
+            "fail",
+            "unknown"
+          ]
+        },
+        "detail": {
+          "$ref": "#/definitions/nonempty_string"
+        }
+      }
+    },
+    "asserts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "integrity_ok",
+        "coverage_ok",
+        "cycle_complete_ok"
+      ],
+      "properties": {
+        "integrity_ok": {
+          "type": "boolean"
+        },
+        "coverage_ok": {
+          "type": "boolean"
+        },
+        "cycle_complete_ok": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
