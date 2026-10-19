@@ -391,16 +391,27 @@ revision-bound register epoch, re-hashes sha256-bound evidence from
 offline local Git blobs at the cycle's exact 40-hex `inspected_revision`
 (same closed `cat-file`/`ls-tree` environment as U-GOV.b, never the
 working tree, never a caller-supplied path), checks heading anchors,
-binds the cycle to the independently pinned v1 genesis record digest,
-and refuses premature cycles, future observations, and unsupported
-positive claims. The epoch runtime roster is anchored to the register at
-the pinned genesis inspected revision, so coordinated substitutions that
-preserve every count still fail. Resource bounds mirror the history
-verifier (1 MiB result/evidence/register blobs, 40,000 nodes, bounded
-blob cache with one fetch per unique revision/path pair).
+cross-checks each row's `checked_via`/`evidence_ref` against the epoch
+register's declared trigger check (as in U-GOV.b, mismatches fail as
+`observation-mismatch`), requires the epoch at the same revision to
+record the cycle date itself (a 2027-04-14 cycle against the stale
+2026-10-13 epoch fails as `epoch-cycle-mismatch` without advancing the
+register), binds the cycle to the independently pinned v1 genesis record
+digest, and refuses premature cycles, stale epochs, future observations,
+and unsupported positive claims. The epoch runtime roster is anchored to
+the register at the pinned genesis inspected revision, so coordinated
+substitutions that preserve every count still fail. Resource bounds mirror
+the history verifier (1 MiB result/evidence/register blobs, 40,000 nodes,
+bounded blob cache with one fetch per unique revision/path pair).
 The JSON report keeps the fixed policy cardinalities visible when a cycle's
 register cannot be validated, and marks `counts.epoch_validated=false` so
 those policy counts are not mistaken for a reconciled epoch population.
+Reported dues (`next_due`, `queue_next_review_on`) are the epoch
+register's dues at `inspected_revision` with explicit
+`cycle_reviewed_on`/`epoch_reviewed_on` provenance
+(`provenance: epoch-dues-at-inspected-revision`), not a post-cycle
+projection: they predate the cycle when the epoch was not advanced, and a
+complete cycle advances the epoch so they lie after the cycle date.
 
 A cycle additionally names a new
 `governance/reviews/executed/<review-date>.<id>.json` source blob. The
@@ -418,11 +429,14 @@ What the protocol proves, and what it does not:
   `tests/test_governance_result.py` (tmp cycle files plus a shared
   synthetic offline clone for epoch variants, never a tracked-file write),
   covering duplicates, missing/extra pairs, wrong entities/triggers,
-  non-executed bases, date and digest tampering, unbound evidence,
-  premature dates, empty-commit relabels, mismatched or missing executed
-  sources, reused genesis revisions, broken history bindings,
-  substitute schemas, non-finite numbers, and missing/wrong Git
-  revisions/blobs.
+  checked_via/evidence_ref mismatches against the epoch declaration,
+  stale epochs against complete-looking cycles, non-executed bases, date
+  and digest tampering, unbound evidence, premature dates, empty-commit
+  relabels, mismatched or missing executed sources, reused genesis
+  revisions, broken history bindings, substitute schemas, non-finite
+  numbers, and missing/wrong Git revisions/blobs. A new evidence file
+  binds only when the same-revision epoch declares its anchor; an
+  undeclared new anchor fails as `observation-mismatch`.
 - **Operation**: no executed cycle has been performed under this
   protocol. The committed tree ships **no result artifact**, the
   governed source/runtime dues (`2027-01-11`) and module due

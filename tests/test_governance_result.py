@@ -111,11 +111,36 @@ def synth_repo(tmp_path_factory) -> Path:
         capture_output=True, text=True, timeout=180,
     )
     assert completed.returncode == 0, completed.stderr
-    # A clone carries only committed bytes, so mirror the still-untracked
-    # U-GOV.d protocol files into the clone worktree (never committed
-    # there, never written to the shared worktree). The verifier and its
-    # pinned schema load from the worktree-anchored checkout root, while
-    # evidence and register bytes keep resolving from clone Git objects.
+    # Assert the clone is usable now, not later inside _commit_variant:
+    # a detached source HEAD (or a refs/pull/* HEAD) can leave `git clone`
+    # without a checked-out worktree, which would otherwise surface as an
+    # opaque `git commit` error. Fail here with a clear fixture message.
+    head_check = subprocess.run(
+        [_TEST_GIT_BIN, "-C", str(repo), "rev-parse", "HEAD"],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert head_check.returncode == 0 and len(head_check.stdout.strip()) == 40, (
+        f"synthetic clone has no usable HEAD (source HEAD may be detached): "
+        f"{head_check.stderr.strip()}"
+    )
+    genesis_check = subprocess.run(
+        [_TEST_GIT_BIN, "-C", str(repo), "cat-file", "-e",
+         GENESIS_INSPECTED_REVISION],
+        capture_output=True, text=True, timeout=120,
+    )
+    assert genesis_check.returncode == 0, (
+        "pinned genesis revision does not resolve in the synthetic clone; "
+        f"clone may be shallow or partial: {genesis_check.stderr.strip()}"
+    )
+    # The clone carries committed bytes, including the U-GOV.d protocol
+    # files committed by this PR. Mirror them into the clone worktree so
+    # the suite also runs when those files are present in the source
+    # worktree but not yet committed there; mirrored bytes ARE committed
+    # into synthetic variants below via `git add -A` as explicit isolated
+    # synthetic history (never written to the shared worktree). The
+    # verifier and its pinned schema load from the worktree-anchored
+    # checkout root, while evidence and register bytes keep resolving
+    # from clone Git objects.
     for rel in (RESULT_MODULE_REL, RESULT_SCHEMA_REL):
         target = repo / rel
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -151,7 +176,12 @@ def _commit_variant(
     deletions: tuple[str, ...] = (),
     allow_empty: bool = False,
 ) -> str:
-    """Reset the worktree to pristine bytes, apply one variant, commit it."""
+    """Reset the worktree to pristine bytes, apply one variant, commit it.
+
+    `git add -A` stages every worktree difference, including the mirrored
+    protocol files from the fixture: synthetic variants are explicit
+    isolated clone history, never shared-worktree writes.
+    """
 
     blobs = _real_blobs()
     for rel, data in blobs.items():
@@ -170,6 +200,39 @@ def _commit_variant(
         repo, "-c", "user.name=gov-result-test",
         "-c", "user.email=gov-result-test@example.invalid",
         "commit", "-qm", message, *(["--allow-empty"] if allow_empty else []),
+    )
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _commit_blobs(
+    repo: Path,
+    message: str,
+    blobs: dict[str, bytes],
+    *,
+    new_files: dict[str, bytes] | None = None,
+) -> str:
+    """Commit an explicit synthetic blob set (advanced epochs).
+
+    Unlike _commit_variant (which resets to the committed stale register),
+    this writes the given blobs verbatim — including an epoch register that
+    records the synthetic cycle date — then stages everything with
+    `git add -A` as explicit isolated synthetic history.
+    """
+
+    for rel, data in blobs.items():
+        target = repo / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    (repo / SYNTH_EXTRA_REL).unlink(missing_ok=True)
+    for rel, data in (new_files or {}).items():
+        target = repo / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(data)
+    _git(repo, "add", "-A")
+    _git(
+        repo, "-c", "user.name=gov-result-test",
+        "-c", "user.email=gov-result-test@example.invalid",
+        "commit", "-qm", message,
     )
     return _git(repo, "rev-parse", "HEAD")
 
@@ -207,6 +270,7 @@ def _result_rows(
     basis: str = "executed-check",
     fail_pairs: set[tuple[str, str]] = frozenset(),
     ref_overrides: dict[tuple[str, str], str] | None = None,
+    via_overrides: dict[tuple[str, str], str] | None = None,
 ) -> list[dict[str, str]]:
     return [
         {
@@ -215,7 +279,7 @@ def _result_rows(
             "basis": basis,
             "outcome": "fail" if (entity, trigger) in fail_pairs else "pass",
             "observed_on": reviewed_on,
-            "checked_via": via,
+            "checked_via": (via_overrides or {}).get((entity, trigger), via),
             "evidence_ref": (ref_overrides or {}).get((entity, trigger), ref),
             "detail": (
                 f"Synthetic dated review result for {entity} / {trigger}; "
@@ -232,6 +296,7 @@ def _source_blob(
     reviewed_on: str = CYCLE_REVIEWED,
     fail_pairs: set[tuple[str, str]] = frozenset(),
     ref_overrides: dict[tuple[str, str], str] | None = None,
+    via_overrides: dict[tuple[str, str], str] | None = None,
 ) -> bytes:
     return json.dumps(
         {
@@ -243,11 +308,90 @@ def _source_blob(
                 reviewed_on=reviewed_on,
                 fail_pairs=fail_pairs,
                 ref_overrides=ref_overrides,
+                via_overrides=via_overrides,
             ),
         },
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
+
+
+def _advanced_register_bytes(
+    base_bytes: bytes, *, reviewed_on: str = CYCLE_REVIEWED,
+) -> bytes:
+    """Advance every epoch currentness window to the synthetic cycle date.
+
+    v1 defines only full-population cycles: a complete cycle's revision-bound
+    epoch must record the cycle date itself, with each due equal to the cycle
+    date plus the frozen per-class cadence (source/runtime 90 days, module
+    182 days) and the queue next_review_on equal to the earliest due. This
+    is explicit synthetic history for the clone only; the committed register
+    still records 2026-10-13 with dues 2027-01-11/2027-04-13 and no shipped
+    cycle. Roster, trigger sets, and declared checks are otherwise untouched.
+    """
+
+    from datetime import timedelta
+
+    doc = yaml.safe_load(base_bytes.decode("utf-8"))
+    cycle_day = date.fromisoformat(reviewed_on)
+    cadence = {"modules": 182, "sources": 90, "runtime": 90}
+    for section in ("modules", "sources", "runtime"):
+        for row in doc[section]:
+            days = cadence[section]
+            row["currentness"]["reviewed_on"] = reviewed_on
+            row["currentness"]["review_due_on"] = (
+                cycle_day + timedelta(days=days)
+            ).isoformat()
+    earliest = (cycle_day + timedelta(days=90)).isoformat()
+    doc["currentness_queue"]["next_review_on"] = earliest
+    return yaml.safe_dump(doc, sort_keys=True).encode("utf-8")
+
+
+def _advanced_blobs(
+    *, reviewed_on: str = CYCLE_REVIEWED,
+    ref_overrides: dict[tuple[str, str], str] | None = None,
+    via_overrides: dict[tuple[str, str], str] | None = None,
+    fail_pairs: set[tuple[str, str]] = frozenset(),
+    declare_refs: bool = True,
+) -> dict[str, bytes]:
+    """Blobs for a synthetic complete cycle with an advanced epoch.
+
+    The register epoch records the cycle date itself so cycle/epoch
+    consistency holds; rows reproduce the epoch's declared checks so the
+    observation cross-check holds; the execution source matches the summary
+    rows. Fixture only, not an actual campaign review. When declare_refs is
+    False, ref_overrides apply to rows/source only, leaving the epoch
+    declaration untouched so the cross-check fails (adversarial).
+    """
+
+    base_register = (ROOT / REGISTER_REL).read_bytes()
+    register = _advanced_register_bytes(base_register, reviewed_on=reviewed_on)
+    if ref_overrides and declare_refs:
+        doc = yaml.safe_load(register.decode("utf-8"))
+        override_index = dict(ref_overrides)
+        for section, key, prefix in (
+            ("modules", "id", "module"),
+            ("sources", "id", "source"),
+            ("runtime", "capability_id", "runtime"),
+        ):
+            for row in doc[section]:
+                entity = f"{prefix}:{row.get(key)}"
+                for check in row["currentness"]["trigger_checks"]:
+                    pair = (entity, check["trigger"])
+                    if pair in override_index:
+                        check["evidence_ref"] = override_index.pop(pair)
+        # Any leftover override names an unknown pair; fail loudly.
+        assert not override_index, f"unknown override pairs: {sorted(override_index)}"
+        register = yaml.safe_dump(doc, sort_keys=True).encode("utf-8")
+    return {
+        REGISTER_REL: register,
+        EVIDENCE_MD_REL: (ROOT / EVIDENCE_MD_REL).read_bytes(),
+        REGISTER_SCHEMA_REL: (ROOT / REGISTER_SCHEMA_REL).read_bytes(),
+        SYNTH_EXECUTION_REL: _source_blob(
+            register, reviewed_on=reviewed_on, fail_pairs=fail_pairs,
+            ref_overrides=ref_overrides, via_overrides=via_overrides,
+        ),
+    }
 
 
 def _result_for_blobs(
@@ -260,6 +404,7 @@ def _result_for_blobs(
     basis: str = "executed-check",
     fail_pairs: set[tuple[str, str]] = frozenset(),
     ref_overrides: dict[tuple[str, str], str] | None = None,
+    via_overrides: dict[tuple[str, str], str] | None = None,
     asserts_complete: bool = True,
     asserts_integrity: bool = True,
     asserts_coverage: bool = True,
@@ -279,6 +424,7 @@ def _result_for_blobs(
     results = _result_rows(
         blobs[REGISTER_REL], reviewed_on=reviewed_on, basis=basis,
         fail_pairs=fail_pairs, ref_overrides=ref_overrides,
+        via_overrides=via_overrides,
     )
     return {
         "schema": RESULT_SCHEMA_ID,
@@ -459,9 +605,10 @@ def test_result_schema_is_canonical_and_pinned() -> None:
 # ---------------------------------------------------------------------------
 
 def test_valid_future_cycle_verifies_complete(synth_repo, tmp_path) -> None:
-    rev = _commit_variant(synth_repo, "cycle epoch with new dated result source")
+    blobs = _advanced_blobs()
+    rev = _commit_blobs(synth_repo, "cycle epoch with new dated result source", blobs)
     assert rev != GENESIS_INSPECTED_REVISION
-    document = _result_for_blobs(_real_blobs(), rev)
+    document = _result_for_blobs(blobs, rev)
     report = _verify(document, repo_root=synth_repo)
     assert report.integrity_ok is True
     assert report.coverage_ok is True
@@ -476,10 +623,18 @@ def test_valid_future_cycle_verifies_complete(synth_repo, tmp_path) -> None:
     assert report.runtimes_observed == 227
     assert report.passes == 1095
     assert report.failures == 0
-    assert report.next_due_source == "2027-01-11"
-    assert report.next_due_runtime == "2027-01-11"
-    assert report.next_due_module == "2027-04-13"
-    assert report.queue_next_review_on == "2027-01-11"
+    # The epoch is advanced to the cycle date, so dues lie after the cycle.
+    assert report.next_due_source == "2027-07-13"
+    assert report.next_due_runtime == "2027-07-13"
+    assert report.next_due_module == "2027-10-13"
+    assert report.queue_next_review_on == "2027-07-13"
+    assert report.cycle_reviewed_on == CYCLE_REVIEWED
+    assert report.epoch_reviewed_on == CYCLE_REVIEWED
+    assert report.due_provenance == "epoch-dues-at-inspected-revision"
+    payload_due = report.as_dict()["next_due"]
+    assert payload_due["provenance"] == "epoch-dues-at-inspected-revision"
+    assert payload_due["cycle_reviewed_on"] == CYCLE_REVIEWED
+    assert payload_due["epoch_reviewed_on"] == CYCLE_REVIEWED
     assert report.register_revision == 2
     assert report.as_dict()["schema"] == REPORT_SCHEMA
     check_names = {c["check"] for c in report.as_dict()["checks"]}
@@ -496,6 +651,139 @@ def test_valid_future_cycle_verifies_complete(synth_repo, tmp_path) -> None:
         assert payload["cycle_complete_ok"] is True
     repeat = _run_cli_in(synth_repo, target, require="complete")
     assert repeat.stdout == _run_cli_in(synth_repo, target, require="complete").stdout
+
+
+def test_synth_clone_has_usable_head_and_genesis(synth_repo) -> None:
+    """The fixture clone must be usable before any variant commits.
+
+    Guards the detached-HEAD/refs/pull case: `git clone` exit 0 alone does
+    not prove the clone checked out this commit, so assert HEAD parses and
+    the pinned genesis revision resolves here with a clear message instead
+    of an opaque `git commit` failure inside _commit_variant.
+    """
+
+    head = _git(synth_repo, "rev-parse", "HEAD")
+    assert len(head) == 40
+    _git(synth_repo, "cat-file", "-e", GENESIS_INSPECTED_REVISION)
+
+
+def test_row_checked_via_mismatch_fails_observation(synth_repo) -> None:
+    """A valid-vocabulary checked_via that disagrees with the epoch fails.
+
+    Mirrors governance/reviews.py observation-mismatch: the summary rows and
+    the revision-bound execution source agree with each other, so only the
+    epoch cross-check fires.
+    """
+
+    pair = ("source:R01", "upstream-revision-change")
+    blobs = _advanced_blobs(via_overrides={pair: "architecture-review"})
+    rev = _commit_blobs(synth_repo, "cycle epoch via mismatch", blobs)
+    document = _result_for_blobs(
+        blobs, rev, via_overrides={pair: "architecture-review"},
+        asserts_complete=False, asserts_integrity=False, asserts_coverage=False,
+    )
+    report = _verify(document, repo_root=synth_repo)
+    assert report.integrity_ok is False
+    assert report.cycle_complete_ok is False
+    assert "observation-mismatch" in _codes(report)
+    assert "execution-source-mismatch" not in _codes(report)
+
+
+def test_row_evidence_ref_swap_fails_observation(synth_repo) -> None:
+    """A bound-but-undeclared evidence anchor fails the epoch cross-check.
+
+    Both swapped anchors exist in bound evidence, so binding/anchor checks
+    pass; only the epoch declaration comparison fires.
+    """
+
+    blobs = _advanced_blobs()
+    pairs = _pairs_from_register(blobs[REGISTER_REL])
+    first = (pairs[0][0], pairs[0][1], pairs[0][3])
+    second = next(
+        (entity, trigger, ref) for entity, trigger, _, ref in pairs
+        if ref != first[2]
+    )
+    first_pair, first_ref = (first[0], first[1]), first[2]
+    second_pair, second_ref = (second[0], second[1]), second[2]
+    overrides = {first_pair: second_ref, second_pair: first_ref}
+    swapped = _advanced_blobs(ref_overrides=overrides, declare_refs=False)
+    rev = _commit_blobs(synth_repo, "cycle epoch ref swap", swapped)
+    document = _result_for_blobs(
+        swapped, rev, ref_overrides=overrides,
+        asserts_complete=False, asserts_integrity=False, asserts_coverage=False,
+    )
+    report = _verify(document, repo_root=synth_repo)
+    assert report.integrity_ok is False
+    assert report.cycle_complete_ok is False
+    assert "observation-mismatch" in _codes(report)
+    assert "evidence-ref-unbound" not in _codes(report)
+    assert "evidence-anchor-missing" not in _codes(report)
+
+
+def test_undeclared_new_evidence_anchor_fails_observation(synth_repo) -> None:
+    """A new bound file cited without an epoch declaration fails closed."""
+
+    new_md = (
+        b"# Synthetic cycle evidence\n\n"
+        b"Undeclared field notes for one re-checked pair.\n"
+    )
+    probe = _advanced_blobs()
+    pair = _pairs_from_register(probe[REGISTER_REL])[0]
+    victim = (pair[0], pair[1])
+    overrides = {victim: SYNTH_EXTRA_REL + "#synthetic-cycle-evidence"}
+    # Rows and the revision-bound source cite the new file; the epoch
+    # register still declares the old ref, so only the cross-check fires.
+    blobs = _advanced_blobs(ref_overrides=overrides, declare_refs=False)
+    blobs[SYNTH_EXTRA_REL] = new_md
+    rev = _commit_blobs(
+        synth_repo, "cycle with undeclared evidence", blobs,
+        new_files={SYNTH_EXTRA_REL: new_md},
+    )
+    document = _result_for_blobs(
+        blobs, rev, ref_overrides=overrides,
+        asserts_complete=False, asserts_integrity=False, asserts_coverage=False,
+    )
+    source_doc = json.loads(blobs[SYNTH_EXECUTION_REL].decode("utf-8"))
+    summary_ref = next(
+        r["evidence_ref"] for r in document["results"]
+        if (r["entity"], r["trigger"]) == victim
+    )
+    source_ref = next(
+        r["evidence_ref"] for r in source_doc["results"]
+        if (r["entity"], r["trigger"]) == victim
+    )
+    assert summary_ref == source_ref == SYNTH_EXTRA_REL + "#synthetic-cycle-evidence"
+    report = _verify(document, repo_root=synth_repo)
+    assert report.integrity_ok is False
+    assert "observation-mismatch" in _codes(report)
+
+
+def test_stale_epoch_against_complete_cycle_fails(synth_repo) -> None:
+    """A 2027-04-14 cycle against the stale 2026-10-13 epoch fails closed.
+
+    The frozen MIN_CYCLE_REVIEWED_ON gate passes, but the epoch still
+    records last-reviewed 2026-10-13 with pre-cycle dues, so
+    epoch-cycle-mismatch fires. The verifier never advances the register.
+    """
+
+    rev = _commit_variant(synth_repo, "stale epoch with new dated source")
+    document = _result_for_blobs(
+        _real_blobs(), rev,
+        asserts_complete=False, asserts_integrity=False, asserts_coverage=False,
+    )
+    report = _verify(document, repo_root=synth_repo)
+    assert report.integrity_ok is False
+    assert report.cycle_complete_ok is False
+    assert "epoch-cycle-mismatch" in _codes(report)
+    # Provenance stays explicit: pre-cycle dues next to a failed cycle.
+    assert report.cycle_reviewed_on == CYCLE_REVIEWED
+    assert report.epoch_reviewed_on == "2026-10-13"
+    assert report.next_due_source == "2027-01-11"
+    assert report.queue_next_review_on == "2027-01-11"
+    assert report.due_provenance == "epoch-dues-at-inspected-revision"
+    assert report.as_dict()["next_due"]["provenance"] == (
+        "epoch-dues-at-inspected-revision"
+    )
 
 
 def test_empty_commit_relabel_of_old_evidence_is_not_an_executed_cycle(
@@ -545,16 +833,10 @@ def test_summary_rows_must_match_new_revision_bound_result_source(synth_repo) ->
 def test_fail_outcomes_do_not_block_completion(synth_repo) -> None:
     """Completion verifies execution with evidence, not greenness."""
 
-    blobs = _real_blobs()
     failed = {("source:R01", "upstream-revision-change"),
               ("module:AUD-01", "criteria-or-threat-change")}
-    blobs[SYNTH_EXECUTION_REL] = _source_blob(
-        blobs[REGISTER_REL], fail_pairs=failed,
-    )
-    rev = _commit_variant(
-        synth_repo, "cycle epoch with findings",
-        updates={SYNTH_EXECUTION_REL: blobs[SYNTH_EXECUTION_REL]},
-    )
+    blobs = _advanced_blobs(fail_pairs=failed)
+    rev = _commit_blobs(synth_repo, "cycle epoch with findings", blobs)
     document = _result_for_blobs(
         blobs, rev, fail_pairs=failed,
     )
@@ -878,28 +1160,38 @@ def test_missing_and_symlink_evidence_fail_closed(synth_repo) -> None:
 
 
 def test_new_evidence_file_is_supported(synth_repo) -> None:
-    """Genuine new evidence binds exactly like the carried-forward files."""
+    """Genuine new evidence binds when the epoch declares it.
 
-    blobs = dict(_real_blobs())
+    Rows must reproduce the epoch register's declared evidence_ref, so a
+    new evidence file needs a matching epoch declaration at the same
+    revision: the register is advanced to the cycle date and its three
+    re-checked pairs are re-pointed at the new file. An undeclared new
+    anchor still fails as observation-mismatch (see below).
+    """
+
     new_md = (
         b"# Synthetic cycle evidence\n\n"
         b"Second-cycle field notes for three re-checked pairs.\n"
     )
-    blobs[SYNTH_EXTRA_REL] = new_md
+    base_register = (ROOT / REGISTER_REL).read_bytes()
+    advanced = _advanced_register_bytes(base_register)
     first_pairs = [
         (entity, trigger) for entity, trigger, _, _ in
-        _pairs_from_register(blobs[REGISTER_REL])[:3]
+        _pairs_from_register(advanced)[:3]
     ]
     overrides = {
         pair: SYNTH_EXTRA_REL + "#synthetic-cycle-evidence"
         for pair in first_pairs
     }
+    blobs = _advanced_blobs(ref_overrides=overrides)
+    blobs[SYNTH_EXTRA_REL] = new_md
+    # Rebuild the execution source against the declaring register so the
+    # summary rows, the source blob, and the epoch declaration agree.
     blobs[SYNTH_EXECUTION_REL] = _source_blob(
         blobs[REGISTER_REL], ref_overrides=overrides,
     )
-    rev = _commit_variant(
-        synth_repo, "cycle with new evidence",
-        updates={SYNTH_EXECUTION_REL: blobs[SYNTH_EXECUTION_REL]},
+    rev = _commit_blobs(
+        synth_repo, "cycle with new evidence", blobs,
         new_files={SYNTH_EXTRA_REL: new_md},
     )
     document = _result_for_blobs(blobs, rev, ref_overrides=overrides)
@@ -1023,8 +1315,9 @@ def test_unknown_and_non_commit_revisions_fail_closed(synth_repo) -> None:
 def test_git_is_not_run_per_result(synth_repo) -> None:
     """1095 results sharing four evidence blobs need one fetch per blob."""
 
-    rev = _commit_variant(synth_repo, "cycle epoch call counts", allow_empty=True)
-    document = _result_for_blobs(_real_blobs(), rev)
+    blobs = _advanced_blobs()
+    rev = _commit_blobs(synth_repo, "cycle epoch call counts", blobs)
+    document = _result_for_blobs(blobs, rev)
     store = _RevisionBlobStore(synth_repo)
     report = _verify(document, repo_root=synth_repo, store=store)
     assert report.cycle_complete_ok is True

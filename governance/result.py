@@ -7,9 +7,15 @@ entities, each with three declared triggers = 1,095 entity/trigger pairs)
 at that cycle's own revision-bound register epoch, re-hashes sha256-bound
 evidence from offline local Git blobs, requires a new date-named Git blob
 with 1,095 detailed result rows matching the cycle summary, checks heading
-anchors, binds the cycle to the independently pinned v1 genesis record
-digest, and refuses premature cycles, empty-commit relabels, future
-observations, and unsupported positive claims in deterministic JSON.
+anchors, cross-checks each row's ``checked_via``/``evidence_ref`` against
+the epoch register's declared trigger check, requires the epoch register
+at the same revision to record the cycle date itself, binds the cycle to
+the independently pinned v1 genesis record digest, and refuses premature
+cycles, stale epochs, empty-commit relabels, future observations, and
+unsupported positive claims in deterministic JSON. Reported dues are the
+epoch register's dues at ``inspected_revision`` with explicit
+``cycle_reviewed_on``/``epoch_reviewed_on`` provenance, not a post-cycle
+projection.
 
 Protocol versus operation: this module defines what a genuine re-review
 cycle must prove and verifies it when one is presented. It does not perform
@@ -158,6 +164,9 @@ class ReviewResultReport:
     next_due_runtime: str | None
     next_due_module: str | None
     queue_next_review_on: str | None
+    cycle_reviewed_on: str | None
+    epoch_reviewed_on: str | None
+    due_provenance: str
     checks: tuple[Mapping[str, Any], ...]
     unknown_outcomes: tuple[str, ...]
     limitations: tuple[str, ...]
@@ -208,6 +217,15 @@ class ReviewResultReport:
                 "runtime": self.next_due_runtime,
                 "module": self.next_due_module,
                 "queue_next_review_on": self.queue_next_review_on,
+                # Provenance: these are the revision-bound epoch
+                # register's dues at inspected_revision, not a
+                # post-cycle projection. They predate the cycle when
+                # the epoch was not advanced (epoch_reviewed_on !=
+                # cycle_reviewed_on); a complete cycle advances the
+                # epoch so they lie after the cycle date.
+                "provenance": self.due_provenance,
+                "cycle_reviewed_on": self.cycle_reviewed_on,
+                "epoch_reviewed_on": self.epoch_reviewed_on,
             },
             "checks": [dict(check) for check in self.checks],
             "unknown_outcomes": list(self.unknown_outcomes),
@@ -691,6 +709,35 @@ def verify_result(
             "cycle cannot be reconciled against its own population",
         )
 
+    # --- cycle/epoch consistency ---------------------------------------
+    # The frozen MIN_CYCLE_REVIEWED_ON gate alone would let a cycle dated
+    # just after the latest governed due verify complete against a stale
+    # epoch that still records 2026-10-13 with dues 2027-01-11/2027-04-13.
+    # v1 defines only full-population cycles, so the revision-bound epoch
+    # at the cycle's own inspected_revision must record the cycle itself:
+    # every entity's epoch reviewed_on must equal the cycle reviewed_on.
+    # This fails closed on a stale epoch; it never invents operation and
+    # never advances the register — a genuine future cycle must commit an
+    # updated register at the same revision. Dues then follow as
+    # reviewed_on plus the frozen per-class cadence (already validated).
+    if epoch is not None and reviewed is not None:
+        epoch_reviewed_values = {
+            info.get("reviewed_on") for info in epoch.expected.values()
+        }
+        if (
+            len(epoch_reviewed_values) != 1
+            or next(iter(epoch_reviewed_values)) != reviewed.isoformat()
+        ):
+            sample = sorted(epoch_reviewed_values)[:3]
+            _add(
+                issues, "integrity", "epoch-cycle-mismatch", "result",
+                f"cycle reviewed_on {reviewed.isoformat()} does not match "
+                f"the revision-bound epoch register currentness "
+                f"(epoch reviewed_on values {sample!r}); the epoch at the "
+                "cycle revision must record the cycle date itself, or the "
+                "cycle reconciles against already-overdue obligations",
+            )
+
     # --- heading anchors from revision-bound Markdown ------------------
     anchors: dict[str, set[str]] = {}
     if inspected is not None:
@@ -803,6 +850,25 @@ def verify_result(
                     issues, "integrity", "unknown-trigger", opath,
                     f"unknown trigger {trigger!r} for {entity!r}",
                 )
+            else:
+                # Mirror the history verifier: a row must reproduce the
+                # epoch register's declared method and evidence for its
+                # (entity, trigger), not merely name a known pair. A
+                # mismatched method or an unrelated bound anchor is a
+                # self-declared check, not a reconciled one.
+                recorded_check = info["checks"].get(trigger, {})
+                if checked_via != recorded_check.get("checked_via"):
+                    _add(
+                        issues, "integrity", "observation-mismatch", opath,
+                        f"checked_via {checked_via!r} does not match the "
+                        f"epoch register record for {entity} {trigger}",
+                    )
+                if item.get("evidence_ref") != recorded_check.get("evidence_ref"):
+                    _add(
+                        issues, "integrity", "observation-mismatch", opath,
+                        "evidence_ref does not match the epoch register "
+                        f"record for {entity} {trigger}",
+                    )
         observed_on = _parse_date(
             item.get("observed_on"), path=f"{opath}.observed_on", issues=issues
         )
@@ -1003,8 +1069,23 @@ def verify_result(
 
     # Report expected counts from the validated cycle epoch. Each v1 epoch
     # must carry the same exact governed roster/trigger policy, while its
-    # revision and due dates advance with history.
+    # revision and due dates advance with history. The reported dues are
+    # the epoch register's dues at inspected_revision, not a post-cycle
+    # projection: they predate the cycle when the epoch was not advanced.
+    # cycle_reviewed_on / epoch_reviewed_on make that provenance explicit
+    # next to cycle_complete_ok.
+    cycle_reviewed_on = reviewed.isoformat() if reviewed is not None else None
     if epoch is not None:
+        _epoch_reviewed_values = {
+            info.get("reviewed_on") for info in epoch.expected.values()
+        }
+        if len(_epoch_reviewed_values) == 1:
+            _only = next(iter(_epoch_reviewed_values))
+            epoch_reviewed_on: str | None = (
+                _only if isinstance(_only, str) else None
+            )
+        else:
+            epoch_reviewed_on = None
         pairs_expected = sum(
             len(info["triggers"]) for info in epoch.expected.values()
         )
@@ -1035,6 +1116,8 @@ def verify_result(
         next_due_runtime = None
         next_due_module = None
         queue_next = None
+        epoch_reviewed_on = None
+    due_provenance = "epoch-dues-at-inspected-revision"
 
     latest_entities = {entity for entity, _trigger in seen_pairs}
     observed_sources = sorted(
@@ -1081,6 +1164,9 @@ def verify_result(
         next_due_runtime=next_due_runtime,
         next_due_module=next_due_module,
         queue_next_review_on=queue_next,
+        cycle_reviewed_on=cycle_reviewed_on,
+        epoch_reviewed_on=epoch_reviewed_on,
+        due_provenance=due_provenance,
         checks=checks_sorted,
         unknown_outcomes=tuple(sorted(unknown_outcomes)),
         limitations=tuple(sorted(limitations)),
