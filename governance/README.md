@@ -377,3 +377,85 @@ and `1e999`, revision-bound evidence across later working-tree edits,
 missing/wrong revisions and blobs, symlink substitution, FIFO refusal
 without hanging, backdated successors, and renamed envelopes. No test
 claims a satisfiable positive recurrence in v1.
+
+## Executed review results (U-GOV.d, 2026-10-19)
+
+`governance/result.py` is the revision-bound executed-review-result
+verifier for the closed review-result v1 protocol (schema
+`governance/schema/review-result.v1.schema.json`, byte-pinned by the
+verifier). It reconciles one result cycle's dated `executed-check`
+outcomes one-to-one against the exact governed population — 109 sources
++ 29 modules + 227 runtimes = 365 entities, each with three declared
+triggers = 1,095 entity/trigger pairs — at that cycle's own
+revision-bound register epoch, re-hashes sha256-bound evidence from
+offline local Git blobs at the cycle's exact 40-hex `inspected_revision`
+(same closed `cat-file`/`ls-tree` environment as U-GOV.b, never the
+working tree, never a caller-supplied path), checks heading anchors,
+binds the cycle to the independently pinned v1 genesis record digest,
+and refuses premature cycles, future observations, and unsupported
+positive claims. The epoch runtime roster is anchored to the register at
+the pinned genesis inspected revision, so coordinated substitutions that
+preserve every count still fail. Resource bounds mirror the history
+verifier (1 MiB result/evidence/register blobs, 40,000 nodes, bounded
+blob cache with one fetch per unique revision/path pair).
+The JSON report keeps the fixed policy cardinalities visible when a cycle's
+register cannot be validated, and marks `counts.epoch_validated=false` so
+those policy counts are not mistaken for a reconciled epoch population.
+
+A cycle additionally names a new
+`governance/reviews/executed/<review-date>.<id>.json` source blob. The
+closed schema requires 1,095 detailed, dated result rows in that blob;
+the verifier checks its Git bytes and digest, requires that the path was
+absent at the genesis revision, and compares every source row to the
+caller-selected cycle summary. A different or empty commit that only
+relabels the 2026 trigger metadata cannot supply this source and fails.
+
+What the protocol proves, and what it does not:
+
+- **Protocol**: the closed shape a genuine re-review cycle must take
+  and the checks that decide it. A well-formed future cycle verifies
+  `complete`; causal coverage lives in
+  `tests/test_governance_result.py` (tmp cycle files plus a shared
+  synthetic offline clone for epoch variants, never a tracked-file write),
+  covering duplicates, missing/extra pairs, wrong entities/triggers,
+  non-executed bases, date and digest tampering, unbound evidence,
+  premature dates, empty-commit relabels, mismatched or missing executed
+  sources, reused genesis revisions, broken history bindings,
+  substitute schemas, non-finite numbers, and missing/wrong Git
+  revisions/blobs.
+- **Operation**: no executed cycle has been performed under this
+  protocol. The committed tree ships **no result artifact**, the
+  governed source/runtime dues (`2027-01-11`) and module due
+  (`2027-04-13`) are unsatisfied, and the v1 history verifier's
+  `recurring_operation_ok` remains false. A cycle dated before the
+  latest governed due date (`2027-04-13`; v1 defines only
+  full-population cycles) fails closed as `cycle-too-early`, and new
+  dates on the exact genesis revision or an empty successor fail as
+  relabeled replays, so recurrence stays false before genuine future
+  cycles. Fail outcomes do
+  not block completion by themselves: the protocol verifies custody,
+  one-to-one reconciliation and internal consistency of attributed result
+  records, not that every check passed. Reviewer attribution is evidence,
+  not authentication; the verifier cannot prove the human checks occurred or
+  that their conclusions are true. Independent review of the source content
+  remains necessary when an actual cycle is recorded.
+- **W1/W2 closure**: this unit closes neither. No source admission, no
+  runtime/module promotion, no shipment or support claim, and no W2 work
+  is implemented here; the twelve frozen 2026-10-14 promotion snapshots
+  are never rewritten.
+
+```bash
+# No tracked result artifact exists, so there is nothing to check yet:
+# every --require against a future cycle file reports on that file only.
+python3 -m governance.result check \
+  --result /tmp/<future-cycle>.json \
+  --as-of 2027-04-16 --require complete
+```
+
+Exit `0` means only the requested requirement passed (`integrity`,
+`coverage`, or `complete`); `1` means the cycle has gaps for it; `2`
+means the result file, schema, arguments, or Git environment are
+invalid. The v1 history check above is unchanged: its bytes, digests,
+and verdict are preserved, and a future history version — not a result
+file alone — is what could one day bind a completed cycle to
+recurrence.
