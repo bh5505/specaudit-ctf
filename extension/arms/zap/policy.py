@@ -1,4 +1,4 @@
-"""Read views and dispatch actions for the zaproxy arm (native API)."""
+"""Connection and request input for the operator-configured ZAP native API."""
 
 from __future__ import annotations
 
@@ -8,104 +8,41 @@ from urllib import parse as urllib_parse
 ARM_ID = "zaproxy"
 ENV_ENDPOINT = "ZAP_API_ENDPOINT"
 ENV_API_KEY = "ZAP_API_KEY"
-ENV_DISPATCH_SCOPE = "ZAP_DISPATCH_SCOPE"
-
-# Read tier: exact allowlisted view endpoints (native JSON API GETs).
-# Every param key is whitelisted per action; nothing else is forwarded.
-ALLOWED_VIEWS = {
-    "version": "/JSON/core/view/version/",
-    "hosts": "/JSON/core/view/hosts/",
-    "urls": "/JSON/core/view/urls/",
-    "sites": "/JSON/core/view/sites/",
-    "alerts": "/JSON/alert/view/alerts/",
-    "alerts_summary": "/JSON/alert/view/alertsSummary/",
-    "messages": "/JSON/core/view/messages/",
-    "pscan_records": "/JSON/pscan/view/recordsToScan/",
-    "ascan_status": "/JSON/ascan/view/status/",
-    "ascan_policies": "/JSON/ascan/view/scanPolicies/",
-    "ascan_results": "/JSON/ascan/view/results/",
-    "spider_status": "/JSON/spider/view/status/",
-    "spider_results": "/JSON/spider/view/results/",
-    "contexts": "/JSON/context/view/contextList/",
-}
-
-# Per-action parameter whitelist. start/count are digits-only;
-# baseurl must be an http(s) URL.
-VIEW_PARAMS = {
-    "alerts": ("baseurl", "start", "count"),
-    "alerts_summary": ("baseurl",),
-    "messages": ("start", "count"),
-    "hosts": ("start", "count"),
-    "urls": ("start", "count"),
-    "ascan_results": ("scanId",),
-    "spider_results": ("scanId",),
-}
-
-# Dispatch tier: scan launches against a target URL.
-DISPATCH_ACTIONS = {
-    "ascan_scan": "/JSON/ascan/action/scan/",
-    "spider_scan": "/JSON/spider/action/scan/",
-}
-
-# Everything else on the native API (other actions, mutations, shutdown,
-# coreAction, network changes, users, snapshots) is not on any tier.
-
-MAX_RESPONSE_CHARS = 512 * 1024
 CALL_TIMEOUT = 30.0
-SCAN_TIMEOUT = 120.0
-
+MAX_RESPONSE_CHARS = 512 * 1024
 CAVEATS = (
-    "First-party DAST role on the free ZAP native API (Community-grade "
-    "edition suffices). Read tier is the exact /JSON/*/view/ allowlist; "
-    "ascan/spider dispatch defaults refused until ZAP_DISPATCH_SCOPE "
-    "names the target. Passive results surface via alerts/alerts_summary."
+    "Requests go to the configured ZAP API endpoint. The operator chooses "
+    "the API path, method, parameters, and any scan target."
 )
 
 
 def endpoint_url() -> str | None:
-    """Return a validated http(s) base URL, else None."""
-    from ..mcp_client import HttpTransportPolicy, configured_http_url
+    """Return a usable ZAP API base URL, else None."""
+    from ..mcp_client import configured_http_url
 
-    return configured_http_url(
-        os.environ.get(ENV_ENDPOINT), HttpTransportPolicy.general_http()
-    )
+    return configured_http_url(os.environ.get(ENV_ENDPOINT))
 
 
-def clean_view_params(action: str, args: dict) -> tuple[dict | None, str | None]:
-    """Whitelist and validate the params forwarded to a view endpoint.
-
-    Returns (params, None) to proceed or (None, refusal) to fail closed.
-    """
-    allowed = VIEW_PARAMS.get(action, ())
-    cleaned: dict[str, str] = {}
-    for key, value in args.items():
-        if key not in allowed:
-            return None, f"parameter {key!r} is not allowed for {action!r}"
-        if key in ("start", "count", "scanId"):
-            if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-                return None, f"parameter {key!r} must be a non-negative integer"
-            cleaned[key] = str(value)
-        elif key == "baseurl":
-            if not isinstance(value, str) or not value.strip():
-                return None, "parameter 'baseurl' must be a non-empty string"
-            parsed = urllib_parse.urlparse(value.strip())
-            if parsed.scheme not in ("http", "https") or not parsed.hostname:
-                return None, "parameter 'baseurl' must be an http(s) URL"
-            cleaned[key] = value.strip()
-        else:
-            return None, f"parameter {key!r} is not allowed for {action!r}"
-    return cleaned, None
-
-
-def dispatch_target_refusal(args: dict) -> tuple[str | None, str | None]:
-    """Extract and validate the scan target URL from args."""
-    raw = args.get("url")
-    if not isinstance(raw, str) or not raw.strip():
-        return None, "scan actions require a target URL in args.url"
-    target = raw.strip()
-    if "\x00" in target or "\r" in target or "\n" in target:
-        return None, "scan target contains control characters"
-    parsed = urllib_parse.urlparse(target)
-    if parsed.scheme not in ("http", "https") or not parsed.hostname:
-        return None, "scan target must be an http(s) URL"
-    return target, None
+def request_parts(args: dict) -> tuple[str | None, str | None, dict[str, str] | None, str | None]:
+    """Validate HTTP request shape, without restricting ZAP API operations."""
+    if set(args) - {"path", "method", "params"}:
+        return None, None, None, "request takes args.path, optional args.method and args.params"
+    path = args.get("path")
+    if not isinstance(path, str) or not path.startswith("/") or path.startswith("//"):
+        return None, None, None, "request path must start with one slash on the configured ZAP endpoint"
+    if any(ord(ch) < 0x20 or ord(ch) == 0x7f for ch in path):
+        return None, None, None, "request path contains control characters"
+    parsed = urllib_parse.urlsplit(path)
+    if parsed.scheme or parsed.netloc or parsed.fragment:
+        return None, None, None, "request path must stay on the configured ZAP endpoint"
+    method = args.get("method", "GET")
+    if not isinstance(method, str) or not method.isalpha() or method.upper() != method:
+        return None, None, None, "request method must be an uppercase HTTP token"
+    params = args.get("params", {})
+    if not isinstance(params, dict) or any(
+        not isinstance(key, str) or not key or any(ord(ch) < 0x20 for ch in key)
+        or not isinstance(value, (str, int, float, bool))
+        for key, value in params.items()
+    ):
+        return None, None, None, "request params must map names to scalar values"
+    return path, method, {key: str(value) for key, value in params.items()}, None

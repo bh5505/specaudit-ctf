@@ -35,11 +35,11 @@ CAVEATS = (
     "indicator values must be explicit redaction sentinels and are never returned; "
     "other caller-supplied prose remains untrusted",
     "legitimate administration is not automatically classified as compromise",
-    "the reader performs no collection or ticket operation and its input digest "
-    "is not an authenticity or custody attestation",
+    "the reader performs no collection or ticket operation; its input digest "
+    "does not authenticate the source",
 )
 
-ARMING = (
+INPUT_HINT = (
     "pass args.telemetry_file (path to a local deweaponized AD "
     "telemetry JSON or JSONL file)"
 )
@@ -50,7 +50,7 @@ def telemetry_refusal(
 ) -> tuple[Path | None, str | None]:
     """Validate a caller-supplied local telemetry file path.
 
-    Egress gate: the file must be an existing local JSON or JSONL file;
+    Input contract: the file must be an existing local JSON or JSONL file;
     URLs are refused.  Returns (path, None) or
     (None, refusal).
     """

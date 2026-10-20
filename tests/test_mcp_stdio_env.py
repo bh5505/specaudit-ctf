@@ -12,13 +12,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from extension.contract import ArmSpec, Catalog, CatalogEntry, Extension, ExtensionError, NotCuratedError
+from extension.contract import ArmSpec, Catalog, CatalogEntry, Extension, ExtensionError
 from extension.transports import mcp
 from extension.transports.mcp import McpTransport
 
 
 ARM = "fixture-stdio"
-SPEC = ArmSpec(id=ARM, protocols=("mcp",), curated=True, notes="Synthetic fixture.", tier="research")
+SPEC = ArmSpec(id=ARM, protocols=("mcp",), notes="Synthetic fixture.")
 TOKEN = "synthetic-authorized-token-92d48c"
 
 
@@ -112,7 +112,7 @@ def test_environment_is_bound_to_one_exact_arm() -> None:
         stdio_cmds={ARM: [sys.executable, "-c", script], other: [sys.executable, "-c", script]},
         stdio_envs={ARM: {"APP_TOKEN": TOKEN}},
     )
-    other_spec = ArmSpec(id=other, protocols=("mcp",), curated=True, notes="Synthetic.", tier="research")
+    other_spec = ArmSpec(id=other, protocols=("mcp",), notes="Synthetic.")
     assert transport.invoke(SPEC, "ping", {}).output == {"has_token": True}
     assert transport.invoke(other_spec, "ping", {}).output == {"has_token": False}
 
@@ -131,21 +131,13 @@ def test_malformed_environment_refused_before_spawn(environment, monkeypatch: py
         McpTransport(stdio_cmds={ARM: [sys.executable]}, stdio_envs={ARM: environment})
 
 
-@pytest.mark.parametrize("name", [
-    "PYTHONPATH", "pythonstartup", "LD_PRELOAD", "DYLD_INSERT_LIBRARIES", "BASH_ENV",
-    "ENV", "NODE_OPTIONS", "RUBYOPT", "PERL5OPT", "GIT_CONFIG_COUNT", "GIT_TRACE",
-    "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "GCONV_PATH",
-    "CTF_TRACE_PATH", "HTTP_PROXY", "https_proxy", "NO_PROXY", "PWD", "LC_ALL", "SystemRoot",
-])
-def test_unsafe_explicit_environment_refused(name: str) -> None:
-    with pytest.raises(ValueError, match="reserved"):
-        _transport("", environment={name: "synthetic-rejected-value"})
-
-
-@pytest.mark.parametrize("path", ["", ".", "relative", "/usr/bin:", ":/usr/bin", "/usr/bin:/usr/bin", "/usr/bin:/usr/bin/.", "/usr/../bin", ":".join(f"/d{i}" for i in range(17))])
-def test_path_contract_refuses_unbounded_or_relative_search(path: str) -> None:
-    with pytest.raises(ValueError, match="PATH"):
-        _transport("", environment={"PATH": path})
+def test_operator_selected_environment_is_passed_to_child() -> None:
+    result = _transport(
+        "import json,os; print(json.dumps({'result': {'proxy': os.environ.get('HTTP_PROXY'), 'pythonpath': os.environ.get('PYTHONPATH')}}))",
+        environment={"HTTP_PROXY": "http://proxy.example", "PYTHONPATH": "/tmp/operator-modules"},
+    ).invoke(SPEC, "ping", {})
+    assert result.ok, result.error
+    assert result.output == {"proxy": "[redacted]", "pythonpath": "[redacted]"}
 
 
 @pytest.mark.parametrize("command", [["python"], ["./python"], ["subdir/python"], [""], "python", [1], ["/python\0"]])
@@ -380,7 +372,7 @@ def test_redaction_accepts_deeply_nested_valid_json() -> None:
 
 
 def test_transport_injected_at_existing_extension_handler_seam() -> None:
-    entry = CatalogEntry(id=ARM, kind="arm", protocols=("mcp",), curated=True, notes="Synthetic fixture.", tier="research")
+    entry = CatalogEntry(id=ARM, kind="arm", protocols=("mcp",), notes="Synthetic fixture.")
     transport = _transport(
         f"import json,os; print(json.dumps({{'result': {{'authorized': os.environ.get('APP_TOKEN') == {TOKEN!r}}}}}))",
         environment={"APP_TOKEN": TOKEN},
@@ -389,19 +381,6 @@ def test_transport_injected_at_existing_extension_handler_seam() -> None:
     result = extension.invoke(ARM, "ping", {})
     assert result.ok, result.error
     assert result.output == {"authorized": True}
-
-
-@pytest.mark.parametrize("curated", [False, True])
-def test_generic_extension_transport_preserves_admission_refusals(
-    curated: bool, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    entry = CatalogEntry(id=ARM, kind="arm", protocols=("mcp",), curated=curated, notes="Synthetic fixture.", tier="research")
-    transport = _transport("raise AssertionError('must not spawn')")
-    monkeypatch.setattr(mcp.subprocess, "run", lambda *a, **kw: pytest.fail("spawned refused generic transport"))
-    extension = Extension(catalog=Catalog([entry]), arms={}, transports={"mcp": transport})
-    error_type = ExtensionError if curated else NotCuratedError
-    with pytest.raises(error_type):
-        extension.invoke(ARM, "ping", {})
 
 
 def test_legacy_positional_constructor_and_empty_argv_preserved() -> None:
@@ -470,15 +449,6 @@ def test_windows_resolved_candidate_must_stay_in_search_directory(
     monkeypatch.setattr(mcp, "os", windows)
     with pytest.raises(RuntimeError, match="escaped"):
         mcp._resolved_stdio_argv(["fixture.exe"], {"PATH": "D:\\allowed"})
-
-
-def test_windows_path_refuses_case_aliased_directories(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(mcp, "os", SimpleNamespace(name="nt", pathsep=";"))
-    with pytest.raises(ValueError, match="distinct absolute"):
-        McpTransport(
-            stdio_cmds={ARM: ["fixture"]},
-            stdio_envs={ARM: {"PATH": "C:\\allowed;c:\\ALLOWED"}},
-        )
 
 
 @pytest.mark.parametrize("environ", [{}, {"SystemRoot": "relative"}, {"SystemRoot": "C:\\Windows", "SYSTEMROOT": "D:\\Windows"}])

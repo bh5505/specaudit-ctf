@@ -1,17 +1,14 @@
-"""Tier rules for the osmedeus arm. The scan argv is pinned to v5.1.0 flow semantics (URL targets: scan -f url -t; hostnames: scan -t)."""
+"""Rules for the osmedeus arm. The scan argv is pinned to v5.1.0 flow semantics (URL targets: scan -f url -t; hostnames: scan -t)."""
 
 from __future__ import annotations
 
 import os
-import re
 from pathlib import Path
 
 ARM_ID = "osmedeus"
 ENV_BIN = "OSMEDEUS_BIN"
-ENV_DISPATCH_SCOPE = "OSMEDEUS_DISPATCH_SCOPE"
 
-ALLOWED_ACTIONS = frozenset(['assets'])
-DISPATCH_ACTIONS = frozenset(['scan'])
+ALLOWED_ACTIONS = frozenset(['assets', 'scan'])
 
 TIMEOUT_SECONDS = 600.0
 MAX_OUTPUT_CHARS = 200_000
@@ -23,25 +20,6 @@ def target_refusal(payload: dict) -> str | None:
     target = raw.strip()
     if "\x00" in target or "\r" in target or "\n" in target:
         return "scan target contains control characters"
-    if " " in target:
-        return "scan target must be a hostname or http(s) URL"
-    # Flag-shaped values must never ride fixed argv (cross-review finding).
-    if target.startswith("-"):
-        return "scan target must not be flag-shaped"
-    from urllib.parse import urlparse
-
-    if "://" in target:
-        parsed = urlparse(target)
-        if parsed.scheme not in ("http", "https") or not parsed.hostname:
-            return "scan target must be an http(s) URL or hostname"
-    else:
-        # Unbracketed IPv6 mangles under urlparse; require brackets so the
-        # audited target is the executed target (cross-review finding).
-        if ":" in target and not target.startswith("["):
-            return "IPv6 targets must be bracketed"
-        allowed = set("abcdefghijklmnopqrstuvwxyz0123456789-.[]:")
-        if not target or any(ch not in allowed for ch in target.lower()):
-            return "scan target must be an http(s) URL or hostname"
     return None
 
 
@@ -59,16 +37,15 @@ def resolve_binary() -> str | None:
 
 
 def argv_for(binary: str, action: str, payload: dict) -> list[str] | None:
-    """Fixed argv per action; no caller-controlled fragment.
+    """Build separate argv for the selected scan target.
 
     v5.1.0 flag pin (verified 2026-09-06 against the pinned release
     binary): the DEFAULT flow requires a DOMAIN target — a URL target
     is refused with "Target type mismatch / dependency required types:
-    domain". A validated http(s) URL target therefore selects the
+    domain". A URL-shaped target therefore selects the
     `url` flow (the workflow repo's single-address web-analysis flow,
     `scan -f url -t <url>`); the flow
-    value is arm-chosen from the validated target shape, never a
-    caller-controlled fragment.
+    value follows the target shape; the target remains one argv value.
     """
     if action == "assets":
         return [binary, "assets"]

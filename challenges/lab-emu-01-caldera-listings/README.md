@@ -31,25 +31,25 @@ grades exactly this. Rotate it on any server that isn't disposable.
 
 ## Objectives
 
-1. **Start the server and arm the reads.**
+1. **Start the server and read its listings.**
    `export CALDERA_ENDPOINT=http://127.0.0.1:8888` and
    `export CALDERA_API_KEY=ADMIN123`, then:
-   - `python -m extension invoke caldera adversaries '{}'`
-   - `python -m extension invoke caldera agents '{}'`
-   - `python -m extension invoke caldera operations '{}'`
+   - `python -m extension invoke caldera request '{"path":"/api/v2/adversaries"}'`
+   - `python -m extension invoke caldera request '{"path":"/api/v2/agents"}'`
+   - `python -m extension invoke caldera request '{"path":"/api/v2/operations"}'`
    The adversaries envelope inventories the shipped adversary-profile
    catalog; the agents envelope lists the enrolled population (empty
    on a fresh server); the operations envelope lists operation history
    (empty on a fresh server).
 
-   Client-containment note, observed live: the FULL ability catalog
-   (`caldera abilities`) is ~2.8MB of shipped stockpile data and
+   Result-size note, observed live: the full ability catalog
+   (`request` with `/api/v2/abilities`) is ~2.8MB of shipped stockpile data and
    honestly trips the arm's response cap — the catalog-exposure row
    therefore grades the adversary-profile catalog, which lists
    completely.
 
 2. **Probe the access-control boundary.**
-   Repeat the agents read with a wrong key
+   Repeat the `/api/v2/agents` read with a wrong key
    (`CALDERA_API_KEY=wrong-key`): the server must refuse with 401.
    That observation is the access-control attestation row.
 
@@ -65,7 +65,7 @@ grades exactly this. Rotate it on any server that isn't disposable.
    Grade:
    `python -m score --grade found-findings.json --expected challenges/lab-emu-01-caldera-listings/artifacts/expected-findings.json`
    Then compose the runner cell:
-   `python -m exercise --challenge lab-emu-01-caldera-listings --found found-findings.json --expected challenges/lab-emu-01-caldera-listings/artifacts/expected-findings.json --arms '[{"arm_id":"caldera","action":"adversaries","args":{}},{"arm_id":"caldera","action":"agents","args":{}},{"arm_id":"caldera","action":"operations","args":{}}]'`
+   `python -m exercise --challenge lab-emu-01-caldera-listings --found found-findings.json --expected challenges/lab-emu-01-caldera-listings/artifacts/expected-findings.json --arms '[{"arm_id":"caldera","action":"request","args":{"path":"/api/v2/adversaries"}},{"arm_id":"caldera","action":"request","args":{"path":"/api/v2/agents"}},{"arm_id":"caldera","action":"request","args":{"path":"/api/v2/operations"}}]'`
 
 ## Notes
 

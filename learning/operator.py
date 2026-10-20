@@ -1,17 +1,14 @@
 """Operator-local request files for the bounded learning-operator arm.
 
 This CLI's file access belongs to the local operator, never the attached MCP
-server. Every run calls the same admission and envelope dispatch as extension.
+server. Every run calls the same arm handler as extension.
 """
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
-import hashlib
 import json
 import math
 import os
-import re
 import stat
 import sys
 from pathlib import Path
@@ -21,115 +18,6 @@ from extension.contract import Extension
 from extension.dispatch import dispatch_invoke
 
 MAX_REQUEST_BYTES = 256_000
-MAX_REPORT_BYTES = 1_048_576
-ASSISTANCE_CHOICES = ("first-pass", "assisted", "tuned", "held-out", "none")
-_HEX_KEY = re.compile(r"[0-9a-f]{64}\Z")
-
-
-class _LedgerHardError(RuntimeError):
-    """The --ledger wiring failed; the run must not pass as ledgered."""
-
-
-def _canonical(document: object) -> bytes:
-    return json.dumps(document, sort_keys=True, separators=(",", ":"),
-                      allow_nan=False, ensure_ascii=False).encode("utf-8")
-
-
-def _ledger_rows(path: Path) -> list[dict]:
-    """Read the JSON-lines ledger; a missing file starts an empty chain."""
-    try:
-        data = path.read_bytes()
-    except FileNotFoundError:
-        return []
-    except OSError as exc:
-        raise _LedgerHardError(f"ledger unreadable: {exc}") from exc
-    try:
-        text = data.decode("utf-8")
-    except UnicodeError as exc:
-        raise _LedgerHardError(f"ledger is not utf-8: {exc}") from exc
-    if text and not text.endswith("\n"):
-        raise _LedgerHardError("ledger does not end with a newline")
-    rows = []
-    for number, line in enumerate(text.splitlines(), 1):
-        if not line.strip():
-            raise _LedgerHardError(f"ledger line {number} is blank")
-        try:
-            row = json.loads(line, parse_constant=_no_constant)
-        except ValueError as exc:
-            raise _LedgerHardError(f"ledger line {number} is not JSON: {exc}") from exc
-        if not isinstance(row, dict):
-            raise _LedgerHardError(f"ledger line {number} is not an object")
-        rows.append(row)
-    return rows
-
-
-def _no_constant(value: str) -> None:
-    raise ValueError(f"non-JSON constant {value}")
-
-
-def _ledger_append_line(path: Path, row: dict) -> None:
-    """Append one canonical line; refuse to extend a partial trailing line."""
-    if path.exists() and path.stat().st_size > 0:
-        with path.open("rb") as stream:
-            stream.seek(-1, os.SEEK_END)
-            if stream.read(1) != b"\n":
-                raise _LedgerHardError("refusing to append after a partial line")
-    line = json.dumps(row, sort_keys=True, separators=(",", ":"), allow_nan=False,
-                      ensure_ascii=False) + "\n"
-    with path.open("ab") as stream:
-        stream.write(line.encode("utf-8"))
-
-
-def _recover_action(raw: bytes | None) -> str:
-    """Best-effort workflow name from an unparseable request, else 'unknown'."""
-    if not raw:
-        return "unknown"
-    try:
-        parsed = json.loads(raw)
-    except (UnicodeError, ValueError):
-        return "unknown"
-    if isinstance(parsed, dict) and isinstance(parsed.get("action"), str) and parsed["action"]:
-        return parsed["action"]
-    return "unknown"
-
-
-def _record_ledger_row(ctx: tuple | None, *, attempt_id: str, subject: str,
-                       attempt_class: str, outcome: str | None, detail: bytes) -> None:
-    """Append one self-study row after verifying the existing chain, fail closed.
-
-    attempt_ledger is imported lazily here so a runtime without the package
-    hard-fails the run (never a silent unledgered pass). detail_digest covers
-    the exact retained bytes for this run (the printed report document, the
-    raw malformed request, or a canonical error note); the body itself stays
-    outside the ledger.
-    """
-    if ctx is None:
-        return
-    path, key, assistance, recorded_at = ctx
-    try:
-        from attempt_ledger import LedgerError, append_row, verify_ledger
-    except ImportError as exc:
-        raise _LedgerHardError(f"attempt_ledger package unavailable: {exc}") from exc
-    rows = _ledger_rows(path)
-    check = verify_ledger(rows, hmac_key=key)
-    if not check.ok:
-        raise _LedgerHardError(
-            f"existing ledger fails verification: {', '.join(check.reasons)}")
-    try:
-        rows, _head = append_row(
-            rows, {
-                "attempt_id": attempt_id,
-                "lane": "self-study",
-                "subject": subject,
-                "attempt_class": attempt_class,
-                "outcome": outcome,
-                "assistance": assistance,
-                "detail_digest": "sha256:" + hashlib.sha256(detail).hexdigest(),
-                "recorded_at": recorded_at,
-            }, hmac_key=key)
-        _ledger_append_line(path, rows[-1])
-    except (LedgerError, OSError) as exc:
-        raise _LedgerHardError(str(exc)) from exc
 
 
 def _read_request_file(path: Path) -> bytes:
@@ -201,42 +89,8 @@ def _parse_request(raw: bytes) -> dict:
     return request
 
 
-def _read_report(directory: str, digest: str) -> dict:
-    """Read the descriptor-bound Mode A artifact, rejecting substitutions."""
-    if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-        raise ValueError("invalid artifact digest")
-    if not all(hasattr(os, flag) for flag in ("O_NOFOLLOW", "O_DIRECTORY", "O_NONBLOCK")):
-        raise ValueError("Mode A requires Unix nofollow, nonblocking directory reads")
-    name = digest.replace(":", "-", 1)
-    directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
-                           | getattr(os, "O_CLOEXEC", 0))
-    try:
-        fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK
-                     | getattr(os, "O_CLOEXEC", 0), dir_fd=directory_fd)
-        with os.fdopen(fd, "rb") as stream:
-            before = os.fstat(stream.fileno())
-            if not stat.S_ISREG(before.st_mode):
-                raise ValueError("artifact is not a regular file")
-            if before.st_size > MAX_REPORT_BYTES:
-                raise ValueError("artifact exceeds byte limit")
-            raw = stream.read(MAX_REPORT_BYTES + 1)
-            after = os.fstat(stream.fileno())
-            if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns) != (
-                after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns
-            ):
-                raise ValueError("artifact changed while reading")
-    finally:
-        os.close(directory_fd)
-    if len(raw) > MAX_REPORT_BYTES or hashlib.sha256(raw).hexdigest() != digest[7:]:
-        raise ValueError("artifact digest or size mismatch")
-    result = json.loads(raw)
-    if not isinstance(result, dict):
-        raise ValueError("artifact report must be an object")
-    return result
-
-
-def _run_request(ns: argparse.Namespace, ledger_ctx: tuple | None) -> int:
-    """Dispatch one operator-held request and ledger the attempt outcome."""
+def _run_request(ns: argparse.Namespace) -> int:
+    """Dispatch one operator-held request."""
     raw = None
     try:
         if str(ns.request) == "-":
@@ -247,72 +101,16 @@ def _run_request(ns: argparse.Namespace, ledger_ctx: tuple | None) -> int:
             raise ValueError("request exceeds 256000 bytes")
     except (OSError, ValueError, TypeError, RecursionError) as exc:
         # The request could not be acquired: a refused run, not a parse verdict.
-        _record_ledger_row(ledger_ctx, attempt_id=ns.attempt_id, subject="unknown",
-                           attempt_class="refusal", outcome=None,
-                           detail=_canonical({"stage": "read", "error": str(exc)}))
         print(f"invalid operator request: {exc}", file=sys.stderr)
         return 2
     try:
         request = _parse_request(raw)
     except (UnicodeError, ValueError, TypeError, RecursionError) as exc:
-        _record_ledger_row(ledger_ctx, attempt_id=ns.attempt_id,
-                           subject=_recover_action(raw), attempt_class="parse-failure",
-                           outcome=None, detail=raw)
         print(f"invalid operator request: {exc}", file=sys.stderr)
         return 2
     outcome = dispatch_invoke(Extension(), arm_id=ARM_ID, action=request["action"],
-                              args=request["args"], attempt_id=ns.attempt_id,
-                              artifact_dir=ns.artifact_dir)
-    subject = request["action"]
-    if outcome.envelope is None:
-        _record_ledger_row(ledger_ctx, attempt_id=ns.attempt_id, subject=subject,
-                           attempt_class="refusal", outcome=None,
-                           detail=_canonical({"stage": "dispatch",
-                                              "error": outcome.stderr_line}))
-    elif outcome.exit_code == 0:
-        # The v1 envelope intentionally carries only a digest. Expose the
-        # separately retained Mode A report for an operator to act on, while
-        # preserving the unmodified execution envelope alongside it.
-        report = None
-        artifacts = outcome.envelope.get("artifacts", [])
-        if len(artifacts) != 1 or artifacts[0].get("kind") != "policy-report":
-            _record_ledger_row(ledger_ctx, attempt_id=ns.attempt_id, subject=subject,
-                               attempt_class="refusal", outcome=None,
-                               detail=_canonical({"stage": "report",
-                                                  "error": "completed run lacks one policy report"}))
-            print("completed run lacks one policy report", file=sys.stderr)
-            return 2
-        digest = artifacts[0].get("digest", "")
-        if not isinstance(digest, str) or not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
-            _record_ledger_row(ledger_ctx, attempt_id=ns.attempt_id, subject=subject,
-                               attempt_class="refusal", outcome=None,
-                               detail=_canonical({"stage": "report",
-                                                  "error": "completed run has an invalid artifact digest"}))
-            print("completed run has an invalid artifact digest", file=sys.stderr)
-            return 2
-        try:
-            report = _read_report(ns.artifact_dir, digest)
-        except (OSError, ValueError) as exc:
-            _record_ledger_row(ledger_ctx, attempt_id=ns.attempt_id, subject=subject,
-                               attempt_class="refusal", outcome=None,
-                               detail=_canonical({"stage": "report",
-                                                  "error": f"cannot verify retained artifact: {exc}"}))
-            print(f"cannot verify retained artifact: {exc}", file=sys.stderr)
-            return 2
-        printed = json.dumps({"execution": outcome.envelope, "report": report},
-                             sort_keys=True, indent=2)
-        # The row is chained before the report is presented: a ledgered run
-        # never prints as complete without its row.
-        _record_ledger_row(ledger_ctx, attempt_id=ns.attempt_id, subject=subject,
-                           attempt_class="completion", outcome="dispatched", detail=printed.encode("utf-8"))
-        print(printed)
-    else:
-        printed = json.dumps({"execution": outcome.envelope, "report": None},
-                             sort_keys=True, indent=2)
-        _record_ledger_row(ledger_ctx, attempt_id=ns.attempt_id, subject=subject,
-                           attempt_class="refusal", outcome=None,
-                           detail=printed.encode("utf-8"))
-        print(printed)
+                              args=request["args"])
+    print(json.dumps(outcome.document, sort_keys=True, indent=2))
     if outcome.stderr_line:
         print(outcome.stderr_line, file=sys.stderr)
     return outcome.exit_code
@@ -326,13 +124,6 @@ def main(argv: list[str] | None = None) -> int:
     sample.add_argument("--out", type=Path, required=True, help="fresh local JSON path")
     run = commands.add_parser("run", help="dispatch an operator-held JSON request")
     run.add_argument("--request", type=Path, required=True, help="local JSON request, or - for stdin")
-    run.add_argument("--attempt-id", required=True, help="fresh validator-minted attempt-<64 hex>")
-    run.add_argument("--artifact-dir", required=True, help="fresh empty per-attempt Unix directory")
-    run.add_argument("--ledger", type=Path, help="append-only attempt ledger (JSON-lines)")
-    run.add_argument("--ledger-key-hex", help="optional 64-hex HMAC key for the ledger")
-    run.add_argument("--assistance", choices=ASSISTANCE_CHOICES,
-                     help="ledger assistance class (default first-pass)")
-    run.add_argument("--at", help="naive iso recording time; required with --ledger")
     ns = parser.parse_args(argv)
     if ns.command == "sample":
         document = {"arm_id": ARM_ID, "action": ns.workflow, "args": _sample(ns.workflow)}
@@ -346,30 +137,7 @@ def main(argv: list[str] | None = None) -> int:
             parser.error(f"cannot create sample: {exc}")
         print(ns.out)
         return 0
-    ledger_ctx = None
-    if ns.ledger is not None:
-        if ns.at is None:
-            parser.error("--at is required with --ledger")
-        try:
-            recorded_at = datetime.fromisoformat(ns.at)
-        except ValueError:
-            parser.error(f"--at is not an iso datetime: {ns.at}")
-        if recorded_at.tzinfo is not None:
-            parser.error("--at must be naive; this CLI never reads a clock")
-        key = None
-        if ns.ledger_key_hex is not None:
-            key_text = ns.ledger_key_hex.strip().lower()
-            if not _HEX_KEY.fullmatch(key_text):
-                parser.error("--ledger-key-hex must be 64 hex characters")
-            key = bytes.fromhex(key_text)
-        ledger_ctx = (ns.ledger, key, ns.assistance or "first-pass", recorded_at)
-    elif ns.ledger_key_hex is not None or ns.assistance is not None or ns.at is not None:
-        parser.error("--ledger-key-hex/--assistance/--at require --ledger")
-    try:
-        return _run_request(ns, ledger_ctx)
-    except _LedgerHardError as exc:
-        print(f"learning operator: ledger failure: {exc}", file=sys.stderr)
-        return 2
+    return _run_request(ns)
 
 
 if __name__ == "__main__":

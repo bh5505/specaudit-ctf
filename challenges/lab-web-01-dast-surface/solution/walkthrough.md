@@ -2,19 +2,15 @@
 
 Recorded against a freshly built golden rootfs (with the planted
 `notes/` directory) spawned as instance `ctf-target` at
-`172.19.89.77` — WSL-internal NAT only. Every read below was taken
-under armed scopes; the arming env authorizes, it never names the
-target.
+`172.19.89.77` — WSL-internal NAT only.
 
 ## 1. The reads
 
-- `wapiti scan` against `http://172.19.89.77:8080/` under
-  `WAPITI_DISPATCH_SCOPE` — envelope `complete`, policy-report
+- `wapiti scan` against `http://172.19.89.77:8080/` — result `complete`, policy-report
   artifact recorded. The report surfaces the listener's honest
   response shape (missing hardening headers, cleartext channel) and
   the crawled pages.
-- `page-fetch fetch` against `http://172.19.89.77:8080/notes/` under
-  `PAGE_FETCH_DISPATCH_SCOPE` — envelope `complete`.
+- `page-fetch fetch` against `http://172.19.89.77:8080/notes/` — result `complete`.
 - Plain observation reads (for the walkthrough's evidence only):
   `curl -sI http://172.19.89.77:8080/` shows
   `Server: SimpleHTTP/0.6 Python/3.13.5`;
@@ -60,6 +56,4 @@ python -m exercise --challenge lab-web-01-dast-surface \
 ```
 
 Result: `complete`; grading 1.00; arms 2/2 (`wapiti`, `page-fetch`
-both `complete`). The head-attempt lane is not part of this run and
-must not be: the runner refuses live-service contracts for that lane
-by design.
+both `complete`).

@@ -25,9 +25,7 @@ def _spec(arm_id: str) -> ArmSpec:
     return ArmSpec(
         id=arm_id,
         protocols=("cli",),
-        curated=True,
         notes="Fixture arm.",
-        tier="research",
     )
 
 
@@ -105,20 +103,20 @@ def test_mitreattack_missing_file_refused(
     assert "not an existing file" in result.error
 
 
-def test_mitreattack_download_action_on_no_tier(
+def test_mitreattack_download_action_not_exposed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "attack-to-excel", ECHO_ARGV)
     monkeypatch.setenv("MITREATTACK_BIN", str(binary))
     result = MitreattackArm().invoke(_spec(MITRE_ID), "download_attack_stix", {})
     assert result.ok is False
-    assert "no tier" in result.error
+    assert result.error is not None
 
 
 # --- vuls ---------------------------------------------------------------
 
 
-def test_vuls_read_tier_fixed_argv(
+def test_vuls_report_summary_fixed_argv(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "vuls", ECHO_ARGV)
@@ -143,144 +141,115 @@ def test_vuls_read_args_refused(
     assert "no caller arguments" in result.error
 
 
-def test_vuls_fetch_blocked_on_no_tier(
+def test_vuls_fetch_runs_selected_upstream_action(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "vuls", ECHO_ARGV)
     monkeypatch.setenv("VULS_BIN", str(binary))
     result = VulsArm().invoke(_spec(VULS_ID), "fetch", {})
-    assert result.ok is False
-    assert "blocked" in result.error and "no tier" in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["fetch"]
 
 
-def test_vuls_scan_dispatch_default_off(
+def test_vuls_scan_uses_fixed_argv(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "vuls", ECHO_ARGV)
     monkeypatch.setenv("VULS_BIN", str(binary))
-    monkeypatch.delenv("VULS_DISPATCH_SCOPE", raising=False)
-    result = VulsArm().invoke(_spec(VULS_ID), "scan", {})
-    assert result.ok is False
-    assert "VULS_DISPATCH_SCOPE" in result.error
-
-
-def test_vuls_scan_armed_runs_and_logs(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    binary = _fake_binary(tmp_path, "vuls", ECHO_ARGV)
-    monkeypatch.setenv("VULS_BIN", str(binary))
-    monkeypatch.setenv("VULS_DISPATCH_SCOPE", "10.10.0.0/16")
     result = VulsArm().invoke(_spec(VULS_ID), "scan", {})
     assert result.ok is True
-    assert result.output["output"]["argv"] == ["scan"]
-    assert result.output["dispatch"]["target"] == "unknown"
-    assert result.output["output"]["argv"] == ["scan"]
-    err = capsys.readouterr().err
-    assert "[dispatch]" in err and "arm=vuls" in err and "target=unknown" in err
+    assert result.output["argv"] == ["scan"]
 
 
-# --- wapiti / commix (dispatch-only) ------------------------------------
+# --- wapiti / commix -----------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    "arm_cls,arm_id,bin_name,scope_env",
+    "arm_cls,arm_id,bin_name,bin_env",
     [
-        (WapitiArm, WAPITI_ID, "wapiti", "WAPITI_DISPATCH_SCOPE"),
-        (CommixArm, COMMIX_ID, "commix", "COMMIX_DISPATCH_SCOPE"),
+        (WapitiArm, WAPITI_ID, "wapiti", "WAPITI_BIN"),
+        (CommixArm, COMMIX_ID, "commix", "COMMIX_BIN"),
     ],
 )
-class TestDispatchOnlyArms:
-    def test_unarmed_refusal_names_env(
+class TestScanArms:
+    def test_scan_runs_with_valid_url(
         self,
         arm_cls: type,
         arm_id: str,
         bin_name: str,
-        scope_env: str,
+        bin_env: str,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         binary = _fake_binary(tmp_path, bin_name, ECHO_ARGV)
-        monkeypatch.setenv(f"{bin_name.upper()}_BIN".replace("WAPITI", "WAPITI").replace("COMMIX", "COMMIX"), str(binary))
-        monkeypatch.delenv(scope_env, raising=False)
+        monkeypatch.setenv(bin_env, str(binary))
         result = arm_cls().invoke(
             _spec(arm_id), "scan", {"url": "http://10.10.0.1/"}
         )
-        assert result.ok is False
-        assert scope_env in result.error
-        assert "dispatch action" in result.error
+        assert result.ok is True
+        assert "http://10.10.0.1/" in result.output["output"]["argv"]
 
-    def test_armed_in_scope_runs_and_logs(
+    def test_scan_passes_target_in_fixed_argv(
         self,
         arm_cls: type,
         arm_id: str,
         bin_name: str,
-        scope_env: str,
+        bin_env: str,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
-        capsys: pytest.CaptureFixture[str],
     ) -> None:
         binary = _fake_binary(tmp_path, bin_name, ECHO_ARGV)
-        bin_env = {"wapiti": "WAPITI_BIN", "commix": "COMMIX_BIN"}[bin_name]
         monkeypatch.setenv(bin_env, str(binary))
-        monkeypatch.setenv(scope_env, "10.10.0.0/16")
         result = arm_cls().invoke(
             _spec(arm_id), "scan", {"url": "http://10.10.0.1/app.php?id=1"}
         )
         assert result.ok is True
         argv = result.output["output"]["argv"]
         assert "http://10.10.0.1/app.php?id=1" in argv
-        assert result.output["dispatch"]["scope"] == "10.10.0.0/16"
-        err = capsys.readouterr().err
-        assert f"arm={arm_id}" in err
 
-    def test_armed_out_of_scope_refused(
+    def test_invalid_target_refused(
         self,
         arm_cls: type,
         arm_id: str,
         bin_name: str,
-        scope_env: str,
+        bin_env: str,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         binary = _fake_binary(tmp_path, bin_name, ECHO_ARGV)
-        bin_env = {"wapiti": "WAPITI_BIN", "commix": "COMMIX_BIN"}[bin_name]
         monkeypatch.setenv(bin_env, str(binary))
-        monkeypatch.setenv(scope_env, "10.10.0.0/16")
-        result = arm_cls().invoke(_spec(arm_id), "scan", {"url": "http://8.8.8.8/"})
+        result = arm_cls().invoke(
+            _spec(arm_id), "scan", {"url": "file:///etc/passwd"}
+        )
         assert result.ok is False
-        assert "outside the armed dispatch scope" in result.error
+        assert "http(s) URL" in result.error
 
     def test_non_scan_action_refused(
         self,
         arm_cls: type,
         arm_id: str,
         bin_name: str,
-        scope_env: str,
+        bin_env: str,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         binary = _fake_binary(tmp_path, bin_name, ECHO_ARGV)
-        bin_env = {"wapiti": "WAPITI_BIN", "commix": "COMMIX_BIN"}[bin_name]
         monkeypatch.setenv(bin_env, str(binary))
         result = arm_cls().invoke(_spec(arm_id), "list_modules", {})
         assert result.ok is False
-        assert "no read-only mode" in result.error
+        assert "not on the allowlist" in result.error
 
     def test_extra_args_refused(
         self,
         arm_cls: type,
         arm_id: str,
         bin_name: str,
-        scope_env: str,
+        bin_env: str,
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
         binary = _fake_binary(tmp_path, bin_name, ECHO_ARGV)
-        bin_env = {"wapiti": "WAPITI_BIN", "commix": "COMMIX_BIN"}[bin_name]
         monkeypatch.setenv(bin_env, str(binary))
-        monkeypatch.setenv(scope_env, "10.10.0.0/16")
         result = arm_cls().invoke(
             _spec(arm_id),
             "scan",

@@ -1,25 +1,18 @@
 # specaudit-ctf agent guidance
 
-Start with [README.md](README.md) for the public runtime/package map,
-[OPERATIONS.md](OPERATIONS.md) for operational authorization and containment,
-[extension/README.md](extension/README.md) for adapter contracts, and
-[tests/](tests/) for executable expectations. This is a standalone public repo;
-keep private host paths, credentials, and internal artifacts out of commits.
+SpecAudit-CTF is a lab CTF tool. Its job is to run the supported arms and
+exercises, return their results, and grade participant findings. The competent
+human operator is responsible for choosing targets and for how the tool is used.
 
-## Package constraints and validation
+Do not build operator-permission systems into the tool: no scope-grant environment
+variables, approval or rules-of-engagement references, admission tiers,
+qualification gates, promotion records, or checkers that claim to transfer
+accountability to the software. A warning or confirmation may inform an operator
+about an action and let them continue; keep it simple and independent of any
+approval registry.
 
-- Preserve fail-closed scope/dispatch admission and synthetic-range containment.
-  Do not target live engagements, cloud accounts, networks, or third-party
-  systems without the explicit scope required by the operational contract.
-- Survey/catalog presence is not a shipping, support, installation, or capability
-  claim. Preserve distinctions among research, experimental, maintained, and
-  held support tiers; use the current catalog and tests as authority.
-- Runtime head profiles and extension skills are product integration surfaces,
-  separate from development-agent workflow. Verify their contracts before editing.
-- Use the existing Python environment and commands from the README/pyproject.
-  Run targeted `python -m pytest tests/<relevant-test>.py` for behavior changes,
-  and broader tests when affected contracts warrant it. For docs-only changes,
-  check links, command accuracy, consistency, and whitespace.
-- Keep generated results, local builds, credentials, and unrelated in-progress
-  changes out of the deliverable. Review scope includes added files.
-
+Read [README.md](README.md) and the relevant arm or exercise code before editing.
+Keep input validation, result reporting, tool authentication, and ordinary error
+handling tied to the operation they serve. Test the affected CLI, MCP, exercise,
+and grading paths. Keep private host paths, credentials, generated artifacts,
+and unrelated work out of commits.

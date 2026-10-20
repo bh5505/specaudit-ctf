@@ -43,7 +43,7 @@ def test_valid_packet_and_structural_workpaper(tmp_path, capsys):
     assert main(["--manifest", str(LEARNER / "manifest.json"),
                  "--submission", str(submission), "--evidence-root", str(LEARNER)]) == 0
     result = json.loads(capsys.readouterr().out)
-    assert result == {"structurally_valid": True, "human_review_required": True, "errors": []}
+    assert result == {"structurally_valid": True, "errors": []}
 
 
 def test_false_assurance_inputs_are_not_accepted_as_structural_success():

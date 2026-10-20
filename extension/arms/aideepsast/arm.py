@@ -1,4 +1,4 @@
-"""Curated ai-deep-sast arm: skip-llm scan, dry-run index, gated AI scan."""
+"""AI Deep SAST scan, dry-run, and AI scan actions."""
 
 from __future__ import annotations
 
@@ -14,16 +14,12 @@ from ...contract import (
     Result,
 )
 from ..bounded_capture import run_bounded
-from ..dispatch import authorize, load_scope, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
     ACTION_TIMEOUTS,
     ALLOWED_ACTIONS,
     ARM_ID,
-    ARMING,
     CAVEATS,
-    DISPATCH_ACTIONS,
-    ENV_DISPATCH_SCOPE,
     ENV_SEMGREP_CONFIG,
     LIST_ACTIONS,
     MAX_OUTPUT_CHARS,
@@ -64,14 +60,13 @@ class AiDeepSastArm:
         payload = dict(args)
         if action in LIST_ACTIONS:
             return self._list_tools(spec, action, payload)
-        if action not in ALLOWED_ACTIONS and action not in DISPATCH_ACTIONS:
+        if action not in ALLOWED_ACTIONS:
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error=f"action {action!r} is not on any tier "
-                "(list_tools/scan/dry_run read; ai_scan is scope-gated dispatch)",
+                error=f"action {action!r} is not supported",
             )
         extra = {k: v for k, v in payload.items() if k not in TARGET_KEYS}
         if extra:
@@ -111,10 +106,10 @@ class AiDeepSastArm:
                     error="deepscan binary not configured",
                 )
             return self._run(
-                spec, action, argv_for(deepscan, action, target), root, None
+                spec, action, argv_for(deepscan, action, target), root
             )
         config, refusal = contained_semgrep_config()
-        if config is None:
+        if refusal is not None:
             return Result(
                 ok=False,
                 arm_id=spec.id,
@@ -122,26 +117,11 @@ class AiDeepSastArm:
                 output=None,
                 error=refusal,
             )
-        dispatch = action in DISPATCH_ACTIONS
-        scope = None
-        audit = f"repo:{target}"
-        if dispatch:
-            scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, None)
-            if scope is None:
-                return Result(
-                    ok=False,
-                    arm_id=spec.id,
-                    action=action,
-                    output=None,
-                    error=_with_caveat(refusal),
-                )
-            log_dispatch(ARM_ID, action, scope, audit)
         return self._run(
             spec,
             action,
             argv_for(binary, action, target, config),
             root,
-            stamp(scope, audit) if dispatch and scope is not None else None,
         )
 
     def _list_tools(
@@ -155,17 +135,13 @@ class AiDeepSastArm:
                 output=None,
                 error="list_tools takes no caller arguments",
             )
-        scope, _ = load_scope(ENV_DISPATCH_SCOPE)
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
             output={
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": sorted(DISPATCH_ACTIONS),
-                "dispatch_armed": scope is not None,
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "caveats": CAVEATS,
-                "arming": ARMING,
                 "semgrep_config": ENV_SEMGREP_CONFIG,
             },
             error=None,
@@ -177,7 +153,6 @@ class AiDeepSastArm:
         action: str,
         cmd: list[str],
         cwd: Path,
-        dispatch_stamp: dict[str, str] | None,
     ) -> Result:
         timeout = self._timeout_for(action)
         try:
@@ -207,8 +182,6 @@ class AiDeepSastArm:
             return Result(ok=False, arm_id=spec.id, action=action, output=None,
                           error="subprocess output exceeded capture cap")
         output: Any = _parse_output(proc.stdout)
-        if dispatch_stamp is not None:
-            output = {"dispatch": dispatch_stamp, "output": output}
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or f"{action} failed").strip()
             return Result(
@@ -225,13 +198,6 @@ class AiDeepSastArm:
             output=output,
             error=None,
         )
-
-
-def _with_caveat(message: str | None) -> str:
-    text = message or "refused"
-    if CAVEATS and CAVEATS not in text:
-        return f"{text} Caveat: {CAVEATS}"
-    return text
 
 
 def _parse_output(stdout: str) -> Any:

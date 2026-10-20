@@ -46,8 +46,7 @@ hard mode (scaffolding-withheld prompts; same contracts). 28 attempts.
   "requires more credits, can only afford ~19k tokens"; probe
   reproduced the same on Ubuntu — the key serves both hosts). The
   affected attempts are kept in the records with verbatim reasons and
-  named here; the lane re-enters measurement when the operator tops
-  the key up (`lab/validation-results.md`). The three claude attempts
+  named here. The three claude attempts
   that ran before the outage are clean (06: 3/3, 3-8 calls).
 
 ## Records

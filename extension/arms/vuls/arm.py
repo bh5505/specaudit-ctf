@@ -1,4 +1,4 @@
-"""Curated vuls arm: local report reads, dispatch-gated host scan."""
+"""Curated vuls arm: fixed-argv upstream subcommands."""
 
 from __future__ import annotations
 
@@ -13,16 +13,13 @@ from ...contract import (
     Result,
 )
 from ..bounded_capture import run_bounded
-from ..dispatch import authorize, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
-    BLOCKED_ACTIONS,
-    DISPATCH_ACTIONS,
-    ENV_DISPATCH_SCOPE,
     MAX_OUTPUT_CHARS,
     TIMEOUT_SECONDS,
+    argv_for,
     resolve_binary,
 )
 
@@ -30,12 +27,9 @@ from .policy import (
 class VulsArm:
     """Specialized transport for catalog id vuls.
 
-    Read tier: ``report`` / ``summary`` against the local results
-    database with a fully fixed argv (no flags - some flags reach the
-    network). Dispatch tier: ``scan``, authorized by
-    VULS_DISPATCH_SCOPE presence (targets live in the vuls config, so
-    the audit line records target=unknown). ``fetch`` is network egress
-    and is on no tier.
+    ``report`` / ``summary`` read the local results database;
+    ``scan`` and ``fetch`` run the configured upstream subcommands.
+    Every action uses a fixed argv with no caller-supplied flags.
     """
 
     ARM_ID = ARM_ID
@@ -55,37 +49,6 @@ class VulsArm:
         binary = resolve_binary()
         if binary is None:
             raise NotInstalledError(spec.id)
-        if action in BLOCKED_ACTIONS:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=f"action {action!r} is blocked "
-                "(network egress or interactive surface on no tier)",
-            )
-        if action in DISPATCH_ACTIONS:
-            if dict(args):
-                return Result(
-                    ok=False,
-                    arm_id=spec.id,
-                    action=action,
-                    output=None,
-                    error="vuls scan takes no caller arguments (targets "
-                    "come from the vuls config; arm with "
-                    f"{ENV_DISPATCH_SCOPE})",
-                )
-            scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, None)
-            if scope is None:
-                return Result(
-                    ok=False,
-                    arm_id=spec.id,
-                    action=action,
-                    output=None,
-                    error=refusal,
-                )
-            log_dispatch(ARM_ID, action, scope, None)
-            return self._run(spec, action, [binary, action], dispatch_stamp=stamp(scope, None))
         if action not in ALLOWED_ACTIONS:
             return Result(
                 ok=False,
@@ -93,7 +56,7 @@ class VulsArm:
                 action=action,
                 output=None,
                 error=f"action {action!r} is not on the allowlist "
-                "(local report and summary reads only)",
+                f"(supported: {sorted(ALLOWED_ACTIONS)})",
             )
         if dict(args):
             return Result(
@@ -101,17 +64,16 @@ class VulsArm:
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error="vuls report/summary take no caller arguments "
+                error=f"vuls {action} takes no caller arguments "
                 "(fixed argv, no flags)",
             )
-        return self._run(spec, action, [binary, action], dispatch_stamp=None)
+        return self._run(spec, action, argv_for(binary, action))
 
     def _run(
         self,
         spec: ArmSpec,
         action: str,
         cmd: list[str],
-        dispatch_stamp: dict[str, str] | None,
     ) -> Result:
         try:
             proc, overflowed = run_bounded(
@@ -139,8 +101,6 @@ class VulsArm:
             return Result(ok=False, arm_id=spec.id, action=action, output=None,
                           error="subprocess output exceeded capture cap")
         output: Any = _parse_output(proc.stdout)
-        if dispatch_stamp is not None:
-            output = {"dispatch": dispatch_stamp, "output": output}
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or f"{action} failed").strip()
             return Result(

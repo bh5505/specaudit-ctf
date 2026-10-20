@@ -34,10 +34,8 @@ contains one result per requested id:
 }
 ```
 
-Every invocation writes one JSON custody-receipt line to stderr. It contains
-only normalized identifiers or hashes—not the raw argument vector—and records
-the normalized argument hash, bundle hash when readable, per-query status,
-match count, and output digest.
+The result reports each query's status and match count. Malformed identifiers
+are represented by a hash rather than echoed in the output.
 
 | Reason code | Meaning |
 |---|---|

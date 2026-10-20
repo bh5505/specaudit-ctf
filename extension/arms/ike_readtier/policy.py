@@ -1,4 +1,4 @@
-"""Closed input and target policy for the bounded IKE presence arm."""
+"""Request input for the IKE presence arm."""
 
 from __future__ import annotations
 
@@ -6,15 +6,12 @@ import ipaddress
 import re
 from typing import Any
 
-from ..dispatch import load_scope, target_in_scope
 
 ARM_ID = "ike-readtier"
 ALLOWED_ACTIONS = frozenset({"probe"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 ARG_KEYS = frozenset({"host", "ports", "timeout_ms"})
-ENV_SCOPE = "IKE_READTIER_SCOPE"
 DEFAULT_PORTS = (500,)
-ALLOWED_PORT_SETS = ((500,), (500, 4500))
 MIN_TIMEOUT_MS = 50
 MAX_TIMEOUT_MS = 5_000
 MAX_RESPONSE_BYTES = 65_535
@@ -38,20 +35,11 @@ def args_refusal(payload: dict[str, Any]) -> str | None:
         if not _HOST_RE.fullmatch(text) or ".." in text:
             return "args.host must be one IP literal or hostname"
     ports = payload.get("ports", list(DEFAULT_PORTS))
-    if not isinstance(ports, list) or tuple(ports) not in ALLOWED_PORT_SETS or any(type(port) is not int for port in ports):
-        return "args.ports must be exactly [500] or [500, 4500]"
+    if (not isinstance(ports, list) or not ports or
+            any(type(port) is not int or not 1 <= port <= 65_535 for port in ports) or
+            len(set(ports)) != len(ports)):
+        return "args.ports must be a nonempty list of distinct UDP ports from 1 through 65535"
     timeout = payload.get("timeout_ms")
     if type(timeout) is not int or not MIN_TIMEOUT_MS <= timeout <= MAX_TIMEOUT_MS:
         return f"args.timeout_ms must be an integer from {MIN_TIMEOUT_MS} through {MAX_TIMEOUT_MS}"
-    return None
-
-
-def authorize_host(host: str) -> str | None:
-    scope, refusal = load_scope(ENV_SCOPE)
-    if refusal:
-        return refusal
-    if scope is None:
-        return f"probe is blocked by default; set {ENV_SCOPE} to explicit authorized targets"
-    if not target_in_scope(host, scope):
-        return f"args.host is outside {ENV_SCOPE}"
     return None

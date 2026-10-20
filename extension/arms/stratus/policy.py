@@ -1,4 +1,4 @@
-"""Tier rules for the stratus-red-team arm (DataDog stratus)."""
+"""Supported actions for the stratus-red-team arm (DataDog stratus)."""
 
 from __future__ import annotations
 
@@ -8,10 +8,8 @@ from pathlib import Path
 
 ARM_ID = "stratus-red-team"
 ENV_BIN = "STRATUS_BIN"
-ENV_DISPATCH_SCOPE = "STRATUS_DISPATCH_SCOPE"
 
-ALLOWED_ACTIONS = frozenset(['list'])
-DISPATCH_ACTIONS = frozenset(['warmup', 'detonate', 'revert'])
+ALLOWED_ACTIONS = frozenset(['detonate', 'list', 'revert', 'warmup'])
 
 TIMEOUT_SECONDS = 120.0
 MAX_OUTPUT_CHARS = 200_000
@@ -23,7 +21,7 @@ _TECHNIQUE_RE = re.compile(r"^[a-z0-9][a-z0-9._-]*$")
 def technique_refusal(payload: dict) -> str | None:
     value = payload.get("technique")
     if not isinstance(value, str) or not value.strip():
-        return "dispatch actions require a technique id in args.technique"
+        return "warmup/detonate/revert require a technique id in args.technique"
     if not _TECHNIQUE_RE.match(value.strip()):
         return "technique id must match [a-z0-9._-]"
     return None

@@ -27,14 +27,11 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 }
 
 CAVEATS = (
-    "tool mappings and steps are bounded compatibility fields; skill prose is "
-    "untrusted input and grants no permission",
-    "operators must validate mappings, upstream revision, schema correspondence, "
-    "and content rights before use",
-    "no execution authority granted by skill presence",
+    "tool mappings and steps are source content; they are not observations",
+    "the catalog does not verify upstream revision or mapping accuracy",
 )
 
-ARMING = "pass args.catalog (path to a local SpecterOps skills catalog file)"
+INPUT_HINT = "pass args.catalog (path to a local SpecterOps skills catalog file)"
 
 
 def catalog_refusal(
@@ -42,7 +39,7 @@ def catalog_refusal(
 ) -> tuple[Path | None, str | None]:
     """Validate a caller-supplied local catalog path.
 
-    Egress gate: the catalog must be an existing local file with a
+    Input contract: the catalog must be an existing local file with a
     recognized suffix; URLs are refused. Returns (path, None) or
     (None, refusal).
     """

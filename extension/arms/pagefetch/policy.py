@@ -1,4 +1,4 @@
-"""Dispatch-only rules for the page-fetch arm: bounded fetch with SSRF guards upstream of the binary."""
+"""Rules for the page-fetch arm: bounded fetch with SSRF guards upstream of the binary."""
 
 from __future__ import annotations
 
@@ -8,10 +8,8 @@ from pathlib import Path
 
 ARM_ID = "page-fetch"
 ENV_BIN = "PAGE_FETCH_BIN"
-ENV_DISPATCH_SCOPE = "PAGE_FETCH_DISPATCH_SCOPE"
 
-ALLOWED_ACTIONS = frozenset([])
-DISPATCH_ACTIONS = frozenset(['fetch'])
+ALLOWED_ACTIONS = frozenset(['fetch'])
 
 TIMEOUT_SECONDS = 60.0
 MAX_OUTPUT_CHARS = 200_000
@@ -55,15 +53,12 @@ def argv_for(binary: str, action: str, payload: dict) -> list[str] | None:
     ignored with exit 0 — so argv stays bare and the validated URL is
     fed as the single stdin line by the arm (the zgrab2 pattern).
 
-    Scope truth: only the initial URL is scope-checked (host + scheme are
-    the effective control; URI path prefixes are best-effort). Redirect
-    follows, the name's resolution at fetch time, and third-party
-    subresource fetches during rendering are NOT re-checked — an armed
-    scope must be considered reachable from anything its hosts redirect
-    or reference to, including metadata IPs. Private and metadata hosts
-    are allowed only when deliberately scoped.
+    Redirect follows, the name's resolution at fetch time, and
+    third-party subresource fetches during rendering are NOT re-checked:
+    fetching a URL must be considered reachable from anything its hosts
+    redirect or reference to, including metadata IPs.
     """
-    if action not in DISPATCH_ACTIONS:
+    if action not in ALLOWED_ACTIONS:
         return None
     target = payload.get("url")
     if not isinstance(target, str) or not target.strip():

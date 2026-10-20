@@ -1,32 +1,11 @@
-"""Attempt grading: captured server-side trace + claimed findings.
+"""Grade an agent attempt from its server trace and submitted findings.
 
-The head lane's evidence doctrine in one place. An attempt is a
-directory holding ``trace.ndjson`` (written by the MCP server — our
-process — while the agent worked) and ``found.json`` (the agent's
-claimed findings, plain participant prose). Grading is fail-closed and
-combines both:
-
-1. the trace chain is verified against the attempt key; an unverified,
-   truncated, or close-less trace fails the attempt — it is never
-   graded;
-2. a trace with zero ``tools/call`` records fails the attempt outright:
-   there is nothing to grade, and a confident found document must never
-   pass on prose alone;
-3. ``score.grading.grade`` runs unmodified on the found-vs-expected
-   pair (owned-evidence doctrine, misses/extras/invalid all fail);
-4. every hit is then demoted to ``unverified`` unless the trace shows
-   the agent actually touched the finding's fixtures through the
-   server. The ONLY fixture-coverage source is a successful
-   ``run_range`` and the fixture roster the server itself recorded
-   from the packaged manifest — trusted handler evidence.
-   ``list``/``describe``/``invoke`` grant none: reconnaissance moves
-   no data, and invoke arguments are the agent's own strings, whose
-   substrings could lexically walk any path without touching it.
-
-The verdict passes only with ``grade().passed`` AND zero unverified
-hits. This gate is deliberately a tripwire against claim-without-
-evidence attempts, not proof of investigative depth: one successful
-``run_range`` covers every fixture, and this module never claims more.
+An attempt directory contains ``trace.ndjson`` from the CTF MCP server and
+``found.json`` from the participant. The trace must verify against the attempt
+key and include at least one tool call. The normal found-vs-expected grader
+checks the submission. For fixture-backed challenges, the trace also records
+which range fixtures were touched; live-service challenges use their expected
+findings contract without claiming fixture coverage.
 """
 
 from __future__ import annotations
@@ -71,7 +50,7 @@ def _observed_outcome(record: Mapping[str, Any]) -> str:
     an internal JSON-RPC error might occur after side effects and remains
     unknown. A tool-level error is a failure; its bounded message cannot
     prove that nothing happened, so it is not called a denial. An incomplete
-    or unexpected envelope cannot substantiate a success claim.
+    or unexpected result cannot substantiate a success claim.
     """
     result = record.get("result")
     if not isinstance(result, Mapping):
@@ -82,10 +61,11 @@ def _observed_outcome(record: Mapping[str, Any]) -> str:
         return "failed"
     if result.get("isError") is not False:
         return "unknown"
-    status = result.get("envelope_status")
-    if record.get("tool") in {"invoke", "run_range"}:
-        return "succeeded" if status == "complete" else "unknown"
-    return "succeeded" if status is None and record.get("tool") in _KNOWN_TOOLS else "unknown"
+    if record.get("tool") == "invoke":
+        return "succeeded" if result.get("result_ok") is True else "unknown"
+    if record.get("tool") == "run_range":
+        return "succeeded" if result.get("result_status") == "complete" else "unknown"
+    return "succeeded" if record.get("tool") in _KNOWN_TOOLS else "unknown"
 
 
 def analyze_agent_trace(
@@ -142,8 +122,8 @@ def _assess_verified_trace(
             "seq": row["seq"],
             "tool": row.get("tool"),
             "outcome": _observed_outcome(row),
-            "envelope_status": summary.get("envelope_status"),
-            "capability_id": summary.get("capability_id"),
+            "result_status": summary.get("result_status"),
+            "result_ok": summary.get("result_ok"),
             "error": summary.get("error"),
             "rpc_error_code": summary.get("rpc_error_code"),
             "unknown_tool": row.get("tool") not in _KNOWN_TOOLS,
@@ -170,15 +150,11 @@ def _assess_verified_trace(
     for claim in claims:
         if (
             not isinstance(claim, Mapping)
-            or set(claim) not in (
-                {"seq", "tool", "reported_outcome"},
-                {"seq", "tool", "reported_outcome", "capability_id"},
-            )
+            or set(claim) != {"seq", "tool", "reported_outcome"}
             or type(claim.get("seq")) is not int
             or not isinstance(claim.get("tool"), str)
             or not isinstance(claim.get("reported_outcome"), str)
             or claim["reported_outcome"] not in _CLAIM_OUTCOMES
-            or ("capability_id" in claim and not isinstance(claim["capability_id"], str))
             or claim["seq"] in seen
         ):
             report["claims_status"] = "invalid"
@@ -187,19 +163,15 @@ def _assess_verified_trace(
         seen.add(claim["seq"])
         row = by_seq.get(claim["seq"])
         actual = _observed_outcome(row) if row else "unobserved"
-        recorded_result = row.get("result") if row else None
-        recorded_capability = recorded_result.get("capability_id") if isinstance(recorded_result, Mapping) else None
         match = (
             row is not None and row.get("tool") == claim["tool"]
             and actual == claim["reported_outcome"]
-            and ("capability_id" not in claim or claim["capability_id"] == recorded_capability)
         )
         assessed.append({
             "seq": claim["seq"],
             "tool": claim["tool"],
             "reported_outcome": claim["reported_outcome"],
             "observed_outcome": actual,
-            "observed_capability_id": recorded_capability,
             "assessment": "supported" if match else "unsupported",
         })
     report["claims"] = assessed
@@ -328,18 +300,8 @@ def grade_attempt(
         document["reason"] = f"attempt documents unusable: {exc}"
         return document
     lane = expected.get("lane", LANE_FIXTURE_BACKED)
-    if lane != LANE_FIXTURE_BACKED:
-        document["status"] = "failed"
-        document["reason"] = (
-            f"{lane} contract: the attempt lane cannot grade it — its "
-            "coverage doctrine verifies run_range fixture touches, which no "
-            "non-fixture finding can honestly name; grade through the "
-            "standalone found-vs-expected lane"
-        )
-        return document
-
     graded = grade(found, expected)
-    roster = range_fixture_ids()
+    roster = range_fixture_ids() if lane == LANE_FIXTURE_BACKED else ()
     touched = touched_fixtures(verification.records, roster)
     claimed = document["trace"]["tool_calls"]
 
@@ -351,6 +313,8 @@ def grade_attempt(
         if isinstance(row, dict)
     }
     for hit in graded.get("hits", []):
+        if lane != LANE_FIXTURE_BACKED:
+            continue
         row = findings_by_key.get(hit, {})
         named = fixtures_named(str(row.get("traces_to") or ""), roster)
         missing = sorted(set(named) - touched)

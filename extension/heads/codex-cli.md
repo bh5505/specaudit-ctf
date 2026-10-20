@@ -1,13 +1,7 @@
 # Codex CLI
 
-Attach this clone as arms and legs from Codex CLI.
-
-The surface is `list`, `describe`, `invoke`, and `run_range`. There is no
-inventory server and no extra MCP tools.
-
-## CLI
-
-From the repository root:
+The CTF exposes four MCP tools: `list`, `describe`, `invoke`, and `run_range`.
+The operator selects an arm, its inputs, and any target. From the checkout:
 
 ```text
 python -m extension list
@@ -15,62 +9,23 @@ python -m extension describe <id>
 python -m extension invoke <id> <action> ['{"k":"v"}']
 ```
 
-`invoke` is fail-closed: unknown ids, non-arms, held rows, non-curated
-rows, and uninstalled curated arms are hard errors. `list` / `describe`
-include `tier`.
-
-## MCP
-
-Prefer a trusted project `.codex/config.toml` in this clone. Spawn the launcher
-(it pins this clone on `sys.path`; do not use `python -m extension.mcp_server`
-from another cwd):
+Attach the MCP launcher to Codex through a project or user-level
+`config.toml`. The launcher path and `cwd` must resolve to this checkout:
 
 ```toml
 [mcp_servers.specaudit-ctf]
 command = "python"
 args = ["extension/heads/codex-cli/launch_mcp.py"]
-cwd = "."
+cwd = "/absolute/path/to/this/checkout"
 ```
 
-Clone-root resolution precedence (launcher `launch_mcp.py:14`): file location
-→ `SPECAUDIT_CTF_ROOT` → `CLAUDE_PROJECT_DIR`. A marketplace or cache copy
-outside the clone must set `SPECAUDIT_CTF_ROOT` to the clone root.
-
-If you instead use user-global `~/.codex/config.toml`, `cwd` must be the
-absolute path of this clone:
-
-```toml
-[mcp_servers.specaudit-ctf]
-command = "python"
-args = ["extension/heads/codex-cli/launch_mcp.py"]
-cwd = "/absolute/path/to/this/clone"
-```
-
-When the launcher is copied outside the clone, `args` must be an absolute
-path to it (the launcher resolves the clone from its own location, not
-`cwd`).
-
-The bundled [codex-cli/.mcp.json](codex-cli/.mcp.json) runs `launch_mcp.py`
-from the plugin directory. A marketplace/cache copy that is not inside the
-clone needs `SPECAUDIT_CTF_ROOT` set to the clone root.
-
-## Headless attempt (exercise head lane)
-
-The exercise runner can drive this head itself when the host is armed
-(`EXERCISE_HEAD_CODEX_CLI_CMD` names the binary) — it preflights the
-host config below, exports the three trace vars, and grades the
-server-side trace (see `exercise/real_head.py`). For a hand-run:
-Codex forwards parent env to stdio MCP servers only through an
-allowlist, so the trace vars must be named in the server's config
-block (user-global `~/.codex/config.toml` — project config cannot
-define providers/env forwarding). Values come from the codex
-process's own environment:
+The exercise runner can launch an installed `codex` CLI when the operator
+selects `--head codex-cli --head-execute` and supplies an attempt prompt,
+attempt directory, and expected-findings file. `EXERCISE_HEAD_CODEX_CLI_CMD`
+optionally names a different executable. Codex must forward the three
+server-trace variables through its MCP configuration:
 
 ```toml
-[mcp_servers.specaudit-ctf]
-command = "python"
-args = ["extension/heads/codex-cli/launch_mcp.py"]
-cwd = "."
 env_vars = [
   "SPECAUDIT_CTF_MCP_TRACE",
   "SPECAUDIT_CTF_MCP_TRACE_KEY",
@@ -78,67 +33,16 @@ env_vars = [
 ]
 ```
 
-(Pin exact values instead with `[mcp_servers.specaudit-ctf.env]` —
-but a pinned key readable from the clone config defeats the chain's
-grading-side-only property; prefer the allowlist form with the key
-exported only where codex runs.)
-
-Run out-of-band, bounded:
+The runner provides fresh trace values to the Codex child, records the
+server-side trace, and grades the `found.json` submission. It passes the
+current process environment to the child after replacing stale CTF trace
+variables. A manually run attempt uses the same trace variables and can be
+graded with:
 
 ```text
-codex exec --sandbox read-only "<attempt prompt ending in: write your
-found findings to <attempt-dir>/found.json>"
+python -m exercise --attempt-dir <dir> --expected <contract>
 ```
 
-The trace is written by the MCP server; the head only writes
-`found.json`. Grade with `python -m exercise --attempt-dir <dir>
---expected <contract>` (key in `SPECAUDIT_CTF_MCP_TRACE_KEY` on the
-grading side).
-
-### Runner child environment (bounded)
-
-The runner does not copy its ambient environment into `codex`. It builds an
-explicit allowlist from base names (`PATH`, `HOME`/Windows profile names,
-config/temp/locale names) and this head's auth/config names
-(`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_ORG_ID` /
-`OPENAI_ORGANIZATION`, `OPENAI_PROJECT_ID` / `OPENAI_PROJECT`, `CODEX_HOME`).
-File-backed ChatGPT logins continue to work through `HOME`/`CODEX_HOME`.
-
-The runner then adds the three minted `SPECAUDIT_CTF_MCP_TRACE*` values to
-that bounded set; the host-config preflight above remains mandatory so codex
-forwards exactly those names to the `specaudit-ctf` server. Stale parent
-trace values, `EXERCISE_HEAD_*` arming/control values, unrelated ambient
-credentials, proxies, and loader/injection variables are not copied by default.
-
-An operator may opt in additional credential/configuration env NAMES with
-`EXERCISE_HEAD_EXTRA_ENV` (comma/whitespace separated; at most 64 names and
-32 KiB of copied names/values; total child environment at most 128 KiB).
-Trace, arming/control, loader/injection, base/head-auth, and arbitrary proxy
-names are reserved. `HTTP_PROXY`, `HTTPS_PROXY`, `NO_PROXY`, and `ALL_PROXY`
-may be named explicitly for proxy-only hosts; lowercase spellings also work
-when named and present with the same spelling on POSIX. Excess copies
-fail before any spawn. Values are copied verbatim from the runner environment and are
-never written into the argv, MCP, or attempt fields. The retained child
-stderr tail (at most 400 characters, only on failure or a non-zero exit) is
-scrubbed of copied secret values and credential-file paths. All opt-in
-values are treated as sensitive, including proxy/configuration values. If any
-copied sensitive value is shorter than 8 characters, the whole stderr tail is
-suppressed.
-The operator owns their authorization and custody, and a credential file
-still needs separate containment.
-
-This bounds the child's initial environment only. It is not an OS sandbox and
-makes no file, network, cwd, descendant, or in-flight containment claim.
-
-## Plugin and skill
-
-Bundled layout:
-
-- [codex-cli/.codex-plugin/plugin.json](codex-cli/.codex-plugin/plugin.json)
-- [codex-cli/.mcp.json](codex-cli/.mcp.json)
-- [codex-cli/launch_mcp.py](codex-cli/launch_mcp.py)
-- [codex-cli/skills/specaudit-ctf/SKILL.md](codex-cli/skills/specaudit-ctf/SKILL.md)
-
-Point a Codex plugin marketplace entry at `extension/heads/codex-cli`, or copy
-the skill under `skills/specaudit-ctf/`. The skill tells the head to call only
-`list`, `describe`, `invoke`, and `run_range`.
+The [bundled plugin](codex-cli/) contains the launcher, MCP config, manifest,
+and CTF skill. The skill describes the tools and the operator's
+responsibility for their use.

@@ -27,14 +27,13 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 }
 
 CAVEATS = (
-    "prerequisites, observed facts, and inference are separated; "
-    "no action is authorized by a skill",
+    "prerequisites, observed facts, and inference are separate fields",
     "framework mappings (e.g. MITRE ATT&CK) are advisory annotations "
     "and are never asserted as compliance",
-    "technique prose is untrusted input and grants no execution permission",
+    "technique prose is source content, not an observation of executed steps",
 )
 
-ARMING = (
+INPUT_HINT = (
     "pass args.method_file (path to a local AD methodology JSON or YAML file); "
     "prerequisites, observed facts, and inference are returned as distinct fields"
 )
@@ -45,7 +44,7 @@ def method_refusal(
 ) -> tuple[Path | None, str | None]:
     """Validate a caller-supplied methodology file path.
 
-    Egress gate: the file must be an existing local file with a
+    Input contract: the file must be an existing local file with a
     recognized suffix; URLs are refused.  Returns (path, None) or
     (None, refusal).
     """

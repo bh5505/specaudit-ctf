@@ -1,10 +1,8 @@
 # Lab Code 01 — walkthrough
 
-## 1. Containment first
+## 1. Inspect the planted file
 
-`SEMGREP_SCAN_ROOT` names the planted directory; the arm refuses any
-target that resolves outside it. The file has exactly four planted
-issues — read it before writing rules.
+The planted file has exactly four issues — read it before writing rules.
 
 ## 2. The rule pack
 

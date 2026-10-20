@@ -26,7 +26,7 @@ from ..strict_data import (
 from .policy import (
     ALLOWED_ACTIONS,
     ARG_KEYS,
-    ARMING,
+    INPUT_HINT,
     ARM_ID,
     CAVEATS,
     LIST_ACTIONS,
@@ -70,7 +70,7 @@ class SecurityDetectionsMcpArm:
                 action,
                 f"action {action!r} is not on the allowlist "
                 "(local rule reads over an operator-supplied frozen index only; "
-                f"there is no dispatch tier; arming: {ARMING})",
+                f"there is no dispatch tier; input: {INPUT_HINT})",
             )
         refusal = args_refusal(action, payload)
         if refusal:
@@ -209,11 +209,10 @@ class SecurityDetectionsMcpArm:
             spec,
             action,
             {
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": [],
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "arg_keys": {key: sorted(vals) for key, vals in ARG_KEYS.items()},
                 "caveats": list(CAVEATS),
-                "arming": ARMING,
+                "input_hint": INPUT_HINT,
             },
         )
 

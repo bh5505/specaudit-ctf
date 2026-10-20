@@ -10,11 +10,9 @@ set: `/usr/sbin/sshd` on tcp/22, `python3 -m http.server` on tcp/8000
 and tcp/8080. Read it first — reconciliation needs the declared side
 before the probe.
 
-## 2. Armed reads
+## 2. Live reads
 
-With the scope envs armed on the kali host (`NMAP_DISPATCH_SCOPE`,
-`ZGRAB2_DISPATCH_SCOPE`, `PAGE_FETCH_DISPATCH_SCOPE`, each naming the
-target IP):
+With the spawned target IP selected on the kali host:
 
 - `nmap scan` returns the live port inventory: 22, 8000, 8080 open —
   exactly the declared set.

@@ -31,7 +31,7 @@ CAVEATS = (
     "no shared-graph writes; this is a read-only evidence arm",
 )
 
-ARMING = (
+INPUT_HINT = (
     "pass args.evidence (path to a local GPO policy evidence file in "
     "JSON or YAML)"
 )
@@ -42,7 +42,7 @@ def evidence_refusal(
 ) -> tuple[Path | None, str | None]:
     """Validate a caller-supplied local evidence path.
 
-    Egress gate: the evidence must be an existing local file with a
+    Input contract: the evidence must be an existing local file with a
     JSON/YAML suffix; URLs are refused.  Returns (path, None) or
     (None, refusal).
     """

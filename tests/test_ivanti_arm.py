@@ -17,7 +17,6 @@ from urllib.parse import urlparse
 import pytest
 
 from extension.arms.ivanti import ARM_ID, IvantiArm
-from extension.arms.ivanti.policy import ENV_SCOPE, resolve_config_path
 from extension.contract import ArmSpec
 
 # --------------------------------------------------------------------------
@@ -105,15 +104,11 @@ def ivanti_server():
     thread.start()
     port = server.server_address[1]
     old = {k: os.environ.get(k) for k in
-           ("IVANTI_API_KEY", "IVANTI_URL", "IVANTI_API_VER", "IVANTI_CLIENT_ID",
-            ENV_SCOPE)}
+           ("IVANTI_API_KEY", "IVANTI_URL", "IVANTI_API_VER", "IVANTI_CLIENT_ID")}
     os.environ["IVANTI_API_KEY"] = "test-key"
     os.environ["IVANTI_URL"] = f"http://127.0.0.1:{port}"
     os.environ["IVANTI_API_VER"] = "/api/v1"
     os.environ["IVANTI_CLIENT_ID"] = "1550"
-    # Every live action is scope-gated now: the armed platform must be inside
-    # IVANTI_SCOPE, so the happy-path fixture names the loopback platform.
-    os.environ[ENV_SCOPE] = "127.0.0.1"
     try:
         yield port
     finally:
@@ -128,17 +123,15 @@ def ivanti_server():
 
 def _spec():
     return ArmSpec(
-        id=ARM_ID, protocols=("cli",), curated=True,
-        tier="experimental", notes="",
+        id=ARM_ID, protocols=("cli",), notes="",
     )
 
 
-def test_list_tools_reports_armed(ivanti_server):
+def test_list_tools_reports_actions(ivanti_server):
     arm = IvantiArm()
     res = arm.invoke(_spec(), "list_tools", {})
     assert res.ok
-    assert "search" in res.output["read_actions"]
-    assert res.output["armed"] is True
+    assert "search" in res.output["actions"]
     assert res.output["default_size"] == 750
 
 
@@ -198,46 +191,12 @@ def test_search_save_writes_csv(ivanti_server, tmp_path):
     assert os.path.getsize(save) > 0
 
 
-def test_unarmed_reports_error():
-    for k in ("IVANTI_API_KEY", "IVANTI_URL", "IVANTI_API_VER", "IVANTI_CLIENT_ID"):
-        os.environ.pop(k, None)
+def test_missing_credentials_report_incomplete_connection():
     arm = IvantiArm()
-    res = arm.invoke(_spec(), "search", {"endp": "host"})
+    with _clean_env():
+        res = arm.invoke(_spec(), "search", {"endp": "host"})
     assert not res.ok
-    assert "unarmed" in (res.error or "")
-
-
-def test_scope_required_refuses_without_reaching_platform(ivanti_server,
-                                                          monkeypatch):
-    """Scope is not optional: a configured platform with no IVANTI_SCOPE must be
-    refused, and the refusal must come before any HTTP request."""
-    monkeypatch.delenv(ENV_SCOPE, raising=False)
-    arm = IvantiArm()
-    listed = arm.invoke(_spec(), "list_tools", {})
-    assert listed.output["armed"] is False
-    before = _Handler.search_hits
-    res = arm.invoke(_spec(), "search", {"endp": "host"})
-    assert not res.ok
-    assert ENV_SCOPE in (res.error or "")
-    assert _Handler.search_hits == before, "no request may reach the platform unarmed"
-
-
-def test_scope_outside_refuses_platform(ivanti_server, monkeypatch):
-    """A scope that does not contain the configured platform is a refusal."""
-    monkeypatch.setenv(ENV_SCOPE, "10.99.0.0/16")
-    arm = IvantiArm()
-    before = _Handler.search_hits
-    res = arm.invoke(_spec(), "search", {"endp": "host"})
-    assert not res.ok
-    assert "outside" in (res.error or "")
-    assert _Handler.search_hits == before
-
-
-def test_scope_inside_proceeds(ivanti_server):
-    """The happy path: platform inside the armed scope runs (mock transport)."""
-    arm = IvantiArm()
-    res = arm.invoke(_spec(), "filters", {"endp": "host"})
-    assert res.ok, res.error
+    assert "connection is incomplete" in (res.error or "")
 
 
 def test_unknown_endpoint_refused(ivanti_server):
@@ -267,13 +226,7 @@ def _write_ini(path, url, api_ver="/api/v1", client_id="1550", api_key="test-key
 
 @pytest.fixture
 def ivanti_platform():
-    """A mock platform that does NOT touch the environment.
-
-    The shared ``ivanti_server`` fixture arms the arm through IVANTI_* env vars;
-    the explicit-config tests must clear those instead, so they use this bare
-    server (monkeypatch's teardown would otherwise re-set the credentials after
-    the fixture restored them, leaking state into later modules).
-    """
+    """A mock platform that leaves environment credentials unchanged."""
     server = http.server.HTTPServer(("127.0.0.1", 0), _Handler)
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
@@ -289,16 +242,12 @@ _CREDENTIAL_KEYS = ("IVANTI_CONFIG", "IVANTI_URL", "IVANTI_API_VER",
 
 
 @contextlib.contextmanager
-def _clean_env(scope):
-    """Clear the credential env and set IVANTI_SCOPE, restoring exactly."""
-    saved = {k: os.environ.get(k) for k in (*_CREDENTIAL_KEYS, ENV_SCOPE)}
+def _clean_env():
+    """Clear connection settings while a test uses an explicit config."""
+    saved = {key: os.environ.get(key) for key in _CREDENTIAL_KEYS}
     try:
         for key in _CREDENTIAL_KEYS:
             os.environ.pop(key, None)
-        if scope is None:
-            os.environ.pop(ENV_SCOPE, None)
-        else:
-            os.environ[ENV_SCOPE] = scope
         yield
     finally:
         for key, value in saved.items():
@@ -308,62 +257,37 @@ def _clean_env(scope):
                 os.environ[key] = value
 
 
-def test_explicit_config_out_of_scope_refused_before_contact(ivanti_platform,
-                                                              tmp_path):
-    """The gate must check the *effective* config (payload "config"), not the
-    default one. With the default config unconfigured the old gate returned ""
-    and skipped authorization entirely while the client dialed the explicit
-    config - a live request with no scope check."""
+def test_explicit_config_runs_with_valid_credentials(ivanti_platform,
+                                                          tmp_path):
+    """An explicit platform config is sufficient when its API credentials work."""
     ini = _write_ini(tmp_path / "explicit.ini",
                      f"http://127.0.0.1:{ivanti_platform}")
     arm = IvantiArm()
-    before = _Handler.search_hits
-    with _clean_env("10.99.0.0/16"):
-        res = arm.invoke(_spec(), "search", {"endp": "host", "config": ini})
-    assert not res.ok
-    assert "outside" in (res.error or "")
-    assert _Handler.search_hits == before, \
-        "no request may reach the out-of-scope explicit platform"
-
-
-def test_explicit_config_requires_scope(ivanti_platform, tmp_path):
-    """A missing IVANTI_SCOPE still refuses an explicit-config dispatch: the fix
-    must not turn an unconfigured default target into a silent allow."""
-    ini = _write_ini(tmp_path / "noscope.ini",
-                     f"http://127.0.0.1:{ivanti_platform}")
-    arm = IvantiArm()
-    before = _Handler.search_hits
-    with _clean_env(None):
-        res = arm.invoke(_spec(), "search", {"endp": "host", "config": ini})
-    assert not res.ok
-    assert ENV_SCOPE in (res.error or "")
-    assert _Handler.search_hits == before
-
-
-def test_explicit_config_in_scope_proceeds_on_same_target(ivanti_platform,
-                                                          tmp_path):
-    """Gate and dial agree: an in-scope explicit config proceeds, and the
-    dispatch stamp names that same target."""
-    ini = _write_ini(tmp_path / "ok.ini", f"http://127.0.0.1:{ivanti_platform}")
-    arm = IvantiArm()
-    with _clean_env("127.0.0.1"):
+    with _clean_env():
         res = arm.invoke(_spec(), "search", {"endp": "host", "config": ini})
     assert res.ok, res.error
     assert res.output["count"] == 4
-    assert res.output["dispatch"]["target"] == f"http://127.0.0.1:{ivanti_platform}"
+    assert res.output["records"][0]["ipAddress"] == "10.0.0.1"
 
 
-def test_success_result_carries_dispatch_audit_and_stamp(ivanti_server, capsys):
-    """A gated successful pull leaves the same audit trail the other
-    scope-gated arms do: a [dispatch] stderr line and a provenance stamp."""
+def test_explicit_config_errors_still_report_missing_credentials(ivanti_platform,
+                                                                  tmp_path):
+    ini = tmp_path / "incomplete.ini"
+    ini.write_text("[platform]\nurl = http://127.0.0.1:" + str(ivanti_platform) +
+                   "\napi_ver = /api/v1\nclient_id = 1550\n", encoding="utf-8")
+    arm = IvantiArm()
+    with _clean_env():
+        res = arm.invoke(_spec(), "search", {"endp": "host", "config": str(ini)})
+    assert not res.ok
+    assert "connection is incomplete" in (res.error or "")
+    assert "[redacted]" in (res.error or "")
+
+
+def test_successful_filters_return_platform_data(ivanti_server):
     arm = IvantiArm()
     res = arm.invoke(_spec(), "filters", {"endp": "host"})
     assert res.ok, res.error
-    assert res.output["dispatch"] == {
-        "dispatch": "true", "scope": "127.0.0.1",
-        "target": f"http://127.0.0.1:{ivanti_server}",
+    assert res.output == {
+        "endp": "host",
+        "filters": [{"field": "ipAddress", "operators": ["CIDR", "IN"]}],
     }
-    err = capsys.readouterr().err
-    assert "[dispatch]" in err
-    assert "arm=ivanti" in err
-    assert f"target=http://127.0.0.1:{ivanti_server}" in err

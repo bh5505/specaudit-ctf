@@ -288,31 +288,28 @@ def test_every_contract_finding_parses_to_coverable_fixtures() -> None:
                 assert named, f"{contract.name}:{finding['finding_key']} names no fixture"
 
 
-def test_attempt_lane_refuses_live_service_contract(tmp_path: Path) -> None:
-    """The declared lane boundary, enforced at the grading layer: a
-    live-service contract never grades through the attempt lane."""
-    with pytest.raises(ExerciseError) as err:
-        run_exercise(
-            challenge="lab-web-01-dast-surface",
-            attempt_dir=str(tmp_path / "attempt"),
-            expected_path=str(CONTRACT_LIVE_WEB),
-        )
-    assert "live-service" in str(err.value)
+def test_attempt_lane_grades_live_service_contract(tmp_path: Path) -> None:
+    attempt_dir = tmp_path / "attempt"
+    _run_persona("competent", CONTRACT_LIVE_WEB, attempt_dir)
+    result = run_exercise(
+        challenge="lab-web-01-dast-surface",
+        attempt_dir=str(attempt_dir),
+        expected_path=str(CONTRACT_LIVE_WEB),
+        trace_key=KEY_HEX,
+    )
+    assert result["head"]["passed"] is True
 
 
-def test_head_execute_refuses_live_service_contract(tmp_path: Path) -> None:
-    """Refusal happens BEFORE any head spend — the fake head is the
-    unarmed driver, and even it must not be spawned for this lane."""
-    with pytest.raises(ExerciseError) as err:
-        run_exercise(
-            challenge="lab-web-01-dast-surface",
-            head="fake",
-            head_execute=True,
-            attempt_dir=str(tmp_path / "attempt"),
-            expected_path=str(CONTRACT_LIVE_WEB),
-        )
-    assert "live-service" in str(err.value)
-    assert not (tmp_path / "attempt").exists()
+def test_head_execute_grades_live_service_contract(tmp_path: Path) -> None:
+    result = run_exercise(
+        challenge="lab-web-01-dast-surface",
+        head="fake",
+        head_execute=True,
+        attempt_dir=str(tmp_path / "attempt"),
+        expected_path=str(CONTRACT_LIVE_WEB),
+    )
+    assert result["head"]["passed"] is True
+    assert (tmp_path / "attempt" / "found.json").exists()
 
 
 def test_runner_executes_the_fake_head_and_passes(tmp_path: Path) -> None:
@@ -350,20 +347,17 @@ def test_runner_executed_attempt_failure_fails_the_run(tmp_path: Path) -> None:
 def test_runner_coupling_matrix(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """B0: real heads are refused on an UNARMED host (the fake head and
-    the out-of-band --attempt-dir grading are the only unarmed drivers);
-    arming is per-head via the EXERCISE_HEAD_*_CMD envs."""
-    from exercise.real_head import ARMING_ENVS
+    """Real-head execution needs a prompt and attempt path; no arming variable."""
+    from exercise.real_head import HEAD_COMMAND_ENVS
 
-    for env in ARMING_ENVS.values():
+    for env in HEAD_COMMAND_ENVS.values():
         monkeypatch.delenv(env, raising=False)
-    with pytest.raises(ExerciseError, match="not armed on this host"):
+    with pytest.raises(ExerciseError, match="requires --attempt-prompt"):
         run_exercise(
             head="claude-code",
             head_execute=True,
             attempt_dir="x",
             expected_path="y",
-            attempt_prompt="p",
         )
     with pytest.raises(ExerciseError, match="requires --attempt-dir"):
         run_exercise(head="fake", head_execute=True, expected_path="y")
@@ -404,15 +398,12 @@ def test_cli_attempt_flags(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -
     assert payload["head"]["passed"] is True
 
 
-def test_attempt_layer_refuses_live_service_contract_directly(tmp_path: Path) -> None:
-    """Defense-in-depth pin: grade_attempt itself (not just the runner
-    gate) refuses a live-service contract, after the trace verifies."""
+def test_attempt_layer_grades_live_service_contract_directly(tmp_path: Path) -> None:
     attempt_dir = tmp_path / "attempt"
     _run_persona("competent", CONTRACT_LIVE_WEB, attempt_dir)
     document = grade_attempt(attempt_dir, expected_path=CONTRACT_LIVE_WEB, key_env=KEY_HEX)
-    assert document["status"] == "failed"
-    assert document["passed"] is False
-    assert "live-service" in document["reason"]
-    # The refusal is deliberate lane policy, not a chain failure: the
-    # trace itself verified.
+    assert document["status"] == "graded"
+    assert document["passed"] is True
+    assert document["grade"]["passed"] is True
+    assert document["verified"] == []
     assert document["trace"]["chain_ok"] is True

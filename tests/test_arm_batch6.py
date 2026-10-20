@@ -33,9 +33,7 @@ def _spec(arm_id: str) -> ArmSpec:
     return ArmSpec(
         id=arm_id,
         protocols=("cli",),
-        curated=True,
         notes="Fixture arm.",
-        tier="research",
     )
 
 
@@ -55,13 +53,11 @@ def _fake_binary(tmp_path: Path, name: str, body: str = ECHO_ARGV_AND_CWD) -> Pa
 
 
 def _cwd_echoed(result) -> Path:
-    payload = result.output["output"] if isinstance(result.output, dict) and "dispatch" in result.output else result.output
-    return Path(payload["cwd"]).resolve()
+    return Path(result.output["cwd"]).resolve()
 
 
 def _argv(result) -> list:
-    payload = result.output["output"] if isinstance(result.output, dict) and "dispatch" in result.output else result.output
-    return payload["argv"]
+    return result.output["argv"]
 
 
 def _workspace(tmp_path: Path) -> tuple[Path, Path]:
@@ -155,26 +151,28 @@ def test_deepsec_mjs_workspace_accepted(
     assert _argv(result) == ["scan"]
 
 
-def test_deepsec_filesystem_root_refused(
+def test_deepsec_init_accepts_filesystem_root(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "deepsec")
     monkeypatch.setenv("DEEPSEC_BIN", str(binary))
     monkeypatch.setenv("DEEPSEC_SCAN_ROOT", str(Path(tmp_path.anchor)))
-    result = DeepsecArm().invoke(_spec(DEEPSEC_ID), "scan", {})
-    assert result.ok is False
-    assert "filesystem root" in result.error
+    result = DeepsecArm().invoke(_spec(DEEPSEC_ID), "init", {})
+    assert result.ok is True
+    assert _argv(result) == ["init"]
 
 
 @pytest.mark.parametrize("action", ["init", "sandbox", "revalidate"])
-def test_deepsec_blocked_actions(
+def test_deepsec_actions_available(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, action: str
 ) -> None:
     binary = _fake_binary(tmp_path, "deepsec")
+    _, workspace = _workspace(tmp_path)
     monkeypatch.setenv("DEEPSEC_BIN", str(binary))
+    monkeypatch.setenv("DEEPSEC_SCAN_ROOT", str(workspace))
     result = DeepsecArm().invoke(_spec(DEEPSEC_ID), action, {})
-    assert result.ok is False
-    assert "blocked" in result.error
+    assert result.ok is True
+    assert _argv(result) == [action]
 
 
 def test_deepsec_extra_args_refused(
@@ -191,18 +189,15 @@ def test_deepsec_extra_args_refused(
     assert "fixed argv" in result.error
 
 
-def test_deepsec_list_tools_caveats_and_blanket_unarmed(
+def test_deepsec_list_tools_caveats_and_workspace_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "deepsec")
     monkeypatch.setenv("DEEPSEC_BIN", str(binary))
-    monkeypatch.setenv("DEEPSEC_DISPATCH_SCOPE", "*")
     result = DeepsecArm().invoke(_spec(DEEPSEC_ID), "list_tools", {})
     assert result.ok is True
-    assert result.output["dispatch_armed"] is False
     caveats = result.output["caveats"]
-    assert "init out of band" in caveats
-    assert "workspace" in caveats
+    assert "working directory" in caveats
     assert "thousands of dollars" in caveats
     assert "matcher state" in caveats
     assert result.output["workspace_config"] == WORKSPACE_CONFIG_FAMILY
@@ -225,7 +220,7 @@ def test_deepsec_scan_argv_cwd_no_positional(
     assert not (REPO_ROOT / "run_manifest.json").exists()
 
 
-def test_deepsec_root_parent_accepted_outside_refused(
+def test_deepsec_root_accepts_operator_selected_path(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "deepsec")
@@ -240,9 +235,9 @@ def test_deepsec_root_parent_accepted_outside_refused(
     assert argv[0] == "scan"
     assert "--root" in argv
     assert str(repo.resolve()) in argv
-    bad = DeepsecArm().invoke(_spec(DEEPSEC_ID), "scan", {"root": str(outside)})
-    assert bad.ok is False
-    assert "workspace parent" in bad.error
+    outside_result = DeepsecArm().invoke(_spec(DEEPSEC_ID), "scan", {"root": str(outside)})
+    assert outside_result.ok is True
+    assert str(outside.resolve()) in _argv(outside_result)
     flag = DeepsecArm().invoke(_spec(DEEPSEC_ID), "scan", {"root": "-evil"})
     assert flag.ok is False
     assert "non-flag path" in flag.error
@@ -251,48 +246,38 @@ def test_deepsec_root_parent_accepted_outside_refused(
     )
     assert nul.ok is False
     assert "control characters" in nul.error
-    monkeypatch.setenv("DEEPSEC_DISPATCH_SCOPE", "localhost")
     stamped = DeepsecArm().invoke(
         _spec(DEEPSEC_ID), "process", {"root": str(repo)}
     )
     assert stamped.ok is True
-    assert stamped.output["dispatch"]["target"] == f"repo:{repo.resolve()}"
 
 
-def test_deepsec_process_unarmed_names_env(
+def test_deepsec_process_runs_for_operator_selected_workspace(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "deepsec")
     _, workspace = _workspace(tmp_path)
     monkeypatch.setenv("DEEPSEC_BIN", str(binary))
     monkeypatch.setenv("DEEPSEC_SCAN_ROOT", str(workspace))
-    monkeypatch.delenv("DEEPSEC_DISPATCH_SCOPE", raising=False)
     result = DeepsecArm().invoke(_spec(DEEPSEC_ID), "process", {})
-    assert result.ok is False
-    assert "DEEPSEC_DISPATCH_SCOPE" in result.error
-    assert "Caveat:" in result.error
+    assert result.ok is True
+    assert _argv(result) == ["process"]
+    assert _cwd_echoed(result) == workspace.resolve()
 
 
-def test_deepsec_process_armed_logs_repo(
+def test_deepsec_process_argv_and_workspace_cwd(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "deepsec")
     _, workspace = _workspace(tmp_path)
     monkeypatch.setenv("DEEPSEC_BIN", str(binary))
     monkeypatch.setenv("DEEPSEC_SCAN_ROOT", str(workspace))
-    monkeypatch.setenv("DEEPSEC_DISPATCH_SCOPE", "localhost")
     result = DeepsecArm().invoke(
         _spec(DEEPSEC_ID), "process", {"project_id": "my-app"}
     )
     assert result.ok is True
     assert _argv(result) == ["process", "--project-id", "my-app"]
-    assert result.output["dispatch"]["target"] == f"repo:{workspace}"
-    err = capsys.readouterr().err
-    assert "[dispatch]" in err
-    assert "arm=deepsec" in err
-    assert "target=repo:" in err
     assert _cwd_echoed(result) == workspace.resolve()
 
 
@@ -311,15 +296,14 @@ def test_deepsec_scan_timeout(
     assert "timed out" in result.error
 
 
-def test_deepsec_list_tools_armed_localhost(
+def test_deepsec_list_tools_reports_workspace_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "deepsec")
     monkeypatch.setenv("DEEPSEC_BIN", str(binary))
-    monkeypatch.setenv("DEEPSEC_DISPATCH_SCOPE", "localhost")
     result = DeepsecArm().invoke(_spec(DEEPSEC_ID), "list_tools", {})
     assert result.ok is True
-    assert result.output["dispatch_armed"] is True
+    assert result.output["workspace_config"] == WORKSPACE_CONFIG_FAMILY
 
 
 # --- vvah ----------------------------------------------------------------
@@ -340,68 +324,45 @@ def test_vvah_doctor_and_estimate(
     binary = _fake_binary(tmp_path, "vvaharness")
     root, repo = _scan_tree(tmp_path)
     monkeypatch.setenv("VVAH_BIN", str(binary))
-    monkeypatch.setenv("VVAH_SCAN_ROOT", str(root))
     doctor = VvahArm().invoke(_spec(VVAH_ID), "doctor", {})
     assert doctor.ok is True
     assert _argv(doctor) == ["doctor"]
-    assert _cwd_echoed(doctor) == root.resolve()
+    assert _cwd_echoed(doctor) == Path.cwd().resolve()
     estimate = VvahArm().invoke(_spec(VVAH_ID), "estimate", {"repo": str(repo)})
     assert estimate.ok is True
     argv = _argv(estimate)
     assert argv[0] == "estimate"
     assert "--repo" in argv
     assert str(repo.resolve()) in argv
-    assert _cwd_echoed(estimate) == root.resolve()
+    assert _cwd_echoed(estimate) == repo.resolve()
     assert not (REPO_ROOT / "run_manifest.json").exists()
 
 
-def test_vvah_scan_unarmed_and_stop_after(
+def test_vvah_scan_stop_after_and_workspace_cwd(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "vvaharness")
     root, repo = _scan_tree(tmp_path)
     monkeypatch.setenv("VVAH_BIN", str(binary))
-    monkeypatch.setenv("VVAH_SCAN_ROOT", str(root))
-    monkeypatch.delenv("VVAH_DISPATCH_SCOPE", raising=False)
-    unarmed = VvahArm().invoke(_spec(VVAH_ID), "scan", {"repo": str(repo)})
-    assert unarmed.ok is False
-    assert "VVAH_DISPATCH_SCOPE" in unarmed.error
-    assert "Caveat:" in unarmed.error
-    monkeypatch.setenv("VVAH_DISPATCH_SCOPE", "localhost")
-    armed = VvahArm().invoke(_spec(VVAH_ID), "scan", {"repo": str(repo)})
-    assert armed.ok is True
-    argv = _argv(armed)
+    result = VvahArm().invoke(_spec(VVAH_ID), "scan", {"repo": str(repo)})
+    assert result.ok is True
+    argv = _argv(result)
     assert "scan" in argv
     assert "--stop-after" in argv
     assert "s9" in argv
     assert "--repo" in argv
-    assert _cwd_echoed(armed) == root.resolve()
-    err = capsys.readouterr().err
-    assert "[dispatch]" in err and "arm=vvah" in err and "target=repo:" in err
-    assert armed.output["dispatch"]["target"].startswith("repo:")
+    assert _cwd_echoed(result) == repo.resolve()
     assert not (REPO_ROOT / "run_manifest.json").exists()
 
 
-def test_vvah_remediate_dual_gate(
+def test_vvah_remediate_runs_with_operator_selected_repo(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "vvaharness")
     root, repo = _scan_tree(tmp_path)
     monkeypatch.setenv("VVAH_BIN", str(binary))
-    monkeypatch.setenv("VVAH_SCAN_ROOT", str(root))
-    monkeypatch.setenv("VVAH_DISPATCH_SCOPE", "localhost")
-    monkeypatch.delenv("VVAH_ALLOW_REMEDIATE", raising=False)
-    denied = VvahArm().invoke(_spec(VVAH_ID), "remediate", {"repo": str(repo)})
-    assert denied.ok is False
-    assert "VVAH_ALLOW_REMEDIATE" in denied.error
-    monkeypatch.setenv("VVAH_ALLOW_REMEDIATE", "true")
-    still = VvahArm().invoke(_spec(VVAH_ID), "remediate", {"repo": str(repo)})
-    assert still.ok is False
-    monkeypatch.setenv("VVAH_ALLOW_REMEDIATE", "1")
     ok = VvahArm().invoke(_spec(VVAH_ID), "remediate", {"repo": str(repo)})
     assert ok.ok is True
     argv = _argv(ok)
@@ -409,8 +370,7 @@ def test_vvah_remediate_dual_gate(
     assert "scan" not in argv
     assert "s9" not in argv
     assert "--repo" in argv
-    err = capsys.readouterr().err
-    assert "arm=vvah" in err and "target=repo:" in err
+    assert _cwd_echoed(ok) == repo.resolve()
 
 
 def test_vvah_validate_refused(
@@ -420,7 +380,7 @@ def test_vvah_validate_refused(
     monkeypatch.setenv("VVAH_BIN", str(binary))
     result = VvahArm().invoke(_spec(VVAH_ID), "validate", {})
     assert result.ok is False
-    assert "not on any tier" in result.error
+    assert "unsupported" in result.error
 
 
 def test_vvah_stop_after_extra_arg_refused(
@@ -429,8 +389,6 @@ def test_vvah_stop_after_extra_arg_refused(
     binary = _fake_binary(tmp_path, "vvaharness")
     root, repo = _scan_tree(tmp_path)
     monkeypatch.setenv("VVAH_BIN", str(binary))
-    monkeypatch.setenv("VVAH_SCAN_ROOT", str(root))
-    monkeypatch.setenv("VVAH_DISPATCH_SCOPE", "localhost")
     result = VvahArm().invoke(
         _spec(VVAH_ID), "scan", {"repo": str(repo), "stop_after": "s11"}
     )
@@ -451,17 +409,15 @@ def test_vvah_list_tools_blanket(
 ) -> None:
     binary = _fake_binary(tmp_path, "vvaharness")
     monkeypatch.setenv("VVAH_BIN", str(binary))
-    monkeypatch.setenv("VVAH_DISPATCH_SCOPE", "*")
     result = VvahArm().invoke(_spec(VVAH_ID), "list_tools", {})
     assert result.ok is True
-    assert result.output["dispatch_armed"] is False
     assert "s9" in result.output["caveats"]
     assert "remediate" in result.output["caveats"]
     assert "live-probes" in result.output["caveats"]
     assert "estimate spends nothing" in result.output["caveats"]
 
 
-def test_vvah_path_outside_root(
+def test_vvah_accepts_operator_selected_repo_outside_former_root(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "vvaharness")
@@ -469,10 +425,10 @@ def test_vvah_path_outside_root(
     outside = tmp_path / "elsewhere"
     outside.mkdir()
     monkeypatch.setenv("VVAH_BIN", str(binary))
-    monkeypatch.setenv("VVAH_SCAN_ROOT", str(root))
     result = VvahArm().invoke(_spec(VVAH_ID), "estimate", {"repo": str(outside)})
-    assert result.ok is False
-    assert "must stay inside" in result.error
+    assert result.ok is True
+    assert _argv(result) == ["estimate", "--repo", str(outside.resolve())]
+    assert _cwd_echoed(result) == outside.resolve()
 
 
 # --- ai-deep-sast --------------------------------------------------------
@@ -492,7 +448,6 @@ def test_aideepsast_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_aideepsast_scan_skip_llm_ai_scan_does_not(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "aideepsast")
     root, repo = _scan_tree(tmp_path)
@@ -509,14 +464,6 @@ def test_aideepsast_scan_skip_llm_ai_scan_does_not(
     assert "--semgrep-config" in _argv(scan)
     assert str(rules.resolve()) in _argv(scan)
     assert _cwd_echoed(scan) == root.resolve()
-    monkeypatch.delenv("AI_DEEP_SAST_DISPATCH_SCOPE", raising=False)
-    unarmed = AiDeepSastArm().invoke(
-        _spec(AI_DEEP_SAST_ID), "ai_scan", {"target": str(repo)}
-    )
-    assert unarmed.ok is False
-    assert "AI_DEEP_SAST_DISPATCH_SCOPE" in unarmed.error
-    assert "Caveat:" in unarmed.error
-    monkeypatch.setenv("AI_DEEP_SAST_DISPATCH_SCOPE", "localhost")
     ai = AiDeepSastArm().invoke(
         _spec(AI_DEEP_SAST_ID), "ai_scan", {"target": str(repo)}
     )
@@ -524,8 +471,6 @@ def test_aideepsast_scan_skip_llm_ai_scan_does_not(
     assert "--skip-llm" not in _argv(ai)
     assert "--target" in _argv(ai)
     assert "--semgrep-config" in _argv(ai)
-    err = capsys.readouterr().err
-    assert "arm=ai-deep-sast" in err and "target=repo:" in err
 
 
 def test_aideepsast_dry_run_missing_bin_is_result_not_install_error(
@@ -565,7 +510,6 @@ def test_aideepsast_skip_llm_on_ai_scan_refused(
     root, repo = _scan_tree(tmp_path)
     monkeypatch.setenv("AI_DEEP_SAST_BIN", str(binary))
     monkeypatch.setenv("AI_DEEP_SAST_SCAN_ROOT", str(root))
-    monkeypatch.setenv("AI_DEEP_SAST_DISPATCH_SCOPE", "localhost")
     monkeypatch.setenv("AI_DEEP_SAST_SEMGREP_CONFIG", str(_local_semgrep(root)))
     result = AiDeepSastArm().invoke(
         _spec(AI_DEEP_SAST_ID),
@@ -586,16 +530,14 @@ def test_aideepsast_list_tools_blanket(
 ) -> None:
     binary = _fake_binary(tmp_path, "aideepsast")
     monkeypatch.setenv("AI_DEEP_SAST_BIN", str(binary))
-    monkeypatch.setenv("AI_DEEP_SAST_DISPATCH_SCOPE", "*")
     result = AiDeepSastArm().invoke(_spec(AI_DEEP_SAST_ID), "list_tools", {})
     assert result.ok is True
-    assert result.output["dispatch_armed"] is False
     assert "--skip-llm" in result.output["caveats"]
-    assert "Foundation-Sec" in result.output["caveats"]
+    assert "configured AI backend" in result.output["caveats"]
     assert result.output["semgrep_config"] == "AI_DEEP_SAST_SEMGREP_CONFIG"
 
 
-def test_aideepsast_scan_requires_local_semgrep_config(
+def test_aideepsast_scan_accepts_optional_or_registry_semgrep_config(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "aideepsast")
@@ -606,14 +548,14 @@ def test_aideepsast_scan_requires_local_semgrep_config(
     missing = AiDeepSastArm().invoke(
         _spec(AI_DEEP_SAST_ID), "scan", {"target": str(repo)}
     )
-    assert missing.ok is False
-    assert "AI_DEEP_SAST_SEMGREP_CONFIG" in missing.error
+    assert missing.ok is True
+    assert "--semgrep-config" not in _argv(missing)
     monkeypatch.setenv("AI_DEEP_SAST_SEMGREP_CONFIG", "p/owasp-top-ten")
     registry = AiDeepSastArm().invoke(
         _spec(AI_DEEP_SAST_ID), "scan", {"target": str(repo)}
     )
-    assert registry.ok is False
-    assert "registry" in registry.error
+    assert registry.ok is True
+    assert _argv(registry)[-2:] == ["--semgrep-config", "p/owasp-top-ten"]
     nul = AiDeepSastArm().invoke(
         _spec(AI_DEEP_SAST_ID),
         "scan",
@@ -621,6 +563,25 @@ def test_aideepsast_scan_requires_local_semgrep_config(
     )
     assert nul.ok is False
     assert "control characters" in nul.error
+
+
+def test_aideepsast_target_outside_working_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "aideepsast")
+    working = tmp_path / "working"
+    target = tmp_path / "other" / "target"
+    working.mkdir()
+    target.mkdir(parents=True)
+    monkeypatch.setenv("AI_DEEP_SAST_BIN", str(binary))
+    monkeypatch.setenv("AI_DEEP_SAST_SCAN_ROOT", str(working))
+    monkeypatch.delenv("AI_DEEP_SAST_SEMGREP_CONFIG", raising=False)
+    result = AiDeepSastArm().invoke(
+        _spec(AI_DEEP_SAST_ID), "scan", {"target": str(target)}
+    )
+    assert result.ok is True
+    assert str(target.resolve()) in _argv(result)
+    assert _cwd_echoed(result) == working.resolve()
 
 
 # --- agent-wiz -----------------------------------------------------------
@@ -683,7 +644,6 @@ def test_agentwiz_frameworks_argparse_verbatim(
 def test_agentwiz_visualize_and_analyze(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "agent-wiz")
     root = tmp_path / "scanroot"
@@ -700,7 +660,6 @@ def test_agentwiz_visualize_and_analyze(
     assert "--input" in _argv(vis)
     assert "--open" not in _argv(vis)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.setenv("AGENT_WIZ_DISPATCH_SCOPE", "localhost")
     missing = AgentWizArm().invoke(
         _spec(AGENT_WIZ_ID), "analyze", {"input": str(graph)}
     )
@@ -709,14 +668,6 @@ def test_agentwiz_visualize_and_analyze(
     assert "[redacted]" not in missing.error
     assert "OPENAI_API_KEY" not in missing.error
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-not-used")
-    monkeypatch.delenv("AGENT_WIZ_DISPATCH_SCOPE", raising=False)
-    unarmed = AgentWizArm().invoke(
-        _spec(AGENT_WIZ_ID), "analyze", {"input": str(graph)}
-    )
-    assert unarmed.ok is False
-    assert "AGENT_WIZ_DISPATCH_SCOPE" in unarmed.error
-    assert "Caveat:" in unarmed.error
-    monkeypatch.setenv("AGENT_WIZ_DISPATCH_SCOPE", "localhost")
     ok = AgentWizArm().invoke(
         _spec(AGENT_WIZ_ID), "analyze", {"input": str(graph)}
     )
@@ -725,9 +676,6 @@ def test_agentwiz_visualize_and_analyze(
     assert argv[0] == "analyze"
     assert "--input" in argv
     assert _cwd_echoed(ok) == root.resolve()
-    err = capsys.readouterr().err
-    assert "arm=agent-wiz" in err and "graph:" in err
-    assert ok.output["dispatch"]["target"].startswith("graph:")
     assert not any(REPO_ROOT.glob("*_vis"))
     assert not any(REPO_ROOT.glob("*_report.md"))
 
@@ -760,10 +708,8 @@ def test_agentwiz_list_tools_blanket_and_frameworks(
 ) -> None:
     binary = _fake_binary(tmp_path, "agent-wiz")
     monkeypatch.setenv("AGENT_WIZ_BIN", str(binary))
-    monkeypatch.setenv("AGENT_WIZ_DISPATCH_SCOPE", "*")
     result = AgentWizArm().invoke(_spec(AGENT_WIZ_ID), "list_tools", {})
     assert result.ok is True
-    assert result.output["dispatch_armed"] is False
     assert "llama_index" in result.output["frameworks"]
     assert "pydantic" in result.output["frameworks"]
     assert "llamaindex" not in result.output["frameworks"]
@@ -796,3 +742,22 @@ def test_agentwiz_extra_args_and_flag_path(
     )
     assert nul.ok is False
     assert "control characters" in nul.error
+
+
+def test_agentwiz_input_outside_working_directory(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "agent-wiz")
+    working = tmp_path / "working"
+    graph = tmp_path / "other" / "graph.json"
+    working.mkdir()
+    graph.parent.mkdir()
+    graph.write_text("{}", encoding="utf-8")
+    monkeypatch.setenv("AGENT_WIZ_BIN", str(binary))
+    monkeypatch.setenv("AGENT_WIZ_SCAN_ROOT", str(working))
+    result = AgentWizArm().invoke(
+        _spec(AGENT_WIZ_ID), "visualize", {"input": str(graph)}
+    )
+    assert result.ok is True
+    assert str(graph.resolve()) in _argv(result)
+    assert _cwd_echoed(result) == working.resolve()

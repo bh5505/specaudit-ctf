@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 import hashlib
 import json
 import math
 import os
 import re
-import secrets
 import stat
 import sys
 import tempfile
@@ -18,7 +16,6 @@ from pathlib import Path
 
 from extension.contract import Extension
 from extension.dispatch import dispatch_range
-from extension.encode import artifact_filename
 from score.grading import GradingError, grade_files, load_findings_document
 
 SCHEMA = "specaudit.ctf.exercise-operator.v1"
@@ -33,16 +30,10 @@ FIXTURES = {
 }
 INPUTS = ("main.tf", "assets.json", "connectivity.json", "sast.json")
 MAX_SUBMISSION_BYTES = 1_048_576
-ASSISTANCE_CHOICES = ("first-pass", "assisted", "tuned", "held-out", "none")
-_HEX_KEY = re.compile(r"[0-9a-f]{64}\Z")
 
 
 class OperatorError(ValueError):
     """A refused operator request."""
-
-
-class OperatorLedgerError(RuntimeError):
-    """The --ledger wiring failed; the run must not pass as ledgered."""
 
 
 def encoded(document: object) -> bytes:
@@ -250,32 +241,10 @@ def strict_json(raw: bytes) -> object:
 
 def rehearse(destination: Path) -> dict:
     root = fresh_output(destination)
-    artifacts = root / "artifacts"
-    artifacts.mkdir(mode=0o700)
-    outcome = dispatch_range(
-        Extension(), seed=123, arm_ids=[],
-        attempt_id="attempt-" + secrets.token_hex(32), artifact_dir=str(artifacts),
-    )
-    entries = []
-    report_error = None
-    report_status = None
-    if outcome.envelope is not None:
-        entries.append(write(root, "range-envelope.json", encoded(outcome.envelope)))
-        for claim in outcome.envelope.get("artifacts", []):
-            if claim.get("kind") != "range-report":
-                continue
-            try:
-                name = artifact_filename(claim["digest"])
-                raw = bounded_regular(artifacts / name)
-                if "sha256:" + digest(raw) != claim["digest"]:
-                    raise OperatorError("range artifact digest mismatch")
-                report = strict_json(raw)
-                if not isinstance(report, dict) or not isinstance(report.get("fixtures"), list):
-                    raise OperatorError("range artifact has no fixture roster")
-                report_status = report.get("status")
-                entries.append({"path": f"artifacts/{name}", "sha256": digest(raw), "bytes": len(raw)})
-            except (OperatorError, OSError) as exc:
-                report_error = str(exc)
+    outcome = dispatch_range(Extension(), seed=123, arm_ids=[])
+    entries = [write(root, "range-report.json", encoded(outcome.document))]
+    report_status = outcome.document.get("status")
+    report_error = None if isinstance(outcome.document.get("fixtures"), list) else "range report has no fixture roster"
     result = {
         "schema": SCHEMA, "command": "rehearse",
         "status": "complete" if outcome.exit_code == 0 and report_status == "complete" and report_error is None else "failed",
@@ -338,91 +307,7 @@ def packet_binding(packet: Path, challenge: str) -> dict:
             "source": "recomputed from packaged challenge and fixture bytes"}
 
 
-def _read_ledger_rows(path: Path) -> list[dict]:
-    """Read the JSON-lines ledger; a missing file starts an empty chain."""
-    try:
-        data = path.read_bytes()
-    except FileNotFoundError:
-        return []
-    except OSError as exc:
-        raise OperatorLedgerError(f"ledger unreadable: {exc}") from exc
-    try:
-        text = data.decode("utf-8")
-    except UnicodeError as exc:
-        raise OperatorLedgerError(f"ledger is not utf-8: {exc}") from exc
-    if text and not text.endswith("\n"):
-        raise OperatorLedgerError("ledger does not end with a newline")
-    rows = []
-    for number, line in enumerate(text.splitlines(), 1):
-        if not line.strip():
-            raise OperatorLedgerError(f"ledger line {number} is blank")
-        try:
-            row = json.loads(line, parse_constant=_no_constant)
-        except ValueError as exc:
-            raise OperatorLedgerError(f"ledger line {number} is not JSON: {exc}") from exc
-        if not isinstance(row, dict):
-            raise OperatorLedgerError(f"ledger line {number} is not an object")
-        rows.append(row)
-    return rows
-
-
-def _no_constant(value: str) -> None:
-    raise ValueError(f"non-JSON constant {value}")
-
-
-def _append_ledger_line(path: Path, row: dict) -> None:
-    """Append one canonical line; refuse to extend a partial trailing line."""
-    if path.exists() and path.stat().st_size > 0:
-        with path.open("rb") as stream:
-            stream.seek(-1, os.SEEK_END)
-            if stream.read(1) != b"\n":
-                raise OperatorLedgerError("refusing to append after a partial line")
-    line = json.dumps(row, sort_keys=True, separators=(",", ":"), allow_nan=False,
-                      ensure_ascii=False) + "\n"
-    with path.open("ab") as stream:
-        stream.write(line.encode("utf-8"))
-
-
-def _ledger_head(challenge: str, found_digest: str, *, ledger: Path, ledger_key: bytes | None,
-                 lane: str, attempt_class: str, outcome: str, assistance: str,
-                 recorded_at: datetime, detail: bytes) -> str:
-    """Verify the existing chain, append one grade row, and return the new head.
-
-    attempt_ledger is imported lazily here so a runtime without the package
-    fails this grade run loudly (never a silent unledgered pass).
-    """
-    try:
-        from attempt_ledger import LedgerError, append_row, verify_ledger
-    except ImportError as exc:
-        raise OperatorLedgerError(f"attempt_ledger package unavailable: {exc}") from exc
-    rows = _read_ledger_rows(ledger)
-    check = verify_ledger(rows, hmac_key=ledger_key)
-    if not check.ok:
-        raise OperatorLedgerError(
-            f"existing ledger fails verification: {', '.join(check.reasons)}")
-    # The attempt id binds the challenge and the exact submitted bytes, so
-    # regrading the same submission is a legitimate retry, not a new attempt.
-    try:
-        rows, head = append_row(
-            rows, {
-                "attempt_id": f"grade-{challenge}-{found_digest[:16]}",
-                "lane": lane,
-                "subject": challenge,
-                "attempt_class": attempt_class,
-                "outcome": outcome,
-                "assistance": assistance,
-                "detail_digest": "sha256:" + hashlib.sha256(detail).hexdigest(),
-                "recorded_at": recorded_at,
-            }, hmac_key=ledger_key)
-        _append_ledger_line(ledger, rows[-1])
-    except (LedgerError, OSError) as exc:
-        raise OperatorLedgerError(str(exc)) from exc
-    return head
-
-
-def grade(challenge: str, found_path: Path, destination: Path, packet: Path | None = None, *,
-          ledger: Path | None = None, ledger_key: bytes | None = None,
-          assistance: str = "first-pass", recorded_at: datetime | None = None) -> dict:
+def grade(challenge: str, found_path: Path, destination: Path, packet: Path | None = None) -> dict:
     doc, contract = select(challenge)
     binding = None
     if packet is not None:
@@ -452,10 +337,8 @@ def grade(challenge: str, found_path: Path, destination: Path, packet: Path | No
             verdict, status, reason = None, "refused", str(exc)
     root = fresh_output(destination)
     entries = [write(root, "submission.json", found)]
-    grade_bytes = None
     if verdict is not None:
-        grade_bytes = encoded(verdict)
-        entries.append(write(root, "grade.json", grade_bytes))
+        entries.append(write(root, "grade.json", encoded(verdict)))
     result = {
         "schema": SCHEMA, "command": "grade", "challenge": challenge,
         "lane": doc["lane"], "status": status,
@@ -465,25 +348,6 @@ def grade(challenge: str, found_path: Path, destination: Path, packet: Path | No
     }
     if reason is not None:
         result["reason"] = reason
-    if ledger is not None:
-        if recorded_at is None:
-            raise OperatorLedgerError("ledger rows require an explicit --at recording time")
-        # A failed grade is still a completed attempt (wrong findings, not a
-        # refusal); only true refusals map to refusal-class rows. A refused
-        # grade has no grade.json, so its detail document is the refusal
-        # reason plus the submission digest it refused.
-        if preflight_error is not None:
-            attempt_class = "parse-failure"
-        elif status == "refused":
-            attempt_class = "refusal"
-        else:
-            attempt_class = "completion"
-        detail = grade_bytes if grade_bytes is not None else encoded(
-            {"reason": reason, "submission_sha256": digest(found)})
-        result["ledger_head_digest"] = _ledger_head(
-            challenge, digest(found), ledger=ledger, ledger_key=ledger_key,
-            lane=doc["lane"], attempt_class=attempt_class, outcome=status,
-            assistance=assistance, recorded_at=recorded_at, detail=detail)
     write(root, "manifest.json", encoded(result))
     return result
 
@@ -502,34 +366,7 @@ def main(argv: list[str] | None = None) -> int:
     grading.add_argument("--found", type=Path, required=True)
     grading.add_argument("--out", type=Path, required=True)
     grading.add_argument("--packet", type=Path, help="verify an immutable prepared learner packet")
-    grading.add_argument("--ledger", type=Path, help="append-only attempt ledger (JSON-lines)")
-    grading.add_argument("--ledger-key-hex", help="optional 64-hex HMAC key for the ledger")
-    grading.add_argument("--assistance", choices=ASSISTANCE_CHOICES,
-                         help="ledger assistance class (default first-pass)")
-    grading.add_argument("--at", help="naive iso recording time; required with --ledger")
     ns = parser.parse_args(argv)
-    ledger_key = None
-    recorded_at = None
-    assistance = "first-pass"
-    if ns.command == "grade":
-        if ns.ledger is None:
-            if ns.ledger_key_hex is not None or ns.assistance is not None or ns.at is not None:
-                parser.error("--ledger-key-hex/--assistance/--at require --ledger")
-        else:
-            if ns.at is None:
-                parser.error("--at is required with --ledger")
-            try:
-                recorded_at = datetime.fromisoformat(ns.at)
-            except ValueError:
-                parser.error(f"--at is not an iso datetime: {ns.at}")
-            if recorded_at.tzinfo is not None:
-                parser.error("--at must be naive; this CLI never reads a clock")
-            if ns.ledger_key_hex is not None:
-                key_text = ns.ledger_key_hex.strip().lower()
-                if not _HEX_KEY.fullmatch(key_text):
-                    parser.error("--ledger-key-hex must be 64 hex characters")
-                ledger_key = bytes.fromhex(key_text)
-            assistance = ns.assistance or "first-pass"
     try:
         if ns.command == "inventory":
             result = inventory()
@@ -538,15 +375,7 @@ def main(argv: list[str] | None = None) -> int:
         elif ns.command == "rehearse":
             result = rehearse(ns.out)
         else:
-            result = grade(ns.challenge, ns.found, ns.out, ns.packet, ledger=ns.ledger,
-                           ledger_key=ledger_key, assistance=assistance,
-                           recorded_at=recorded_at)
-    except OperatorLedgerError as exc:
-        # Fail closed and machine-readably: --ledger was requested, so a run
-        # whose row could not be appended must never exit as graded-and-ledgered.
-        print(json.dumps({"ok": False, "reason": "ledger-error", "error": str(exc)},
-                         sort_keys=True))
-        return 2
+            result = grade(ns.challenge, ns.found, ns.out, ns.packet)
     except (OperatorError, OSError) as exc:
         print(f"exercise_operator: {exc}", file=sys.stderr)
         return 2

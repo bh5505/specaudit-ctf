@@ -1,8 +1,8 @@
-"""Dispatch-only rules for the commix arm.
+"""Rules for the commix arm.
 
 Upstream commix is an active command-injection prober with no module
-listing and no report-reading mode (verified 2026-08-23). Every action
-is dispatch-class.
+listing and no report-reading mode (verified 2026-08-23). The single
+scan action runs the upstream probe.
 """
 
 from __future__ import annotations
@@ -13,9 +13,8 @@ from urllib import parse as urllib_parse
 
 ARM_ID = "commix"
 ENV_BIN = "COMMIX_BIN"
-ENV_DISPATCH_SCOPE = "COMMIX_DISPATCH_SCOPE"
 
-DISPATCH_ACTIONS = frozenset({"scan"})
+ALLOWED_ACTIONS = frozenset({"scan"})
 
 TIMEOUT_SECONDS = 600.0
 MAX_OUTPUT_CHARS = 200_000

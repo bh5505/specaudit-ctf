@@ -23,7 +23,7 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
-from .model import Refusal, bounded_list, closed, live_value, normalize, pattern_covers
+from .model import Refusal, bounded_list, closed, normalize, pattern_covers
 from .sources import ADAPTERS, MAX_FILE_BYTES, decode
 from .probe_policy import validate_target
 from .sanitize import safe_text
@@ -60,7 +60,7 @@ def fetch(url, token=None, dns=False):
         headers["Authorization"] = "Bearer " + credential(token)
     request = urllib.request.Request(url, headers=headers)
     # Live CT responses for large telecom domains are multi-MiB and crt.sh is
-    # slow/rate-limited; 8s socket timeout was too tight and made the governed
+    # slow/rate-limited; 8s socket timeout was too tight and made the
     # footprinting path fail on reads. 30s accommodates slow large responses.
     with opener.open(request, timeout=30) as response:
         if response.status != 200 or response.headers.get("Content-Encoding", "identity") != "identity":
@@ -256,7 +256,7 @@ def probe(target, timeout=8):
     method = target["method"]
     if method in ("nmap", "zgrab2"):
         from ...contract import ArmSpec
-        spec = ArmSpec(method, ("cli",), True, "Explicit bounded probe composition", "research")
+        spec = ArmSpec(method, ("cli",), "Probe composition")
         if method == "nmap":
             from ..nmap import NmapArm
             auth_target = "[" + ip + "]" if ":" in ip else ip
@@ -308,7 +308,7 @@ def probe(target, timeout=8):
         sock.connect((ip, port))
         if method in ("tcp-hello", "udp-hello"):
             sock.settimeout(max(.001, deadline - time.monotonic()))
-            sock.sendall(target.get("hello", "hello\r\n").encode("ascii"))
+            sock.sendall(target.get("hello", "hello\r\n").encode("utf-8"))
         if method == "tls" or target.get("url", "").startswith("https:"):
             context = ssl.create_default_context()
             # An IP certificate is verified for that exact explicit IP.
@@ -331,6 +331,8 @@ def http_get(sock, target, deadline=None):
     deadline = deadline if deadline is not None else time.monotonic() + 8
     url = urllib.parse.urlsplit(target["url"])
     path = url.path or "/"
+    if url.query:
+        path += "?" + url.query
     request = ("GET " + path + " HTTP/1.0\r\nHost: " + url.netloc + "\r\nConnection: close\r\n\r\n").encode("ascii")
     sock.sendall(request)
     raw = b""
@@ -369,22 +371,17 @@ def http_get(sock, target, deadline=None):
 def validate_request(request):
     if not isinstance(request, dict) or request.get("operation") not in ("collect", "probe"):
         raise Refusal("unknown operation")
-    if request.get("live") is not True:
-        raise Refusal("explicit live true required")
     timeout = request.get("timeout", 8)
     # collect workers may need up to 30s for slow multi-MiB telecom CT reads.
     if type(timeout) not in (int, float) or not 0 < timeout <= 30:
         raise Refusal("invalid worker deadline")
     if request["operation"] == "collect":
-        closed(request, ("operation", "live", "source", "kind", "value", "variant", "timeout"))
+        closed(request, ("operation", "source", "kind", "value", "variant", "timeout"))
         source, kind = request.get("source"), request.get("kind")
-        grants = os.environ.get("ASSET_RECON_PROVIDERS", "").split(",")
         allowed = set(ADAPTERS) - {"dns"}
-        if source not in allowed or not set(grants) <= allowed or source not in grants or kind not in ADAPTERS[source].query_kinds:
+        if source not in allowed or kind not in ADAPTERS[source].query_kinds:
             raise Refusal("invalid provider or query kind")
         value = normalize(kind, request.get("value"))
-        if not live_value(kind, value):
-            raise Refusal("live query value refused")
         variant = request.get("variant")
         if source in ("google", "cloudflare"):
             if variant not in (("A", "AAAA") if kind == "domain" else (None,)):
@@ -401,8 +398,8 @@ def validate_request(request):
         elif variant is not None:
             raise Refusal("unexpected query variant")
         return dict(request, value=value)
-    closed(request, ("operation", "live", "target", "timeout"))
-    target, _, _ = validate_target(request.get("target"))
+    closed(request, ("operation", "target", "timeout"))
+    target = validate_target(request.get("target"))
     return dict(request, target=target)
 
 

@@ -23,7 +23,7 @@ import pytest
 
 from exercise import real_head
 from exercise.real_head import (
-    ARMING_ENVS,
+    HEAD_COMMAND_ENVS,
     DEFAULT_TIMEOUT_SECONDS,
     HEAD_TIMEOUT_ENV,
     PROMPT_TRAILER,
@@ -47,9 +47,9 @@ CONTRACT_02 = (
 @pytest.fixture(autouse=True)
 def _hermetic(monkeypatch: pytest.MonkeyPatch) -> None:
     """No real head is armed, and no transport/control env leaks in."""
-    for env in ARMING_ENVS.values():
+    for env in HEAD_COMMAND_ENVS.values():
         monkeypatch.delenv(env, raising=False)
-    for env in (HEAD_TIMEOUT_ENV, real_head.EXTRA_ENV_ENV, *real_head.TRACE_VARS):
+    for env in (HEAD_TIMEOUT_ENV, *real_head.TRACE_VARS):
         monkeypatch.delenv(env, raising=False)
 
 
@@ -115,6 +115,28 @@ def _fake_executable(directory: Path, name: str) -> str:
     return str(path)
 
 
+@pytest.mark.parametrize(
+    ("head", "command"),
+    [("claude-code", "claude"), ("codex-cli", "codex"), ("qwen-code", "qwen")],
+)
+def test_head_uses_default_command_without_override(
+    monkeypatch: pytest.MonkeyPatch, head: str, command: str
+) -> None:
+    monkeypatch.delenv(HEAD_COMMAND_ENVS[head], raising=False)
+    assert real_head.command_for(head) == command
+
+
+def test_child_inherits_operator_environment_without_stale_trace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CTF_OPERATOR_CUSTOM", "present")
+    for name in real_head.TRACE_VARS:
+        monkeypatch.setenv(name, "stale")
+    child = real_head.bounded_child_environment("claude-code")
+    assert child["CTF_OPERATOR_CUSTOM"] == "present"
+    assert all(name not in child for name in real_head.TRACE_VARS)
+
+
 def _forbid_mint(monkeypatch: pytest.MonkeyPatch) -> None:
     """execute_real_head imports mint_key from extension.trace at call
     time, so the ordering pin must patch the source module."""
@@ -124,21 +146,12 @@ def _forbid_mint(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_unarmed_real_head_is_refused() -> None:
-    with pytest.raises(ExerciseError, match="not armed on this host"):
-        run_exercise(
-            head="claude-code",
-            head_execute=True,
-            attempt_dir="x",
-            expected_path="y",
-            attempt_prompt="p",
-        )
 
 
 def test_armed_head_without_prompt_is_refused(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], "/usr/bin/claude")
     with pytest.raises(ExerciseError, match="requires --attempt-prompt"):
         run_exercise(
             head="claude-code", head_execute=True, attempt_dir="x", expected_path="y"
@@ -172,16 +185,6 @@ def test_head_execute_without_head_names_the_choices() -> None:
         run_exercise(head_execute=True, attempt_dir="x", expected_path="y")
 
 
-def test_arming_env_blank_is_unarmed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ARMING_ENVS["codex-cli"], "   ")
-    with pytest.raises(ExerciseError, match="not armed on this host"):
-        run_exercise(
-            head="codex-cli",
-            head_execute=True,
-            attempt_dir="x",
-            expected_path="y",
-            attempt_prompt="p",
-        )
 
 
 def test_load_prompt_contract(tmp_path: Path) -> None:
@@ -254,7 +257,7 @@ def test_armed_claude_head_is_composed_spawned_and_graded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path, capsys
 ) -> None:
     cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     seen: dict = {}
@@ -279,7 +282,8 @@ def test_armed_claude_head_is_composed_spawned_and_graded(
     assert argv[0] == cmd
     # The real prompt reached the child; the trailer is runner-owned.
     assert argv[2] == prompt_text + PROMPT_TRAILER
-    assert "--strict-mcp-config" in argv and "--output-format" in argv
+    assert "--mcp-config" in argv and "--output-format" in argv
+    assert "--allowedTools" not in argv and "--strict-mcp-config" not in argv
     assert seen["cwd"] == str(attempt_dir)
     # The private mcp-config existed during the spawn and is gone after.
     config_path = Path(argv[argv.index("--mcp-config") + 1])
@@ -304,7 +308,7 @@ def test_claude_mcp_config_carries_the_trace_env(
     verify the temp config's content and its 0600 mode as the head sees
     it (the runner deletes the file after the run)."""
     cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     seen: dict = {}
@@ -353,7 +357,7 @@ def test_armed_codex_head_exports_trace_vars_and_preflights(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
 ) -> None:
     cmd = _fake_executable(tmp_path, "codex")
-    monkeypatch.setenv(ARMING_ENVS["codex-cli"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["codex-cli"], cmd)
     config = tmp_path / "config.toml"
     config.write_text(
         "[mcp_servers.specaudit-ctf]\ncommand = \"python\"\nenv_vars = ["
@@ -385,8 +389,9 @@ def test_armed_codex_head_exports_trace_vars_and_preflights(
 
     assert lane["status"] == "passed"
     argv = seen["argv"]
-    assert argv[:5] == [cmd, "exec", "--sandbox", "workspace-write", "--skip-git-repo-check"]
-    assert argv[6] == str(attempt_dir)
+    assert argv[:3] == [cmd, "exec", "--skip-git-repo-check"]
+    assert "--sandbox" not in argv
+    assert argv[4] == str(attempt_dir)
     assert argv[-1] == prompt_text + PROMPT_TRAILER
     child_env = seen["kwargs"]["env"]
     assert child_env["SPECAUDIT_CTF_MCP_TRACE_KEY"]
@@ -404,7 +409,7 @@ def test_codex_preflight_failure_fails_closed_before_spawn(
     # A resolvable command whose host config lacks the allowlist: the
     # transport preflight is what refuses, before any spawn.
     cmd = _fake_executable(tmp_path, "codex")
-    monkeypatch.setenv(ARMING_ENVS["codex-cli"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["codex-cli"], cmd)
     config = tmp_path / "config.toml"
     config.write_text('model = "x"\n', encoding="utf-8")
     monkeypatch.setattr(real_head, "_codex_config_path", lambda: config)
@@ -432,7 +437,7 @@ def test_timeout_fails_the_lane_without_grading(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
 ) -> None:
     cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
 
@@ -479,7 +484,7 @@ def test_spawn_failure_fails_closed_and_deletes_the_temp_config(
     no key material on disk and no traceback: a fail-closed lane with
     the spawn error as the reason, and the temp mcp-config gone."""
     cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
 
@@ -504,62 +509,6 @@ def test_spawn_failure_fails_closed_and_deletes_the_temp_config(
     assert lane["spawn"]["exit_code"] is None
 
 
-def test_child_stderr_is_scrubbed_of_the_minted_trace_facts(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
-) -> None:
-    """A chatty head that echoes its env/config must not carry the
-    minted key (or the trace path/attempt id) into the lane record."""
-    cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
-    attempt_dir = tmp_path / "attempt"
-    attempt_dir.mkdir()
-    seen: dict = {}
-
-    def fake_run(argv, **kwargs):
-        # The stub cannot know the minted key up front; grab the facts
-        # from the temp config the composition just wrote.
-        import json as _json
-
-        config_path = Path(argv[argv.index("--mcp-config") + 1])
-        env = _json.loads(config_path.read_text(encoding="utf-8"))["mcpServers"][
-            "specaudit-ctf"
-        ]["env"]
-        proc = type(
-            "Proc",
-            (),
-            {
-                "stdout": "",
-                "stderr": "trace-key-is "
-                + env["SPECAUDIT_CTF_MCP_TRACE_KEY"]
-                + " attempt "
-                + env["SPECAUDIT_CTF_MCP_TRACE_ATTEMPT"],
-                "returncode": 0,
-            },
-        )()
-        seen["secrets"] = env
-        return proc
-
-    monkeypatch.setattr(real_head.subprocess, "run", fake_run)
-
-    from exercise.attempt import AttemptError
-
-    def failing_grade(*a, **k):
-        raise AttemptError("attempt documents unusable: no trace")
-
-    monkeypatch.setattr("exercise.attempt.grade_attempt", failing_grade)
-    lane = execute_real_head(
-        head="claude-code",
-        cmd=cmd,
-        attempt_dir=str(attempt_dir),
-        expected_path="expected.json",
-        prompt_text="p",
-        prompt_sha256="a" * 64,
-        prompt_chars=1,
-        timeout_seconds=7,
-    )
-    assert seen["secrets"]["SPECAUDIT_CTF_MCP_TRACE_KEY"] not in json.dumps(lane)
-    assert seen["secrets"]["SPECAUDIT_CTF_MCP_TRACE_ATTEMPT"] not in json.dumps(lane)
-    assert "<redacted>" in lane.get("spawn_note", "") or "<redacted>" in lane.get("reason", "")
 
 
 def test_claude_child_env_carries_no_stale_trace_vars(
@@ -568,7 +517,7 @@ def test_claude_child_env_carries_no_stale_trace_vars(
     """The config file is the claude-path transport: a stale trace key
     in the operator's own shell must not ride into the head process."""
     cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], cmd)
     monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE_KEY", "stale-key-value")
     monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE", "/stale/trace")
     attempt_dir = tmp_path / "attempt"
@@ -600,7 +549,7 @@ def test_spawn_refuses_to_overwrite_an_existing_temp_config(
     O_NOFOLLOW, though through the generic OSError branch with the
     cannot-write message)."""
     cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     (attempt_dir / "mcp-config.json").write_text("sentinel", encoding="utf-8")
@@ -628,7 +577,7 @@ def test_head_spawn_is_non_interactive(
     """A headless spawn must not inherit the runner's stdin (a CLI that
     probes it could block); it is wired to DEVNULL."""
     cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     seen: dict = {}
@@ -685,7 +634,7 @@ def test_runner_converts_preflight_failure_to_a_usage_error(
     """The full CLI path: an armed codex with a bad host config exits
     as `exercise: ...` (ExerciseError), never a traceback."""
     cmd = _fake_executable(tmp_path, "codex")
-    monkeypatch.setenv(ARMING_ENVS["codex-cli"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["codex-cli"], cmd)
     config = tmp_path / "config.toml"
     config.write_text('model = "x"\n', encoding="utf-8")
     monkeypatch.setattr(real_head, "_codex_config_path", lambda: config)
@@ -705,7 +654,7 @@ def test_run_exercise_end_to_end_with_a_stubbed_head(
     """The full runner path: armed head + prompt file -> report carries
     the graded lane and never leaks the trace key or prompt text."""
     cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     _stub_run(monkeypatch, returncode=0)
@@ -746,7 +695,7 @@ def test_qwen_head_is_composed_spawned_and_graded(
     launcher path, allowlists the four MCP tools by per-server name,
     and goes one-shot on the positional prompt."""
     cmd = _fake_executable(tmp_path, "qwen")
-    monkeypatch.setenv(ARMING_ENVS["qwen-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["qwen-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     seen: dict = {}
@@ -772,10 +721,7 @@ def test_qwen_head_is_composed_spawned_and_graded(
     # runner-owned trailer.
     assert argv[-1] == prompt_text + PROMPT_TRAILER
     assert "--yolo" in argv
-    allowed = argv[argv.index("--allowed-tools") + 1]
-    for tool in ("list", "describe", "invoke", "run_range"):
-        assert f"mcp__specaudit-ctf__{tool}" in allowed
-    assert "write_file" in allowed
+    assert "--allowed-tools" not in argv
     assert seen["cwd"] == str(attempt_dir)
     # Same private-config custody as claude: existed during the spawn,
     # deleted after.
@@ -797,7 +743,7 @@ def test_qwen_child_env_carries_no_stale_trace_vars(
     """The config file is the transport on this path too: a stale trace
     key in the operator's own shell must not ride into the head."""
     cmd = _fake_executable(tmp_path, "qwen")
-    monkeypatch.setenv(ARMING_ENVS["qwen-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["qwen-code"], cmd)
     monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE_KEY", "stale-key-value")
     monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE", "/stale/trace")
     attempt_dir = tmp_path / "attempt"
@@ -820,15 +766,6 @@ def test_qwen_child_env_carries_no_stale_trace_vars(
     assert "SPECAUDIT_CTF_MCP_TRACE" not in child_env
 
 
-def test_unarmed_qwen_head_is_refused() -> None:
-    with pytest.raises(ExerciseError, match="EXERCISE_HEAD_QWEN_CODE_CMD"):
-        run_exercise(
-            head="qwen-code",
-            head_execute=True,
-            attempt_dir="x",
-            expected_path="y",
-            attempt_prompt="p",
-        )
 
 
 def test_qwen_readiness_reports_no_bundled_launcher() -> None:
@@ -865,193 +802,14 @@ _AMBIENT_SENTINELS = {
 }
 
 
-@pytest.mark.parametrize(
-    ("head", "expected_auth", "expected_value", "unexpected_auth"),
-    [
-        ("claude-code", "ANTHROPIC_API_KEY", "synthetic-anthropic", "OPENAI_API_KEY"),
-        ("codex-cli", "OPENAI_API_KEY", "synthetic-openai", "ANTHROPIC_API_KEY"),
-        ("qwen-code", "GEMINI_API_KEY", "synthetic-gemini", "ANTHROPIC_API_KEY"),
-    ],
-)
-def test_child_environment_is_an_explicit_allowlist(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    head: str,
-    expected_auth: str,
-    expected_value: str,
-    unexpected_auth: str,
-) -> None:
-    """The head child gets base/auth names only: no ambient copy, no
-    stale trace facts, no arming/control vars, no unrelated secrets."""
-    attempt_dir = tmp_path / "attempt"
-    attempt_dir.mkdir()
-    cmd = _fake_executable(tmp_path, "synthetic-head")
-    monkeypatch.setenv("PATH", "/synthetic/bin")
-    monkeypatch.setenv("HOME", "/synthetic/home")
-    monkeypatch.setenv("LANG", "C.UTF-8")
-    monkeypatch.setenv(expected_auth, f"synthetic-{expected_auth.lower()}")
-    monkeypatch.setenv(unexpected_auth, f"synthetic-{unexpected_auth.lower()}")
-    monkeypatch.setenv("GEMINI_API_KEY", "synthetic-gemini")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "synthetic-anthropic")
-    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-openai")
-    for name, value in _AMBIENT_SENTINELS.items():
-        monkeypatch.setenv(name, value)
-    for env in ARMING_ENVS.values():
-        monkeypatch.setenv(env, cmd)
-    monkeypatch.setenv(HEAD_TIMEOUT_ENV, "7")
-    monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE", "/stale/trace")
-    monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE_KEY", "stale-key")
-    monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE_ATTEMPT", "stale-attempt")
-    if head == "codex-cli":
-        monkeypatch.setattr(
-            real_head,
-            "_codex_config_path",
-            lambda: _codex_allowlist_config(tmp_path),
-        )
-    seen: dict = {}
-    _stub_run(monkeypatch, seen=seen)
-    _stub_grade(monkeypatch, passed=True)
-
-    execute_real_head(
-        head=head,
-        cmd=cmd,
-        attempt_dir=str(attempt_dir),
-        expected_path="expected.json",
-        prompt_text="p",
-        prompt_sha256="a" * 64,
-        prompt_chars=1,
-        timeout_seconds=7,
-    )
-
-    child_env = seen["kwargs"]["env"]
-    assert child_env["PATH"] == "/synthetic/bin"
-    assert child_env["HOME"] == "/synthetic/home"
-    assert child_env["LANG"] == "C.UTF-8"
-    assert child_env[expected_auth] == expected_value
-    assert unexpected_auth not in child_env
-    for name, value in _AMBIENT_SENTINELS.items():
-        assert name not in child_env, f"{name} leaked into the head environment"
-        assert value not in child_env.values()
-    for env in ARMING_ENVS.values():
-        assert env not in child_env
-    assert HEAD_TIMEOUT_ENV not in child_env
-    assert real_head.EXTRA_ENV_ENV not in child_env
-    if head == "codex-cli":
-        # Codex rides the minted child-env transport.
-        assert child_env["SPECAUDIT_CTF_MCP_TRACE"] == str(attempt_dir / "trace.ndjson")
-        assert child_env["SPECAUDIT_CTF_MCP_TRACE_KEY"] != "stale-key"
-        assert len(child_env["SPECAUDIT_CTF_MCP_TRACE_KEY"]) == 64
-        assert child_env["SPECAUDIT_CTF_MCP_TRACE_ATTEMPT"] != "stale-attempt"
-    else:
-        # Claude/Qwen carry the trace in the private per-server config.
-        assert "SPECAUDIT_CTF_MCP_TRACE" not in child_env
-        assert "SPECAUDIT_CTF_MCP_TRACE_KEY" not in child_env
-        assert "SPECAUDIT_CTF_MCP_TRACE_ATTEMPT" not in child_env
 
 
-def test_claude_provider_credentials_require_explicit_selection(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "synthetic-aws-key")
-    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", "/synthetic/google.json")
-    child = real_head.bounded_child_environment("claude-code")
-    assert "AWS_ACCESS_KEY_ID" not in child
-    assert "GOOGLE_APPLICATION_CREDENTIALS" not in child
-
-    monkeypatch.setenv("CLAUDE_CODE_USE_BEDROCK", "1")
-    child = real_head.bounded_child_environment("claude-code")
-    assert child["AWS_ACCESS_KEY_ID"] == "synthetic-aws-key"
-    assert "GOOGLE_APPLICATION_CREDENTIALS" not in child
-
-    monkeypatch.delenv("CLAUDE_CODE_USE_BEDROCK")
-    monkeypatch.setenv("CLAUDE_CODE_USE_VERTEX", "1")
-    child = real_head.bounded_child_environment("claude-code")
-    assert child["GOOGLE_APPLICATION_CREDENTIALS"] == "/synthetic/google.json"
-    assert "AWS_ACCESS_KEY_ID" not in child
 
 
-def test_extra_env_opt_in_copies_only_named_credentials(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv(
-        real_head.EXTRA_ENV_ENV, "MY_PROVIDER_KEY, OTHER_PROVIDER_CONFIG"
-    )
-    monkeypatch.setenv("MY_PROVIDER_KEY", "synthetic-provider-key")
-    monkeypatch.setenv("OTHER_PROVIDER_CONFIG", "synthetic-provider-config")
-    monkeypatch.setenv("UNRELATED_SECRET", "synthetic-unrelated-secret")
-    child = real_head.bounded_child_environment("codex-cli")
-    assert child["MY_PROVIDER_KEY"] == "synthetic-provider-key"
-    assert child["OTHER_PROVIDER_CONFIG"] == "synthetic-provider-config"
-    assert "UNRELATED_SECRET" not in child
-    # An opted-in name absent from the parent is simply not copied.
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, "MY_PROVIDER_KEY ABSENT_KEY")
-    child = real_head.bounded_child_environment("codex-cli")
-    assert child["MY_PROVIDER_KEY"] == "synthetic-provider-key"
-    assert "ABSENT_KEY" not in child
 
 
-@pytest.mark.parametrize(
-    "name",
-    [
-        "SPECAUDIT_CTF_MCP_TRACE",
-        "SPECAUDIT_CTF_MCP_TRACE_KEY",
-        "SPECAUDIT_CTF_ROOT",
-        "EXERCISE_HEAD_CLAUDE_CODE_CMD",
-        "EXERCISE_HEAD_TIMEOUT_SECONDS",
-        "EXERCISE_HEAD_EXTRA_ENV",
-        "PYTHONPATH",
-        "LD_PRELOAD",
-        "DYLD_INSERT_LIBRARIES",
-        "NODE_OPTIONS",
-        "BASH_ENV",
-        "GIT_CONFIG_GLOBAL",
-        "SYSTEMROOT",
-        "PWD",
-        "LANG",
-        "PATH",
-        "HOME",
-        "CLAUDE_CODE_USE_BEDROCK",
-        "MCP_TRACE_PATH",
-        "BAD-NAME",
-        "1BAD",
-        "A=B",
-    ],
-)
-def test_extra_env_reserved_or_invalid_names_refuse_before_spawn(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    prompt_file: Path,
-    name: str,
-) -> None:
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, name)
-    attempt_dir = tmp_path / "attempt"
-    attempt_dir.mkdir()
-    monkeypatch.setattr(
-        real_head.subprocess,
-        "run",
-        lambda *a, **k: pytest.fail(f"spawned with refused extra env name {name}"),
-    )
-    with pytest.raises(RealHeadError, match="reserved|invalid"):
-        execute_real_head(
-            head="claude-code",
-            cmd="/usr/bin/claude",
-            attempt_dir=str(attempt_dir),
-            expected_path="expected.json",
-            prompt_text="p",
-            prompt_sha256="a" * 64,
-            prompt_chars=1,
-            timeout_seconds=7,
-        )
-    # Validation happens before the private config is written.
-    assert not (attempt_dir / "mcp-config.json").exists()
 
 
-def test_extra_env_case_ambiguous_name_is_refused(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, "MY_KEY my_key")
-    with pytest.raises(RealHeadError, match="case-ambiguous"):
-        real_head.bounded_child_environment("codex-cli")
 
 
 def _mcp_payload() -> str:
@@ -1117,7 +875,7 @@ def test_private_config_env_drives_the_real_mcp_trace(
     """Stub the model CLI, but attach the REAL MCP server with exactly
     the private config's env map: the run grades from the server trace."""
     cmd = _fake_executable(tmp_path, "claude" if head == "claude-code" else "qwen")
-    monkeypatch.setenv(ARMING_ENVS[head], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS[head], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     original_run = subprocess.run
@@ -1161,15 +919,14 @@ def test_private_config_env_drives_the_real_mcp_trace(
     assert not seen["config_path"].exists(), "temp config is deleted after the run"
 
 
-def test_codex_bounded_env_drives_the_real_mcp_trace(
+def test_codex_child_env_drives_the_real_mcp_trace(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     prompt_file: Path,
 ) -> None:
-    """The minted codex child env must reach the REAL MCP server: no
-    ambient copy, just the bounded allowlist plus the trace facts."""
+    """The operator environment and minted trace values reach the MCP server."""
     cmd = _fake_executable(tmp_path, "codex")
-    monkeypatch.setenv(ARMING_ENVS["codex-cli"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["codex-cli"], cmd)
     monkeypatch.setattr(
         real_head,
         "_codex_config_path",
@@ -1211,230 +968,28 @@ def test_codex_bounded_env_drives_the_real_mcp_trace(
     assert lane["trace"]["chain_ok"] is True
     assert lane["trace"]["close_ok"] is True
     assert lane["trace"]["tool_calls"] == 2
-    assert "CTF_AMBIENT_SENTINEL" not in seen["env"]
+    assert seen["env"]["CTF_AMBIENT_SENTINEL"] == "must-not-arrive"
     assert seen["env"]["SPECAUDIT_CTF_MCP_TRACE"] == str(attempt_dir / "trace.ndjson")
     assert len(seen["env"]["SPECAUDIT_CTF_MCP_TRACE_KEY"]) == 64
     assert (attempt_dir / "trace.ndjson").is_file()
 
 
-def test_extra_env_name_count_is_bounded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    names = [
-        f"SYNTH_EXTRA_{index}"
-        for index in range(real_head.EXTRA_ENV_MAX_VARS + 1)
-    ]
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, " ".join(names))
-    with pytest.raises(RealHeadError, match="more than 64 variables"):
-        real_head.bounded_child_environment("codex-cli")
 
 
-def test_extra_env_total_bytes_are_bounded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, "SYNTH_BIG_VALUE")
-    monkeypatch.setenv(
-        "SYNTH_BIG_VALUE", "x" * real_head.EXTRA_ENV_MAX_BYTES
-    )
-    with pytest.raises(RealHeadError, match="bytes of names/values"):
-        real_head.bounded_child_environment("codex-cli")
 
 
-def test_extra_env_excess_refuses_before_spawn(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    names = [
-        f"SYNTH_EXTRA_{index}"
-        for index in range(real_head.EXTRA_ENV_MAX_VARS + 1)
-    ]
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, " ".join(names))
-    attempt_dir = tmp_path / "attempt"
-    attempt_dir.mkdir()
-    monkeypatch.setattr(
-        real_head.subprocess,
-        "run",
-        lambda *a, **k: pytest.fail("spawned with an over-limit extra env"),
-    )
-    with pytest.raises(RealHeadError, match="more than 64 variables"):
-        execute_real_head(
-            head="claude-code",
-            cmd="/usr/bin/claude",
-            attempt_dir=str(attempt_dir),
-            expected_path="expected.json",
-            prompt_text="p",
-            prompt_sha256="a" * 64,
-            prompt_chars=1,
-            timeout_seconds=7,
-        )
-    assert not (attempt_dir / "mcp-config.json").exists()
 
 
-def test_child_stderr_suppresses_short_copied_values(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
-) -> None:
-    """A short opted-in value makes the retained child stderr ambiguous,
-    so suppress the tail rather than leaking a short credential."""
-    extra_secret = "synthetic-provider-key-9f2c"
-    api_secret = "synthetic-anthropic-credential-7a1b"
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, "MY_PROVIDER_KEY TINY_FLAG")
-    monkeypatch.setenv("MY_PROVIDER_KEY", extra_secret)
-    monkeypatch.setenv("TINY_FLAG", "1")
-    monkeypatch.setenv("ANTHROPIC_API_KEY", api_secret)
-    cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
-    attempt_dir = tmp_path / "attempt"
-    attempt_dir.mkdir()
-
-    def fake_run(argv, **kwargs):
-        class Proc:
-            stdout = ""
-            stderr = f"provider={extra_secret} api={api_secret} flag=1"
-            returncode = 1
-
-        return Proc()
-
-    monkeypatch.setattr(real_head.subprocess, "run", fake_run)
-
-    from exercise.attempt import AttemptError
-
-    def failing_grade(*a, **k):
-        raise AttemptError("attempt documents unusable: no trace")
-
-    monkeypatch.setattr("exercise.attempt.grade_attempt", failing_grade)
-    lane = execute_real_head(
-        head="claude-code",
-        cmd=cmd,
-        attempt_dir=str(attempt_dir),
-        expected_path="expected.json",
-        prompt_text="p",
-        prompt_sha256="a" * 64,
-        prompt_chars=1,
-        timeout_seconds=7,
-    )
-    recorded = json.dumps(lane)
-    assert extra_secret not in recorded
-    assert api_secret not in recorded
-    assert "flag=1" not in lane["reason"]
-    assert "<redacted child stderr>" in lane["reason"]
 
 
-def test_total_child_environment_bytes_are_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OPENAI_API_KEY", "x" * (real_head.CHILD_ENV_MAX_BYTES + 1))
-    with pytest.raises(RealHeadError, match="head child environment exceeds"):
-        real_head.bounded_child_environment("codex-cli")
 
 
-def test_minted_trace_cannot_exceed_total_child_environment_bound(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    base = real_head.bounded_child_environment("codex-cli")
-    base_bytes = sum(len(k.encode()) + len(v.encode()) + 2 for k, v in base.items())
-    key_bytes = len("OPENAI_API_KEY") + 2
-    monkeypatch.setenv(
-        "OPENAI_API_KEY",
-        "x" * (real_head.CHILD_ENV_MAX_BYTES - base_bytes - key_bytes - 32),
-    )
-    real_head.bounded_child_environment("codex-cli")
-    monkeypatch.setattr(real_head, "codex_preflight", lambda: {"kind": "test"})
-    monkeypatch.setattr(
-        real_head.subprocess,
-        "run",
-        lambda *a, **k: pytest.fail("oversized final child environment spawned"),
-    )
-    with pytest.raises(RealHeadError, match="head child environment exceeds"):
-        execute_real_head(
-            head="codex-cli",
-            cmd=_fake_executable(tmp_path, "codex"),
-            attempt_dir=str(tmp_path / "attempt"),
-            expected_path="expected.json",
-            prompt_text="p",
-            prompt_sha256="a" * 64,
-            prompt_chars=1,
-            timeout_seconds=7,
-        )
 
 
-def test_long_copied_credentials_are_redacted_with_stderr_context(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    extra_secret = "synthetic-provider-key-9f2c"
-    api_secret = "synthetic-anthropic-credential-7a1b"
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, "MY_PROVIDER_KEY")
-    monkeypatch.setenv("MY_PROVIDER_KEY", extra_secret)
-    monkeypatch.setenv("ANTHROPIC_API_KEY", api_secret)
-    credential_path = "/synthetic/private/google-credential-file.json"
-    monkeypatch.setenv("CLAUDE_CODE_USE_VERTEX", "1")
-    monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", credential_path)
-    cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
-
-    class Proc:
-        stdout = ""
-        stderr = (
-            f"prefix provider={extra_secret} api={api_secret} "
-            f"credential_path={credential_path} suffix"
-        )
-        returncode = 1
-
-    monkeypatch.setattr(real_head.subprocess, "run", lambda *a, **k: Proc())
-    from exercise.attempt import AttemptError
-
-    def failing_grade(*a, **k):
-        raise AttemptError("attempt documents unusable: no trace")
-
-    monkeypatch.setattr("exercise.attempt.grade_attempt", failing_grade)
-    lane = execute_real_head(
-        head="claude-code",
-        cmd=cmd,
-        attempt_dir=str(tmp_path / "attempt"),
-        expected_path="expected.json",
-        prompt_text="p",
-        prompt_sha256="a" * 64,
-        prompt_chars=1,
-        timeout_seconds=7,
-    )
-    recorded = json.dumps(lane)
-    assert extra_secret not in recorded
-    assert api_secret not in recorded
-    assert credential_path not in recorded
-    assert (
-        "prefix provider=<redacted> api=<redacted> "
-        "credential_path=<redacted> suffix"
-    ) in lane["reason"]
 
 
-def test_conventional_proxy_requires_explicit_opt_in(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("HTTPS_PROXY", "http://proxy.example.invalid:8080")
-    assert "HTTPS_PROXY" not in real_head.bounded_child_environment("qwen-code")
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, "HTTPS_PROXY")
-    assert real_head.bounded_child_environment("qwen-code")["HTTPS_PROXY"] == (
-        "http://proxy.example.invalid:8080"
-    )
-    monkeypatch.setenv("https_proxy", "http://lowercase.invalid:8080")
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, "https_proxy")
-    assert real_head.bounded_child_environment("qwen-code")["https_proxy"] == (
-        "http://lowercase.invalid:8080"
-    )
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, "CUSTOM_PROXY")
-    with pytest.raises(RealHeadError, match="reserved"):
-        real_head.bounded_child_environment("qwen-code")
 
 
-def test_credential_config_paths_are_sensitive(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(real_head.EXTRA_ENV_ENV, raising=False)
-    locations = {
-        "CLAUDE_CONFIG_DIR": "/synthetic/private/claude",
-        "AWS_CONFIG_FILE": "/synthetic/private/aws-config",
-        "AWS_SHARED_CREDENTIALS_FILE": "/synthetic/private/aws-credentials",
-        "CODEX_HOME": "/synthetic/private/codex",
-        "GOOGLE_APPLICATION_CREDENTIALS": "/synthetic/private/google.json",
-    }
-    assert set(locations.values()).issubset(
-        real_head._child_secret_values(locations)
-    )
 
 
 def test_child_stderr_secret_crossing_tail_boundary_is_scrubbed(
@@ -1443,7 +998,7 @@ def test_child_stderr_secret_crossing_tail_boundary_is_scrubbed(
     secret = "synthetic-cross-boundary-secret"
     monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
     cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], cmd)
 
     class Proc:
         stdout = ""
@@ -1658,7 +1213,7 @@ def test_absent_command_fails_closed_before_mint_config_or_spawn(
     """A command that cannot resolve refuses BEFORE anything sensitive
     happens: no minted key, no private config, no spawn."""
     missing = str(tmp_path / "absent" / "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], missing)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], missing)
     attempt_dir = tmp_path / "attempt"
     _forbid_mint(monkeypatch)
     monkeypatch.setattr(
@@ -1686,7 +1241,7 @@ def test_codex_config_failure_fails_closed_before_mint(
     """A resolvable command with an unwired codex transport still refuses
     before the key exists (the preflight moved ahead of minting)."""
     cmd = _fake_executable(tmp_path, "codex")
-    monkeypatch.setenv(ARMING_ENVS["codex-cli"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["codex-cli"], cmd)
     monkeypatch.setattr(
         real_head, "_codex_config_path", lambda: tmp_path / "absent-config.toml"
     )
@@ -1704,23 +1259,6 @@ def test_codex_config_failure_fails_closed_before_mint(
         )
 
 
-def test_extra_env_validation_precedes_executable_preflight(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    """The operator opt-in is validated before the resolver runs: a
-    reserved name refuses even with a command that cannot resolve."""
-    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, "PYTHONPATH")
-    with pytest.raises(RealHeadError, match="reserved"):
-        execute_real_head(
-            head="claude-code",
-            cmd=str(tmp_path / "absent" / "claude"),
-            attempt_dir=str(tmp_path / "attempt"),
-            expected_path="expected.json",
-            prompt_text="p",
-            prompt_sha256="a" * 64,
-            prompt_chars=1,
-            timeout_seconds=7,
-        )
 
 
 def test_missing_launcher_fails_closed_before_mint(
@@ -1730,7 +1268,7 @@ def test_missing_launcher_fails_closed_before_mint(
     key is minted (qwen rides the same launcher as claude)."""
     for head in ("claude-code", "qwen-code"):
         cmd = _fake_executable(tmp_path, "head")
-        monkeypatch.setenv(ARMING_ENVS[head], cmd)
+        monkeypatch.setenv(HEAD_COMMAND_ENVS[head], cmd)
         monkeypatch.setattr(
             real_head,
             "_mcp_launcher_path",
@@ -1756,7 +1294,7 @@ def test_missing_interpreter_fails_closed_before_mint(
     """The interpreter the private config will name is verified while
     the preflight runs, not after the key is on disk."""
     cmd = _fake_executable(tmp_path, "claude")
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
+    monkeypatch.setenv(HEAD_COMMAND_ENVS["claude-code"], cmd)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "absent-python"))
     _forbid_mint(monkeypatch)
     with pytest.raises(RealHeadError, match="interpreter"):

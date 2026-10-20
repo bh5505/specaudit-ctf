@@ -1,4 +1,4 @@
-"""Path-contained rules for the agent-wiz arm."""
+"""Command arguments for the agent-wiz arm."""
 
 from __future__ import annotations
 
@@ -8,11 +8,9 @@ from pathlib import Path
 ARM_ID = "agent-wiz"
 ENV_BIN = "AGENT_WIZ_BIN"
 ENV_SCAN_ROOT = "AGENT_WIZ_SCAN_ROOT"
-ENV_DISPATCH_SCOPE = "AGENT_WIZ_DISPATCH_SCOPE"
 ENV_OPENAI_KEY = "OPENAI_API_KEY"
 
-ALLOWED_ACTIONS = frozenset({"extract", "visualize"})
-DISPATCH_ACTIONS = frozenset({"analyze"})
+ALLOWED_ACTIONS = frozenset({"extract", "visualize", "analyze"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 
 EXTRACT_KEYS = frozenset({"framework", "directory", "output"})
@@ -38,13 +36,8 @@ FRAMEWORKS = frozenset({
 })
 
 CAVEATS = (
-    "extract and visualize are local AST/HTML (cwd-contained); analyze "
-    "egresses to OpenAI."
-)
-
-ARMING = (
-    f"set {ENV_DISPATCH_SCOPE}=localhost (any explicit non-blanket item); "
-    f"containment is {ENV_SCAN_ROOT}"
+    "extract and visualize use local AST/HTML processing; analyze sends "
+    "data to OpenAI. AGENT_WIZ_SCAN_ROOT selects the command's working directory."
 )
 
 MISSING_OPENAI_CREDENTIAL = "OpenAI credential env is unset"
@@ -72,32 +65,17 @@ def resolve_binary() -> str | None:
     return shutil.which("agent-wiz")
 
 
-def resolve_contained(raw: str | None, root_env: str) -> tuple[Path | None, str | None]:
-    root_raw = os.environ.get(root_env, "").strip()
-    if not root_raw:
-        return None, f"{root_env} is required to contain filesystem paths"
-    root, refusal = _safe_resolve(root_raw, what=root_env)
+def resolve_scan_root() -> tuple[Path | None, str | None]:
+    """Select the command's working directory, defaulting to the caller's."""
+    raw = os.environ.get(ENV_SCAN_ROOT, "").strip()
+    if not raw:
+        return Path.cwd(), None
+    root, refusal = _safe_resolve(raw, what=ENV_SCAN_ROOT)
     if root is None:
         return None, refusal
     if not root.is_dir():
-        return None, f"{root_env} is not a directory: {root}"
-    if root == root.anchor or root.parent == root:
-        return None, f"{root_env} must not be a filesystem root"
-    if raw:
-        candidate, refusal = _safe_resolve(raw, what="path")
-        if candidate is None:
-            return None, refusal
-    else:
-        candidate = root
-    try:
-        candidate.relative_to(root)
-    except ValueError:
-        return None, f"path must stay inside {root_env} (got {candidate}, base {root})"
-    return candidate, None
-
-
-def resolve_scan_root() -> tuple[Path | None, str | None]:
-    return resolve_contained(None, ENV_SCAN_ROOT)
+        return None, f"{ENV_SCAN_ROOT} is not a directory: {root}"
+    return root, None
 
 
 def contained_path(
@@ -108,7 +86,7 @@ def contained_path(
     text = raw.strip()
     if text.startswith("-"):
         return None, f"{what} must not be flag-shaped"
-    path, refusal = resolve_contained(text, ENV_SCAN_ROOT)
+    path, refusal = _safe_resolve(text, what=what)
     if path is None:
         return None, refusal
     if must_exist == "dir" and not path.is_dir():

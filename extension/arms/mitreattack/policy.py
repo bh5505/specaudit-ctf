@@ -31,7 +31,7 @@ def resolve_binary() -> str | None:
 
 
 def input_refusal(args: dict) -> str | None:
-    """Egress gate: the STIX input must be an existing local bundle."""
+    """Input contract: the STIX input must be an existing local bundle."""
     raw = args.get("input")
     if not isinstance(raw, str) or not raw.strip():
         return "to_excel requires a local STIX bundle path in args.input"

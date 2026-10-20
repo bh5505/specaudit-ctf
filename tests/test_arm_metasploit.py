@@ -8,29 +8,22 @@ from typing import Any
 import pytest
 
 from extension.arms.metasploit import (
-    ALLOWED_TOOLS,
     ARM_ID,
-    DISPATCH_TOOLS,
     MetasploitArm,
 )
 from extension.arms.metasploit.policy import (
-    ENV_DISPATCH_SCOPE,
     ENV_ENDPOINT,
-    audit_target,
-    extract_targets,
 )
 from extension.contract import ArmSpec, NotInstalledError
 
-ALL_TOOLS = tuple(ALLOWED_TOOLS) + tuple(DISPATCH_TOOLS)
+ALL_TOOLS = ("list_exploits", "list_active_sessions", "run_exploit", "send_session_command")
 
 
 def _spec() -> ArmSpec:
     return ArmSpec(
         id=ARM_ID,
-        protocols=("mcp", "http"),
-        curated=True,
+        protocols=("mcp",),
         notes="Fixture arm.",
-        tier="research",
     )
 
 
@@ -72,48 +65,17 @@ def test_not_installed_without_endpoint(monkeypatch: pytest.MonkeyPatch) -> None
         arm.invoke(_spec(), "list_exploits", {})
 
 
-# --- target extraction --------------------------------------------------
+# --- tool listing and invocation ---------------------------------------
 
 
-def test_extract_targets_enumerates_members() -> None:
-    targets, refusal = extract_targets({"RHOSTS": "10.10.0.1 10.10.0.2, lab.hx"})
-    assert refusal is None
-    assert targets == ["10.10.0.1", "10.10.0.2", "lab.hx"]
-
-
-def test_extract_targets_refuses_ranges() -> None:
-    targets, refusal = extract_targets({"RHOST": "10.10.0.1-10.10.0.9"})
-    assert targets is None
-    assert "enumerated hosts" in refusal
-    targets, refusal = extract_targets({"RHOSTS": "10.10.0.0/24"})
-    assert targets is None
-
-
-def test_extract_targets_none_when_absent() -> None:
-    targets, refusal = extract_targets({"SESSION": 3})
-    assert targets is None and refusal is None
-
-
-def test_audit_target_prefers_hosts_then_sessions() -> None:
-    assert audit_target({"RHOST": "10.0.0.1"}, ["10.0.0.1"]) == "10.0.0.1"
-    assert audit_target({"SESSION": 3}, None) == "session:3"
-    assert audit_target({"JOB_ID": 7}, None) == "job:7"
-    assert audit_target({}, None) is None
-
-
-# --- read tier ----------------------------------------------------------
-
-
-def test_list_tools_shows_tiers() -> None:
+def test_list_tools_shows_supported_tools() -> None:
     session = FakeSession()
     result = _arm(session).invoke(_spec(), "list_tools", {})
     assert result.ok is True
-    assert result.output["read_tier"] == sorted(ALLOWED_TOOLS)
-    assert result.output["dispatch_tier"] == sorted(DISPATCH_TOOLS)
-    assert result.output["dispatch_armed"] is False
+    assert result.output["actions"] == sorted(ALL_TOOLS)
 
 
-def test_allowlisted_read() -> None:
+def test_advertised_read() -> None:
     session = FakeSession()
     result = _arm(session).invoke(
         _spec(), "list_active_sessions", {}
@@ -122,67 +84,16 @@ def test_allowlisted_read() -> None:
     assert session.calls == [("list_active_sessions", {})]
 
 
-# --- dispatch tier ------------------------------------------------------
-
-
-def test_exploit_default_off(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv(ENV_DISPATCH_SCOPE, raising=False)
+def test_exploit_runs_with_operator_selected_targets() -> None:
     session = FakeSession()
     result = _arm(session).invoke(
         _spec(), "run_exploit", {"RHOSTS": "10.10.0.1"}
     )
-    assert result.ok is False
-    assert ENV_DISPATCH_SCOPE in result.error
-    assert session.calls == []
-
-
-def test_exploit_armed_in_scope_runs(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "10.10.0.0/16")
-    session = FakeSession()
-    result = _arm(session).invoke(
-        _spec(), "run_exploit", {"RHOSTS": "10.10.0.1 10.10.0.2"}
-    )
     assert result.ok is True
-    assert result.output["dispatch"]["target"] == "10.10.0.1,10.10.0.2"
-    err = capsys.readouterr().err
-    assert "arm=metasploit-mcp" in err and "action=run_exploit" in err
+    assert session.calls == [("run_exploit", {"RHOSTS": "10.10.0.1"})]
 
 
-def test_exploit_one_member_out_of_scope_refuses(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "10.10.0.0/16")
-    session = FakeSession()
-    result = _arm(session).invoke(
-        _spec(), "run_exploit", {"RHOSTS": "10.10.0.1 8.8.8.8"}
-    )
-    assert result.ok is False
-    assert "outside the armed dispatch scope" in result.error
-    assert "'8.8.8.8'" in result.error
-    assert session.calls == []
-
-
-def test_session_command_scope_presence_and_audit(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
-) -> None:
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "lab-internal")
-    session = FakeSession()
-    result = _arm(session).invoke(
-        _spec(), "send_session_command", {"SESSION": 3, "COMMAND": "getuid"}
-    )
-    assert result.ok is True
-    assert result.output["dispatch"]["target"] == "session:3"
-    assert "target=session:3" in capsys.readouterr().err
-
-
-def test_dispatch_tool_missing_on_server_refused(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """The server-surface check now sits BEHIND the scope gate (gate
-    before dial), so this test arms the scope to reach it."""
-    monkeypatch.setenv("METASPLOIT_DISPATCH_SCOPE", "10.0.0.1")
+def test_supported_tool_missing_on_server_refused() -> None:
     session = FakeSession(tools=[{"name": "list_exploits"}])
     result = _arm(session).invoke(
         _spec(), "run_exploit", {"RHOSTS": "10.0.0.1"}
@@ -191,35 +102,14 @@ def test_dispatch_tool_missing_on_server_refused(
     assert "not available on the server" in result.error
 
 
-def test_dispatch_unarmed_never_dials_the_server(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Gate-before-dial: an unarmed execution attempt must fail on the
-    scope refusal alone, with zero connection activity."""
-    monkeypatch.delenv("METASPLOIT_DISPATCH_SCOPE", raising=False)
-    session = FakeSession()
-    result = _arm(session).invoke(
-        _spec(), "run_exploit", {"RHOSTS": "10.0.0.1"}
-    )
-    assert result.ok is False
-    assert "METASPLOIT_DISPATCH_SCOPE" in result.error
-    assert session.calls == []
-    assert session.closed is False
-
-
-def test_unknown_action_lists_dispatch_tier() -> None:
+def test_unknown_action_lists_supported_tools() -> None:
     result = _arm(FakeSession()).invoke(_spec(), "exploit", {})
     assert result.ok is False
-    assert "dispatch tier" in result.error
+    assert "not available on the server" in result.error
 
 
-def test_extract_targets_flag_shaped_refused() -> None:
-    targets, refusal = extract_targets({"RHOST": "-h"})
-    assert targets is None
-    assert "flags" in refusal
-
-
-def test_extract_targets_unbracketed_ipv6_refused() -> None:
-    targets, refusal = extract_targets({"RHOST": "2001:db8::1"})
-    assert targets is None
-    assert "bracketed" in refusal
+def test_operator_selected_range_reaches_upstream() -> None:
+    session = FakeSession()
+    result = _arm(session).invoke(_spec(), "run_exploit", {"RHOSTS": "10.10.0.0/24"})
+    assert result.ok is True
+    assert session.calls == [("run_exploit", {"RHOSTS": "10.10.0.0/24"})]

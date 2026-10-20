@@ -2,12 +2,11 @@
 
 from .arm import RpzDecoderArm
 from .decoder import ZoneDecodeError
-from .policy import ALLOWED_ACTIONS, ARM_ID, DISPATCH_ACTIONS
+from .policy import ALLOWED_ACTIONS, ARM_ID
 
 __all__ = [
     "ALLOWED_ACTIONS",
     "ARM_ID",
-    "DISPATCH_ACTIONS",
     "RpzDecoderArm",
     "ZoneDecodeError",
 ]

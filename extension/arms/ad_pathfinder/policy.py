@@ -33,7 +33,7 @@ CAVEATS = (
     "a blocked path does not mean demonstrated compromise",
 )
 
-ARMING = (
+INPUT_HINT = (
     "pass args.export (an existing local JSON or YAML file path "
     "containing AD path results)"
 )
@@ -44,7 +44,7 @@ def export_refusal(
 ) -> tuple[Path | None, str | None]:
     """Validate a caller-supplied local export path.
 
-    Egress gate: the export must be an existing local file with a
+    Input contract: the export must be an existing local file with a
     supported suffix; URLs are refused. Returns (path, None) or
     (None, refusal).
     """

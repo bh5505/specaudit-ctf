@@ -12,9 +12,7 @@ from urllib.parse import urlparse
 import pytest
 
 from extension.arms.burp import (
-    ALLOWED_TOOLS,
     ARM_ID,
-    BLOCKED_TOOLS,
     PROFESSIONAL_ONLY,
     BurpArm,
     SseMcpSession,
@@ -25,8 +23,7 @@ from extension.arms.burp.policy import (
     ENV_ENDPOINT,
 )
 from extension.arms.burp.sse import configured_http_url, resolve_sse_endpoint, redact
-from extension.arms.mcp_client import HttpTransportPolicy
-from extension.contract import ArmSpec, Extension, NotHeldError, NotInstalledError, invoke
+from extension.contract import ArmSpec, Extension, NotInstalledError, invoke
 from extension.__main__ import main
 
 PRO_TOOLS = (
@@ -47,10 +44,8 @@ COMMUNITY_TOOLS = (
 def _spec() -> ArmSpec:
     return ArmSpec(
         id=ARM_ID,
-        protocols=("mcp", "http"),
-        curated=True,
+        protocols=("mcp",),
         notes="Fixture curated MCP arm.",
-        tier="research",
     )
 
 
@@ -129,39 +124,6 @@ def test_detect_edition_community() -> None:
 def test_detect_edition_unknown() -> None:
     assert detect_edition(set()) == "unknown"
     assert detect_edition({"get_scanner_issues", "url_encode"}) == "unknown"
-
-
-def test_allowlist_disjoint_from_blocked() -> None:
-    # Full surface re-verified from source 2026-09-06 (PortSwigger/
-    # mcp-server main): 15 allowed reads/utilities, 12 blocked
-    # (active requests, UI mutations, config writes, collaborator
-    # payload generation, live-editor read). Pinned so upstream drift
-    # is a deliberate re-pin.
-    assert ALLOWED_TOOLS.isdisjoint(BLOCKED_TOOLS)
-    assert len(ALLOWED_TOOLS) == 15
-    assert len(BLOCKED_TOOLS) == 12
-    assert PROFESSIONAL_ONLY & ALLOWED_TOOLS
-    assert "generate_collaborator_payload" in BLOCKED_TOOLS
-    assert "send_http1_request" in BLOCKED_TOOLS
-    assert "get_active_editor_contents" in BLOCKED_TOOLS
-    # The 2026-09-06 additions: regex variants + config export ride
-    # the allowed set; the editor read does not.
-    for name in (
-        "get_proxy_http_history_regex",
-        "get_proxy_websocket_history_regex",
-        "get_organizer_items_regex",
-        "output_user_options",
-    ):
-        assert name in ALLOWED_TOOLS
-
-
-def test_registry_actions_match_allowlist_exactly() -> None:
-    # Cross-review pattern (prowler/GTI): a typo'd registry action
-    # would keep the count pin green while being handler-refused.
-    from extension.invoke_profiles import _BURP_READ_ACTIONS
-
-    assert set(_BURP_READ_ACTIONS) == {"list_tools"} | set(ALLOWED_TOOLS)
-    assert len(_BURP_READ_ACTIONS) == 16
 
 
 def test_normalize_sentinel_has_more_false() -> None:
@@ -262,7 +224,7 @@ def test_open_sse_requires_host(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr("extension.arms.burp.sse.http.client.HTTPConnection", boom)
     with pytest.raises(RuntimeError, match="host"):
-        SseMcpSession("http://", policy=HttpTransportPolicy.loopback())
+        SseMcpSession("http://")
 
 
 def test_env_reread_on_installed(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -302,7 +264,7 @@ def test_list_tools_reports_edition() -> None:
     assert session.calls == []
 
 
-def test_allowlisted_tool_call() -> None:
+def test_advertised_tool_call() -> None:
     session = FakeSession()
     result = _arm(session).invoke(_spec(), "url_encode", {"content": "a b"})
     assert result.ok is True
@@ -312,7 +274,7 @@ def test_allowlisted_tool_call() -> None:
 
 
 def test_community_edition_is_fully_usable() -> None:
-    """No edition gating: allowlisted tools run against Community Burp;
+    """Tools run against Community Burp;
     tools the server does not list are refused as unavailable."""
     session = FakeSession(tools=[{"name": name} for name in COMMUNITY_TOOLS])
     result = _arm(session).invoke(_spec(), "url_encode", {"content": "x"})
@@ -345,19 +307,18 @@ def test_unavailable_tool_refused_by_server_surface() -> None:
     assert listed.output["edition"] == "unknown"
 
 
-def test_blocked_tool_refused() -> None:
-    session = FakeSession()
+def test_advertised_request_tool_runs() -> None:
+    session = FakeSession(tools=[{"name": "send_http1_request"}])
     result = _arm(session).invoke(_spec(), "send_http1_request", {"content": "GET /"})
-    assert result.ok is False
-    assert "blocked" in (result.error or "")
-    assert session.calls == []
+    assert result.ok is True
+    assert session.calls == [("send_http1_request", {"content": "GET /"})]
 
 
 def test_unknown_tool_refused() -> None:
     session = FakeSession()
     result = _arm(session).invoke(_spec(), "not_a_burp_tool", {})
     assert result.ok is False
-    assert "allowlist" in (result.error or "")
+    assert "not available on the server" in (result.error or "")
     assert session.calls == []
 
 
@@ -557,7 +518,7 @@ def stub_sse() -> Any:
 
 def test_sse_session_list_and_call(stub_sse: tuple[str, _StubState]) -> None:
     url, state = stub_sse
-    session = SseMcpSession(url, timeout=5, policy=HttpTransportPolicy.loopback())
+    session = SseMcpSession(url, timeout=5)
     try:
         session.connect()
         tools = session.list_tools()
@@ -797,7 +758,7 @@ def test_chunked_sse_endpoint_event() -> None:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     url = "http://%s:%d" % server.server_address[:2]
-    session = SseMcpSession(url, timeout=5, policy=HttpTransportPolicy.loopback())
+    session = SseMcpSession(url, timeout=5)
     try:
         session.connect()
         tools = session.list_tools()
@@ -830,7 +791,7 @@ def test_non_sse_body_surfaces_protocol_error() -> None:
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     url = "http://%s:%d" % server.server_address[:2]
-    session = SseMcpSession(url, timeout=5, policy=HttpTransportPolicy.loopback())
+    session = SseMcpSession(url, timeout=5)
     try:
         with pytest.raises(RuntimeError, match="SSE frame buffer exceeds"):
             session.connect()
@@ -847,10 +808,9 @@ def test_main_invoke_with_stub(
 ) -> None:
     url, _state = stub_sse
     monkeypatch.setenv(ENV_ENDPOINT, url)
-    # Read admission landed: list_tools is invocable end-to-end through
-    # the hardened transport against the loopback stub.
+    # list_tools is invocable end-to-end through the HTTP+SSE transport.
     assert main(["invoke", ARM_ID, "list_tools"]) == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["capability_id"] == "burp-mcp.list_tools"
-    assert payload["status"] == "complete"
-    assert payload["transport_ok"] is True
+    assert payload["arm_id"] == ARM_ID
+    assert payload["action"] == "list_tools"
+    assert payload["ok"] is True

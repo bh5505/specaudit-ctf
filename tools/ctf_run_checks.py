@@ -121,7 +121,7 @@ def load_manifest(pack_root):
 
 
 def require_complete_evidence(manifest, loaded_tables):
-    """Refuse a governed report when a required source was not loaded.
+    """Report a missing required source before running pack checks.
 
     The pack manifest owns the required-table inventory. A header-only CSV is
     present evidence of an empty source; migration-created empty tables are not.

@@ -13,13 +13,13 @@ not need. The server listens on 127.0.0.1:8888 (allow ~40s).
 With `CALDERA_ENDPOINT=http://127.0.0.1:8888` and
 `CALDERA_API_KEY=ADMIN123`:
 
-- `caldera adversaries` returns the shipped adversary-profile
+- `caldera request '{"path":"/api/v2/adversaries"}'` returns the shipped adversary-profile
   catalog — pre-composed attack chains, one authenticated call.
-- `caldera agents` and `caldera operations` return `[]` on a fresh
+- Requests for `/api/v2/agents` and `/api/v2/operations` return `[]` on a fresh
   server — nothing enrolled, nothing run.
-- `caldera abilities` honestly trips the arm's response cap (~2.8MB
+- A request for `/api/v2/abilities` trips the arm's response cap (~2.8MB
   of shipped stockpile data against the 512KB client cap) — the
-  containment working as designed; the catalog-exposure row grades
+  bounded response handling working as designed; the catalog-exposure row grades
   the adversary-profile catalog, which lists completely.
 
 ## 3. The boundary probe

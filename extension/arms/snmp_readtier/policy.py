@@ -1,13 +1,11 @@
-"""Closed input and target policy for the bounded SNMP read arm."""
+"""Input validation for the SNMP identity GET arm."""
 
 from __future__ import annotations
 
 import ipaddress
-import os
 import re
 from typing import Any
 
-from ..dispatch import load_scope, target_in_scope
 
 ARM_ID = "snmp-readtier"
 ALLOWED_ACTIONS = frozenset({"probe"})
@@ -18,17 +16,19 @@ ARG_KEYS = frozenset({
 })
 AUTH_PROTOCOLS = frozenset({"none", "md5", "sha", "sha256"})
 PRIV_PROTOCOLS = frozenset({"none", "des", "aes128"})
-ENV_SCOPE = "SNMP_READTIER_SCOPE"
 DEFAULT_COMMUNITY = "public"
 DEFAULT_PORT = 161
 MIN_TIMEOUT_MS = 50
 MAX_TIMEOUT_MS = 5_000
 MAX_RESPONSE_BYTES = 65_535
-OID_ALLOWLIST = {
+OID_ALIASES = {
     "sysDescr.0": ".1.3.6.1.2.1.1.1.0",
     "sysUpTime.0": ".1.3.6.1.2.1.1.3.0",
     "sysName.0": ".1.3.6.1.2.1.1.5.0",
 }
+MAX_OIDS = 64
+MAX_OID_TEXT_LENGTH = 256
+MAX_SUBIDENTIFIER = 0xFFFFFFFF
 _HOST_RE = re.compile(r"^(?=.{1,253}$)[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$")
 
 
@@ -45,10 +45,34 @@ def normalize_oid(raw: Any) -> str | None:
     if not isinstance(raw, str):
         return None
     text = raw.strip()
-    for name, oid in OID_ALLOWLIST.items():
+    if not text:
+        return None
+    for name, oid in OID_ALIASES.items():
         if text.lower() == name.lower() or text == oid or text == oid.lstrip("."):
             return oid
-    return None
+    numeric = text[1:] if text.startswith(".") else text
+    if not numeric or numeric.startswith(".") or numeric.endswith(".") or ".." in numeric:
+        return None
+    parts = numeric.split(".")
+    if len(parts) < 2:
+        return None
+    values: list[int] = []
+    for part in parts:
+        if not part or len(part) > 10 or not part.isascii() or not part.isdigit():
+            return None
+        try:
+            value = int(part, 10)
+        except ValueError:
+            return None
+        if value > MAX_SUBIDENTIFIER:
+            return None
+        values.append(value)
+    if values[0] > 2 or (values[0] < 2 and values[1] > 39):
+        return None
+    canonical = "." + ".".join(str(value) for value in values)
+    if len(canonical) > MAX_OID_TEXT_LENGTH:
+        return None
+    return canonical
 
 
 def args_refusal(payload: dict[str, Any]) -> str | None:
@@ -99,23 +123,12 @@ def args_refusal(payload: dict[str, Any]) -> str | None:
         if any(ord(ch) < 0x20 or ord(ch) == 0x7f for ch in community):
             return "args.community contains control characters"
     oids = payload.get("oids")
-    if not isinstance(oids, list) or not 1 <= len(oids) <= len(OID_ALLOWLIST):
-        return "args.oids must contain one to three allowed OIDs"
+    if not isinstance(oids, list) or not 1 <= len(oids) <= MAX_OIDS:
+        return f"args.oids must contain one to {MAX_OIDS} OIDs"
     normalized = [normalize_oid(value) for value in oids]
     if any(value is None for value in normalized) or len(set(normalized)) != len(normalized):
-        return "args.oids contains an unknown or duplicate OID"
+        return "args.oids contains a malformed or duplicate OID"
     timeout = payload.get("timeout_ms")
     if type(timeout) is not int or not MIN_TIMEOUT_MS <= timeout <= MAX_TIMEOUT_MS:
         return f"args.timeout_ms must be an integer from {MIN_TIMEOUT_MS} through {MAX_TIMEOUT_MS}"
-    return None
-
-
-def authorize_host(host: str) -> str | None:
-    scope, refusal = load_scope(ENV_SCOPE)
-    if refusal:
-        return refusal
-    if scope is None:
-        return f"probe is blocked by default; set {ENV_SCOPE} to explicit authorized targets"
-    if not target_in_scope(host, scope):
-        return f"args.host is outside {ENV_SCOPE}"
     return None

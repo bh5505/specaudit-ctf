@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 from pathlib import Path
@@ -34,10 +33,7 @@ def _spec(entry_id: str = ARM_ID) -> ArmSpec:
     return ArmSpec(
         id=entry_id,
         protocols=("cli",),
-        curated=True,
         notes="test",
-        tier="research",
-        held_reason=None,
     )
 
 
@@ -46,10 +42,7 @@ def _ext() -> Extension:
         id=ARM_ID,
         kind="arm",
         protocols=("cli",),
-        curated=True,
         notes="test arm row",
-        tier="research",
-        held_reason=None,
     )
     arm = AttackStixArm()
     return Extension(catalog=Catalog([entry]), arms={ARM_ID: arm})
@@ -237,12 +230,11 @@ def test_arm_installed_is_handler_presence() -> None:
 def test_arm_list_tools_shape() -> None:
     result = _ext().invoke(ARM_ID, "list_tools", {})
     assert result.ok is True
-    assert set(result.output["read_actions"]) == ALLOWED_ACTIONS | {
+    assert set(result.output["actions"]) == ALLOWED_ACTIONS | {
         "list_tools",
         "tools/list",
     }
-    assert result.output["dispatch_actions"] == []
-    assert "offline read tier" in " ".join(result.output["caveats"])
+    assert "offline reads" in " ".join(result.output["caveats"])
     refused = _ext().invoke(ARM_ID, "list_tools", {"bundle": str(DEMO)})
     assert refused.ok is False and "no caller arguments" in refused.error
 
@@ -382,7 +374,7 @@ def test_reader_tolerates_unhashable_keyed_values(tmp_path: Path) -> None:
 def test_tools_list_alias_works() -> None:
     result = _ext().invoke(ARM_ID, "tools/list", {})
     assert result.ok is True
-    assert "technique" in result.output["read_actions"]
+    assert "technique" in result.output["actions"]
 
 
 def test_output_cap_refuses_rather_than_truncates(
@@ -430,13 +422,7 @@ def test_extras_are_sorted_and_deterministic() -> None:
     assert document["extras"] == ["a-extra", "m-extra", "z-extra"]
 
 
-def _receipt(capsys: pytest.CaptureFixture[str]) -> dict:
-    lines = [line for line in capsys.readouterr().err.splitlines() if line.strip()]
-    assert len(lines) == 1
-    return json.loads(lines[0])
-
-
-def test_cvelookup_demo_hit_miss_and_malformed_leave_receipt(
+def test_cvelookup_demo_hit_miss_and_malformed(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     result = _ext().invoke(
@@ -445,6 +431,8 @@ def test_cvelookup_demo_hit_miss_and_malformed_leave_receipt(
         {"cve_ids": ["cve-2099-0001", "CVE-2099-9999", "not-a-cve"]},
     )
     assert result.ok is True
+    assert result.output["reason"] is None
+    assert result.output["count_matched"] == 2
     hit, miss, malformed = result.output["results"]
     assert hit["cve_id"] == "CVE-2099-0001"
     assert hit["status"] == "matched" and hit["count_matched"] == 2
@@ -455,20 +443,14 @@ def test_cvelookup_demo_hit_miss_and_malformed_leave_receipt(
     assert all("x_mitre_version" in row for row in hit["matched_objects"])
     assert miss["reason"] == "unknown_cve" and miss["matched_objects"] == []
     assert malformed["reason"] == "malformed_id"
-    assert malformed["cve_id"] is None and "query_sha256" in malformed
-
-    receipt = _receipt(capsys)
-    assert receipt["arm"] == ARM_ID and receipt["action"] == "cvelookup"
-    assert receipt["bundle_sha256"] == hashlib.sha256(DEMO.read_bytes()).hexdigest()
-    assert receipt["count_matched"] == 2
-    assert len(receipt["normalized_args_sha256"]) == 64
-    assert len(receipt["output_sha256"]) == 64
-    assert [row["reason"] for row in receipt["queries"]] == [
+    assert malformed["cve_id"] is None and len(malformed["query_sha256"]) == 64
+    assert [row["reason"] for row in result.output["results"]] == [
         None,
         "unknown_cve",
         "malformed_id",
     ]
-    assert "not-a-cve" not in json.dumps(receipt)
+    assert "not-a-cve" not in json.dumps(result.output)
+    assert capsys.readouterr().err == ""
 
 
 @pytest.mark.parametrize(
@@ -479,7 +461,7 @@ def test_cvelookup_demo_hit_miss_and_malformed_leave_receipt(
         ({"cve_ids": "CVE-2099-0001"}, None, "cve_ids_not_a_list"),
     ],
 )
-def test_cvelookup_invocation_failures_leave_receipts(
+def test_cvelookup_invocation_failures(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     payload: dict,
@@ -495,16 +477,12 @@ def test_cvelookup_invocation_failures_leave_receipts(
     result = _ext().invoke(ARM_ID, "cvelookup", invocation)
     assert result.ok is False
     assert result.output["reason"] == reason
-    receipt = _receipt(capsys)
-    assert receipt["status"] == "failed" and receipt["reason"] == reason
-    assert len(receipt["output_sha256"]) == 64
-    if reason == "bundle_invalid_json":
-        assert len(receipt["bundle_sha256"]) == 64
-    else:
-        assert receipt["bundle_sha256"] is None
+    assert result.output["results"] == [] and result.output["count_matched"] == 0
+    assert reason in (result.error or "")
+    assert capsys.readouterr().err == ""
 
 
-def test_cvelookup_lone_surrogate_still_leaves_receipt(
+def test_cvelookup_lone_surrogate_reports_malformed(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     result = _ext().invoke(
@@ -518,18 +496,12 @@ def test_cvelookup_lone_surrogate_still_leaves_receipt(
         "malformed_id",
         "malformed_id",
     ]
-    receipt = _receipt(capsys)
-    assert all(row["reason"] == "malformed_id" for row in receipt["queries"])
-    assert all(len(row["query_sha256"]) == 64 for row in receipt["queries"])
+    assert all(len(row["query_sha256"]) == 64 for row in result.output["results"])
+    assert capsys.readouterr().err == ""
 
 
 def test_cvelookup_is_registered() -> None:
-    from extension.invoke_profiles import invoke_profile
-
-    profile = invoke_profile(ARM_ID, "cvelookup")
-    assert profile is not None
-    assert profile.side_effects == ("local-read",)
-    assert "cvelookup" in _ext().invoke(ARM_ID, "list_tools", {}).output["read_actions"]
+    assert "cvelookup" in _ext().invoke(ARM_ID, "list_tools", {}).output["actions"]
 
 
 def test_args_refusal_contract() -> None:

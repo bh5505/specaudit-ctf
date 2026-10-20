@@ -1,4 +1,4 @@
-"""Curated google-mcp-security (GTI) arm: read-only lookups over MCP."""
+"""Google Threat Intelligence tools over MCP."""
 
 from __future__ import annotations
 
@@ -18,11 +18,9 @@ from ..mcp_client import (
     redact,
 )
 from .policy import (
-    ALLOWED_TOOLS,
     ARM_ID,
     ENV_ENDPOINT,
     LIST_ACTIONS,
-    TRANSPORT_POLICY,
     endpoint_url,
     refuse_reason,
 )
@@ -31,19 +29,17 @@ SessionFactory = Callable[..., Any]
 
 
 def _default_session_factory(url: str, timeout: float = MCP_CALL_TIMEOUT) -> Any:
-    return StreamableHttpClient(url, timeout=timeout, policy=TRANSPORT_POLICY)
+    return StreamableHttpClient(url, timeout=timeout)
 
 
 class GtiArm:
     """Specialized transport for catalog id google-mcp-security.
 
-    Read-only threat-intelligence lookups over the shared streamable
-    HTTP client. The upstream server holds the sole credential
+    Threat-intelligence tools over the shared streamable HTTP client.
+    The upstream server holds the sole credential
     (VT_APIKEY, read per-request from the server's environment -
     verified from source 2026-09-06); this client needs only the
-    endpoint. No dispatch tier exists for this arm - every admitted
-    upstream tool is a lookup; the 4 mutating tools are exactly
-    blocked.
+    endpoint. The connected server advertises the available actions.
     """
 
     ARM_ID = ARM_ID
@@ -64,7 +60,7 @@ class GtiArm:
         if self._explicit_endpoint:
             from ..mcp_client import configured_http_url
 
-            return configured_http_url(self._endpoint_arg, TRANSPORT_POLICY)
+            return configured_http_url(self._endpoint_arg)
         return endpoint_url()
 
     def installed(self, spec: ArmSpec) -> bool:
@@ -97,7 +93,6 @@ class GtiArm:
                             for item in tools[:MAX_MCP_ROWS]
                             if isinstance(item, dict)
                         ],
-                        "dispatch_tier": "none",
                     },
                     error=None,
                 )

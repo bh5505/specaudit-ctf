@@ -1,4 +1,4 @@
-"""Curated rpz-decoder arm: ad-hoc raw indicator extraction, fail-closed."""
+"""RPZ decoder arm: raw indicator extraction and fetch behavior."""
 
 from __future__ import annotations
 
@@ -20,7 +20,6 @@ from extension.contract import (
 from extension.arms.rpzdecoder import ARM_ID, RpzDecoderArm
 from extension.arms.rpzdecoder.decoder import ZoneDecodeError, decode_axfr
 from extension.arms.rpzdecoder.policy import (
-    ENV_DISPATCH_SCOPE,
     args_refusal,
     keyfile_refusal,
     master_refusal,
@@ -84,10 +83,7 @@ def _spec(entry_id: str = ARM_ID) -> ArmSpec:
     return ArmSpec(
         id=entry_id,
         protocols=("cli",),
-        curated=True,
         notes="test",
-        tier="research",
-        held_reason=None,
     )
 
 
@@ -96,10 +92,7 @@ def _ext() -> Extension:
         id=ARM_ID,
         kind="arm",
         protocols=("cli",),
-        curated=True,
         notes="test arm row",
-        tier="research",
-        held_reason=None,
     )
     arm = RpzDecoderArm()
     return Extension(catalog=Catalog([entry]), arms={ARM_ID: arm})
@@ -187,14 +180,15 @@ def test_decode_bad_ipv4_labels_land_in_unparsed() -> None:
 
 def test_zone_master_port_refusals() -> None:
     assert zone_refusal("Basic-DNSFW.rpz.threatstop.local") is None
-    assert zone_refusal("example.com") is not None
+    assert zone_refusal("example.com") is None
     assert zone_refusal("") is not None
     assert master_refusal("192.124.129.51") is None
-    assert master_refusal("ns1.threatstop.com") is not None
-    assert master_refusal("999.1.1.1") is not None
+    assert master_refusal("ns1.threatstop.com") is None
+    assert master_refusal("bad master") is not None
     assert port_refusal(53) is None
     assert port_refusal(5353) is None
-    assert port_refusal(443) is not None
+    assert port_refusal(443) is None
+    assert port_refusal(65536) is not None
 
 
 def test_args_refusal_rejects_unknown_and_missing() -> None:
@@ -205,7 +199,7 @@ def test_args_refusal_rejects_unknown_and_missing() -> None:
     assert args_refusal("explode", {}) is not None
 
 
-def test_keyfile_refusal_requires_two_lines_and_0600(
+def test_keyfile_requires_two_lines(
     tmp_path: Path,
 ) -> None:
     good = tmp_path / "key"
@@ -216,7 +210,7 @@ def test_keyfile_refusal_requires_two_lines_and_0600(
         permissive = tmp_path / "loose"
         permissive.write_text(f"threatstop-key\n{SECRET}\n", encoding="utf-8")
         permissive.chmod(0o644)
-        assert keyfile_refusal(permissive) is not None
+        assert keyfile_refusal(permissive) is None
     else:
         assert keyfile_refusal(good) is None
     missing = tmp_path / "absent"
@@ -303,11 +297,11 @@ def test_arm_decode_empty_and_oversize_dumps_fail(tmp_path: Path) -> None:
 
 def test_arm_decode_no_soa_zone_fails(tmp_path: Path) -> None:
     dump = tmp_path / "nozone.txt"
-    dump.write_text("example.com. 60 IN SOA a.b. c.d. 1 2 3 4 5\n", encoding="utf-8")
+    dump.write_text("example.com. 60 IN NS ns.example.com.\n", encoding="utf-8")
     arm = RpzDecoderArm()
     result = arm.invoke(_spec(), "decode", {"dump": str(dump)})
     assert result.ok is False
-    assert "no SOA" in (result.error or "")
+    assert "no valid SOA" in (result.error or "")
 
 
 def test_arm_list_tools_and_unknown_action(tmp_path: Path) -> None:
@@ -322,7 +316,7 @@ def test_arm_list_tools_and_unknown_action(tmp_path: Path) -> None:
 
 
 # ----------------------------------------------------------------------
-# dispatch tier: unarmed refusals + fake-dig plumbing
+# Remote fetch and status with a fake dig binary
 
 def _fake_dig(tmp_path: Path, mode: str) -> Path:
     """A dig stand-in: success mode prints the fixture; fail mode echoes argv."""
@@ -363,7 +357,6 @@ def _keyfile(tmp_path: Path) -> Path:
 
 def _arm_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     monkeypatch.setenv("RPZDECODER_DIG_BIN", str(_fake_dig(tmp_path, "ok")))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, MASTER)
     return {
         "zone": ZONE,
         "master": MASTER,
@@ -372,27 +365,8 @@ def _arm_args(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> dict:
     }
 
 
-def test_fetch_unarmed_is_evaluated_failure(monkeypatch, tmp_path) -> None:
-    monkeypatch.delenv(ENV_DISPATCH_SCOPE, raising=False)
-    monkeypatch.setenv("RPZDECODER_DIG_BIN", str(sys.executable))
-    arm = RpzDecoderArm()
-    result = arm.invoke(
-        _spec(),
-        "fetch",
-        {
-            "zone": ZONE,
-            "master": MASTER,
-            "keyfile": str(_keyfile(tmp_path)),
-            "outdir": str(tmp_path / "out"),
-        },
-    )
-    assert result.ok is False
-    assert "RPZDECODER_DISPATCH_SCOPE" in (result.error or "")
-
-
 def test_fetch_without_dig_is_evaluated_failure(monkeypatch) -> None:
     monkeypatch.delenv("RPZDECODER_DIG_BIN", raising=False)
-    monkeypatch.delenv(ENV_DISPATCH_SCOPE, raising=False)
     arm = RpzDecoderArm()
     result = arm.invoke(
         _spec(),
@@ -414,7 +388,7 @@ def test_fetch_armed_transfers_and_writes_lists(
     output = result.output
     assert output["serial"] == 1788838349
     assert output["counts"]["ip"] == 5
-    assert output["dispatch"]["target"].endswith(ZONE)
+    assert output["zone"] == ZONE
     lists = output["files"]
     assert Path(lists["ips"]).read_text(encoding="utf-8").splitlines() == EXPECTED_IPS
     assert (tmp_path / "out" / "zone-axfr.txt").is_file()
@@ -425,7 +399,6 @@ def test_status_armed_reports_serial(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setenv("RPZDECODER_DIG_BIN", str(_fake_dig(tmp_path, "ok")))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, MASTER)
     arm = RpzDecoderArm(timeout=30)
     result = arm.invoke(_spec(), "status", {"zone": ZONE, "master": MASTER})
     assert result.ok is True, result.error
@@ -483,7 +456,6 @@ def test_arm_fetch_non_utf8_keyfile_is_evaluated_failure(
     if os.name == "posix":
         key.chmod(0o600)
     monkeypatch.setenv("RPZDECODER_DIG_BIN", str(_fake_dig(tmp_path, "ok")))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, MASTER)
     arm = RpzDecoderArm(timeout=30)
     result = arm.invoke(
         _spec(),
@@ -506,7 +478,6 @@ def test_fetch_non_utf8_dump_is_fail_closed(
     monkeypatch.setenv("RPZDECODER_DIG_BIN", str(_fake_dig(tmp_path, "ok")))
     bad = tmp_path / "fixture.txt"
     bad.write_bytes(b"\xff\xfe not a zone\n")
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, MASTER)
     arm = RpzDecoderArm(timeout=30)
     result = arm.invoke(
         _spec(),
@@ -540,7 +511,6 @@ def test_status_without_soa_is_evaluated_failure(
     )
     wrapper.chmod(wrapper.stat().st_mode | stat.S_IEXEC)
     monkeypatch.setenv("RPZDECODER_DIG_BIN", str(wrapper))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, MASTER)
     arm = RpzDecoderArm(timeout=30)
     result = arm.invoke(_spec(), "status", {"zone": ZONE, "master": MASTER})
     assert result.ok is False

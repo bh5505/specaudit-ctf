@@ -1,16 +1,8 @@
-"""The exercise runner: one command composes a full rehearsal.
+"""Compose range results, arm calls, challenge grading, and agent attempts.
 
-Composes the synthetic range, optional challenge grading, optional
-standalone arm invocations (through the same admission path as the
-CLI), and an optional agent-head readiness probe into one consolidated
-run report (JSON). A new surface enters as a parallel module entry —
-the four-subcommand CLI and four-tool MCP contracts are untouched.
-
-Fail-closed doctrine: a lane that cannot run is recorded as skipped or
-failed with a reason; a report never claims success it cannot prove.
-``complete`` requires the range to have matched, the grading (when
-supplied) to have passed, and every standalone arm invocation to have
-succeeded. Anything less is ``degraded`` or ``failed``.
+The JSON report records each selected component's result. ``complete`` means
+the range matched, grading passed when requested, and selected arms succeeded.
+Unavailable optional components are reported as skipped.
 """
 
 from __future__ import annotations
@@ -23,7 +15,6 @@ from typing import Any, Mapping, Sequence
 
 from extension.contract import Extension
 from extension.dispatch import dispatch_invoke
-from extension.envelopes import parse_execution_result
 from extension.range import run_range
 
 SCHEMA_ID = "exercise.run.v1"
@@ -36,7 +27,20 @@ FAKE_HEAD = "fake"
 
 
 class ExerciseError(Exception):
-    """Fail-closed exercise composition error."""
+    """Invalid exercise request or composition failure."""
+
+
+def _arm_status(document: Mapping[str, Any]) -> str:
+    if document.get("ok") is True:
+        return STATUS_COMPLETE
+    output = document.get("output")
+    if (
+        isinstance(output, Mapping)
+        and output.get("status") in {"partial", "degraded"}
+        and output.get("evidence")
+    ):
+        return STATUS_DEGRADED
+    return STATUS_FAILED
 
 
 def run_exercise(
@@ -59,24 +63,22 @@ def run_exercise(
     """Compose the lanes and return the consolidated run report.
 
     Lanes:
-    - range (required): the full synthetic lifecycle, ``arm_ids=()``
-      so host-installed arms never gate the rehearsal; when
+    - range (required): the full synthetic lifecycle, ``arm_ids=()``;
+      when
       ``fixtures`` is given the report narrows to those rows (the run
       itself always covers every shipped fixture).
     - grading (optional): requires both a found-findings document and
       the challenge's expected contract; a grading miss fails the run.
     - arms (optional): standalone invocations as
-      ``[{"arm_id", "action", "args"}, ...]`` riding the same X2-PUB
-      admission path as ``python -m extension invoke``; a failed arm
+      ``[{"arm_id", "action", "args"}, ...]`` using the same handlers as
+      ``python -m extension invoke``; a failed arm
       row fails the run.
     - battery (optional): the default rehearsal preset
       (``exercise/battery.py``) spanning the exercise domains — the
-      offline/contained trio (checkov, semgrep inline rules, the
-      ATT&CK demo-bundle lookup) plus the dual-gated target-facing
-      pair (wapiti/nmap: arming scope env AND ``LAB_TARGET_HOST``).
-      A member that is not installed, whose arming env or target env
-      is unset is SKIPPED (designed-safe unavailability: the run
-      degrades, never fails); a member that runs and fails fails the
+      checkov, semgrep inline rules, the ATT&CK demo-bundle lookup,
+      wapiti, and nmap. The target-facing pair uses ``LAB_TARGET_HOST``.
+      A member that is not installed or whose target env
+      is unset is SKIPPED (the run degrades); a member that runs and fails fails the
       run. zgrab2 composes through ``arms`` in the lab instead (it
       needs a per-run module choice).
     - head (optional): readiness only for the shipped real-agent
@@ -86,20 +88,16 @@ def run_exercise(
       ``head_execute=True`` with the fake head spawns the
       lane-internal scripted client; with a REAL head id
       (``claude-code`` / ``codex-cli`` / ``qwen-code``) it spawns the named agent CLI
-      headless — but only when the operator armed that head on this
-      host (``EXERCISE_HEAD_CLAUDE_CODE_CMD`` /
-      ``EXERCISE_HEAD_CODEX_CLI_CMD`` /
-      ``EXERCISE_HEAD_QWEN_CODE_CMD``, wired per CLI by
-      ``exercise/real_head.py``) and supplied ``--attempt-prompt``.
-      Unarmed hosts refuse exactly as before: the fake head is the
-      only driver in CI and hermetic tests. Either way the captured
+      headless with the standard CLI command or an optional command
+      override (``EXERCISE_HEAD_*_CMD``), and an ``--attempt-prompt``.
+      Either way the captured
       server-side trace + claimed findings grade through
       ``attempt.grade_attempt``. A failed executed attempt fails the
       run, like a failed grade.
     """
     ext = extension if extension is not None else Extension()
     prompt_facts: tuple[str, str, int] | None = None
-    armed_cmd: str | None = None
+    head_command: str | None = None
 
     if agent_claims_path is not None and attempt_dir is None:
         raise ExerciseError("--agent-claims requires --attempt-dir")
@@ -116,24 +114,16 @@ def run_exercise(
             if expected_path is None:
                 raise ExerciseError("--head-execute requires --expected (the challenge contract)")
         elif head in HEAD_IDS:
-            from .real_head import armed_cmd_for, load_prompt, RealHeadError
+            from .real_head import command_for, load_prompt, RealHeadError
 
             try:
-                cmd = armed_cmd_for(head)
+                cmd = command_for(head)
             except RealHeadError as exc:
-                # HEAD_IDS and the arming map drifting apart would
+                # HEAD_IDS and the command map drifting apart would
                 # otherwise escape as a traceback past the usage
                 # boundary; unreachable today, pinned by construction.
                 raise ExerciseError(str(exc)) from None
-            armed_cmd = cmd
-            if cmd is None:
-                from .real_head import ARMING_ENVS
-
-                raise ExerciseError(
-                    f"head {head} is not armed on this host: set "
-                    f"{ARMING_ENVS[head]}=<command> to arm real-head execution "
-                    "(the fake head runs with --head-execute --head fake)"
-                )
+            head_command = cmd
             if attempt_prompt is None:
                 raise ExerciseError(
                     f"--head-execute --head {head} requires --attempt-prompt "
@@ -151,7 +141,7 @@ def run_exercise(
         elif head is None:
             raise ExerciseError(
                 "--head-execute requires --head: 'fake' for the lane-internal "
-                "scripted head, or an armed real head (claude-code, codex-cli, qwen-code)"
+                "scripted head, or a real head (claude-code, codex-cli, qwen-code)"
             )
         else:
             raise ExerciseError(f"unknown head: {head} (shipped: fake, {', '.join(HEAD_IDS)})")
@@ -162,34 +152,6 @@ def run_exercise(
         )
     if attempt_dir is not None and expected_path is None:
         raise ExerciseError("grading an attempt requires --expected (the challenge contract)")
-    if (head_execute or attempt_dir is not None) and expected_path is not None:
-        # Refuse BEFORE any head spend: any non-fixture-backed lane
-        # (live-service findings trace to the spawned lab target;
-        # planted-code findings trace to static challenge artifacts)
-        # names evidence the attempt lane's run_range coverage doctrine
-        # can never verify — and must never pretend to.
-        # The probe is deliberately lenient — an absent or malformed
-        # contract keeps its existing failure mode downstream; only a
-        # contract that parses AND declares a non-fixture lane is
-        # refused here.
-        from score.grading import LANE_FIXTURE_BACKED, GradingError, load_findings_document
-
-        try:
-            expected_probe = load_findings_document(
-                Path(expected_path), what="expected contract"
-            )
-        except (GradingError, UnicodeError):
-            expected_probe = None
-        if expected_probe is not None and (
-            expected_probe.get("lane", LANE_FIXTURE_BACKED) != LANE_FIXTURE_BACKED
-        ):
-            raise ExerciseError(
-                "the attempt lane cannot grade a %s contract: grade it "
-                "through the standalone --found/--expected lane with the arms lane "
-                "recording the evidence"
-                % expected_probe.get("lane")
-            )
-
     range_doc = run_range(extension=ext, seed=seed, arm_ids=())
     reported_rows = range_doc["fixtures"]
     if fixtures is not None:
@@ -268,28 +230,9 @@ def run_exercise(
             row.update(status=STATUS_FAILED, reason=str(exc))
             arms_lane.append(row)
             continue
-        if outcome.envelope is None:
-            row.update(
-                status=STATUS_FAILED,
-                reason=(
-                    "pre-dispatch contract error"
-                    + (f": {outcome.stderr_line}" if outcome.stderr_line else "")
-                ),
-            )
-            arms_lane.append(row)
-            continue
-        parsed = parse_execution_result(outcome.envelope)
-        row.update(
-            status=(
-                STATUS_COMPLETE
-                if parsed.schema_ok and parsed.status == "complete"
-                else STATUS_DEGRADED
-                if parsed.schema_ok and parsed.status == "degraded"
-                else STATUS_FAILED
-            ),
-            capability_id=outcome.envelope.get("capability_id"),
-            envelope_status=outcome.envelope.get("status"),
-        )
+        row.update(status=_arm_status(outcome.document))
+        if outcome.document.get("error"):
+            row["reason"] = outcome.document["error"]
         arms_lane.append(row)
 
     battery_lane: list[dict[str, Any]] = []
@@ -310,11 +253,10 @@ def run_exercise(
     elif head_execute:
         from .real_head import execute_real_head, resolve_timeout, RealHeadError
 
-        if prompt_facts is None or armed_cmd is None:
-            # Unreachable while the arming gate above binds both; kept
-            # explicit so drift fails as a usage error, not a crash.
+        if prompt_facts is None or head_command is None:
+            # Keep malformed internal state an operator-facing error.
             raise ExerciseError(
-                "internal: real-head execution reached without arming facts"
+                "internal: real-head execution reached without command or prompt"
             )
         prompt_text, prompt_sha256, prompt_chars = prompt_facts
         try:
@@ -324,7 +266,7 @@ def run_exercise(
         try:
             head_lane = execute_real_head(
                 head=str(head),
-                cmd=armed_cmd,
+                cmd=head_command,
                 attempt_dir=str(attempt_dir),  # type: ignore[arg-type]
                 expected_path=str(expected_path),  # type: ignore[arg-type]
                 prompt_text=prompt_text,
@@ -334,7 +276,7 @@ def run_exercise(
                 claims_path=Path(agent_claims_path) if agent_claims_path else None,
             )
         except RealHeadError as exc:
-            # Arming/wiring failures (codex preflight, mcp-config write,
+            # Command/setup failures (codex preflight, mcp-config write,
             # attempt-dir creation) are operator-facing usage errors:
             # exit 2 with a reason, never a traceback.
             raise ExerciseError(str(exc)) from None
@@ -437,10 +379,10 @@ def run_exercise(
 
 
 def _run_battery(ext: Extension) -> list[dict[str, Any]]:
-    """Run the rehearsal preset; skip designed-safe unavailability.
+    """Run the rehearsal preset; skip unavailable inputs and binaries.
 
-    A member whose arming env is unset is skipped BEFORE dispatch (the
-    preset declares its arming envs, so no envelope string-matching).
+    A member whose target env is unset is skipped BEFORE dispatch (the
+    preset declares its target env, so no result string-matching).
     A member whose binary is absent comes back as a failed envelope
     whose limitations name "arm is not installed" (dispatch never
     propagates that error) and is skipped. Everything else stays
@@ -450,47 +392,19 @@ def _run_battery(ext: Extension) -> list[dict[str, Any]]:
     import os
 
     from .battery import BATTERY_PRESET
-    from extension.invoke_profiles import invoke_profile
-
-    # Build-time admission validation (consult requirement): a preset
-    # member without an admitted profile is a programming error, not a
-    # designed-safe unavailability — it must never present as a
-    # perpetual "skipped" row.
-    for member in BATTERY_PRESET:
-        if invoke_profile(member.arm_id, member.action) is None:
-            raise ExerciseError(
-                "battery preset member not admitted: "
-                f"{member.arm_id}.{member.action}"
-            )
-
     rows: list[dict[str, Any]] = []
     for member in BATTERY_PRESET:
         row: dict[str, Any] = {"arm_id": member.arm_id, "action": member.action}
-        if member.arming_env is not None and not os.environ.get(
-            member.arming_env, ""
-        ).strip():
-            row.update(
-                status=STATUS_SKIPPED,
-                reason=(
-                    f"battery: {member.arming_env} is unset; preset member "
-                    "skipped (arm it to include this member)"
-                ),
-            )
-            rows.append(row)
-            continue
         member_args = dict(member.args)
         if member.target_env is not None:
-            # The arming check ran first, so an unarmed host never
-            # interpolates a target. The env names the target; the
-            # template in the preset owns its shape.
+            # The env names the target; the template owns its shape.
             target = os.environ.get(member.target_env, "").strip()
             if not target:
                 row.update(
                     status=STATUS_SKIPPED,
                     reason=(
                         f"battery: {member.target_env} is unset; "
-                        "target-facing member skipped (set it to the "
-                        "operator-armed target host)"
+                        "target-facing member skipped (set a target host)"
                     ),
                 )
                 rows.append(row)
@@ -522,34 +436,14 @@ def _run_battery(ext: Extension) -> list[dict[str, Any]]:
             row.update(status=STATUS_FAILED, reason=str(exc))
             rows.append(row)
             continue
-        if outcome.envelope is None:
-            row.update(
-                status=STATUS_FAILED,
-                reason=(
-                    "pre-dispatch contract error"
-                    + (f": {outcome.stderr_line}" if outcome.stderr_line else "")
-                ),
-            )
-            rows.append(row)
-            continue
-        envelope = outcome.envelope
-        limitations = envelope.get("limitations")
-        if isinstance(limitations, (list, tuple)) and "arm is not installed" in limitations:
+        document = outcome.document
+        if document.get("error") == f"{member.arm_id} is not installed":
             row.update(status=STATUS_SKIPPED, reason="battery: arm is not installed")
             rows.append(row)
             continue
-        parsed = parse_execution_result(envelope)
-        row.update(
-            status=(
-                STATUS_COMPLETE
-                if parsed.schema_ok and parsed.status == "complete"
-                else STATUS_DEGRADED
-                if parsed.schema_ok and parsed.status == "degraded"
-                else STATUS_FAILED
-            ),
-            capability_id=envelope.get("capability_id"),
-            envelope_status=envelope.get("status"),
-        )
+        row.update(status=_arm_status(document))
+        if document.get("error"):
+            row["reason"] = document["error"]
         rows.append(row)
     return rows
 

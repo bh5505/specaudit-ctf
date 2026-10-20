@@ -1,4 +1,4 @@
-"""Workspace-contained Commander rules for the deepsec arm."""
+"""Operator-chosen workspace rules for the deepsec arm."""
 
 from __future__ import annotations
 
@@ -9,12 +9,8 @@ from pathlib import Path
 ARM_ID = "deepsec"
 ENV_BIN = "DEEPSEC_BIN"
 ENV_SCAN_ROOT = "DEEPSEC_SCAN_ROOT"
-ENV_DISPATCH_SCOPE = "DEEPSEC_DISPATCH_SCOPE"
 
-# scan is the unarmed matcher default; it writes workspace state.
-ALLOWED_ACTIONS = frozenset({"scan"})
-DISPATCH_ACTIONS = frozenset({"process"})
-BLOCKED_ACTIONS = frozenset({"init", "sandbox", "revalidate"})
+ALLOWED_ACTIONS = frozenset({"init", "scan", "process", "sandbox", "revalidate"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 
 SCAN_KEYS = frozenset({"project_id", "root"})
@@ -25,15 +21,9 @@ ACTION_TIMEOUTS: dict[str, float] = {"process": 600.0}
 MAX_OUTPUT_CHARS = 200_000
 
 CAVEATS = (
-    "Operator runs init out of band; invocations cwd into a .deepsec workspace "
-    "that contains deepsec.config.ts. scan is the unarmed matcher default and "
-    "writes matcher state under that workspace. process is agentic, "
-    "nondeterministic, and can cost thousands of dollars."
-)
-
-ARMING = (
-    f"set {ENV_DISPATCH_SCOPE}=localhost (any explicit non-blanket item); "
-    f"containment is {ENV_SCAN_ROOT}"
+    "DEEPSEC_SCAN_ROOT selects the command's working directory; if unset, "
+    "the current directory is used. scan writes matcher state. process is "
+    "agentic, nondeterministic, and can cost thousands of dollars."
 )
 
 _FORBIDDEN_LAUNCHERS = frozenset({"npx", "pnpm", "npm", "yarn"})
@@ -88,19 +78,18 @@ def resolve_binary() -> str | None:
     return str(path)
 
 
-def resolve_workspace() -> tuple[Path | None, str | None]:
-    """Resolve DEEPSEC_SCAN_ROOT as the .deepsec workspace used for cwd."""
+def resolve_workspace(*, require_config: bool = True) -> tuple[Path | None, str | None]:
+    """Resolve DEEPSEC_SCAN_ROOT as the operator-chosen workspace used for cwd."""
     raw = os.environ.get(ENV_SCAN_ROOT, "").strip()
     if not raw:
-        return None, f"{ENV_SCAN_ROOT} is required to contain filesystem paths"
-    root, refusal = _safe_resolve(raw, what=ENV_SCAN_ROOT)
-    if root is None:
-        return None, refusal
+        root = Path.cwd()
+    else:
+        root, refusal = _safe_resolve(raw, what=ENV_SCAN_ROOT)
+        if root is None:
+            return None, refusal
     if not root.is_dir():
         return None, f"{ENV_SCAN_ROOT} is not a directory: {root}"
-    if root == root.anchor or root.parent == root:
-        return None, f"{ENV_SCAN_ROOT} must not be a filesystem root"
-    if not any((root / name).is_file() for name in _WORKSPACE_CONFIGS):
+    if require_config and not any((root / name).is_file() for name in _WORKSPACE_CONFIGS):
         return None, (
             f"{ENV_SCAN_ROOT} must be a workspace containing "
             f"{WORKSPACE_CONFIG_FAMILY}"
@@ -108,22 +97,19 @@ def resolve_workspace() -> tuple[Path | None, str | None]:
     return root, None
 
 
-def contain_deepsec_root(raw: object, workspace: Path) -> tuple[Path | None, str | None]:
+def contain_deepsec_root(
+    raw: object, workspace: Path | None = None
+) -> tuple[Path | None, str | None]:
+    """Resolve the operator-chosen deepsec --root path.
+
+    The operator is accountable for the target; no containment is enforced.
+    ``workspace`` is accepted for backward compatibility and ignored.
+    """
     if not isinstance(raw, str) or not raw.strip() or raw.strip().startswith("-"):
         return None, "deepsec --root must be a non-flag path"
-    base = workspace.parent
-    if base == base.anchor or base.parent == base:
-        return None, "deepsec --root base must not be a filesystem root"
     candidate, refusal = _safe_resolve(raw.strip(), what="deepsec --root")
     if candidate is None:
         return None, refusal
-    try:
-        candidate.relative_to(base)
-    except ValueError:
-        return None, (
-            f"--root must stay inside the workspace parent "
-            f"(got {candidate}, base {base})"
-        )
     return candidate, None
 
 

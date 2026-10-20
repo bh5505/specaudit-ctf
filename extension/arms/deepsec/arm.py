@@ -14,17 +14,12 @@ from ...contract import (
     Result,
 )
 from ..bounded_capture import run_bounded
-from ..dispatch import authorize, load_scope, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
     ACTION_TIMEOUTS,
     ALLOWED_ACTIONS,
     ARM_ID,
-    ARMING,
-    BLOCKED_ACTIONS,
     CAVEATS,
-    DISPATCH_ACTIONS,
-    ENV_DISPATCH_SCOPE,
     LIST_ACTIONS,
     MAX_OUTPUT_CHARS,
     SCAN_KEYS,
@@ -64,24 +59,13 @@ class DeepsecArm:
         payload = dict(args)
         if action in LIST_ACTIONS:
             return self._list_tools(spec, action, payload)
-        if action in BLOCKED_ACTIONS:
+        if action not in ALLOWED_ACTIONS:
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error=f"action {action!r} is blocked "
-                "(init/sandbox/revalidate are operator-out-of-band)",
-            )
-        if action not in ALLOWED_ACTIONS and action not in DISPATCH_ACTIONS:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=f"action {action!r} is not on any tier "
-                "(list_tools; scan is the unarmed matcher default; "
-                "process is scope-gated dispatch)",
+                error=f"action {action!r} is not supported",
             )
         extra = {k: v for k, v in payload.items() if k not in SCAN_KEYS}
         if extra:
@@ -93,7 +77,7 @@ class DeepsecArm:
                 error="deepsec takes only args.project_id and args.root "
                 "(fixed argv)",
             )
-        workspace, refusal = resolve_workspace()
+        workspace, refusal = resolve_workspace(require_config=action != "init")
         if workspace is None:
             return Result(
                 ok=False,
@@ -116,9 +100,7 @@ class DeepsecArm:
             project_id = str(payload["project_id"]).strip()
         root: Path | None = None
         if "root" in payload:
-            root, root_refusal = contain_deepsec_root(
-                payload.get("root"), workspace
-            )
+            root, root_refusal = contain_deepsec_root(payload.get("root"))
             if root is None:
                 return Result(
                     ok=False,
@@ -127,27 +109,12 @@ class DeepsecArm:
                     output=None,
                     error=root_refusal,
                 )
-        dispatch = action in DISPATCH_ACTIONS
-        scope = None
-        audit = f"repo:{root if root is not None else workspace}"
-        if dispatch:
-            scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, None)
-            if scope is None:
-                return Result(
-                    ok=False,
-                    arm_id=spec.id,
-                    action=action,
-                    output=None,
-                    error=_with_caveat(refusal),
-                )
-            log_dispatch(ARM_ID, action, scope, audit)
         cmd = argv_for(binary, action, project_id, root)
         return self._run(
             spec,
             action,
             cmd,
             workspace,
-            stamp(scope, audit) if dispatch and scope is not None else None,
         )
 
     def _list_tools(
@@ -161,17 +128,13 @@ class DeepsecArm:
                 output=None,
                 error="list_tools takes no caller arguments",
             )
-        scope, _ = load_scope(ENV_DISPATCH_SCOPE)
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
             output={
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": sorted(DISPATCH_ACTIONS),
-                "dispatch_armed": scope is not None,
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "caveats": CAVEATS,
-                "arming": ARMING,
                 "workspace_config": WORKSPACE_CONFIG_FAMILY,
             },
             error=None,
@@ -183,7 +146,6 @@ class DeepsecArm:
         action: str,
         cmd: list[str],
         cwd: Path,
-        dispatch_stamp: dict[str, str] | None,
     ) -> Result:
         timeout = self._timeout_for(action)
         try:
@@ -213,8 +175,6 @@ class DeepsecArm:
             return Result(ok=False, arm_id=spec.id, action=action, output=None,
                           error="subprocess output exceeded capture cap")
         output: Any = _parse_output(proc.stdout)
-        if dispatch_stamp is not None:
-            output = {"dispatch": dispatch_stamp, "output": output}
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or f"{action} failed").strip()
             return Result(
@@ -231,13 +191,6 @@ class DeepsecArm:
             output=output,
             error=None,
         )
-
-
-def _with_caveat(message: str | None) -> str:
-    text = message or "refused"
-    if CAVEATS and CAVEATS not in text:
-        return f"{text} Caveat: {CAVEATS}"
-    return text
 
 
 def _parse_output(stdout: str) -> Any:

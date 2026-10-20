@@ -1,11 +1,9 @@
 """Curated metasploit MCP arm."""
 
 from .arm import MetasploitArm
-from .policy import ALLOWED_TOOLS, ARM_ID, DISPATCH_TOOLS
+from .policy import ARM_ID
 
 __all__ = [
-    "ALLOWED_TOOLS",
     "ARM_ID",
-    "DISPATCH_TOOLS",
     "MetasploitArm",
 ]

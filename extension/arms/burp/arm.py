@@ -15,7 +15,6 @@ from .policy import (
     ARM_ID,
     ENV_ENDPOINT,
     LIST_ACTIONS,
-    TRANSPORT_POLICY,
     detect_edition,
     merge_tool_args,
     refuse_reason,
@@ -32,7 +31,7 @@ SessionFactory = Callable[..., Any]
 
 
 def _default_session_factory(url: str, timeout: float = MCP_CALL_TIMEOUT) -> Any:
-    return SseMcpSession(url, timeout=timeout, policy=TRANSPORT_POLICY)
+    return SseMcpSession(url, timeout=timeout)
 
 
 class BurpArm:
@@ -57,7 +56,7 @@ class BurpArm:
             raw = self._endpoint_arg
         else:
             raw = os.environ.get(ENV_ENDPOINT)
-        return configured_http_url(raw, TRANSPORT_POLICY)
+        return configured_http_url(raw)
 
     def installed(self, spec: ArmSpec) -> bool:
         return spec.id == ARM_ID and self.endpoint_url() is not None

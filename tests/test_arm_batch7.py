@@ -31,7 +31,7 @@ from extension.arms.security_detections_mcp import arm as r43_arm
 from extension.arms.security_detections_mcp.policy import (
     ARG_KEYS as R43_KEYS,
     CAVEATS as R43_CAVEATS,
-    ARMING as R43_ARMING,
+    INPUT_HINT as R43_INPUT_HINT,
 )
 
 from extension.arms.agentseal import ARM_ID as R35_ID, AgentSealArm
@@ -91,9 +91,7 @@ def _spec(arm_id: str) -> ArmSpec:
     return ArmSpec(
         id=arm_id,
         protocols=("cli",),
-        curated=True,
         notes="test arm",
-        tier="research",
     )
 
 
@@ -102,9 +100,7 @@ def _ext(arm_id: str, handler) -> Extension:
         id=arm_id,
         kind="arm",
         protocols=("cli",),
-        curated=True,
         notes="test arm row",
-        tier="research",
     )
     return Extension(catalog=Catalog([entry]), arms={arm_id: handler})
 
@@ -361,8 +357,7 @@ class TestR43SecurityDetectionsMcp:
         ext = _ext(R43_ID, SecurityDetectionsMcpArm())
         result = ext.invoke(R43_ID, "list_tools", {})
         assert result.ok is True
-        assert "list_rules" in result.output["read_actions"]
-        assert result.output["dispatch_actions"] == []
+        assert "list_rules" in result.output["actions"]
 
     def test_list_rules(self, detections_index: Path) -> None:
         ext = _ext(R43_ID, SecurityDetectionsMcpArm())
@@ -442,7 +437,7 @@ class TestR35AgentSeal:
         ext = _ext(R35_ID, AgentSealArm())
         result = ext.invoke(R35_ID, "list_tools", {})
         assert result.ok is True
-        assert "analyze" in result.output["read_actions"]
+        assert "analyze" in result.output["actions"]
 
     def test_analyze(self, agentseal_fixture: Path) -> None:
         ext = _ext(R35_ID, AgentSealArm())
@@ -560,7 +555,7 @@ class TestR01Vulnify:
         ext = _ext(R01_ID, VulnifyArm())
         result = ext.invoke(R01_ID, "list_tools", {})
         assert result.ok is True
-        assert "lookup" in result.output["read_actions"]
+        assert "lookup" in result.output["actions"]
 
     def test_lookup_by_cve(self, vulnify_feed: Path) -> None:
         ext = _ext(R01_ID, VulnifyArm())
@@ -608,7 +603,7 @@ class TestR33Leonidas:
         ext = _ext(R33_ID, LeonidasArm())
         result = ext.invoke(R33_ID, "list_tools", {})
         assert result.ok is True
-        assert "technique" in result.output["read_actions"]
+        assert "technique" in result.output["actions"]
 
     def test_technique_by_id(self, leonidas_corpus: Path) -> None:
         ext = _ext(R33_ID, LeonidasArm())
@@ -651,7 +646,7 @@ class TestR03SpecteropsSkills:
         ext = _ext(R03_ID, SpecteropsSkillsArm())
         result = ext.invoke(R03_ID, "list_tools", {})
         assert result.ok is True
-        assert "skill" in result.output["read_actions"]
+        assert "skill" in result.output["actions"]
 
     def test_skill_by_id(self, specterops_catalog: Path) -> None:
         ext = _ext(R03_ID, SpecteropsSkillsArm())
@@ -729,7 +724,7 @@ class TestR34DetectionInTheCloud:
         ext = _ext(R34_ID, DetectionInTheCloudArm())
         result = ext.invoke(R34_ID, "list_tools", {})
         assert result.ok is True
-        assert "playbook" in result.output["read_actions"]
+        assert "playbook" in result.output["actions"]
 
     def test_playbook(self, detection_playbook_dir: Path) -> None:
         ext = _ext(R34_ID, DetectionInTheCloudArm())
@@ -840,7 +835,7 @@ class TestR42Pentestkit:
         ext = _ext(R42_ID, PentestkitArm())
         result = ext.invoke(R42_ID, "list_tools", {})
         assert result.ok is True
-        assert "result" in result.output["read_actions"]
+        assert "result" in result.output["actions"]
 
     def test_result_by_run_id(self, pentestkit_ledger: Path) -> None:
         ext = _ext(R42_ID, PentestkitArm())
@@ -915,7 +910,7 @@ class TestR15Collinear:
         ext = _ext(R15_ID, CollinearArm())
         result = ext.invoke(R15_ID, "list_tools", {})
         assert result.ok is True
-        assert "scenario" in result.output["read_actions"]
+        assert "scenario" in result.output["actions"]
 
     def test_scenario_strips_answer_data(self, collinear_scenarios: Path) -> None:
         ext = _ext(R15_ID, CollinearArm())

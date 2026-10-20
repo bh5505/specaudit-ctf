@@ -1,4 +1,4 @@
-"""Path-contained rules for the ai-deep-sast arm."""
+"""Command arguments for the ai-deep-sast arm."""
 
 from __future__ import annotations
 
@@ -9,11 +9,9 @@ ARM_ID = "ai-deep-sast"
 ENV_BIN = "AI_DEEP_SAST_BIN"
 ENV_DEEPSCAN_BIN = "AI_DEEP_SAST_DEEPSCAN_BIN"
 ENV_SCAN_ROOT = "AI_DEEP_SAST_SCAN_ROOT"
-ENV_DISPATCH_SCOPE = "AI_DEEP_SAST_DISPATCH_SCOPE"
 ENV_SEMGREP_CONFIG = "AI_DEEP_SAST_SEMGREP_CONFIG"
 
-ALLOWED_ACTIONS = frozenset({"scan", "dry_run"})
-DISPATCH_ACTIONS = frozenset({"ai_scan"})
+ALLOWED_ACTIONS = frozenset({"scan", "dry_run", "ai_scan"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 
 TARGET_KEYS = frozenset({"target"})
@@ -23,15 +21,9 @@ ACTION_TIMEOUTS: dict[str, float] = {}
 MAX_OUTPUT_CHARS = 200_000
 
 CAVEATS = (
-    "--skip-llm scan is the safe default and requires a local "
-    "AI_DEEP_SAST_SEMGREP_CONFIG inside the scan root (no registry p/ "
-    "default). ai_scan runs local Foundation-Sec via llama-completion; "
-    "frontier deepscan.py is not exposed beyond dry_run --dry-run."
-)
-
-ARMING = (
-    f"set {ENV_DISPATCH_SCOPE}=localhost (any explicit non-blanket item); "
-    f"containment is {ENV_SCAN_ROOT}"
+    "scan uses --skip-llm; ai_scan uses the configured AI backend and may "
+    "send data to that backend. AI_DEEP_SAST_SEMGREP_CONFIG is optional and "
+    "may refer to a local or remote Semgrep ruleset. dry_run runs deepscan.py."
 )
 
 
@@ -70,32 +62,17 @@ def resolve_deepscan_binary() -> str | None:
     return shutil.which("deepscan.py") or shutil.which("deepscan")
 
 
-def resolve_contained(raw: str | None, root_env: str) -> tuple[Path | None, str | None]:
-    root_raw = os.environ.get(root_env, "").strip()
-    if not root_raw:
-        return None, f"{root_env} is required to contain filesystem paths"
-    root, refusal = _safe_resolve(root_raw, what=root_env)
+def resolve_scan_root() -> tuple[Path | None, str | None]:
+    """Select the command's working directory, defaulting to the caller's."""
+    raw = os.environ.get(ENV_SCAN_ROOT, "").strip()
+    if not raw:
+        return Path.cwd(), None
+    root, refusal = _safe_resolve(raw, what=ENV_SCAN_ROOT)
     if root is None:
         return None, refusal
     if not root.is_dir():
-        return None, f"{root_env} is not a directory: {root}"
-    if root == root.anchor or root.parent == root:
-        return None, f"{root_env} must not be a filesystem root"
-    if raw:
-        candidate, refusal = _safe_resolve(raw, what="path")
-        if candidate is None:
-            return None, refusal
-    else:
-        candidate = root
-    try:
-        candidate.relative_to(root)
-    except ValueError:
-        return None, f"path must stay inside {root_env} (got {candidate}, base {root})"
-    return candidate, None
-
-
-def resolve_scan_root() -> tuple[Path | None, str | None]:
-    return resolve_contained(None, ENV_SCAN_ROOT)
+        return None, f"{ENV_SCAN_ROOT} is not a directory: {root}"
+    return root, None
 
 
 def contained_target(raw: object) -> tuple[Path | None, str | None]:
@@ -104,7 +81,7 @@ def contained_target(raw: object) -> tuple[Path | None, str | None]:
     text = raw.strip()
     if text.startswith("-"):
         return None, "target path must not be flag-shaped"
-    path, refusal = resolve_contained(text, ENV_SCAN_ROOT)
+    path, refusal = _safe_resolve(text, what="target")
     if path is None:
         return None, refusal
     if not path.exists():
@@ -112,39 +89,23 @@ def contained_target(raw: object) -> tuple[Path | None, str | None]:
     return path, None
 
 
-_REGISTRY_CONFIGS = frozenset({"auto", "default"})
-_REGISTRY_PREFIXES = ("p/", "r/", "registry://", "http://", "https://")
-
-
-def contained_semgrep_config() -> tuple[Path | None, str | None]:
-    """Local ruleset only; omitted or registry refs would pull Semgrep's registry."""
+def contained_semgrep_config() -> tuple[str | None, str | None]:
+    """Pass an optional operator-selected Semgrep config to the command."""
     raw = os.environ.get(ENV_SEMGREP_CONFIG, "").strip()
     if not raw:
-        return None, (
-            f"{ENV_SEMGREP_CONFIG} is required (local ruleset inside "
-            f"{ENV_SCAN_ROOT}; no registry p/ default)"
-        )
+        return None, None
     if raw.startswith("-"):
         return None, f"{ENV_SEMGREP_CONFIG} must not be flag-shaped"
-    lowered = raw.lower()
-    if lowered in _REGISTRY_CONFIGS or lowered.startswith(_REGISTRY_PREFIXES):
-        return None, (
-            f"{ENV_SEMGREP_CONFIG} must be a local path inside {ENV_SCAN_ROOT}, "
-            "not a registry ref"
-        )
-    path, refusal = resolve_contained(raw, ENV_SCAN_ROOT)
-    if path is None:
-        return None, refusal
-    if not path.exists():
-        return None, f"{ENV_SEMGREP_CONFIG} is not an existing path: {path}"
-    return path, None
+    if any(ord(ch) < 0x20 for ch in raw):
+        return None, f"{ENV_SEMGREP_CONFIG} contains control characters"
+    return raw, None
 
 
 def argv_for(
     binary: str,
     action: str,
     target: Path,
-    semgrep_config: Path | None = None,
+    semgrep_config: str | None = None,
 ) -> list[str]:
     if action == "scan":
         cmd = [binary, "--target", str(target), "--skip-llm"]

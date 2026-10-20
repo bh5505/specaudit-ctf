@@ -16,8 +16,8 @@ from extension.arms.snmp_readtier.codec import (
     build_v3_discovery, build_v3_get, localize_key, parse_response_v3,
     parse_response_v3_report,
 )
-from extension.arms.snmp_readtier.policy import ENV_SCOPE, args_refusal
-from extension.contract import ArmSpec, Catalog, CatalogEntry, Extension
+from extension.arms.snmp_readtier.policy import MAX_OIDS, args_refusal, normalize_oid
+from extension.contract import Catalog, CatalogEntry, Extension
 
 ENGINE_ID = bytes.fromhex("80001f8880e9630000d61ff449")
 OID = ".1.3.6.1.2.1.1.1.0"
@@ -27,7 +27,7 @@ PRIV_PASSWORD = "privacypass"
 
 
 def _ext() -> Extension:
-    entry = CatalogEntry(ARM_ID, "arm", ("cli",), True, "test", "experimental")
+    entry = CatalogEntry(ARM_ID, "arm", ("cli",), "test")
     return Extension(catalog=Catalog([entry]), arms={ARM_ID: SnmpReadtierArm()})
 
 
@@ -128,6 +128,23 @@ def test_v3_policy_defaults_and_validation() -> None:
     assert "user" in args_refusal(base | {"user": "\ud800"})
 
 
+def test_v3_arbitrary_numeric_oids_accepted_and_malformed_rejected() -> None:
+    base = {"host": "127.0.0.1", "user": USER, "timeout_ms": 100}
+    assert normalize_oid(".1.3.6.1.4.1.99999.1.2.3") == ".1.3.6.1.4.1.99999.1.2.3"
+    assert normalize_oid("1.3.6.1.2.1.1.6.0") == ".1.3.6.1.2.1.1.6.0"
+    assert args_refusal(base | {"oids": [
+        "sysDescr.0", ".1.3.6.1.2.1.1.6.0", "1.3.6.1.2.1.1.7.0", ".1.3.6.1.4.1.99999.1.2.3",
+    ]}) is None
+    for bad in ["", "sysDescr", ".1..3.6", "1.3.6.1.2.1.1.6.0.",
+                "9.1.2.3", "1.99.2.3", "1.3.6.1.2.1.4294967296.0", "1.3.6.a.1"]:
+        refusal = args_refusal(base | {"oids": [bad]})
+        assert refusal is not None and "malformed or duplicate" in refusal, bad
+    assert "malformed or duplicate" in args_refusal(
+        base | {"oids": ["sysDescr.0", ".1.3.6.1.2.1.1.1.0"]})
+    too_many = [f".1.3.6.1.4.1.99999.1.{index}" for index in range(MAX_OIDS + 1)]
+    assert f"one to {MAX_OIDS}" in args_refusal(base | {"oids": too_many})
+
+
 def test_arm_v3_discovery_then_authenticated_get(monkeypatch, capsys) -> None:
     report = _report()
     response = _response(41, "sha", "none")
@@ -148,7 +165,6 @@ def test_arm_v3_discovery_then_authenticated_get(monkeypatch, capsys) -> None:
 
     thread = threading.Thread(target=run, daemon=True)
     thread.start()
-    monkeypatch.setenv(ENV_SCOPE, "127.0.0.1")
     monkeypatch.setattr("extension.arms.snmp_readtier.arm.secrets.randbelow", lambda _n: 40)
     args = {"host": "127.0.0.1", "port": port, "user": USER, "auth_protocol": "sha",
             "auth_password": AUTH_PASSWORD, "oids": ["sysDescr.0"], "timeout_ms": 500}
@@ -156,6 +172,6 @@ def test_arm_v3_discovery_then_authenticated_get(monkeypatch, capsys) -> None:
     thread.join(1)
     assert result.ok and result.output["version"] == "v3"
     assert result.output["results"][0]["value"]["data"] == "v3-demo"
-    receipt = json.loads(capsys.readouterr().err.strip())
-    assert receipt["version"] == "v3" and receipt["request_sha256"]
-    assert AUTH_PASSWORD not in json.dumps(receipt)
+    assert result.output["request_sha256"]
+    assert AUTH_PASSWORD not in json.dumps(result.output)
+    assert capsys.readouterr().err == ""

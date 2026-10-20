@@ -10,7 +10,6 @@ from ..arms.burp.sse import redact
 from ..contract import (
     CATALOG_KIND_ARM,
     Extension,
-    NotHeldError,
     NotInstalledError,
     default_extension,
 )
@@ -64,19 +63,17 @@ def run_range(
     extension: Extension | None = None,
     arm_ids: Sequence[str] | None = None,
 ) -> dict[str, Any]:
-    """Evaluate fixtures and optionally invoke curated arms.
+    """Evaluate fixtures and optionally invoke selected arms.
 
     Arms:
       - ``NotInstalledError`` (including missing ``BURP_MCP_ENDPOINT``) is
         recorded as ``status="skipped"`` with ``reason="not installed"``.
-      - ``NotHeldError`` is ``status="error"``. Catalog hold reasons are
-        kept unless catalog notes would leak secret-shaped text.
       - Any other ``Exception`` (including ``UnknownIdError`` for an
         unknown arm id, transport failures) becomes ``status="error"`` with
         a redacted ``error`` string.
       - Only arm ``status="ok"`` is success; missing/unknown is ``failed``,
         never ``complete``. Skip/error never yields ``complete``. Omitted
-        ``arm_ids`` (``None``) auto-discovers curated arms as optional:
+        ``arm_ids`` (``None``) auto-discovers arms as optional:
         skip/error is ``degraded``. Explicit empty ``arm_ids=()`` is
         required-empty: no arms, so lifecycle match may be ``complete``.
         Explicit non-empty ``arm_ids`` are required: skip/error is
@@ -523,7 +520,7 @@ def _resolve_arm_ids(
     return [
         entry.id
         for entry in ext.list_entries()
-        if entry.kind == CATALOG_KIND_ARM and entry.curated
+        if entry.kind == CATALOG_KIND_ARM
     ]
 
 
@@ -600,16 +597,6 @@ def _merge_coverage(rows: Sequence[Mapping[str, Any]]) -> dict[str, list[str]]:
     return {key: _unique_ids(vals) for key, vals in merged.items()}
 
 
-def _held_range_error(ext: Extension, arm_id: str, exc: NotHeldError) -> str:
-    # Catalog hold reasons are operator policy ("no token passthrough").
-    # Keyword-redact only when notes would leak secret-shaped text.
-    text = str(exc)
-    notes = ext.describe(arm_id).notes
-    if redact(notes) != notes:
-        return redact(text)
-    return text
-
-
 def _invoke_arms(
     ext: Extension,
     arm_ids: Sequence[str],
@@ -628,17 +615,6 @@ def _invoke_arms(
                     "action": ARM_ACTION,
                     "status": "skipped",
                     "reason": "not installed",
-                }
-            )
-            continue
-        except NotHeldError as exc:
-            rows.append(
-                {
-                    "arm_id": arm_id,
-                    "action": ARM_ACTION,
-                    "status": "error",
-                    "output": None,
-                    "error": _held_range_error(ext, arm_id, exc),
                 }
             )
             continue

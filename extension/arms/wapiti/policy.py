@@ -1,8 +1,8 @@
-"""Dispatch-only rules for the wapiti arm.
+"""Rules for the wapiti arm.
 
 Upstream wapiti has no read-only mode: every invocation scans a target
-(-u URL) and sends HTTP traffic. This arm therefore has no read tier;
-its single action is dispatch-class and refused by default.
+(-u URL) and sends HTTP traffic. This arm exposes that single scan
+action runs the upstream scan.
 """
 
 from __future__ import annotations
@@ -13,9 +13,8 @@ from urllib import parse as urllib_parse
 
 ARM_ID = "wapiti"
 ENV_BIN = "WAPITI_BIN"
-ENV_DISPATCH_SCOPE = "WAPITI_DISPATCH_SCOPE"
 
-DISPATCH_ACTIONS = frozenset({"scan"})
+ALLOWED_ACTIONS = frozenset({"scan"})
 
 TIMEOUT_SECONDS = 600.0
 MAX_OUTPUT_CHARS = 200_000

@@ -3,14 +3,12 @@ from __future__ import annotations
 
 import hashlib
 import json
-import os
 from collections import deque
 from dataclasses import replace
 
 from ...contract import Result
-from ..dispatch import log_dispatch
 from .graph import Graph, ident
-from .model import Budget, CEILINGS, DEFAULTS, Exclusions, Observation, Refusal, bounded_list, closed, live_value, normalize, pattern_covers, seeds
+from .model import Budget, DEFAULTS, Exclusions, Observation, Refusal, bounded_list, closed, normalize, pattern_covers, seeds
 from .runner import WorkerRefusal, run_worker
 from .probe_policy import validate_target
 from .sources import ADAPTERS, read_fixture
@@ -54,15 +52,14 @@ class AssetReconArm:
                               seed_fields=["domains", "ips", "fingerprints", "asns", "networks", "domains_file", "targets_file"],
                               exclusion_fields=["domains", "networks"],
                               probe_methods=["tcp", "tls", "http", "tcp-hello", "udp-hello", "nmap", "zgrab2"],
-                              literal_hello_values=["hello", "hello\n", "hello\r\n"],
-                              default_limits=dict(DEFAULTS), maximum_limits=dict(CEILINGS),
-                              provider_grant="ASSET_RECON_PROVIDERS", probe_scope="ASSET_RECON_PROBE_SCOPE",
-                              default_off=True, recursive_probes=False))
+                              default_hello="hello\r\n",
+                              default_limits=dict(DEFAULTS),
+                              recursive_probes=False))
             allowed = COMMON + (() if action == "plan" else ("fixtures",))
             if action in ("ct", "ptr", "discover"):
-                allowed += ("live", "providers")
+                allowed += ("providers",)
             if action == "probe":
-                allowed = ("live", "targets", "exclusions", "limits")
+                allowed = ("targets", "exclusions", "limits")
             payload = closed(dict(args), allowed)
             budget = Budget(payload.get("limits"))
             exclusions = Exclusions(payload.get("exclusions"))
@@ -123,18 +120,12 @@ class AssetReconArm:
             fixtures = bounded_list(payload.get("fixtures", []), 16)
             if action == "parse" and not fixtures:
                 raise Refusal("parse requires fixture files")
-            live = payload.get("live", False)
-            if type(live) is not bool:
-                raise Refusal("live must be a boolean")
-            if action == "discover" and not live and not fixtures:
-                raise Refusal("offline discovery requires fixtures; use plan for preparation")
-            if action in ("ct", "ptr") and not live:
-                raise Refusal("collection requires explicit live true and ASSET_RECON_PROVIDERS")
             providers = bounded_list(payload.get("providers", ["crtsh"] if action == "ct" else ["google"] if action == "ptr" else []), 8)
-            if providers and not live:
-                raise Refusal("providers require explicit live true")
+            live = action in ("ct", "ptr") or bool(providers)
+            if action == "discover" and not live and not fixtures:
+                raise Refusal("discover requires providers or fixture files")
             if live:
-                self._grants(providers)
+                self._check_providers(providers)
                 families = {"ct": {"crtsh", "certspotter"}, "ptr": {"google", "cloudflare"}, "discover": set(ADAPTERS) - {"dns"}}
                 if not set(providers) <= families[action]:
                     raise Refusal("provider does not belong to action family")
@@ -189,12 +180,9 @@ class AssetReconArm:
 
         return getattr(parsed, "limitations", ())
 
-    def _grants(self, providers):
+    def _check_providers(self, providers):
         if not providers or any(p not in ADAPTERS or p == "dns" for p in providers):
-            raise Refusal("explicit fixed provider selection required")
-        grants = os.environ.get("ASSET_RECON_PROVIDERS", "").split(",")
-        if any(g not in ADAPTERS or g == "dns" for g in grants) or any(p not in grants for p in providers):
-            raise Refusal("ASSET_RECON_PROVIDERS does not grant selected adapters")
+            raise Refusal("select at least one supported live provider")
 
     def _collect(self, graph, records, providers, action):
         budget = graph.budget
@@ -214,9 +202,6 @@ class AssetReconArm:
                     continue
                 if node["depth"] >= budget.values["max_depth"]:
                     graph.limit("depth budget reached")
-                    continue
-                if not live_value(node["type"], node["value"]):
-                    graph.limit("non-global or reserved value omitted from live queries")
                     continue
                 for source in providers:
                     if node["type"] not in ADAPTERS[source].query_kinds:
@@ -276,7 +261,7 @@ class AssetReconArm:
                     request_variant = page if page is not None else variant
                     # Large telecom CT responses can be slow; retain the
                     # per-request cap while yielding retries/pages to the queue.
-                    response = run_worker(dict(operation="collect", live=True, source=source, kind=kind, value=value, variant=request_variant), min(30, budget.remaining()))
+                    response = run_worker(dict(operation="collect", source=source, kind=kind, value=value, variant=request_variant), min(30, budget.remaining()))
                 except Refusal:
                     retries = retry_counts.get(item, 0)
                     if (retries < budget.values["retries"] and
@@ -328,8 +313,6 @@ class AssetReconArm:
                 break
 
     def _probe(self, action, payload, exclusions, budget):
-        if payload.get("live") is not True:
-            raise Refusal("probe requires explicit live true")
         targets = bounded_list(payload.get("targets"), 16)
         if not targets:
             raise Refusal("probe requires explicit targets")
@@ -347,11 +330,10 @@ class AssetReconArm:
             ),
             nodes=[], edges=[], evidence=[], probes=[], limitations=[], requests=0,
         )
-        for target, scope, auth_target in checked:
+        for target in checked:
             try:
                 budget.request()
-                log_dispatch(ARM_ID, "probe", scope, auth_target)
-                response = run_worker(dict(operation="probe", live=True, target=target), min(12, budget.remaining()))
+                response = run_worker(dict(operation="probe", target=target), min(12, budget.remaining()))
                 output["probes"].append(dict(target={k: v for k, v in target.items() if k != "hello"}, observation=response))
                 if response.get("complete") is False:
                     output["status"] = "partial"

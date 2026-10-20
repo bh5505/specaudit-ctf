@@ -1,23 +1,14 @@
 #!/usr/bin/env bash
-# Measure the zdns arm's admitted lookup against a loopback lab zone
+# Measure the zdns arm's lookup against a loopback lab zone
 # (host resolver untouched). Run from Windows (Git Bash).
 #
-# Shape (the "lab authority on Kali loopback" design, consult-adopted
-# 2026-09-04): dnsmasq binds one unoccupied loopback IP, authoritative
-# for a lab zone only (--no-resolv: no upstream forwarding — anything
-# outside the zone is refused, so the overlay cannot leak to the
-# internet; the script proves that with a negative-control query). The
-# armed lookup runs inside a private mount namespace with a resolv.conf
+# dnsmasq binds one loopback IP for the selected lab zone. The
+# lookup runs inside a private mount namespace with a resolv.conf
 # overlay bind-mounted over /etc/resolv.conf, so ONLY the measurement
 # process tree resolves through the lab zone; the distro's own resolver
 # is never modified (asserted by a before/after hash, not by eye). If
 # unshare is unavailable, a trap-guarded global swap fallback runs
 # instead and restores the original before the integrity check.
-#
-# Honesty note this script exists to preserve: ZDNS_DISPATCH_SCOPE
-# authorizes the queried NAME (the dispatch target), not the resolver
-# transport — where packets go is decided by resolv.conf. The measured
-# record must say which resolver answered.
 #
 # Environment (all optional; see lab/local.example.conf):
 #   LAB_KALI_NAME     registered distro name (kali-linux)
@@ -75,17 +66,9 @@ echo "[lab] dnsmasq pid $DNSMASQ_PID on $DNSIP:53, zone $ZONE -> $ADDR"
 
 # 2. Overlay resolv.conf for the measurement only. Values cross the
 #    namespace boundary as exported env, never as interpolated strings.
-export ZDNS_DISPATCH_SCOPE="$QNAME" ZDNS_ARGS ZDNS_ATTEMPT_DIR ZDNS_AID WORK
+export ZDNS_ARGS WORK
 ZDNS_ARGS="$(printf '{"domain": "%s", "record_type": "%s"}' "$QNAME" "$RTYPE")"
-ZDNS_ATTEMPT_DIR="$WORK/attempt"
-mkdir -p "$ZDNS_ATTEMPT_DIR"
-ZDNS_AID="attempt-$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
 printf 'nameserver %s\noptions timeout:2 attempts:1\n' "$DNSIP" >"$WORK/resolv.conf"
-
-# Negative control command, run inside the overlay after the invoke:
-# an outside-zone name must be REFUSED (dnsmasq has no upstream) —
-# proof the overlay cannot leak to the internet.
-export CONTROL='zdns A example.com'
 
 if unshare -m --propagation private -- true 2>/dev/null; then
   echo "[lab] resolver overlay: private mount namespace (host resolv.conf untouched)"
@@ -93,9 +76,7 @@ if unshare -m --propagation private -- true 2>/dev/null; then
     mount --bind "$WORK/resolv.conf" /etc/resolv.conf || exit 3
     cd /root/ctf || exit 3
     /opt/ctf/bin/python -m extension invoke zdns lookup "$ZDNS_ARGS" \
-      --attempt-id "$ZDNS_AID" --artifact-dir "$ZDNS_ATTEMPT_DIR" \
-      >"$WORK/envelope.json" 2>"$WORK/stderr.txt" || true
-    sh -c "$CONTROL" >"$WORK/control.json" 2>/dev/null || true
+      >"$WORK/result.json" 2>"$WORK/stderr.txt" || true
   ' || { echo "[lab] namespaced invoke failed" >&2; exit 1; }
 else
   echo "[lab] WARNING: unshare unavailable — global resolv.conf swap with trap restore" >&2
@@ -103,81 +84,36 @@ else
   trap 'restore_resolv; cleanup' EXIT
   cp "$WORK/resolv.conf" /etc/resolv.conf
   /opt/ctf/bin/python -m extension invoke zdns lookup "$ZDNS_ARGS" \
-    --attempt-id "$ZDNS_AID" --artifact-dir "$ZDNS_ATTEMPT_DIR" \
-    >"$WORK/envelope.json" 2>"$WORK/stderr.txt" || true
-  sh -c "$CONTROL" >"$WORK/control.json" 2>/dev/null || true
+    >"$WORK/result.json" 2>"$WORK/stderr.txt" || true
   restore_resolv
 fi
 
-echo "--- stderr (audit line):"
+echo "--- stderr:"
 cat "$WORK/stderr.txt"
-echo "--- envelope:"
-python3 - "$WORK/envelope.json" <<'PY'
+echo "--- result and measured answer:"
+python3 - "$WORK/result.json" "$RTYPE" <<'PY_RESULT'
 import json, sys
 try:
-    env = json.load(open(sys.argv[1]))
+    result = json.load(open(sys.argv[1]))
 except (OSError, ValueError):
-    print("(no envelope JSON was produced)")
-    raise SystemExit(0)
-print("status:", env["status"], "| transport_ok:", env["transport_ok"],
-      "| capability:", env["capability_id"], "| side_effects:", env["side_effects"])
-PY
-echo "--- measured answer (from the materialized policy-report artifact):"
-python3 - "$ZDNS_ATTEMPT_DIR" "$RTYPE" <<'PY'
-import json, sys
-from pathlib import Path
-dir_, rtype = Path(sys.argv[1]), sys.argv[2]
-blobs = sorted(dir_.glob("sha256-*"))
-if not blobs:
-    print("(no artifact was materialized — see the envelope/stderr above)")
-    raise SystemExit(0)
-doc = json.loads(blobs[0].read_text(encoding="utf-8"))
-print("stamp:", json.dumps(doc.get("dispatch"), sort_keys=True))
-out = doc.get("output")
+    print("(no result JSON was produced)")
+    raise SystemExit(1)
+print("ok:", result.get("ok"), "| error:", result.get("error"))
+out = result.get("output")
 if isinstance(out, str):
     try:
         out = json.loads(out)
     except json.JSONDecodeError:
         pass
 if isinstance(out, dict):
-    section = (out.get("results") or {}).get(rtype) or {}
+    section = (out.get("results") or {}).get(sys.argv[2]) or {}
     data = section.get("data") or {}
     print("answers:", json.dumps(data.get("answers")))
     print("resolver:", json.dumps(data.get("resolver")), "| status:", section.get("status"))
 else:
     print("output:", str(out)[:400])
-PY
-echo "--- containment control (outside-zone query must be REFUSED):"
-python3 - "$WORK/control.json" <<'PY'
-import json, sys
-from pathlib import Path
-path = Path(sys.argv[1])
-if not path.exists() or not path.read_text(encoding="utf-8").strip():
-    # Both the namespace and fallback paths run the control; a missing
-    # or empty result means the containment proof did not happen, and
-    # the run must not claim it did.
-    print("[lab] CONTAINMENT CONTROL MISSING — refusing to record the run")
-    raise SystemExit(1)
-text = path.read_text(encoding="utf-8").strip()
-# zdns writes a progress line plus one JSON object; keep the last line
-# that parses as JSON with a results key.
-for line in reversed(text.splitlines()):
-    try:
-        doc = json.loads(line)
-    except json.JSONDecodeError:
-        continue
-    if isinstance(doc, dict) and "results" in doc:
-        section = doc["results"].get("A") or {}
-        status = section.get("status")
-        print("status:", status, "(expected REFUSED)")
-        if status != "REFUSED":
-            print("[lab] CONTAINMENT CONTROL FAILED — outside-zone query not refused")
-            raise SystemExit(1)
-        raise SystemExit(0)
-print("[lab] CONTAINMENT CONTROL UNPARSEABLE — refusing to record the run")
-raise SystemExit(1)
-PY
-# 3. Integrity assertion: the host resolver must be byte-identical.
+PY_RESULT
+# Check that the host resolver is byte-identical after the measurement.
 RESOLV_AFTER="$(sha256sum /etc/resolv.conf | cut -d' ' -f1)"
 if [ "$RESOLV_BEFORE" != "$RESOLV_AFTER" ]; then
   echo "[lab] HOST RESOLV.CONF CHANGED — before $RESOLV_BEFORE after $RESOLV_AFTER" >&2

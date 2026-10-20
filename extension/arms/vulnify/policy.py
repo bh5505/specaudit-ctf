@@ -4,9 +4,8 @@ True merge of two implementations:
   * main's feed-based reader (args.feed; json/jsonl/yaml; single cve_id/name
     lookup; list_vulns) — the base, wired into the trusted-observation layer;
   * the feature-branch snapshot/batch layer (args.bundle_path + args.cve_ids
-    list over a frozen local JSON snapshot, Finding-E curated fallback, custody
-    receipt).
-Both interfaces coexist; `lookup` dispatches on which caller arg is present.
+    list over a frozen local JSON snapshot with Finding-E curated fallback).
+Both interfaces coexist; `lookup` selects on which caller arg is present.
 """
 
 from __future__ import annotations
@@ -15,9 +14,9 @@ from pathlib import Path
 
 ARM_ID = "vulnify"
 
-# Read tier: exact lookups over a local vulnerability feed or snapshot. There
-# is no dispatch tier: the arm is an in-process bounded local-file reader with
-# no subprocess, no endpoint, and no network on any tier.
+# Exact lookups over a local vulnerability feed or snapshot. The arm is an
+# in-process bounded local-file reader with no subprocess, no endpoint,
+# and no network.
 ALLOWED_ACTIONS = frozenset({"lookup", "list_vulns"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 
@@ -35,7 +34,7 @@ BUNDLE_SUFFIXES = (".json",)
 DEMO_BUNDLE_NAME = "demo-vulnerability-snapshot.json"
 
 # Per-action caller-argument contracts (everything else is refused). `lookup`
-# admits both the feed interface (feed + cve_id/name) and the batch interface
+# supports both the feed interface (feed + cve_id/name) and the batch interface
 # (bundle_path + cve_ids); `list_vulns` is feed-only.
 ARG_KEYS: dict[str, frozenset[str]] = {
     "lookup": frozenset({"feed", "cve_id", "name", "cve_ids", "bundle_path"}),
@@ -43,18 +42,17 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 }
 
 CAVEATS = (
-    "offline read tier over an operator-supplied local vulnerability feed snapshot",
+    "offline reads over an operator-supplied local vulnerability feed snapshot",
     "exact lookups only, no enumeration beyond list_vulns",
     "unknown or stale data in the feed stays explicitly opaque — "
     "the arm does not augment or refresh records",
-    "results identify exact snapshot bytes and normalized records but do not "
-    "establish upstream revision, attribution, or data rights",
+    "results identify exact snapshot bytes and normalized records",
     "no network or database mutation occurs during a lookup",
     "batch lookups (args.cve_ids) read a frozen operator-supplied local JSON "
-    "snapshot and emit a JSON custody receipt to stderr",
+    "snapshot",
 )
 
-ARMING = (
+INPUT_HINT = (
     "pass args.feed (path to a local vulnerability feed file) for single "
     "lookups and list_vulns, or args.bundle_path (a frozen local JSON "
     "snapshot) with args.cve_ids for batch lookups; every record traces to "
@@ -67,7 +65,7 @@ def feed_refusal(
 ) -> tuple[Path | None, str | None]:
     """Validate a caller-supplied local feed path.
 
-    Egress gate: the feed must be an existing local file with a
+    Input contract: the feed must be an existing local file with a
     recognised suffix; URLs are refused.  Returns (path, None) or
     (None, refusal).
     """
@@ -125,7 +123,7 @@ def demo_bundle_path() -> Path:
 def args_refusal(action: str, payload: dict) -> str | None:
     """Refuse unknown or missing caller arguments per action.
 
-    `lookup` admits two interfaces: the batch interface (args.cve_ids list
+    `lookup` supports two interfaces: the batch interface (args.cve_ids list
     over args.bundle_path) and the feed interface (args.feed with at least one
     of args.cve_id / args.name). `list_vulns` is feed-only.
     """

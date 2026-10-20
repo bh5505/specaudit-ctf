@@ -12,26 +12,10 @@ import pytest
 from extension.arms.burp import sse as burp_sse
 from extension.arms.mcp_client import (
     MAX_MCP_BYTES,
-    HttpTransportPolicy,
     SseMcpSession,
     StreamableHttpClient,
     redact,
 )
-from extension.arms.policy_base import ToolPolicy
-
-
-# --- policy base --------------------------------------------------------
-
-
-def test_tool_policy_ordering_and_messages() -> None:
-    policy = ToolPolicy(allowed={"a_ok"}, blocked={"a_bad"})
-    assert policy.refuse_reason("a_ok") is None
-    # Shape first.
-    assert policy.refuse_reason("a-ok!") == "invalid tool name: 'a-ok!'"
-    # Explicit blocklist before allowlist misses.
-    assert policy.refuse_reason("a_bad") == "tool 'a_bad' is blocked"
-    # Allowlist miss last.
-    assert policy.refuse_reason("a_other") == "tool 'a_other' is not on the allowlist"
 
 
 def test_burp_sse_shim_reexports_shared_client() -> None:
@@ -148,7 +132,7 @@ def test_streamable_client_json_roundtrip_and_session_echo(
     streamable_server: tuple[str, dict[str, Any]],
 ) -> None:
     url, state = streamable_server
-    client = StreamableHttpClient(url, timeout=5, policy=HttpTransportPolicy.loopback())
+    client = StreamableHttpClient(url, timeout=5)
     client.connect()
     assert client._session_id == "sess-1"
     tools = client.list_tools()
@@ -168,7 +152,7 @@ def test_streamable_client_parses_sse_response(
     streamable_server: tuple[str, dict[str, Any]],
 ) -> None:
     url, _state = streamable_server
-    client = StreamableHttpClient(url, timeout=5, policy=HttpTransportPolicy.loopback())
+    client = StreamableHttpClient(url, timeout=5)
     client.connect()
     assert client.call_tool("sse_reply") == {"content": []}
 
@@ -177,7 +161,7 @@ def test_streamable_client_http_error_redacted(
     streamable_server: tuple[str, dict[str, Any]],
 ) -> None:
     url, _state = streamable_server
-    client = StreamableHttpClient(url, timeout=5, policy=HttpTransportPolicy.loopback())
+    client = StreamableHttpClient(url, timeout=5)
     client.connect()
     with pytest.raises(RuntimeError) as err:
         client.call_tool("boom")
@@ -189,7 +173,7 @@ def test_streamable_client_oversize_response_rejected(
     streamable_server: tuple[str, dict[str, Any]],
 ) -> None:
     url, _state = streamable_server
-    client = StreamableHttpClient(url, timeout=5, policy=HttpTransportPolicy.loopback())
+    client = StreamableHttpClient(url, timeout=5)
     client.connect()
     with pytest.raises(RuntimeError, match="exceeds MAX_MCP_BYTES"):
         client.call_tool("huge")
@@ -199,14 +183,23 @@ def test_streamable_client_tool_iserror_raises(
     streamable_server: tuple[str, dict[str, Any]],
 ) -> None:
     url, _state = streamable_server
-    client = StreamableHttpClient(url, timeout=5, policy=HttpTransportPolicy.loopback())
+    client = StreamableHttpClient(url, timeout=5)
     client.connect()
     with pytest.raises(RuntimeError, match="tools/call error"):
         client.call_tool("tool_error")
 
 
 def test_streamable_client_refuses_invalid_url() -> None:
-    """Constructor preflights the URL (CR/LF, scheme, userinfo)."""
+    """Constructor accepts parsed HTTP(S) URLs and rejects malformed URLs."""
     for bad in ("http://127.0.0.1:9/\r\nX: y", "ftp://x", "http://u:p@h", "not a url"):
         with pytest.raises(RuntimeError, match="invalid streamable HTTP endpoint"):
             StreamableHttpClient(bad)
+
+    # Host location and scheme security are operator-owned choices. The
+    # shared client only checks that the configured URL parses as HTTP(S).
+    assert StreamableHttpClient("http://mcp.example.invalid:8080").base_url == (
+        "http://mcp.example.invalid:8080"
+    )
+    assert StreamableHttpClient("https://127.0.0.1:9443").base_url == (
+        "https://127.0.0.1:9443"
+    )

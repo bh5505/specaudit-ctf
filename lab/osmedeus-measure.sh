@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Measured armed osmedeus scan through the catalog arm against the
-# spawned lab target. Records envelopes + engine outputs into
+# Measured osmedeus scan through the catalog arm against the
+# spawned lab target. Records arm results and engine outputs into
 # /tmp/osm-measure on the lab host (caller copies into
 # lab/records/lab-osmedeus-<date>/).
 # Prereqs: lab/install-osmedeus.sh once; jq on PATH (do-scan-vuln
@@ -28,21 +28,18 @@ git fetch origin -q
 git reset --hard -q origin/main
 git log --oneline -1
 export OSMEDEUS_BIN=/usr/local/bin/osmedeus
-export OSMEDEUS_DISPATCH_SCOPE="$IP"
 R=/tmp/osm-measure
 mkdir -p "$R"
 START=$(date +%s)
 python3 -m extension invoke osmedeus scan "{\"target\": \"http://$IP:8000\"}" \
-  > "$R/armed-scan.json" 2>"$R/armed-scan.err"
-cp "$R/armed-scan.err" "$R/armed-scan-dispatch.err"
+  > "$R/scan.json" 2>"$R/scan.err"
 END=$(date +%s)
 echo "elapsed: $((END-START))s"
 python3 - "$R" <<'PY'
 import json, sys
 R = sys.argv[1]
-d = json.load(open(f"{R}/armed-scan.json"))
-print("status:", d.get("status"))
-print("elapsed_ms:", d.get("budget", {}).get("spent", {}).get("elapsed_ms"))
+d = json.load(open(f"{R}/scan.json"))
+print("ok:", d.get("ok"), "| error:", d.get("error"))
 PY
 # engine-side record (direct run, same shape) - the exit status is
 # RECORDED, never masked; a failed engine run fails this script after

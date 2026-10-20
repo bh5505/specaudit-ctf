@@ -1,4 +1,4 @@
-"""Unit + fake-binary tests for the curated garak arm. No live garak."""
+"""Unit + fake-binary tests for the garak arm. No live garak."""
 
 from __future__ import annotations
 
@@ -14,7 +14,6 @@ from extension.arms.garak import ARM_ID, GarakArm
 from extension.arms.garak.policy import (
     ENV_BIN,
     ENV_REPORT_DIR,
-    ENV_TARGET,
     argv_for,
     report_dir,
 )
@@ -25,9 +24,7 @@ def _spec() -> ArmSpec:
     return ArmSpec(
         id=ARM_ID,
         protocols=("cli",),
-        curated=True,
-        notes="Fixture curated CLI arm.",
-        tier="research",
+        notes="Fixture CLI arm.",
     )
 
 
@@ -54,16 +51,11 @@ def fake_bin(tmp_path: Path) -> Path:
     )
 
 
-@pytest.fixture(autouse=True)
-def _target(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(ENV_TARGET, "local:stub")
-
-
 def _arm() -> GarakArm:
     return GarakArm()
 
 
-# --- install gate (binary AND target binding) ----------------------------
+# --- installation --------------------------------------------------------
 
 
 def test_not_installed_without_binary(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -75,15 +67,14 @@ def test_not_installed_without_binary(monkeypatch: pytest.MonkeyPatch) -> None:
         arm.invoke(_spec(), "list_probes", {})
 
 
-def test_binary_without_target_not_installed(
+def test_binary_without_target_binding_is_installed(
     monkeypatch: pytest.MonkeyPatch, fake_bin: Path
 ) -> None:
     monkeypatch.setenv(ENV_BIN, str(fake_bin))
-    monkeypatch.delenv(ENV_TARGET, raising=False)
+    monkeypatch.delenv("GARAK_TARGET", raising=False)
     arm = _arm()
-    assert arm.installed(_spec()) is False
-    with pytest.raises(NotInstalledError):
-        arm.invoke(_spec(), "list_probes", {})
+    assert arm.installed(_spec()) is True
+    assert arm.invoke(_spec(), "list_probes", {}).ok is True
 
 
 def test_binary_and_target_install(
@@ -96,12 +87,23 @@ def test_binary_and_target_install(
 # --- policy --------------------------------------------------------------
 
 
-def test_probe_dispatch_blocked(monkeypatch: pytest.MonkeyPatch, fake_bin: Path) -> None:
+def test_scan_dispatch_and_unknown_action(monkeypatch: pytest.MonkeyPatch, fake_bin: Path) -> None:
     monkeypatch.setenv(ENV_BIN, str(fake_bin))
-    for action in ("run", "scan", "probe", "duck"):
+    scan = _arm().invoke(_spec(), "scan", {"target_type": "huggingface", "target_name": "model", "spec": "probes.promptinject"})
+    assert scan.ok is True
+    assert "--target_type', 'huggingface'" in scan.output
+    assert "--target_name', 'model'" in scan.output
+    assert "--spec', 'probes.promptinject'" in scan.output
+    for action in ("run", "probe", "duck"):
         result = _arm().invoke(_spec(), action, {})
         assert result.ok is False, action
-        assert "probe dispatch is blocked" in result.error
+        assert "not supported" in result.error
+
+
+def test_scan_requires_valid_target_type(monkeypatch: pytest.MonkeyPatch, fake_bin: Path) -> None:
+    monkeypatch.setenv(ENV_BIN, str(fake_bin))
+    assert "target_type" in _arm().invoke(_spec(), "scan", {}).error
+    assert "flag" in _arm().invoke(_spec(), "scan", {"target_type": "--bad"}).error
 
 
 def test_caller_args_refused(monkeypatch: pytest.MonkeyPatch, fake_bin: Path) -> None:
@@ -226,15 +228,12 @@ def test_report_dir_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert path is None and refusal is not None
 
 
-def test_report_dir_root_refused(
-    monkeypatch: pytest.MonkeyPatch, fake_bin: Path
-) -> None:
-    monkeypatch.setenv(ENV_BIN, str(fake_bin))
+def test_report_dir_root_accepted(monkeypatch: pytest.MonkeyPatch, fake_bin: Path) -> None:
     root = Path(fake_bin.anchor)  # "/" on POSIX, "C:\" on Windows
     monkeypatch.setenv(ENV_REPORT_DIR, str(root))
-    result = _arm().invoke(_spec(), "report", {})
-    assert result.ok is False
-    assert "filesystem root" in result.error
+    path, refusal = report_dir()
+    assert path == root
+    assert refusal is None
 
 
 def test_success_listing_redacted(

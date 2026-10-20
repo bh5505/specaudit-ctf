@@ -1,4 +1,4 @@
-"""Unit + fake-binary tests for the curated checkov arm. No live checkov."""
+"""Unit and fake-binary tests for the checkov arm. No live checkov."""
 
 from __future__ import annotations
 
@@ -23,9 +23,7 @@ def _spec() -> ArmSpec:
     return ArmSpec(
         id=ARM_ID,
         protocols=("cli",),
-        curated=True,
-        notes="Fixture curated CLI arm.",
-        tier="research",
+        notes="Checkov IaC scan.",
     )
 
 
@@ -90,11 +88,11 @@ def test_bin_env_installs(monkeypatch: pytest.MonkeyPatch, fake_bin: Path) -> No
 def test_only_scan_action_allowed(
     monkeypatch: pytest.MonkeyPatch, fake_bin: Path
 ) -> None:
-    # Install gate fires before policy; a fake binary keeps this hermetic.
+    # A fake binary keeps this hermetic.
     monkeypatch.setenv(ENV_BIN, str(fake_bin))
     result = _arm().invoke(_spec(), "version", {})
     assert result.ok is False
-    assert "not on the allowlist" in result.error
+    assert "unsupported checkov action" in result.error
 
 
 def test_caller_args_refused(
@@ -103,10 +101,10 @@ def test_caller_args_refused(
     monkeypatch.setenv(ENV_BIN, str(fake_bin))
     result = _arm().invoke(_spec(), "scan", {"--flag": "x"})
     assert result.ok is False
-    assert "fixed argv" in result.error
+    assert "accepts only args.target" in result.error
 
 
-def test_scan_root_containment(
+def test_operator_selected_scan_directory(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     root, refusal = resolve_scan_root()
@@ -115,8 +113,12 @@ def test_scan_root_containment(
 
     monkeypatch.setenv(ENV_SCAN_ROOT, str(tmp_path))
     root, refusal = resolve_scan_root()
-    assert root is None
-    assert "packaged synthetic range" in refusal
+    assert root == tmp_path.resolve()
+    assert refusal is None
+
+    selected, refusal = resolve_scan_root(str(tmp_path))
+    assert selected == tmp_path.resolve()
+    assert refusal is None
 
     monkeypatch.setenv(ENV_SCAN_ROOT, "tf_s3_public_access")
     root2, refusal2 = resolve_scan_root()
@@ -131,7 +133,7 @@ def test_argv_is_fixed(monkeypatch: pytest.MonkeyPatch, fake_bin: Path) -> None:
     argv = argv_for(str(fake_bin), root)
     assert argv[:3] == [str(fake_bin), "-d", str(root)]
     assert "--soft-fail" in argv
-    assert argv[3:] == ["--framework", "terraform", "-o", "json", "--skip-download", "--soft-fail"]
+    assert argv[3:] == ["--framework", "terraform", "-o", "json", "--soft-fail"]
 
 
 # --- invoke -------------------------------------------------------------
@@ -148,7 +150,7 @@ def test_scan_runs_fixed_argv(
     # argv here is sys.argv[1:] of the fake binary: the leading binary
     # path is absent, so ["-d", <root>, *FIXED_ARGV_TAIL].
     assert argv[0] == "-d"
-    assert argv[2:] == ["--framework", "terraform", "-o", "json", "--skip-download", "--soft-fail"]
+    assert argv[2:] == ["--framework", "terraform", "-o", "json", "--soft-fail"]
 
 
 def _fail_binary(tmp_path: Path, body: str) -> Path:
@@ -187,14 +189,14 @@ def test_scan_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     assert "timed out" in result.error
 
 
-def test_scan_outside_root_refused(
+def test_scan_operator_directory(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, fake_bin: Path
 ) -> None:
     monkeypatch.setenv(ENV_BIN, str(fake_bin))
     monkeypatch.setenv(ENV_SCAN_ROOT, str(tmp_path))
     result = _arm().invoke(_spec(), "scan", {})
-    assert result.ok is False
-    assert "packaged synthetic range" in result.error
+    assert result.ok is True
+    assert result.output["argv"][1] == str(tmp_path.resolve())
 
 
 # --- extension wiring ---------------------------------------------------
@@ -209,13 +211,13 @@ def test_default_extension_wires_checkov(monkeypatch: pytest.MonkeyPatch) -> Non
         ext.invoke("checkov", "scan", {})
 
 
-def test_curated_never_rides_generic_cli_transport(
+def test_uninstalled_checkov_does_not_fall_back_to_generic_cli(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Even a checkov binary on PATH must not reach the generic transport."""
+    """An absent checkov binary is reported as unavailable."""
     monkeypatch.delenv(ENV_BIN, raising=False)
     monkeypatch.setattr("extension.arms.checkov.arm.resolve_binary", lambda: None)
     ext = Extension(arms={})
     with pytest.raises(ExtensionError) as err:
         ext.invoke("checkov", "scan", {})
-    assert "specialized handler" in str(err.value)
+    assert "not installed" in str(err.value)

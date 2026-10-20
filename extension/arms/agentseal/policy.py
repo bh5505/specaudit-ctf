@@ -27,12 +27,12 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 }
 
 CAVEATS = (
-    "offline boundary must be verified — no registry or network calls",
+    "analyzes a supplied local fixture file",
     "every result cites specific configuration evidence",
     "no active modes exposed; read-only static fixture analysis",
 )
 
-ARMING = "pass args.fixture (path to a local static analysis fixture file)"
+INPUT_HINT = "pass args.fixture (path to a local static analysis fixture file)"
 
 
 def fixture_refusal(
@@ -40,7 +40,7 @@ def fixture_refusal(
 ) -> tuple[Path | None, str | None]:
     """Validate a caller-supplied local fixture path.
 
-    Egress gate: the fixture must be an existing local file with an
+    Input contract: the fixture must be an existing local file with an
     accepted suffix; URLs are refused.  Returns (path, None) or
     (None, refusal).
     """

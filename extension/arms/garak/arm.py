@@ -1,4 +1,4 @@
-"""Curated garak arm: probe/detector listing and report reading only."""
+"""Garak probe/detector listing, scanning, and report reading."""
 
 from __future__ import annotations
 
@@ -23,16 +23,15 @@ from .policy import (
     argv_for,
     report_dir,
     resolve_binary,
-    target_bound,
+    scan_argv,
 )
 
 
 class GarakArm:
     """Specialized transport for catalog id garak.
 
-    Listing actions run the upstream binary with a fixed argv; the
-    report action reads the newest JSONL report from GARAK_REPORT_DIR
-    locally. Running probes against the bound target is not exposed.
+    Listing and scan actions run the upstream binary; the report action
+    reads the newest JSONL report from GARAK_REPORT_DIR locally.
     """
 
     ARM_ID = ARM_ID
@@ -42,19 +41,15 @@ class GarakArm:
         self.timeout = timeout
 
     def installed(self, spec: ArmSpec) -> bool:
-        return (
-            spec.id == ARM_ID and resolve_binary() is not None and target_bound()
-        )
+        return spec.id == ARM_ID and resolve_binary() is not None
 
     def invoke(
         self, spec: ArmSpec, action: str, args: Mapping[str, Any]
     ) -> Result:
         if spec.id != ARM_ID:
             raise NotInstalledError(spec.id)
-        # Install gate first: uninstalled arms raise so callers can
-        # distinguish "skipped" from a real refusal.
         binary = resolve_binary()
-        if binary is None or not target_bound():
+        if binary is None:
             raise NotInstalledError(spec.id)
         if action not in ALLOWED_ACTIONS:
             return Result(
@@ -62,11 +57,9 @@ class GarakArm:
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error=f"action {action!r} is not on the allowlist "
-                "(listing and report reading only; open-ended probe "
-                "dispatch is blocked)",
+                error=f"action {action!r} is not supported",
             )
-        if dict(args):
+        if action != "scan" and dict(args):
             return Result(
                 ok=False,
                 arm_id=spec.id,
@@ -76,7 +69,12 @@ class GarakArm:
             )
         if action == "report":
             return self._read_report(spec, action)
-        cmd = argv_for(binary, action)
+        if action == "scan":
+            cmd, refusal = scan_argv(binary, dict(args))
+            if cmd is None:
+                return Result(False, spec.id, action, None, refusal)
+        else:
+            cmd = argv_for(binary, action)
         try:
             proc, overflowed = run_bounded(
                 cmd,

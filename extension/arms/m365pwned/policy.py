@@ -30,7 +30,7 @@ CAVEATS = (
     "or data-access probe.",
 )
 
-ARMING = (
+INPUT_HINT = (
     "pass args.cases_file (path to a local JSON or YAML file containing "
     "case studies intended to be synthetic; the arm does not prove provenance)"
 )

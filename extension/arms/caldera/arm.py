@@ -1,241 +1,93 @@
-"""Curated caldera arm: allowlisted REST reads, gated operation scheduling."""
+"""Direct requests to the operator-configured Caldera REST API."""
 
 from __future__ import annotations
 
 import json
-import os
 from typing import Any, Mapping
 from urllib import error as urllib_error
+from urllib import parse as urllib_parse
 from urllib import request as urllib_request
 
-from ...contract import (
-    TRANSPORT_MCP,
-    ArmSpec,
-    NotInstalledError,
-    Result,
-)
-from ..dispatch import authorize, log_dispatch, stamp
+from ...contract import TRANSPORT_MCP, ArmSpec, NotInstalledError, Result
 from ..mcp_client import MAX_MCP_BYTES, redact
 from .policy import (
-    ALLOWED_VIEWS,
-    ARM_ID,
-    CALL_TIMEOUT,
-    CAVEATS,
-    DISPATCH_ACTIONS,
-    ENV_API_KEY,
-    ENV_DISPATCH_SCOPE,
-    MAX_RESPONSE_CHARS,
-    SCAN_TIMEOUT,
-    api_key,
-    endpoint_url,
-    operation_refusal,
-    view_params,
+    ARM_ID, CALL_TIMEOUT, CAVEATS, MAX_RESPONSE_CHARS,
+    api_key, endpoint_url, request_parts,
 )
 
 
 class CalderaArm:
-    """Specialized transport for catalog id caldera.
-
-    Read tier: exact allowlisted v2 GET endpoints with the documented
-    `KEY` auth header; the three {id} views take one UUID argument.
-    Dispatch tier: POST /api/v2/operations with {"name": ...} - the
-    verified upstream create route (create-and-autostart; name is the
-    only required field, planner/adversary/source default server-side
-    to atomic/ad-hoc/basic), authorized by CALDERA_DISPATCH_SCOPE
-    presence (targets are operation-internal), logged and stamped.
-    The former /api/operations/<name>/schedule path matched no
-    upstream route and was retired.
-    """
+    """Send a chosen REST request to a configured Caldera instance."""
 
     ARM_ID = ARM_ID
     protocol = TRANSPORT_MCP
 
-    def __init__(
-        self,
-        endpoint: str | None = None,
-        call_timeout: float = CALL_TIMEOUT,
-        scan_timeout: float = SCAN_TIMEOUT,
-        urlopen=None,
-    ) -> None:
+    def __init__(self, endpoint: str | None = None, call_timeout: float = CALL_TIMEOUT,
+                 urlopen=None) -> None:
         self._explicit = endpoint
         self.call_timeout = call_timeout
-        self.scan_timeout = scan_timeout
-        self._urlopen = (
-            urlopen if urlopen is not None
-            else urllib_request.build_opener(_NoRedirect()).open
-        )
+        self._urlopen = urlopen if urlopen is not None else urllib_request.build_opener(_NoRedirect()).open
 
     def base_url(self) -> str | None:
         if self._explicit is not None:
-            from ..mcp_client import HttpTransportPolicy, configured_http_url
-
-            return configured_http_url(self._explicit, HttpTransportPolicy.general_http())
+            from ..mcp_client import configured_http_url
+            return configured_http_url(self._explicit)
         return endpoint_url()
 
     def installed(self, spec: ArmSpec) -> bool:
-        return (
-            spec.id == ARM_ID
-            and self.base_url() is not None
-            and api_key() is not None
-        )
+        return spec.id == ARM_ID and self.base_url() is not None and api_key() is not None
 
-    def invoke(
-        self, spec: ArmSpec, action: str, args: Mapping[str, Any]
-    ) -> Result:
+    def invoke(self, spec: ArmSpec, action: str, args: Mapping[str, Any]) -> Result:
         base = self.base_url()
-        if spec.id != ARM_ID or base is None or api_key() is None:
+        key = api_key()
+        if spec.id != ARM_ID or base is None or key is None:
             raise NotInstalledError(spec.id)
-        payload = dict(args)
-        if action in ALLOWED_VIEWS:
-            params, refusal = view_params(action, payload)
-            if refusal is not None:
-                return Result(
-                    ok=False,
-                    arm_id=spec.id,
-                    action=action,
-                    output=None,
-                    error=refusal,
-                )
-            return self._get(spec, action, base, params)
-        if action in DISPATCH_ACTIONS:
-            extra = {k: v for k, v in payload.items() if k != "operation"}
-            if extra:
-                return Result(
-                    ok=False,
-                    arm_id=spec.id,
-                    action=action,
-                    output=None,
-                    error="schedule_operation takes only args.operation",
-                )
-            refusal = operation_refusal(payload)
-            if refusal:
-                return Result(
-                    ok=False, arm_id=spec.id, action=action, output=None,
-                    error=refusal,
-                )
-            scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, None)
-            if scope is None:
-                return Result(
-                    ok=False, arm_id=spec.id, action=action, output=None,
-                    error=refusal,
-                )
-            log_dispatch(ARM_ID, action, scope, None)
-            return self._post_schedule(spec, action, base, payload, scope)
         if action in ("list_tools", "tools/list"):
-            return Result(
-                ok=True,
-                arm_id=spec.id,
-                action=action,
-                output={
-                    "read_views": sorted(ALLOWED_VIEWS),
-                    "dispatch_actions": sorted(DISPATCH_ACTIONS),
-                    "dispatch_armed": os.environ.get(
-                        ENV_DISPATCH_SCOPE, ""
-                    ).strip()
-                    != "",
-                    "caveats": CAVEATS,
-                },
-                error=None,
-            )
-        return Result(
-            ok=False,
-            arm_id=spec.id,
-            action=action,
-            output=None,
-            error=f"action {action!r} is not on any tier "
-            "(exact read endpoints and gated schedule_operation only)",
-        )
-
-    def _headers(self, content_type: str | None = None) -> dict[str, str]:
+            return Result(True, spec.id, action, {
+                "actions": ["request", "list_tools", "tools/list"],
+                "input": "request {path, method?, query?, json?}",
+                "caveats": CAVEATS,
+            })
+        if action != "request":
+            return Result(False, spec.id, action, error=f"unknown action {action!r}; use request")
+        path, method, query, json_body, refusal = request_parts(dict(args))
+        if refusal:
+            return Result(False, spec.id, action, error=refusal)
+        assert path is not None and method is not None and query is not None
+        url = base.rstrip("/") + path
+        if query:
+            url += ("&" if "?" in url else "?") + urllib_parse.urlencode(query)
+        data = None
         headers = {
             "User-Agent": "specaudit-ctf-extension/1.0",
             "Accept": "application/json",
-            # Upstream auth_svc reads the literal header name KEY.
-            "KEY": api_key() or "",
+            "KEY": key,
         }
-        if content_type:
-            headers["Content-Type"] = content_type
-        return headers
-
-    def _get(
-        self, spec: ArmSpec, action: str, base: str, params: dict[str, str]
-    ) -> Result:
-        path = ALLOWED_VIEWS[action]
-        for key, value in params.items():
-            path = path.replace("{" + key + "}", _quote(value))
-        url = base.rstrip("/") + path
-        req = urllib_request.Request(
-            url, headers=self._headers(), method="GET"
-        )
+        if json_body is not None:
+            try:
+                data = json.dumps(json_body).encode("utf-8")
+            except (TypeError, ValueError, UnicodeError):
+                return Result(False, spec.id, action, error="request json must be JSON-serializable")
+            headers["Content-Type"] = "application/json"
+        req = urllib_request.Request(url, data=data, headers=headers, method=method)
         try:
-            parsed = self._read(req, self.call_timeout)
-        except _HttpFailure as exc:
-            return Result(
-                ok=False, arm_id=spec.id, action=action, output=None,
-                error=str(exc),
-            )
-        return Result(
-            ok=True, arm_id=spec.id, action=action, output=parsed, error=None
-        )
-
-    def _post_schedule(
-        self,
-        spec: ArmSpec,
-        action: str,
-        base: str,
-        payload: dict,
-        scope,
-    ) -> Result:
-        name = payload["operation"].strip()
-        # Verified against upstream mitre/caldera master (2026-09-05):
-        # POST /api/v2/operations with {"name": ...} is the create
-        # route (create-and-autostart; the only required field is the
-        # name — planner/adversary/source default server-side to
-        # atomic/ad-hoc/basic). The former provisional path
-        # /api/operations/<name>/schedule matched no documented or
-        # implemented route and was retired rather than kept on faith.
-        url = base.rstrip("/") + "/api/v2/operations"
-        body = json.dumps({"name": name}).encode("utf-8")
-        req = urllib_request.Request(
-            url,
-            data=body,
-            headers=self._headers("application/json"),
-            method="POST",
-        )
-        try:
-            parsed = self._read(req, self.scan_timeout)
-        except _HttpFailure as exc:
-            return Result(
-                ok=False, arm_id=spec.id, action=action, output=None,
-                error=str(exc),
-            )
-        return Result(
-            ok=True,
-            arm_id=spec.id,
-            action=action,
-            output={"dispatch": stamp(scope, None), "result": parsed},
-            error=None,
-        )
-
-    def _read(self, req, timeout: float) -> Any:
-        try:
-            with self._urlopen(req, timeout=timeout) as resp:
+            with self._urlopen(req, timeout=self.call_timeout) as resp:
                 raw = resp.read(MAX_MCP_BYTES + 1)
                 if len(raw) > MAX_MCP_BYTES:
                     raise RuntimeError("response exceeds cap")
         except urllib_error.HTTPError as exc:
-            raise _HttpFailure(self._http_error_text(exc)) from exc
-        except (urllib_error.URLError, OSError) as exc:
-            raise _HttpFailure(redact(f"endpoint unreachable: {exc}")) from exc
-        except RuntimeError as exc:
-            raise _HttpFailure(str(exc)) from exc
+            return Result(False, spec.id, action, error=self._http_error_text(exc))
+        except (urllib_error.URLError, OSError, ValueError, RuntimeError) as exc:
+            return Result(False, spec.id, action, error=redact(f"Caldera API request failed: {exc}"))
         text = raw.decode("utf-8", errors="replace")[:MAX_RESPONSE_CHARS]
         try:
-            return json.loads(text)
+            output = json.loads(text)
         except json.JSONDecodeError:
-            return redact(text)
+            output = redact(text)
+        return Result(True, spec.id, action, output)
 
-    def _http_error_text(self, exc: urllib_error.HTTPError) -> str:
+    @staticmethod
+    def _http_error_text(exc: urllib_error.HTTPError) -> str:
         try:
             detail = exc.read(2048).decode("utf-8", errors="replace")
         except OSError:
@@ -243,18 +95,8 @@ class CalderaArm:
         return redact(f"HTTP {exc.code}: {detail[:800]}")
 
 
-def _quote(name: str) -> str:
-    from urllib import parse as urllib_parse
-
-    return urllib_parse.quote(name, safe="")
-
-
-class _HttpFailure(Exception):
-    """Internal: a failed REST call, message already redacted."""
-
-
 class _NoRedirect(urllib_request.HTTPRedirectHandler):
-    """Keep the authenticated API request on its configured endpoint."""
+    """Keep the configured API credential on its original endpoint."""
 
     def redirect_request(self, *args: object, **kwargs: object) -> None:
         return None

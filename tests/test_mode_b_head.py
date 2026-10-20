@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import queue
 import threading
-from http.server import ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import StringIO
 from typing import Any
 
@@ -15,27 +16,75 @@ from extension.arms.burp.policy import ENV_ENDPOINT
 from extension.contract import Extension
 from extension.mcp_server import TOOLS, McpServer
 from tests.test_alt_head_mcp import _call, _content_json, _content_text
-from tests.test_arm_burp import _StubState, _make_handler
-from tests.test_contract import UNKNOWN_ID
+
+UNKNOWN_ID = "no-such-arm"
 
 
-class _HitState(_StubState):
+class _HitState:
     def __init__(self) -> None:
-        super().__init__()
         self.http_hits = 0
+        self.calls: list[tuple[str, dict[str, Any]]] = []
+        self.responses: queue.Queue[dict[str, Any] | None] = queue.Queue()
 
 
-def _make_hit_handler(state: _HitState) -> type:
-    inner = _make_handler(state)
+def _make_hit_handler(state: _HitState) -> type[BaseHTTPRequestHandler]:
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
 
-    class Handler(inner):
+        def log_message(self, _format: str, *_args: Any) -> None:
+            pass
+
         def do_GET(self) -> None:
             state.http_hits += 1
-            super().do_GET()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/event-stream")
+            self.send_header("Cache-Control", "no-cache")
+            self.send_header("Connection", "keep-alive")
+            self.end_headers()
+            self.wfile.write(b"event: endpoint\ndata: /messages\n\n")
+            self.wfile.flush()
+            while True:
+                try:
+                    response = state.responses.get(timeout=0.2)
+                except queue.Empty:
+                    continue
+                if response is None:
+                    return
+                frame = "event: message\ndata: %s\n\n" % json.dumps(response)
+                try:
+                    self.wfile.write(frame.encode())
+                    self.wfile.flush()
+                except OSError:
+                    return
 
         def do_POST(self) -> None:
             state.http_hits += 1
-            super().do_POST()
+            request = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            method = request.get("method")
+            params = request.get("params", {})
+            if method == "initialize":
+                result: Any = {
+                    "protocolVersion": "2025-03-26",
+                    "capabilities": {"tools": {}},
+                    "serverInfo": {"name": "stub", "version": "1"},
+                }
+            elif method == "tools/list":
+                result = {"tools": [{"name": "url_encode"}, {"name": "list_tools"}]}
+            elif method == "tools/call":
+                name = params.get("name")
+                arguments = params.get("arguments", {})
+                state.calls.append((str(name), dict(arguments)))
+                result = {
+                    "content": [{"type": "text", "text": json.dumps({"tool": name})}],
+                    "isError": False,
+                }
+            else:
+                result = {}
+            if "id" in request:
+                state.responses.put({"jsonrpc": "2.0", "id": request["id"], "result": result})
+            self.send_response(202)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
 
     return Handler
 
@@ -51,6 +100,7 @@ def stub_sse() -> Any:
     try:
         yield url, state
     finally:
+        state.responses.put(None)
         server.shutdown()
         thread.join(timeout=2)
 
@@ -74,7 +124,7 @@ def test_head_tools_are_only_list_describe_invoke(
     assert state.calls == []
 
 
-def test_head_lists_and_describes_curated_burp_without_dialing(
+def test_head_lists_and_describes_burp_without_dialing(
     stub_sse: tuple[str, _HitState],
 ) -> None:
     url, state = stub_sse
@@ -82,12 +132,9 @@ def test_head_lists_and_describes_curated_burp_without_dialing(
     rows = _content_json(_call(server, "list"))
     burp = next(row for row in rows if row["id"] == ARM_ID)
     assert burp["kind"] == "arm"
-    assert burp["curated"] is True
-    assert burp["tier"] == "research"
     described = _content_json(_call(server, "describe", {"id": ARM_ID}))
     assert described["id"] == ARM_ID
-    assert described["curated"] is True
-    assert described["tier"] == "research"
+    assert described["kind"] == "arm"
     assert state.http_hits == 0
     assert state.calls == []
 
@@ -95,16 +142,17 @@ def test_head_lists_and_describes_curated_burp_without_dialing(
 def test_head_invoke_burp_reads_work_over_loopback(
     stub_sse: tuple[str, _HitState],
 ) -> None:
-    """Read admission landed: MCP-head invoke of burp reads goes through
-    the hardened transport and actually dials the loopback stub."""
+    """MCP head invocation reaches Burp and dials the loopback stub."""
     url, state = stub_sse
     server = _head(url)
     listed = _call(server, "invoke", {"id": ARM_ID, "action": "list_tools"})
     assert listed["result"]["isError"] is False
-    assert '"status": "complete"' in _content_text(listed)
-    assert '"capability_id": "burp-mcp.list_tools"' in _content_text(listed)
-    # The SSE endpoint was really dialed (the stub records tools/call
-    # payloads in .calls; tools/list rides the same transport).
+    result = _content_json(listed)
+    assert result["ok"] is True
+    assert result["arm_id"] == ARM_ID
+    assert result["action"] == "list_tools"
+    assert result["output"] is not None
+    # The SSE endpoint was really dialed.
     assert state.http_hits >= 1
 
 
@@ -146,13 +194,16 @@ def test_head_stdio_list_and_invoke_burp_stub(
     assert len(lines) == 2
     rows = json.loads(json.loads(lines[0])["result"]["content"][0]["text"])
     assert any(
-        row["id"] == ARM_ID and row["curated"] is True and row["tier"] == "research"
+        row["id"] == ARM_ID and row["kind"] == "arm"
         for row in rows
     )
     invoked = json.loads(lines[1])
     assert invoked["result"]["isError"] is False
-    assert '"status": "complete"' in invoked["result"]["content"][0]["text"]
-    assert '"capability_id": "burp-mcp.url_encode"' in invoked["result"]["content"][0]["text"]
+    result = _content_json(invoked)
+    assert result["ok"] is True
+    assert result["arm_id"] == ARM_ID
+    assert result["action"] == "url_encode"
+    assert result["output"] is not None
     assert state.http_hits >= 1
     assert state.calls  # through the hardened transport
 
@@ -166,6 +217,7 @@ def test_head_default_extension_uses_env_stub(
     server = McpServer(extension=Extension())
     response = _call(server, "invoke", {"id": ARM_ID, "action": "list_tools"})
     assert response["result"]["isError"] is False
+    assert _content_json(response)["ok"] is True
     assert state.http_hits >= 1  # dialed through the hardened transport
 
 
@@ -176,7 +228,8 @@ def test_head_invoke_unknown_id_does_not_dial_stub(
     response = _call(_head(url), "invoke", {"id": UNKNOWN_ID, "action": "list_tools"})
     assert response["result"]["isError"] is True
     payload = json.loads(_content_text(response))
-    assert payload["status"] == "failed"
-    assert payload["limitations"] == ["unknown capability"]
+    assert payload["ok"] is False
+    assert payload["arm_id"] == UNKNOWN_ID
+    assert isinstance(payload["error"], str)
     assert state.http_hits == 0
     assert state.calls == []

@@ -26,9 +26,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     describe_parser = sub.add_parser("describe", help="describe one catalog entry")
     describe_parser.add_argument("id", help="catalog entry identifier (e.g., burp-mcp)")
 
-    invoke_parser = sub.add_parser(
-        "invoke", help="invoke a curated installed arm that is not held"
-    )
+    invoke_parser = sub.add_parser("invoke", help="invoke an installed arm")
     invoke_parser.add_argument("id", help="catalog entry identifier (e.g., checkov)")
     invoke_parser.add_argument("action", help="action name to invoke (e.g., scan)")
     invoke_parser.add_argument(
@@ -40,20 +38,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     invoke_parser.add_argument(
         "--args-file", default=None,
         help="operator-local, bounded regular JSON object file for action arguments",
-    )
-    invoke_parser.add_argument(
-        "--include-report", action="store_true",
-        help="print a JSON execution/report wrapper for learning-operator analyze_pack only",
-    )
-    invoke_parser.add_argument(
-        "--attempt-id",
-        default=None,
-        help="validator-minted attempt-<64 lowercase hex> echoed in the result",
-    )
-    invoke_parser.add_argument(
-        "--artifact-dir",
-        default=None,
-        help="absolute empty Unix directory bound before dispatch for digest-named artifacts",
     )
 
     try:
@@ -83,9 +67,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             if ns.args_file is not None and ns.args is not None:
                 print("choose either inline args or --args-file", file=sys.stderr)
                 return 2
-            if ns.include_report and (ns.id, ns.action) != ("learning-operator", "analyze_pack"):
-                print("--include-report requires learning-operator analyze_pack", file=sys.stderr)
-                return 2
             args_error: ExtensionError | None = None
             args: dict[str, Any] = {}
             try:
@@ -108,14 +89,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 action=ns.action,
                 args=args,
                 args_error=args_error,
-                attempt_id=ns.attempt_id,
-                artifact_dir=ns.artifact_dir,
             )
-            if outcome.envelope is not None:
-                if ns.include_report:
-                    _emit({"execution": outcome.envelope, "report": outcome.inline_report})
-                else:
-                    _emit(outcome.envelope)
+            _emit(outcome.document)
             if outcome.stderr_line:
                 print(outcome.stderr_line, file=sys.stderr)
             return outcome.exit_code

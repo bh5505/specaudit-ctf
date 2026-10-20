@@ -2,8 +2,8 @@
 
 Ad-hoc, unscheduled threat-intel extraction over an operator-supplied
 Response Policy Zone. ``decode`` is a pure in-process pass over an
-AXFR dump; ``fetch``/``status`` shell out to dig against the zone
-master under the dispatch gate. The arm returns bounded reports
+AXFR dump; ``fetch``/``status`` shell out to dig against the configured
+zone master. The arm returns bounded reports
 (counts, action distribution, samples, file paths) — the raw
 indicator lists land in files, never inline in a Result.
 """
@@ -23,27 +23,23 @@ from ...contract import (
     Result,
 )
 from ..bounded_capture import run_bounded
-from ..dispatch import authorize, log_dispatch, stamp
 from ..mcp_client import redact
 from . import decoder
 from .decoder import ZoneDecodeError
 from .policy import (
     ALLOWED_ACTIONS,
     ARG_KEYS,
-    ARMING,
+    USAGE,
     ARM_ID,
     CAVEATS,
     DEFAULT_PORT,
     DIG_QUERY_TIMEOUT,
-    DISPATCH_ACTIONS,
-    ENV_DISPATCH_SCOPE,
     ENV_MASTER,
     ENV_ZONE,
     MAX_DUMP_BYTES,
     MAX_OUTPUT_CHARS,
     SAMPLE_INDICATORS,
     TIMEOUT_SECONDS,
-    ZONE_SUFFIX,
     args_refusal,
     keyfile_refusal,
     master_refusal,
@@ -59,7 +55,7 @@ class RpzDecoderArm:
     """Specialized transport for catalog id rpz-decoder.
 
     ``installed`` reports handler presence only: the decode core is
-    in-process, and dig is only required by the dispatch-tier actions,
+    in-process, and dig is only required by the fetch/status actions,
     which return evaluated failures when it is missing.
     """
 
@@ -80,15 +76,15 @@ class RpzDecoderArm:
         payload = dict(args)
         if action in _LIST_TOOLS_ACTIONS:
             return self._list_tools(spec, action)
-        if action not in ALLOWED_ACTIONS and action not in DISPATCH_ACTIONS:
+        if action not in ALLOWED_ACTIONS:
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
                 error=f"action {action!r} is not on the allowlist "
-                "(decode an AXFR dump, or dispatch-gated fetch/status; "
-                f"arming: {ARMING}; caveats: {'; '.join(CAVEATS)})",
+                "(decode an AXFR dump, or run fetch/status against a configured zone; "
+                f"usage: {USAGE}; caveats: {'; '.join(CAVEATS)})",
             )
         refusal = args_refusal(action, payload)
         if refusal:
@@ -101,7 +97,7 @@ class RpzDecoderArm:
             )
         if action == "decode":
             return self._decode(spec, action, payload)
-        return self._dispatched(spec, action, payload)
+        return self._remote(spec, action, payload)
 
     # ------------------------------------------------------------------
     # decode (in-process read tier)
@@ -179,16 +175,14 @@ class RpzDecoderArm:
             parts = line.split()
             if len(parts) >= 7 and parts[2] == "IN" and parts[3] == "SOA":
                 owner = parts[0].rstrip(".")
-                if owner.endswith(ZONE_SUFFIX):
+                if zone_refusal(owner) is None:
                     return owner
-        raise ZoneDecodeError(
-            f"no SOA for a *{ZONE_SUFFIX} zone in dump"
-        )
+        raise ZoneDecodeError("no valid SOA zone found in dump")
 
     # ------------------------------------------------------------------
-    # fetch / status (dispatch tier)
+    # fetch / status (remote actions)
 
-    def _dispatched(
+    def _remote(
         self, spec: ArmSpec, action: str, payload: dict
     ) -> Result:
         zone_arg = payload.get("zone")
@@ -216,7 +210,6 @@ class RpzDecoderArm:
                 "dig binary not found (set RPZDECODER_DIG_BIN or install dig)",
             )
 
-        target = f"dns://{master}:{port}/{zone}"
         secret: str | None = None
         query = ["soa"] if action == "status" else ["axfr"]
         cmd = [
@@ -233,8 +226,7 @@ class RpzDecoderArm:
             "+answer",
         ]
         if action == "fetch":
-            # Validate the credential BEFORE auditing the dispatch: a
-            # dispatch line must describe a dispatch that can run.
+            # Validate the credential before starting the transfer.
             keyfile = Path(str(payload["keyfile"]))
             key_refusal = keyfile_refusal(keyfile)
             if key_refusal:
@@ -246,11 +238,6 @@ class RpzDecoderArm:
             lines = [line.strip() for line in key_text.splitlines() if line.strip()]
             key_name, secret = lines[0], lines[1]
             cmd = [binary, "-y", f"hmac-md5:{key_name}:{secret}", *cmd[1:]]
-
-        scope, dispatch_refusal = authorize(ENV_DISPATCH_SCOPE, action, target)
-        if scope is None:
-            return _fail(spec, action, dispatch_refusal or "dispatch not armed")
-        log_dispatch(ARM_ID, action, scope, target)
 
         dump_bytes = b""
         stdout_text = ""
@@ -301,7 +288,7 @@ class RpzDecoderArm:
             return _fail(spec, action, detail[:MAX_OUTPUT_CHARS])
 
         if action == "status":
-            return self._status(spec, action, zone, master, port, stdout_text, scope, target)
+            return self._status(spec, action, zone, master, port, stdout_text)
 
         # fetch: decode the captured dump and write the raw lists.
         try:
@@ -320,7 +307,6 @@ class RpzDecoderArm:
                 "ips": report["ips"][:SAMPLE_INDICATORS],
                 "domains": report["domains"][:SAMPLE_INDICATORS],
             },
-            "dispatch": stamp(scope, target),
             "caveats": list(CAVEATS),
         }
         if payload.get("outdir"):
@@ -346,8 +332,6 @@ class RpzDecoderArm:
         master: str,
         port: int,
         stdout_text: str,
-        scope: Any,
-        target: str,
     ) -> Result:
         serial = None
         refresh = None
@@ -369,7 +353,6 @@ class RpzDecoderArm:
             "port": port,
             "serial": serial,
             "refresh": refresh,
-            "dispatch": stamp(scope, target),
         }
         return Result(
             ok=True, arm_id=spec.id, action=action, output=output, error=None
@@ -389,7 +372,7 @@ class RpzDecoderArm:
                     {"name": "status", "args": sorted(ARG_KEYS["status"])},
                 ],
                 "caveats": list(CAVEATS),
-                "arming": ARMING,
+                "usage": USAGE,
             },
             error=None,
         )

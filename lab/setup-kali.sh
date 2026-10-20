@@ -70,6 +70,6 @@ cat <<EOF
   cd $HOME_DIR && $VENV/bin/python -m pytest tests/ -q        # hermetic suite
   $VENV/bin/python -m extension availability                  # what lights up here
 
-Then spawn an ephemeral target (lab/spawn-target.sh) and arm the
-matching *_DISPATCH_SCOPE against its IP for real dispatch runs.
+Then spawn an ephemeral target (lab/spawn-target.sh) and use the printed
+IP in the arm commands you choose to run.
 EOF

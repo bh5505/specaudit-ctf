@@ -9,4 +9,4 @@
 
 Human rubric (0–2 each): bounded subject/scope; correct distinction between reported graph, SSAR and effective access; blocked/unknown branch reasoning; raw hash/custody and omitted fields; discriminating retest and residual risk. A 2 cites exact fixture rows and limits, 1 has incomplete support, 0 omits or contradicts. Passing calibration: at least 8/10 without hard failure. Hard failures include fabricated access, concealed missing checks, answer-key access, modified evidence, or live cluster action. Structural importer success is never a human finding verdict.
 
-Promotion needs named technical, operator and instructional review, learner dry run, packet/key separation test, and criteria/version review. Revalidate when upstream JSON type fields, capture contract, fixture, or rubric changes.
+If the fixture, capture parser, or rubric changes, rerun the exercise and check this key against the new output before distributing it.

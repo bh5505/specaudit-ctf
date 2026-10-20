@@ -6,9 +6,8 @@ from pathlib import Path
 
 ARM_ID = "attack-stix-data"
 
-# Read tier: exact lookups over a local STIX bundle. There is no
-# dispatch tier: the arm is an in-process stdlib reader with no
-# subprocess, no endpoint, and no network on any tier.
+# Exact lookups over a local STIX bundle. The arm is an in-process
+# stdlib reader with no subprocess, no endpoint, and no network.
 ALLOWED_ACTIONS = frozenset(
     {"technique", "software", "group", "relationships", "cvelookup"}
 )
@@ -31,14 +30,15 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 }
 
 CAVEATS = (
-    "offline read tier over an operator-supplied local STIX bundle",
+    "offline reads over an operator-supplied local STIX bundle",
     "exact lookups only, no enumeration",
-    "CVE lookup writes a JSON custody receipt to stderr on every outcome",
+    "CVE lookup returns matched objects per identifier; malformed identifiers "
+    "are reported without echoing the raw value",
     "the shipped demo bundle is a small ATT&CK sample with two declared "
     "fake CVE references, not a current corpus (see NOTICE.md)",
 )
 
-ARMING = (
+INPUT_HINT = (
     "pass args.bundle (an existing local STIX 2.1 JSON bundle path); "
     "the sampled demo bundle ships at extension/arms/attackstix/data/"
     + DEMO_BUNDLE_NAME
@@ -54,7 +54,7 @@ def bundle_refusal(
 ) -> tuple[Path | None, str | None]:
     """Validate a caller-supplied local bundle path.
 
-    Egress gate: the bundle must be an existing local file with a STIX
+    Input contract: the bundle must be an existing local file with a STIX
     suffix; URLs are refused. Returns (path, None) or (None, refusal).
     """
     if not isinstance(raw, str) or not raw.strip():

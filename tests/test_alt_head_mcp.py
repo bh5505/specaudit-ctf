@@ -12,16 +12,43 @@ from typing import Any
 
 import pytest
 
-from extension.contract import Extension
+from extension.contract import Catalog, CatalogEntry, Extension, Result
 from extension.mcp_server import TOOLS, _MAX_BYTES, McpServer, main
 from extension.range import SCHEMA_ID
-from tests.test_contract import (
-    FIXTURE_ARM_ID,
-    METHODOLOGY_ID,
-    UNKNOWN_ID,
-    FakeCliTransport,
-    _fixture_catalog,
-)
+FIXTURE_ARM_ID = "probe-cli"
+METHODOLOGY_ID = "methodology-only"
+UNKNOWN_ID = "missing-arm"
+
+
+class FakeCliTransport:
+    """Small deterministic arm used to exercise MCP dispatch."""
+
+    protocol = "cli"
+
+    def __init__(self, installed_ids: set[str]) -> None:
+        self.installed_ids = installed_ids
+        self.calls: list[tuple[str, str, dict[str, Any]]] = []
+
+    def installed(self, spec: Any) -> bool:
+        return spec.id in self.installed_ids
+
+    def invoke(self, spec: Any, action: str, args: Any) -> Result:
+        self.calls.append((spec.id, action, dict(args)))
+        return Result(True, spec.id, action, output={"args": dict(args)})
+
+
+def _fixture_catalog() -> Catalog:
+    return Catalog(
+        [
+            CatalogEntry(FIXTURE_ARM_ID, "arm", ("cli",), "Test CLI arm."),
+            CatalogEntry(
+                METHODOLOGY_ID,
+                "methodology-only",
+                ("none",),
+                "Reference entry.",
+            ),
+        ]
+    )
 
 ROOT = Path(__file__).resolve().parents[1]
 HEADS = ROOT / "extension" / "heads"
@@ -77,31 +104,34 @@ def test_mcp_list_and_describe_use_fixture_catalog() -> None:
     assert listed["result"]["isError"] is False
     rows = _content_json(listed)
     assert any(row["id"] == FIXTURE_ARM_ID for row in rows)
+    assert all("tier" not in row and "curated" not in row for row in rows)
 
     described = _call(server, "describe", {"id": FIXTURE_ARM_ID})
     described_row = _content_json(described)
     assert described_row["id"] == FIXTURE_ARM_ID
-    assert described_row["tier"] == "research"
-    assert all("tier" in row for row in rows)
+    assert described_row["kind"] == "arm"
+    assert "tier" not in described_row and "curated" not in described_row
+    assert all("kind" in row for row in rows)
 
 
-def test_mcp_invoke_unmanifested_action_is_failed_envelope() -> None:
-    """X4-PUB: like the CLI, MCP refuses actions outside the X2 registry."""
+def test_mcp_invoke_dispatches_arm_action_and_returns_direct_result() -> None:
     server, fake = _server()
     invoked = _call(
         server, "invoke", {"id": FIXTURE_ARM_ID, "action": "echo", "args": {"x": 1}}
     )
     result = _content_json(invoked)
-    assert invoked["result"]["isError"] is True
-    assert result["schema"] == "specaudit.ctf.execution-result.v1"
-    assert result["status"] == "failed"
-    assert result["transport_ok"] is False
-    assert result["limitations"] == ["unknown capability"]
-    assert fake.calls == []
+    assert invoked["result"]["isError"] is False
+    assert result == {
+        "ok": True,
+        "arm_id": FIXTURE_ARM_ID,
+        "action": "echo",
+        "output": {"args": {"x": 1}},
+        "error": None,
+    }
+    assert fake.calls == [(FIXTURE_ARM_ID, "echo", {"x": 1})]
 
 
-def test_mcp_invoke_agent_wiz_list_tools_success_envelope() -> None:
-    """The one manifested read-only action succeeds with a complete envelope."""
+def test_mcp_invoke_agent_wiz_returns_arm_result_without_artifact_contract() -> None:
     server = McpServer()  # real catalog: agent-wiz ships no binary
     invoked = _call(
         server,
@@ -110,24 +140,23 @@ def test_mcp_invoke_agent_wiz_list_tools_success_envelope() -> None:
     )
     assert invoked["result"]["isError"] is False
     result = _content_json(invoked)
-    assert result["schema"] == "specaudit.ctf.execution-result.v1"
-    assert result["status"] == "complete"
-    assert result["transport_ok"] is True
-    assert result["capability_id"] == "agent-wiz.list_tools"
-    assert result["coverage"]["complete"] == ["agent-wiz.list_tools"]
-    assert result["artifacts"], "complete envelope must own a policy-report digest"
+    assert result["ok"] is True
+    assert result["arm_id"] == "agent-wiz"
+    assert result["action"] == "list_tools"
+    assert result["output"] is not None
+    assert result["error"] is None
     assert invoked["result"]["structuredContent"] == result
 
 
-def test_mcp_invoke_unknown_id_is_failed_envelope() -> None:
+def test_mcp_invoke_unknown_id_returns_direct_error_result() -> None:
     server, fake = _server()
     response = _call(server, "invoke", {"id": UNKNOWN_ID, "action": "ping"})
     assert "error" not in response
     assert response["result"]["isError"] is True
     result = _content_json(response)
-    assert result["status"] == "failed"
-    assert result["transport_ok"] is False
-    assert result["limitations"] == ["unknown capability"]
+    assert result["ok"] is False
+    assert result["arm_id"] == UNKNOWN_ID
+    assert isinstance(result["error"], str)
     assert fake.calls == []
 
 
@@ -137,22 +166,9 @@ def test_mcp_invoke_methodology_only_does_not_call_transport() -> None:
     response = _call(server, "invoke", {"id": METHODOLOGY_ID, "action": "extract"})
     assert response["result"]["isError"] is True
     result = _content_json(response)
-    assert result["status"] == "failed"
-    assert result["limitations"] == ["methodology-only is never invocable"]
+    assert result["ok"] is False
+    assert "not an arm" in result["error"]
     assert fake.calls == []
-
-
-def test_mcp_invoke_unadmitted_action_is_failed_envelope() -> None:
-    # Zero live held rows remain: an UNADMITTED action on a research arm
-    # is the honest refusal shape now (the held-tier envelope rule stays
-    # pinned by the goldens in test_ctf_envelopes and the fixture tests
-    # in test_support_tiers).
-    server = McpServer()
-    response = _call(server, "invoke", {"id": "metasploit-mcp", "action": "ping"})
-    assert response["result"]["isError"] is True
-    result = _content_json(response)
-    assert result["status"] == "failed"
-    assert result["limitations"] == ["unknown capability"]
 
 
 def test_mcp_invoke_missing_action_is_invalid_params() -> None:
@@ -226,11 +242,12 @@ def test_serve_ndjson_list_and_invoke() -> None:
     listed = json.loads(lines[0])
     assert [tool["name"] for tool in listed["result"]["tools"]] == list(TOOLS)
     invoked = json.loads(lines[1])
-    # probe-cli echo is outside the X2-PUB registry: fail-closed envelope.
+    # The tool result is the arm's direct result dictionary.
     payload = json.loads(invoked["result"]["content"][0]["text"])
-    assert invoked["result"]["isError"] is True
-    assert payload["status"] == "failed"
-    assert fake.calls == []
+    assert invoked["result"]["isError"] is False
+    assert payload["ok"] is True
+    assert payload["action"] == "echo"
+    assert fake.calls == [(FIXTURE_ARM_ID, "echo", {"n": 2})]
 
 
 def test_serve_content_length_input_is_parse_error() -> None:
@@ -285,8 +302,7 @@ def test_module_mcp_list() -> None:
 
 
 def test_module_mcp_invoke_live_catalog_unconfigured() -> None:
-    """metasploit-mcp is admitted research now: the live-catalog module
-    path without an endpoint emits the honest not-installed envelope."""
+    """The real module path reports an uninstalled arm as a direct result."""
     payload = (
         json.dumps(
             {
@@ -324,9 +340,10 @@ def test_module_mcp_invoke_live_catalog_unconfigured() -> None:
     line = next(item for item in proc.stdout.splitlines() if item.strip().startswith("{"))
     body = json.loads(line)
     assert body["result"]["isError"] is True
-    envelope = json.loads(body["result"]["content"][0]["text"])
-    assert envelope["status"] == "failed"
-    assert envelope["limitations"] == ["arm is not installed"]
+    result = json.loads(body["result"]["content"][0]["text"])
+    assert result["ok"] is False
+    assert result["arm_id"] == "metasploit-mcp"
+    assert isinstance(result["error"], str)
 
 
 def test_head_launcher_does_not_import_cwd_extension(tmp_path: Path) -> None:
@@ -426,18 +443,13 @@ def test_mcp_invoke_args_none_succeeds() -> None:
     assert "error" not in response
     assert response["result"]["isError"] is False
     payload = _content_json(response)
-    assert payload["status"] == "complete"
+    assert payload["ok"] is True
+    assert payload["arm_id"] == "agent-wiz"
+    assert payload["action"] == "list_tools"
 
 
 def test_tool_defs_match_documented_surface_and_annotations() -> None:
-    """Guard: the advertised tool surface matches the documented set exactly.
-
-    Annotations follow MCP spec (stable since 2025-11-25). They are
-    untrusted hints for clients, not enforcement; the fail-closed checks
-    live in the tool handlers. invoke and run_range can dispatch bounded
-    subprocess/network machinery and are closed-world; the envelope-producing
-    tools declare the execution-result.v1 output schema.
-    """
+    """Guard the MCP tool names, argument schemas, and basic annotations."""
     from extension.mcp_server import _TOOL_DEFS
 
     expected = {
@@ -448,33 +460,24 @@ def test_tool_defs_match_documented_surface_and_annotations() -> None:
     }
     assert {tool["name"]: tool["annotations"] for tool in _TOOL_DEFS} == expected
     assert tuple(expected) == TOOLS
-    for tool in _TOOL_DEFS:
-        if tool["name"] in {"invoke", "run_range"}:
-            assert tool["outputSchema"]["title"] == "specaudit.ctf.execution-result.v1"
-        else:
-            assert "outputSchema" not in tool
+    assert all("outputSchema" not in tool for tool in _TOOL_DEFS)
     run_range_tool = next(tool for tool in _TOOL_DEFS if tool["name"] == "run_range")
     arm_ids = run_range_tool["inputSchema"]["properties"]["arm_ids"]["description"]
     lowered = arm_ids.lower()
-    assert "omitted" in lowered
-    assert "empty" in lowered
-    assert "degraded" in lowered
+    assert "omit" in lowered
+    assert "fixture-only" in lowered
 
 
-def test_run_range_returns_envelope_not_lifecycle_document() -> None:
+def test_run_range_returns_direct_lifecycle_report() -> None:
     server, _fake = _server()
     response = _call(server, "run_range", {})
     assert "error" not in response
-    # Auto-discovered curated arms include an unreachable one: degraded
-    # inner status is carried inside the envelope, and isError mirrors the
-    # CLI's nonzero exit without replacing the verdict.
-    assert response["result"]["isError"] is True
+    assert response["result"]["isError"] is False
     payload = json.loads(response["result"]["content"][0]["text"])
     assert SCHEMA_ID == "range.lifecycle.v3"
-    assert payload["schema"] == "specaudit.ctf.execution-result.v1"
-    assert payload["status"] == "degraded"
-    assert payload["transport_ok"] is True
-    assert payload["artifacts"], "range envelope owns a range-report digest"
+    assert payload["schema"] == SCHEMA_ID
+    assert payload["status"] == "complete"
+    assert "fixtures" in payload
     assert response["result"]["structuredContent"] == payload
 
 
@@ -484,10 +487,9 @@ def test_run_range_explicit_empty_arm_ids_is_complete() -> None:
     assert "error" not in response
     assert response["result"]["isError"] is False
     payload = json.loads(response["result"]["content"][0]["text"])
-    assert payload["schema"] == "specaudit.ctf.execution-result.v1"
+    assert payload["schema"] == SCHEMA_ID
     assert payload["status"] == "complete"
     assert payload["coverage"]["attempted"] == []
-    assert payload["artifacts"][0]["kind"] == "range-report"
 
 
 def test_run_range_seed_validated_as_shape_error() -> None:
@@ -498,23 +500,20 @@ def test_run_range_seed_validated_as_shape_error() -> None:
         assert "seed" in response["error"]["message"].lower()
 
 
-def test_run_range_arm_ids_restricted_to_curated() -> None:
+def test_run_range_arm_ids_run_named_arms_and_report_unknown_ids() -> None:
     server, _fake = _server()
     response = _call(server, "run_range", {"arm_ids": [FIXTURE_ARM_ID]})
     assert "error" not in response
     assert response["result"]["isError"] is False
     payload = json.loads(response["result"]["content"][0]["text"])
-    assert payload["schema"] == "specaudit.ctf.execution-result.v1"
+    assert payload["schema"] == SCHEMA_ID
     assert payload["status"] == "complete"
-    assert payload["coverage"]["complete"] == [FIXTURE_ARM_ID]
-    # Mixed lists fail closed entirely: one non-curated id refuses the run
-    # with a failed envelope (never a partial complete).
+    assert payload["coverage"]["attempted"] == [FIXTURE_ARM_ID]
+    # An unknown arm is reported as a range execution failure.
     bad = _call(server, "run_range", {"arm_ids": [FIXTURE_ARM_ID, "no-such-arm"]})
     assert bad["result"]["isError"] is True
     result = json.loads(bad["result"]["content"][0]["text"])
     assert result["status"] == "failed"
-    assert result["transport_ok"] is False
-    assert result["artifacts"] == []
 
 
 def test_run_range_arm_ids_shape_rejected() -> None:
@@ -524,44 +523,15 @@ def test_run_range_arm_ids_shape_rejected() -> None:
         assert response["error"]["code"] == -32602, bad
 
 
-def test_run_range_huge_document_stays_bounded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """X4-PUB: the envelope carries digests, never the document inline.
-
-    A pathological inner document cannot inflate the tool result past the
-    framed response size; only its digest is admitted.
-    """
-    server, _fake = _server()
-    document = {"pad": "x" * (_MAX_BYTES + 1)}
-    monkeypatch.setattr(
-        "extension.range.runner.run_range",
-        lambda **_kwargs: document,
-    )
-    response = _call(server, "run_range", {})
-    assert "error" not in response
-    text = response["result"]["content"][0]["text"]
-    assert len(text) < _MAX_BYTES
-    payload = json.loads(text)
-    assert len(payload["artifacts"]) == 1
-    # Pin the digest to the *patched* document's canonical bytes, so the
-    # test proves the monkeypatch was exercised: a silently ineffective
-    # patch target would produce the real (small) document's digest here.
-    canonical = json.dumps(document, sort_keys=True, separators=(",", ":")).encode()
-    expected = "sha256:" + __import__("hashlib").sha256(canonical).hexdigest()
-    assert payload["artifacts"][0]["digest"] == expected
-
-
 def test_run_range_out_of_range_seed_is_domain_error() -> None:
-    """RangeError from the runner maps to isError with a failed envelope."""
+    """RangeError maps to an MCP tool error with the range failure report."""
     server, _fake = _server()
     response = _call(server, "run_range", {"seed": 2**31})
     assert "error" not in response
     assert response["result"]["isError"] is True
     payload = json.loads(response["result"]["content"][0]["text"])
     assert payload["status"] == "failed"
-    assert payload["transport_ok"] is False
-    assert payload["limitations"] == ["range run failed"]
+    assert isinstance(payload["error"], str)
 
 
 def test_mcp_unknown_tool_arguments_are_invalid_params() -> None:
@@ -618,14 +588,12 @@ def test_initialize_negotiation_fallbacks() -> None:
 def test_range_cli_arm_ids_whitespace_matches_mcp_shape(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Whitespace-only entries are shape errors on both transports; an empty
-    value stays lifecycle-only; entries are otherwise kept verbatim so the
-    curated-arm domain check is identical."""
+    """Whitespace-only entries are shape errors; empty means fixture-only."""
     import json as _json
 
     from extension.range import __main__ as range_cli
 
-    # Whitespace-only entry: usage error before dispatch, no envelope — the
+    # Whitespace-only entry: usage error before dispatch — the
     # CLI mirror of the MCP -32602 shape rejection.
     assert range_cli.main(["--arm-ids", " "]) == 2
     assert capsys.readouterr().out == ""
@@ -634,21 +602,16 @@ def test_range_cli_arm_ids_whitespace_matches_mcp_shape(
     assert range_cli.main(["--arm-ids", "", "--seed", "7"]) == 0
     capsys.readouterr()
 
-    # Verbatim entries reach the curated check on BOTH transports. Run the
-    # same logical request through the MCP tool and compare envelopes, so
-    # the parity claim below is asserted, not assumed.
+    # Verbatim entries reach the arm lookup on both transports.
     assert range_cli.main(["--arm-ids", " burp-mcp"]) == 2
     cli_payload = _json.loads(capsys.readouterr().out)
-    assert cli_payload["schema"] == "specaudit.ctf.execution-result.v1"
     assert cli_payload["status"] == "failed"
-    assert cli_payload["transport_ok"] is False
 
     server = McpServer()
     response = _call(server, "run_range", {"arm_ids": [" burp-mcp"]})
     assert response["result"]["isError"] is True
     mcp_payload = _json.loads(response["result"]["content"][0]["text"])
-    assert mcp_payload["schema"] == "specaudit.ctf.execution-result.v1"
-    for field in ("status", "transport_ok", "limitations", "coverage"):
+    for field in ("status", "error"):
         assert mcp_payload[field] == cli_payload[field], field
 
 

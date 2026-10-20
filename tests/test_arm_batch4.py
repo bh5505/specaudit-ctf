@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 import subprocess
@@ -14,7 +15,7 @@ import pytest
 from extension.arms.routersploit import ARM_ID as ROUTERSPLOIT_ID
 from extension.arms.routersploit import RoutersploitArm
 from extension.arms.routersploit.policy import CAVEATS as ROUTERSPLOIT_CAVEATS
-from extension.arms.routersploit.policy import MODULE_RE, OPTION_KEYS
+from extension.arms.routersploit.policy import RUN_KEYS as ROUTERSPLOIT_RUN_KEYS
 from extension.arms.routersploit.policy import resolve_binary as routersploit_resolve_binary
 from extension.arms.sniper import ARM_ID as SNIPER_ID
 from extension.arms.sniper import SniperArm
@@ -31,9 +32,7 @@ def _spec(arm_id: str) -> ArmSpec:
     return ArmSpec(
         id=arm_id,
         protocols=("cli",),
-        curated=True,
         notes="Fixture arm.",
-        tier="research",
     )
 
 
@@ -61,6 +60,11 @@ ECHO_ARGV_AND_CWD = (
     "import json, os, sys\n"
     "print(json.dumps({'argv': sys.argv[1:], 'cwd': os.getcwd()}))\n"
 )
+FAIL_WITH_ARGV_ON_STDERR = (
+    "import json, sys\n"
+    "sys.stderr.write(json.dumps(sys.argv[1:]))\n"
+    "sys.exit(1)\n"
+)
 SLEEP_BODY = "import time\ntime.sleep(2)\n"
 
 
@@ -79,40 +83,34 @@ def test_routersploit_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
         arm.invoke(spec, "list_tools", {})
 
 
-def test_routersploit_list_tools_static_and_unarmed(
+def test_routersploit_list_tools_static(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "routersploit", SLEEP_BODY)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.delenv("ROUTERSPLOIT_DISPATCH_SCOPE", raising=False)
     result = RoutersploitArm(timeout=1.0).invoke(
         _spec(ROUTERSPLOIT_ID), "list_tools", {}
     )
     assert result.ok is True
-    assert result.output["dispatch_armed"] is False
     assert result.output["caveats"] == ROUTERSPLOIT_CAVEATS
     assert "executes the module" in result.output["caveats"]
     assert "check" in result.output["caveats"]
-    assert result.output["dispatch_actions"] == ["run"]
-    assert "list_tools" in result.output["read_actions"]
-    assert result.output["module_pattern"] == MODULE_RE.pattern
-    assert result.output["option_keys"] == list(OPTION_KEYS)
+    assert "list_tools" in result.output["actions"]
+    assert result.output["option_keys"] == sorted(ROUTERSPLOIT_RUN_KEYS)
+    assert "password" in result.output["options"]
+    assert "-s" in result.output["options"]
     aliased = RoutersploitArm().invoke(_spec(ROUTERSPLOIT_ID), "tools/list", {})
     assert aliased.ok is True
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "10.10.0.1")
-    armed = RoutersploitArm().invoke(_spec(ROUTERSPLOIT_ID), "list_tools", {})
-    assert armed.output["dispatch_armed"] is True
+    assert RoutersploitArm().invoke(_spec(ROUTERSPLOIT_ID), "list_tools", {}).ok
 
 
-def test_routersploit_list_tools_blanket_unarmed(
+def test_routersploit_list_tools_reports_caveats(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "*")
     result = RoutersploitArm().invoke(_spec(ROUTERSPLOIT_ID), "list_tools", {})
     assert result.ok is True
-    assert result.output["dispatch_armed"] is False
     assert result.output["caveats"] == ROUTERSPLOIT_CAVEATS
 
 
@@ -125,34 +123,29 @@ def test_routersploit_list_tools_extra_args_refused(
         _spec(ROUTERSPLOIT_ID), "list_tools", {"module": "scanners/autopwn"}
     )
     assert result.ok is False
-    assert "fixed argv" in result.error
+    assert "no arguments" in result.error
 
 
-def test_routersploit_unarmed_refusal_names_env(
+def test_routersploit_run_uses_operator_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV_AND_CWD)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.delenv("ROUTERSPLOIT_DISPATCH_SCOPE", raising=False)
     result = RoutersploitArm().invoke(
         _spec(ROUTERSPLOIT_ID),
         "run",
         {"module": "scanners/autopwn", "target": "10.10.0.1"},
     )
-    assert result.ok is False
-    assert "ROUTERSPLOIT_DISPATCH_SCOPE" in result.error
-    assert "Caveat:" in result.error
-    assert ROUTERSPLOIT_CAVEATS in result.error
+    assert result.ok is True
+    assert "target 10.10.0.1" in result.output["argv"]
 
 
-def test_routersploit_armed_in_scope_runs_logs_and_temp_cwd(
+def test_routersploit_run_argv_and_temp_cwd(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV_AND_CWD)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "10.10.0.0/16")
     result = RoutersploitArm().invoke(
         _spec(ROUTERSPLOIT_ID),
         "run",
@@ -161,21 +154,21 @@ def test_routersploit_armed_in_scope_runs_logs_and_temp_cwd(
             "target": "10.10.0.1",
             "port": 80,
             "username": "admin",
+            "options": {"threads": 4, "ssl": "true"},
         },
     )
     assert result.ok is True
-    argv = result.output["output"]["argv"]
-    assert argv[:3] == ["-m", "scanners/autopwn", "-s"]
-    assert "target 10.10.0.1" in argv
-    assert "port 80" in argv
-    assert "username admin" in argv
-    assert "password" not in " ".join(argv)
-    assert result.output["dispatch"]["scope"] == "10.10.0.0/16"
-    assert result.output["dispatch"]["target"] == "10.10.0.1"
-    err = capsys.readouterr().err
-    assert "[dispatch]" in err and "arm=routersploit" in err
-    assert "action=run" in err and "target=10.10.0.1" in err
-    cwd = Path(result.output["output"]["cwd"]).resolve()
+    argv = result.output["argv"]
+    assert argv == [
+        "-m", "scanners/autopwn",
+        "-s", "target 10.10.0.1",
+        "-s", "port 80",
+        "-s", "username admin",
+        "-s", "threads 4",
+        "-s", "ssl true",
+    ]
+
+    cwd = Path(result.output["cwd"]).resolve()
     assert cwd != Path.cwd().resolve()
     assert Path(tempfile.gettempdir()).resolve() in cwd.parents
 
@@ -186,7 +179,6 @@ def test_routersploit_relative_bin_resolves_absolute_and_temp_cwd(
     binary = _fake_binary(tmp_path, "rsf", ECHO_ARGV_AND_CWD)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", f"./{binary.name}")
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "10.10.0.0/16")
     resolved = routersploit_resolve_binary()
     assert resolved is not None
     assert Path(resolved).is_absolute()
@@ -207,48 +199,59 @@ def test_routersploit_relative_bin_resolves_absolute_and_temp_cwd(
     assert result.ok is True
     assert Path(captured["cmd"][0]).is_absolute()
     assert Path(captured["cmd"][0]).resolve() == binary.resolve()
-    cwd = Path(result.output["output"]["cwd"]).resolve()
+    cwd = Path(result.output["cwd"]).resolve()
     assert Path(tempfile.gettempdir()).resolve() in cwd.parents
 
 
-def test_routersploit_url_target_authorizes_hostname(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+@pytest.mark.parametrize(
+    "target",
+    [
+        "10.10.0.1",
+        "8.8.8.8",
+        "router.lab",
+        "http://10.10.0.1/",
+        "https://router.lab:8443/path",
+        "2001:db8::1",
+        "[2001:db8::1]",
+        "http://[2001:db8::1]/",
+        "[]",
+        "http://[]",
+        "[:::]",
+    ],
+)
+def test_routersploit_operator_target_expressions_pass_through(
+    target: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV_AND_CWD)
+    binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "10.10.0.0/16")
     result = RoutersploitArm().invoke(
         _spec(ROUTERSPLOIT_ID),
         "run",
-        {"module": "scanners/autopwn", "target": "http://10.10.0.1/"},
+        {"module": "scanners/autopwn", "target": target},
     )
     assert result.ok is True
-    assert result.output["dispatch"]["target"] == "10.10.0.1"
-    assert "target http://10.10.0.1/" in result.output["output"]["argv"]
+    assert f"target {target}" in result.output["argv"]
 
 
-def test_routersploit_out_of_scope_refused(
+def test_routersploit_run_accepts_operator_selected_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "10.10.0.0/16")
     result = RoutersploitArm().invoke(
         _spec(ROUTERSPLOIT_ID),
         "run",
         {"module": "scanners/autopwn", "target": "8.8.8.8"},
     )
-    assert result.ok is False
-    assert "outside the armed dispatch scope" in result.error
-    assert "Caveat:" in result.error
+    assert result.ok is True
+    assert "target 8.8.8.8" in result.output["argv"]
 
 
-def test_routersploit_flag_shaped_and_unbracketed_ipv6(
+def test_routersploit_flag_shaped_module_and_target_refused(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "10.10.0.0/16")
     spec = _spec(ROUTERSPLOIT_ID)
     result = RoutersploitArm().invoke(
         spec, "run", {"module": "scanners/autopwn", "target": "--help"}
@@ -256,68 +259,36 @@ def test_routersploit_flag_shaped_and_unbracketed_ipv6(
     assert result.ok is False
     assert "flag-shaped" in result.error
     result = RoutersploitArm().invoke(
-        spec, "run", {"module": "scanners/autopwn", "target": "2001:db8::1"}
+        spec, "run", {"module": "--module", "target": "10.10.0.1"}
     )
     assert result.ok is False
-    assert "IPv6" in result.error
+    assert "flag-shaped" in result.error
 
 
-@pytest.mark.parametrize(
-    "target",
-    [
-        "[]",
-        "http://[]",
-        "https://[gggg::1]/",
-        "[:]",
-        "[:::]",
-        "[gggg::1]",
-        "[2001:db8::1",
-        "[10.10.0.1]",
-    ],
-)
-def test_routersploit_malformed_ipv6_is_refusal_not_crash(
-    target: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
-) -> None:
-    binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV)
-    monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "2001:db8::1")
-    result = RoutersploitArm().invoke(
-        _spec(ROUTERSPLOIT_ID),
-        "run",
-        {"module": "scanners/autopwn", "target": target},
-    )
-    assert result.ok is False
-    assert result.error is not None
-
-
-def test_routersploit_url_userinfo_refused(
+def test_routersploit_url_userinfo_passes_through_secret_scrubbed(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "10.10.0.0/16")
     result = RoutersploitArm().invoke(
         _spec(ROUTERSPLOIT_ID),
         "run",
         {
             "module": "scanners/autopwn",
-            "target": "http://user:secret@10.10.0.1/",
+            "target": "http://user:s3cret-pw@10.10.0.1/",
         },
     )
-    assert result.ok is False
-    assert "userinfo" in result.error
-    assert "secret" not in result.error
-    assert "[redacted]" not in result.error
+    assert result.ok is True
+    assert "target http://user:[redacted]@10.10.0.1/" in result.output["argv"]
+    assert "s3cret-pw" not in json.dumps(result.output)
 
 
-def test_routersploit_bracketed_ipv6_armed(
+def test_routersploit_bracketed_ipv6_runs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV_AND_CWD)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "2001:db8::1")
     spec = _spec(ROUTERSPLOIT_ID)
     result = RoutersploitArm().invoke(
         spec,
@@ -325,65 +296,134 @@ def test_routersploit_bracketed_ipv6_armed(
         {"module": "scanners/autopwn", "target": "[2001:db8::1]"},
     )
     assert result.ok is True
-    assert result.output["dispatch"]["target"] == "[2001:db8::1]"
-    assert "target [2001:db8::1]" in result.output["output"]["argv"]
-    err = capsys.readouterr().err
-    assert "target=[2001:db8::1]" in err
+    assert "target [2001:db8::1]" in result.output["argv"]
+
     result = RoutersploitArm().invoke(
         spec,
         "run",
         {"module": "scanners/autopwn", "target": "http://[2001:db8::1]/"},
     )
     assert result.ok is True
-    assert result.output["dispatch"]["target"] == "[2001:db8::1]"
-    assert "target http://[2001:db8::1]/" in result.output["output"]["argv"]
-    err = capsys.readouterr().err
-    assert "target=[2001:db8::1]" in err
+    assert "target http://[2001:db8::1]/" in result.output["argv"]
 
 
-def test_routersploit_bad_module_and_password_extra(
+
+def test_routersploit_modules_pass_through_without_taxonomy(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "10.10.0.0/16")
     spec = _spec(ROUTERSPLOIT_ID)
-    for module in ("../etc/passwd", "exploits/x; rm", "-e"):
+    # No shell interprets argv, so metacharacters are inert data. A module
+    # is still one upstream -m token, so whitespace stays refused.
+    for module in (
+        "scanners/autopwn",
+        "exploits/custom/router_rce",
+        "../etc/passwd",
+        "exploits/x;rm",
+    ):
         result = RoutersploitArm().invoke(
             spec, "run", {"module": module, "target": "10.10.0.1"}
         )
-        assert result.ok is False, module
+        assert result.ok is True, module
+        assert result.output["argv"][:2] == ["-m", module]
+
+
+def test_routersploit_password_and_custom_options_pass_through(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV)
+    monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
     result = RoutersploitArm().invoke(
-        spec,
+        _spec(ROUTERSPLOIT_ID),
         "run",
         {
-            "module": "scanners/autopwn",
+            "module": "creds/router_brute",
             "target": "10.10.0.1",
-            "password": "secret",
+            "options": {
+                "username": "admin",
+                "password": "s3cret-hunter2",
+                "threads": 4,
+            },
+        },
+    )
+    assert result.ok is True
+    argv = result.output["argv"]
+    assert "-s" in argv
+    assert "username admin" in argv
+    assert "threads 4" in argv
+    assert "password [redacted]" in argv
+    assert "s3cret-hunter2" not in json.dumps(result.output)
+
+
+def test_routersploit_secret_scrubbed_on_failure(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "routersploit", FAIL_WITH_ARGV_ON_STDERR)
+    monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
+    result = RoutersploitArm().invoke(
+        _spec(ROUTERSPLOIT_ID),
+        "run",
+        {
+            "module": "creds/router_brute",
+            "target": "10.10.0.1",
+            "options": {"password": "s3cret-hunter2"},
         },
     )
     assert result.ok is False
-    assert "fixed argv" in result.error
+    assert "s3cret-hunter2" not in result.error
+    assert "s3cret-hunter2" not in json.dumps(result.output)
+    assert "[redacted]" in result.error
 
 
-def test_routersploit_username_charset(
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"target": "10.10.0.1"},
+        {"module": "scanners/autopwn"},
+        {"module": "", "target": "10.10.0.1"},
+        {"module": "scanners/autopwn", "target": ""},
+        {"module": "scanners/autopwn", "target": "10.10.0.1\nevil"},
+        {"module": "scanners/autopwn", "target": "10.10.0.1 evil"},
+        {"module": "scanners/autopwn", "target": "10.10.0.1",
+         "password": "s3cret"},
+        {"module": "scanners/autopwn", "target": "10.10.0.1", "port": "80"},
+        {"module": "scanners/autopwn", "target": "10.10.0.1", "port": 0},
+        {"module": "scanners/autopwn", "target": "10.10.0.1", "port": 70000},
+        {"module": "scanners/autopwn", "target": "10.10.0.1", "port": True},
+        {"module": "scanners/autopwn", "target": "10.10.0.1", "username": 7},
+        {"module": "scanners/autopwn", "target": "10.10.0.1",
+         "username": "ad\nmin"},
+        {"module": "scanners/autopwn", "target": "10.10.0.1",
+         "options": ["password", "s3cret"]},
+        {"module": "scanners/autopwn", "target": "10.10.0.1",
+         "options": {"": "s3cret"}},
+        {"module": "scanners/autopwn", "target": "10.10.0.1",
+         "options": {"pass word": "s3cret"}},
+        {"module": "scanners/autopwn", "target": "10.10.0.1",
+         "options": {"password": "a\x00b"}},
+        {"module": "scanners/autopwn", "target": "10.10.0.1",
+         "options": {"password": True}},
+        {"module": "scanners/autopwn", "target": "10.10.0.1",
+         "options": {"nested": {"a": 1}}},
+    ],
+)
+def test_routersploit_invalid_technical_args_refused(
+    payload: dict, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV)
+    monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
+    result = RoutersploitArm().invoke(_spec(ROUTERSPLOIT_ID), "run", payload)
+    assert result.ok is False
+    assert result.error is not None
+
+
+def test_routersploit_username_passes_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV_AND_CWD)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "10.10.0.0/16")
     spec = _spec(ROUTERSPLOIT_ID)
-    result = RoutersploitArm().invoke(
-        spec,
-        "run",
-        {
-            "module": "scanners/autopwn",
-            "target": "10.10.0.1",
-            "username": "admin;rm",
-        },
-    )
-    assert result.ok is False
-    assert "username" in result.error
     result = RoutersploitArm().invoke(
         spec,
         "run",
@@ -394,7 +434,19 @@ def test_routersploit_username_charset(
         },
     )
     assert result.ok is True
-    assert "username user_name.1-ok" in result.output["output"]["argv"]
+    assert "username user_name.1-ok" in result.output["argv"]
+    # Shell metacharacters are inert without a shell: one argv element.
+    result = RoutersploitArm().invoke(
+        spec,
+        "run",
+        {
+            "module": "scanners/autopwn",
+            "target": "10.10.0.1",
+            "username": "admin;rm",
+        },
+    )
+    assert result.ok is True
+    assert "username admin;rm" in result.output["argv"]
 
 
 def test_routersploit_check_action_refused(
@@ -414,7 +466,6 @@ def test_routersploit_timeout(
 ) -> None:
     binary = _fake_binary(tmp_path, "routersploit", SLEEP_BODY)
     monkeypatch.setenv("ROUTERSPLOIT_BIN", str(binary))
-    monkeypatch.setenv("ROUTERSPLOIT_DISPATCH_SCOPE", "10.10.0.0/16")
     result = RoutersploitArm(timeout=1.0).invoke(
         _spec(ROUTERSPLOIT_ID),
         "run",
@@ -437,12 +488,11 @@ def test_sniper_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
         arm.invoke(spec, "list_tools", {})
 
 
-def test_sniper_list_tools_caveats_and_blanket(
+def test_sniper_list_tools_caveats(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "sniper", ECHO_ARGV)
     monkeypatch.setenv("SNIPER_BIN", str(binary))
-    monkeypatch.delenv("SNIPER_DISPATCH_SCOPE", raising=False)
     result = SniperArm().invoke(_spec(SNIPER_ID), "list_tools", {})
     assert result.ok is True
     caveats = result.output["caveats"]
@@ -452,179 +502,148 @@ def test_sniper_list_tools_caveats_and_blanket(
     assert "root" in lowered
     assert "telemetry" in lowered
     assert "composite" in lowered
-    assert result.output["dispatch_armed"] is False
-    assert result.output["dispatch_actions"] == ["scan"]
-    monkeypatch.setenv("SNIPER_DISPATCH_SCOPE", "*")
-    result = SniperArm().invoke(_spec(SNIPER_ID), "list_tools", {})
-    assert result.output["dispatch_armed"] is False
-    assert result.output["caveats"] == SNIPER_CAVEATS
-    monkeypatch.setenv("SNIPER_DISPATCH_SCOPE", "10.10.0.1")
-    result = SniperArm().invoke(_spec(SNIPER_ID), "list_tools", {})
-    assert result.output["dispatch_armed"] is True
+    assert "list_tools" in result.output["actions"]
 
 
-def test_sniper_unarmed_refusal_names_env(
+def test_sniper_scan_uses_operator_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "sniper", ECHO_ARGV)
     monkeypatch.setenv("SNIPER_BIN", str(binary))
-    monkeypatch.delenv("SNIPER_DISPATCH_SCOPE", raising=False)
     result = SniperArm().invoke(
         _spec(SNIPER_ID),
         "scan",
         {"target": "10.10.0.1", "mode": "normal"},
     )
-    assert result.ok is False
-    assert "SNIPER_DISPATCH_SCOPE" in result.error
-    assert "Caveat:" in result.error
-    assert SNIPER_CAVEATS in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["-t", "10.10.0.1", "-m", "normal"]
 
 
-def test_sniper_armed_in_scope_fixed_argv(
+def test_sniper_scan_default_argv(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "sniper", ECHO_ARGV)
     monkeypatch.setenv("SNIPER_BIN", str(binary))
-    monkeypatch.setenv("SNIPER_DISPATCH_SCOPE", "10.10.0.0/16")
     result = SniperArm().invoke(
         _spec(SNIPER_ID),
         "scan",
         {"target": "10.10.0.1", "mode": "fullportonly"},
     )
     assert result.ok is True
-    argv = result.output["output"]["argv"]
+    argv = result.output["argv"]
     assert argv == ["-t", "10.10.0.1", "-m", "fullportonly"]
-    assert "-p" not in argv and "-fp" not in argv
-    assert result.output["dispatch"]["target"] == "10.10.0.1"
-    err = capsys.readouterr().err
-    assert "[dispatch]" in err and "arm=sniper" in err
-    assert "target=10.10.0.1" in err
+
 
 
 @pytest.mark.parametrize("mode", sorted(MODES))
-def test_sniper_closed_modes(
+def test_sniper_modes_pass_through(
     mode: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "sniper", ECHO_ARGV)
     monkeypatch.setenv("SNIPER_BIN", str(binary))
-    monkeypatch.setenv("SNIPER_DISPATCH_SCOPE", "lab.internal")
     result = SniperArm().invoke(
         _spec(SNIPER_ID),
         "scan",
         {"target": "lab.internal", "mode": mode},
     )
     assert result.ok is True
-    assert result.output["output"]["argv"] == ["-t", "lab.internal", "-m", mode]
+    assert result.output["argv"] == ["-t", "lab.internal", "-m", mode]
 
 
-def test_sniper_discover_and_port_modes_refused(
+def test_sniper_discover_and_port_modes_run(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "sniper", ECHO_ARGV)
     monkeypatch.setenv("SNIPER_BIN", str(binary))
-    monkeypatch.setenv("SNIPER_DISPATCH_SCOPE", "10.10.0.0/16")
     spec = _spec(SNIPER_ID)
     for mode in ("discover", "port"):
         result = SniperArm().invoke(
             spec, "scan", {"target": "10.10.0.1", "mode": mode}
         )
-        assert result.ok is False
-        assert "mode" in result.error
+        assert result.ok is True
+        assert result.output["argv"][-1] == mode
     result = SniperArm().invoke(
         spec,
         "scan",
-        {"target": "10.10.0.1", "mode": "normal", "port": 80},
+        {"target": "10.10.0.1", "mode": "port", "options": ["-p", "80"]},
     )
-    assert result.ok is False
-    assert "fixed argv" in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["-t", "10.10.0.1", "-m", "port", "-p", "80"]
 
 
-def test_sniper_out_of_scope_flag_shaped_ipv6(
+def test_sniper_target_validation_and_operator_selected_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "sniper", ECHO_ARGV)
     monkeypatch.setenv("SNIPER_BIN", str(binary))
-    monkeypatch.setenv("SNIPER_DISPATCH_SCOPE", "10.10.0.0/16")
     spec = _spec(SNIPER_ID)
     result = SniperArm().invoke(
         spec, "scan", {"target": "8.8.8.8", "mode": "normal"}
     )
-    assert result.ok is False
-    assert "outside the armed dispatch scope" in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["-t", "8.8.8.8", "-m", "normal"]
     result = SniperArm().invoke(
         spec, "scan", {"target": "--target", "mode": "normal"}
     )
     assert result.ok is False
     assert "flag-shaped" in result.error
-    result = SniperArm().invoke(
-        spec, "scan", {"target": "2001:db8::1", "mode": "web"}
-    )
-    assert result.ok is False
-    assert "IPv6" in result.error
+    result = SniperArm().invoke(spec, "scan", {"target": "2001:db8::1", "mode": "web"})
+    assert result.ok is True
+    assert result.output["argv"][1] == "2001:db8::1"
 
 
-@pytest.mark.parametrize("target", ["[]", "http://[]"])
-def test_sniper_malformed_ipv6_is_refusal_not_crash(
+@pytest.mark.parametrize("target", ["[]", "http://[]", "10.10.0.0/24"])
+def test_sniper_passes_target_expression_to_upstream(
     target: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "sniper", ECHO_ARGV)
     monkeypatch.setenv("SNIPER_BIN", str(binary))
-    monkeypatch.setenv("SNIPER_DISPATCH_SCOPE", "2001:db8::1")
     result = SniperArm().invoke(
         _spec(SNIPER_ID), "scan", {"target": target, "mode": "normal"}
     )
-    assert result.ok is False
-    assert result.error is not None
+    assert result.ok is True
+    assert result.output["argv"][1] == target
 
 
-def test_sniper_url_userinfo_refused(
+def test_sniper_url_userinfo_is_operator_input(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "sniper", ECHO_ARGV)
     monkeypatch.setenv("SNIPER_BIN", str(binary))
-    monkeypatch.setenv("SNIPER_DISPATCH_SCOPE", "10.10.0.0/16")
     result = SniperArm().invoke(
         _spec(SNIPER_ID),
         "scan",
         {"target": "http://user:secret@10.10.0.1/", "mode": "web"},
     )
-    assert result.ok is False
-    assert "userinfo" in result.error
-    assert "secret" not in result.error
-    assert "[redacted]" not in result.error
+    assert result.ok is True
+    assert result.output["argv"][1] == "http://user:secret@10.10.0.1/"
 
 
-def test_sniper_bracketed_ipv6_armed(
+def test_sniper_bracketed_ipv6_runs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "sniper", ECHO_ARGV)
     monkeypatch.setenv("SNIPER_BIN", str(binary))
-    monkeypatch.setenv("SNIPER_DISPATCH_SCOPE", "2001:db8::1")
     result = SniperArm().invoke(
         _spec(SNIPER_ID),
         "scan",
         {"target": "[2001:db8::1]", "mode": "normal"},
     )
     assert result.ok is True
-    assert result.output["output"]["argv"] == [
+    assert result.output["argv"] == [
         "-t",
         "[2001:db8::1]",
         "-m",
         "normal",
     ]
-    assert result.output["dispatch"]["target"] == "[2001:db8::1]"
-    err = capsys.readouterr().err
-    assert "target=[2001:db8::1]" in err
+
 
 
 def test_sniper_timeout(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     binary = _fake_binary(tmp_path, "sniper", SLEEP_BODY)
     monkeypatch.setenv("SNIPER_BIN", str(binary))
-    monkeypatch.setenv("SNIPER_DISPATCH_SCOPE", "10.10.0.0/16")
     result = SniperArm(timeout=1.0).invoke(
         _spec(SNIPER_ID),
         "scan",
@@ -652,7 +671,6 @@ def test_zgrab2_list_modules_and_list_tools(
 ) -> None:
     binary = _fake_binary(tmp_path, "zgrab2", SLEEP_BODY)
     monkeypatch.setenv("ZGRAB2_BIN", str(binary))
-    monkeypatch.delenv("ZGRAB2_DISPATCH_SCOPE", raising=False)
     arm = Zgrab2Arm(timeout=1.0)
     spec = _spec(ZGRAB2_ID)
     listed = arm.invoke(spec, "list_modules", {})
@@ -661,42 +679,33 @@ def test_zgrab2_list_modules_and_list_tools(
     tools = arm.invoke(spec, "list_tools", {})
     assert tools.ok is True
     assert tools.output["modules"] == sorted(MODULES)
-    assert tools.output["dispatch_armed"] is False
     assert tools.output["caveats"] == ZGRAB2_CAVEATS
-    assert "list_modules" in tools.output["read_actions"]
-    monkeypatch.setenv("ZGRAB2_DISPATCH_SCOPE", "*")
+    assert "list_modules" in tools.output["actions"]
     tools = arm.invoke(spec, "list_tools", {})
-    assert tools.output["dispatch_armed"] is False
     assert tools.output["caveats"] == ZGRAB2_CAVEATS
-    monkeypatch.setenv("ZGRAB2_DISPATCH_SCOPE", "10.10.0.1")
     tools = arm.invoke(spec, "list_tools", {})
-    assert tools.output["dispatch_armed"] is True
 
 
-def test_zgrab2_unarmed_refusal_names_env(
+def test_zgrab2_scan_uses_operator_target_on_stdin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "zgrab2", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv("ZGRAB2_BIN", str(binary))
-    monkeypatch.delenv("ZGRAB2_DISPATCH_SCOPE", raising=False)
     result = Zgrab2Arm().invoke(
         _spec(ZGRAB2_ID),
         "scan",
         {"target": "10.10.0.1", "module": "http"},
     )
-    assert result.ok is False
-    assert "ZGRAB2_DISPATCH_SCOPE" in result.error
-    assert "Caveat:" in result.error
+    assert result.ok is True
+    assert result.output["output"]["stdin"] == "10.10.0.1\n"
 
 
-def test_zgrab2_armed_host_on_stdin_not_argv(
+def test_zgrab2_host_is_sent_on_stdin_not_argv(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "zgrab2", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv("ZGRAB2_BIN", str(binary))
-    monkeypatch.setenv("ZGRAB2_DISPATCH_SCOPE", "10.10.0.0/16")
     result = Zgrab2Arm().invoke(
         _spec(ZGRAB2_ID),
         "scan",
@@ -707,10 +716,7 @@ def test_zgrab2_armed_host_on_stdin_not_argv(
     assert echoed["argv"] == ["http"]
     assert echoed["stdin"] == "10.10.0.1\n"
     assert "10.10.0.1" not in echoed["argv"]
-    assert result.output["dispatch"]["target"] == "10.10.0.1"
-    err = capsys.readouterr().err
-    assert "[dispatch]" in err and "arm=zgrab2" in err
-    assert "target=10.10.0.1" in err
+
 
 
 def test_zgrab2_optional_port(
@@ -718,7 +724,6 @@ def test_zgrab2_optional_port(
 ) -> None:
     binary = _fake_binary(tmp_path, "zgrab2", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv("ZGRAB2_BIN", str(binary))
-    monkeypatch.setenv("ZGRAB2_DISPATCH_SCOPE", "10.10.0.0/16")
     result = Zgrab2Arm().invoke(
         _spec(ZGRAB2_ID),
         "scan",
@@ -729,14 +734,12 @@ def test_zgrab2_optional_port(
     assert result.output["output"]["stdin"] == "10.10.0.1\n"
 
 
-def test_zgrab2_ipv6_stdin_unbracketed_auth_bracketed(
+def test_zgrab2_ipv6_is_sent_on_stdin_unbracketed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "zgrab2", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv("ZGRAB2_BIN", str(binary))
-    monkeypatch.setenv("ZGRAB2_DISPATCH_SCOPE", "2001:db8::1")
     result = Zgrab2Arm().invoke(
         _spec(ZGRAB2_ID),
         "scan",
@@ -747,30 +750,32 @@ def test_zgrab2_ipv6_stdin_unbracketed_auth_bracketed(
     assert echoed["stdin"] == "2001:db8::1\n"
     assert "2001:db8::1" not in echoed["argv"]
     assert echoed["argv"] == ["tls"]
-    assert result.output["dispatch"]["target"] == "[2001:db8::1]"
-    err = capsys.readouterr().err
-    assert "target=[2001:db8::1]" in err
 
 
-def test_zgrab2_unknown_module_cipher_comma(
+
+def test_zgrab2_operator_module_options_and_stdin_shape(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "zgrab2", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv("ZGRAB2_BIN", str(binary))
-    monkeypatch.setenv("ZGRAB2_DISPATCH_SCOPE", "10.10.0.0/16")
     spec = _spec(ZGRAB2_ID)
     result = Zgrab2Arm().invoke(
         spec, "scan", {"target": "10.10.0.1", "module": "cipher"}
     )
-    assert result.ok is False
-    assert "module" in result.error
+    assert result.ok is True
+    assert result.output["output"]["argv"] == ["cipher"]
+    result = Zgrab2Arm().invoke(
+        spec, "scan", {"target": "10.10.0.1", "module": "http", "options": ["--method", "HEAD"]}
+    )
+    assert result.ok is True
+    assert result.output["output"]["argv"] == ["http", "--method", "HEAD"]
     result = Zgrab2Arm().invoke(
         spec,
         "scan",
         {"target": "10.10.0.1", "module": "http", "--cipher": "AES"},
     )
     assert result.ok is False
-    assert "fixed argv" in result.error
+    assert "args.options" in result.error
     result = Zgrab2Arm().invoke(
         spec, "scan", {"target": "10.10.0.1,8.8.8.8", "module": "http"}
     )
@@ -778,28 +783,28 @@ def test_zgrab2_unknown_module_cipher_comma(
     assert "comma" in result.error
 
 
-def test_zgrab2_flag_shaped_and_out_of_scope(
+def test_zgrab2_target_is_stdin_data_even_when_flag_shaped(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "zgrab2", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv("ZGRAB2_BIN", str(binary))
-    monkeypatch.setenv("ZGRAB2_DISPATCH_SCOPE", "10.10.0.0/16")
     spec = _spec(ZGRAB2_ID)
     result = Zgrab2Arm().invoke(
         spec, "scan", {"target": "--port", "module": "http"}
     )
-    assert result.ok is False
-    assert "flag-shaped" in result.error
+    assert result.ok is True
+    assert result.output["output"]["stdin"] == "--port\n"
     result = Zgrab2Arm().invoke(
         spec, "scan", {"target": "[--help]", "module": "http"}
     )
-    assert result.ok is False
-    assert "flag-shaped" in result.error
+    assert result.ok is True
+    assert result.output["output"]["stdin"] == "[--help]\n"
     result = Zgrab2Arm().invoke(
         spec, "scan", {"target": "8.8.8.8", "module": "ssh"}
     )
-    assert result.ok is False
-    assert "outside the armed dispatch scope" in result.error
+    assert result.ok is True
+    assert result.output["output"]["stdin"] == "8.8.8.8\n"
+    assert result.output["output"]["argv"] == ["ssh"]
 
 
 def test_zgrab2_json_stdout_and_timeout(
@@ -807,7 +812,6 @@ def test_zgrab2_json_stdout_and_timeout(
 ) -> None:
     binary = _fake_binary(tmp_path, "zgrab2", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv("ZGRAB2_BIN", str(binary))
-    monkeypatch.setenv("ZGRAB2_DISPATCH_SCOPE", "example.com")
     result = Zgrab2Arm().invoke(
         _spec(ZGRAB2_ID),
         "scan",
