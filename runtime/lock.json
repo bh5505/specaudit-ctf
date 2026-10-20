@@ -1894,7 +1894,7 @@
     "extension/trace.py": "67ee9d4934355c8d31c9fc18afb07ac2224cdf03fdfaebeae45ed0696e40fbaf",
     "extension/transports/__init__.py": "c5afd05b12fd804b399e5e8ba2f3e874288e3d30ac1ccc1633d7bb3ffe150722",
     "extension/transports/cli.py": "5401fca3f35701127f4091b803b05259f6c399278b0e0dc2d16c087d7c6cd536",
-    "extension/transports/mcp.py": "fbf1ea760edf63c5e6a2b6f5447debf231ff8a26b4b79824e06cbcf8059969e2"
+    "extension/transports/mcp.py": "0cc60dc20d06b226ee82ac6e28f3942eb98e0a7a74c543f714608600728549b2"
   },
   "pyyaml": {
     "sha256": "b8bb0864c5a28024fac8a632c443c87c5aa6f215c0b126c449ae1a150412f31d",
