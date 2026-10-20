@@ -473,3 +473,109 @@ invalid. The v1 history check above is unchanged: its bytes, digests,
 and verdict are preserved, and a future history version — not a result
 file alone — is what could one day bind a completed cycle to
 recurrence.
+
+## Promotion qualification contract (U-GOV.e, 2026-10-19)
+
+`governance/qualification.py` defines and verifies the intended
+admission/promotion decision contract over the twelve frozen
+2026-10-14 historical promotion events in `register.v2.yaml`. The
+criterion set is EXACTLY
+[`candidate_admission.REQUIRED_ADMISSION_FIELDS`](../candidate_admission/admission.py),
+imported by identity as the sole criterion authority — no new taxonomy.
+The GOV-01 item-3 clause "owner, regression, side-effect and egress
+contracts enforced" names four elements (`named_owner`,
+`regression_case`, `side_effects`, `egress`) already inside that field
+set: it is emphasis, not an addition. Each loaded event is projected
+onto those criteria with fail-closed attestation states:
+
+- `evidenced` — the criterion is attested in bounded form and, for the
+  six executed criteria (`regression_case`, `side_effects`, `egress`,
+  `named_owner`, `code_license`, `data_rights`), a valid executed-evidence
+  store record with outcome `passed` also resolves;
+- `partial` — declared or cited but not executed: on all twelve events
+  `regression_case` is partial with outcome `authorized-not-executed`
+  (`verification_result: operator-authorized` is not an executed
+  outcome; citations resolve to recorded files and existence is never
+  execution proof), and `revision_hashes` is partial because
+  `source_revisions` are git commit pins, not sha256 content digests
+  (the admitted-slice content digests live on the source rows, not on
+  the events);
+- `unevidenced` — the event carries nothing for the criterion: a
+  selection/admission decision records no `data_classification`,
+  `action_surface`, `cost_behavior`, `cleanup_semantics`,
+  `provenance_semantics`, test cases, owner (`reviewer` attribution is
+  not ownership), side-effect/egress contract, or independent
+  promotion evidence (the event's own id is its row's
+  `promotion_evidence` citation; self-reference satisfies nothing);
+- `contradicted` — `code_license` and `data_rights` on all twelve:
+  every frozen decision accepts `no-license-or-data-rights-clearance`,
+  so the events affirmatively document non-clearance, which no protocol
+  output can un-document.
+
+An event qualifies only when every criterion is evidenced AND the
+executed-evidence store returns outcome `passed` for the regression,
+egress, side-effects, rights, and owner criteria. The outcome over the
+shipped tree is **computed, not asserted: zero of twelve qualify**, and
+it falls out of that conjunction — never a hardcoded count. The nearest
+pair is R01/R43 (the two admitted events whose rows pin re-derivable
+content digests), and they still carry the full seventeen unmet
+criteria: rights contradicted, regression authorized-not-executed, and
+thirteen unevidenced contract fields. Roster enforcement is read-only:
+each loaded event's canonical-JSON digest is recomputed and compared
+only against the frozen `V2_AUTHORIZED_PROMOTION_EVENTS` literals in
+`check.py` (never against digests derived from the register), so any
+thirteenth event, missing event, subject binding break, or digest drift
+fails as `qualification-roster-mismatch` /
+`qualification-event-digest-mismatch` and halts the assessment
+fail-closed. Freezing alone satisfies nothing: snapshot fidelity is not
+qualification evidence, and a synthetic qualifying event under a
+synthetic store does qualify, proving the conjunction is real.
+
+Executed-evidence protocol: the store maps a recomputed event digest to
+records `{criterion, ref, outcome, dated_on, content_sha256}`; a record
+counts only when its `ref` matches the reserved convention
+`governance/reviews/executed/<event-id>.<YYYY-MM-DD>.json` (the frozen
+event ids already begin with `promotion-`; the filename date must equal
+the record's `dated_on`) and resolves through the bounded
+no-follow file snapshot to bytes matching `content_sha256`, its outcome
+is exactly `passed`, and its `dated_on` is on or after the event's
+`decided_on`. Event citations (`verification_result`,
+`regression_case`, `exercised_path`) are never resolved as references
+or paths. The shipped default is `NULL_EVIDENCE_STORE` — nothing
+satisfies it. The future path for executed evidence is triple-code-gated
+(roster table + anchor table + committed artifact under the reserved
+prefix, each requiring a reviewed code change): nothing is shipped in
+this increment, and no `governance/reviews/executed/` directory or
+artifact exists.
+
+What this contract does not do: it grants no promotion authority and
+no admission, shipment, or support claim; the register is never mutated
+and its YAML is never re-parsed (assessment is read-only over
+`Registry.document` copies); the R15/R38 refusal decisions are
+preserved untouched (no event subjects them); the register inventory
+and the frozen event snapshots are not operational promotion evidence;
+reviewer attribution is not authentication; and source-plane events
+never imply runtime or module admission (a `module:` or `runtime:`
+subject is refused, not assessed). A decision dated after the assessed
+`--as-of` fails integrity, so a population cannot be qualified as of a
+date before its decisions existed.
+
+```bash
+# Read-only assessment of the frozen twelve; integrity holds today.
+python3 -m governance.qualification check \
+  --as-of 2026-10-14 --format json                      # exit 0
+# No event qualifies under the shipped null evidence store.
+python3 -m governance.qualification check \
+  --as-of 2026-10-14 --format json --require qualify    # exit 1
+```
+
+Exit `0` means the requested requirement passed, `1` means the
+population has gaps for it (today: every event carries unmet
+criteria), and `2` means the arguments or register input are invalid.
+There is no `--register` override: the assessment always reads the
+canonical register v2 through its bounded loader. Causal coverage lives
+in `tests/test_gov_qualification.py`: roster/drift negatives via
+in-memory deep copies only, plane-independence refusals, the
+limitation-drop and reference-swap non-flips, the tmp_path positive
+control with missing/failed/mismatched store variants, one full
+register validation, and a tracked-file tripwire.
