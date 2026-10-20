@@ -11,10 +11,13 @@ stubbed explicitly.
 from __future__ import annotations
 
 import json
+import ntpath
 import os
+import posixpath
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -97,6 +100,28 @@ def _stub_grade(monkeypatch: pytest.MonkeyPatch, passed: bool) -> None:
         }
 
     monkeypatch.setattr("exercise.attempt.grade_attempt", fake_grade)
+
+
+def _fake_executable(directory: Path, name: str) -> str:
+    """An inert stub file the launch preflight accepts as the armed
+    executable: a .cmd suffix on Windows, the exec bit on POSIX."""
+    if os.name == "nt":
+        path = directory / f"{name}.cmd"
+    else:
+        path = directory / name
+    path.write_text("synthetic armed head stub\n", encoding="utf-8")
+    if os.name != "nt":
+        path.chmod(0o755)
+    return str(path)
+
+
+def _forbid_mint(monkeypatch: pytest.MonkeyPatch) -> None:
+    """execute_real_head imports mint_key from extension.trace at call
+    time, so the ordering pin must patch the source module."""
+    monkeypatch.setattr(
+        "extension.trace.mint_key",
+        lambda: pytest.fail("mint_key ran before the launch preflight passed"),
+    )
 
 
 def test_unarmed_real_head_is_refused() -> None:
@@ -228,7 +253,8 @@ def test_codex_preflight_requires_the_env_vars_allowlist(
 def test_armed_claude_head_is_composed_spawned_and_graded(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path, capsys
 ) -> None:
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     seen: dict = {}
@@ -238,7 +264,7 @@ def test_armed_claude_head_is_composed_spawned_and_graded(
     prompt_text, sha, chars = load_prompt(str(prompt_file))
     lane = execute_real_head(
         head="claude-code",
-        cmd="/usr/bin/claude",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text=prompt_text,
@@ -249,6 +275,8 @@ def test_armed_claude_head_is_composed_spawned_and_graded(
 
     assert lane["status"] == "passed" and lane["passed"] is True
     argv = seen["argv"]
+    # An absolute cmd spawns verbatim as argv[0]; the prompt is argv[2].
+    assert argv[0] == cmd
     # The real prompt reached the child; the trailer is runner-owned.
     assert argv[2] == prompt_text + PROMPT_TRAILER
     assert "--strict-mcp-config" in argv and "--output-format" in argv
@@ -274,8 +302,9 @@ def test_claude_mcp_config_carries_the_trace_env(
 ) -> None:
     """The documented per-server env map is the trace vars' transport:
     verify the temp config's content and its 0600 mode as the head sees
-    it (the runner deletes the file after the spawn)."""
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    it (the runner deletes the file after the run)."""
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     seen: dict = {}
@@ -299,7 +328,7 @@ def test_claude_mcp_config_carries_the_trace_env(
 
     execute_real_head(
         head="claude-code",
-        cmd="/usr/bin/claude",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text="p",
@@ -323,7 +352,8 @@ def test_claude_mcp_config_carries_the_trace_env(
 def test_armed_codex_head_exports_trace_vars_and_preflights(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
 ) -> None:
-    monkeypatch.setenv(ARMING_ENVS["codex-cli"], "/usr/bin/codex")
+    cmd = _fake_executable(tmp_path, "codex")
+    monkeypatch.setenv(ARMING_ENVS["codex-cli"], cmd)
     config = tmp_path / "config.toml"
     config.write_text(
         "[mcp_servers.specaudit-ctf]\ncommand = \"python\"\nenv_vars = ["
@@ -344,7 +374,7 @@ def test_armed_codex_head_exports_trace_vars_and_preflights(
     prompt_text, sha, chars = load_prompt(str(prompt_file))
     lane = execute_real_head(
         head="codex-cli",
-        cmd="/usr/bin/codex",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text=prompt_text,
@@ -355,7 +385,7 @@ def test_armed_codex_head_exports_trace_vars_and_preflights(
 
     assert lane["status"] == "passed"
     argv = seen["argv"]
-    assert argv[:5] == ["/usr/bin/codex", "exec", "--sandbox", "workspace-write", "--skip-git-repo-check"]
+    assert argv[:5] == [cmd, "exec", "--sandbox", "workspace-write", "--skip-git-repo-check"]
     assert argv[6] == str(attempt_dir)
     assert argv[-1] == prompt_text + PROMPT_TRAILER
     child_env = seen["kwargs"]["env"]
@@ -371,7 +401,10 @@ def test_armed_codex_head_exports_trace_vars_and_preflights(
 def test_codex_preflight_failure_fails_closed_before_spawn(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
 ) -> None:
-    monkeypatch.setenv(ARMING_ENVS["codex-cli"], "/usr/bin/codex")
+    # A resolvable command whose host config lacks the allowlist: the
+    # transport preflight is what refuses, before any spawn.
+    cmd = _fake_executable(tmp_path, "codex")
+    monkeypatch.setenv(ARMING_ENVS["codex-cli"], cmd)
     config = tmp_path / "config.toml"
     config.write_text('model = "x"\n', encoding="utf-8")
     monkeypatch.setattr(real_head, "_codex_config_path", lambda: config)
@@ -385,7 +418,7 @@ def test_codex_preflight_failure_fails_closed_before_spawn(
     with pytest.raises(RealHeadError, match="no \\[mcp_servers"):
         execute_real_head(
             head="codex-cli",
-            cmd="/usr/bin/codex",
+            cmd=cmd,
             attempt_dir=str(attempt_dir),
             expected_path="expected.json",
             prompt_text="p",
@@ -398,7 +431,8 @@ def test_codex_preflight_failure_fails_closed_before_spawn(
 def test_timeout_fails_the_lane_without_grading(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
 ) -> None:
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
 
@@ -413,7 +447,7 @@ def test_timeout_fails_the_lane_without_grading(
     monkeypatch.setattr("exercise.attempt.grade_attempt", no_grade)
     lane = execute_real_head(
         head="claude-code",
-        cmd="/usr/bin/claude",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text="p",
@@ -427,24 +461,36 @@ def test_timeout_fails_the_lane_without_grading(
     assert lane["trace"]["chain_ok"] is False
 
 
+@pytest.mark.parametrize(
+    "spawn_error",
+    [
+        FileNotFoundError("[Errno 2] no such file: <resolved>"),
+        PermissionError(13, "Permission denied"),
+    ],
+)
 def test_spawn_failure_fails_closed_and_deletes_the_temp_config(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, prompt_file: Path
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    prompt_file: Path,
+    spawn_error: OSError,
 ) -> None:
-    """A head binary that cannot exec (missing, bad cwd) leaves no key
-    material on disk and no traceback: a fail-closed lane with the
-    spawn error as the reason, and the temp mcp-config gone."""
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/nonexistent/claude")
+    """A head that preflights clean but cannot exec at spawn time (the
+    binary vanished, the cwd is unusable, the OS denies the exec) leaves
+    no key material on disk and no traceback: a fail-closed lane with
+    the spawn error as the reason, and the temp mcp-config gone."""
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
 
     def deny(argv, **kwargs):
-        raise FileNotFoundError(f"[Errno 2] no such file: {argv[0]}")
+        raise spawn_error
 
     monkeypatch.setattr(real_head.subprocess, "run", deny)
     monkeypatch.setattr("exercise.attempt.grade_attempt", deny)
     lane = execute_real_head(
         head="claude-code",
-        cmd="/nonexistent/claude",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text="p",
@@ -463,7 +509,8 @@ def test_child_stderr_is_scrubbed_of_the_minted_trace_facts(
 ) -> None:
     """A chatty head that echoes its env/config must not carry the
     minted key (or the trace path/attempt id) into the lane record."""
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     seen: dict = {}
@@ -502,7 +549,7 @@ def test_child_stderr_is_scrubbed_of_the_minted_trace_facts(
     monkeypatch.setattr("exercise.attempt.grade_attempt", failing_grade)
     lane = execute_real_head(
         head="claude-code",
-        cmd="/usr/bin/claude",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text="p",
@@ -520,7 +567,8 @@ def test_claude_child_env_carries_no_stale_trace_vars(
 ) -> None:
     """The config file is the claude-path transport: a stale trace key
     in the operator's own shell must not ride into the head process."""
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
     monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE_KEY", "stale-key-value")
     monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE", "/stale/trace")
     attempt_dir = tmp_path / "attempt"
@@ -530,7 +578,7 @@ def test_claude_child_env_carries_no_stale_trace_vars(
     _stub_grade(monkeypatch, passed=True)
     execute_real_head(
         head="claude-code",
-        cmd="/usr/bin/claude",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text="p",
@@ -551,7 +599,8 @@ def test_spawn_refuses_to_overwrite_an_existing_temp_config(
     untouched (a planted SYMLINK also fails closed on POSIX via
     O_NOFOLLOW, though through the generic OSError branch with the
     cannot-write message)."""
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     (attempt_dir / "mcp-config.json").write_text("sentinel", encoding="utf-8")
@@ -561,7 +610,7 @@ def test_spawn_refuses_to_overwrite_an_existing_temp_config(
     with pytest.raises(RealHeadError, match="refusing to overwrite"):
         execute_real_head(
             head="claude-code",
-            cmd="/usr/bin/claude",
+            cmd=cmd,
             attempt_dir=str(attempt_dir),
             expected_path="expected.json",
             prompt_text="p",
@@ -578,7 +627,8 @@ def test_head_spawn_is_non_interactive(
 ) -> None:
     """A headless spawn must not inherit the runner's stdin (a CLI that
     probes it could block); it is wired to DEVNULL."""
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     seen: dict = {}
@@ -586,7 +636,7 @@ def test_head_spawn_is_non_interactive(
     _stub_grade(monkeypatch, passed=True)
     execute_real_head(
         head="claude-code",
-        cmd="/usr/bin/claude",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text="p",
@@ -634,7 +684,8 @@ def test_runner_converts_preflight_failure_to_a_usage_error(
 ) -> None:
     """The full CLI path: an armed codex with a bad host config exits
     as `exercise: ...` (ExerciseError), never a traceback."""
-    monkeypatch.setenv(ARMING_ENVS["codex-cli"], "/usr/bin/codex")
+    cmd = _fake_executable(tmp_path, "codex")
+    monkeypatch.setenv(ARMING_ENVS["codex-cli"], cmd)
     config = tmp_path / "config.toml"
     config.write_text('model = "x"\n', encoding="utf-8")
     monkeypatch.setattr(real_head, "_codex_config_path", lambda: config)
@@ -653,7 +704,8 @@ def test_run_exercise_end_to_end_with_a_stubbed_head(
 ) -> None:
     """The full runner path: armed head + prompt file -> report carries
     the graded lane and never leaks the trace key or prompt text."""
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     _stub_run(monkeypatch, returncode=0)
@@ -693,7 +745,8 @@ def test_qwen_head_is_composed_spawned_and_graded(
     """The third armed head rides the shared temp-config + shared
     launcher path, allowlists the four MCP tools by per-server name,
     and goes one-shot on the positional prompt."""
-    monkeypatch.setenv(ARMING_ENVS["qwen-code"], "/usr/bin/qwen")
+    cmd = _fake_executable(tmp_path, "qwen")
+    monkeypatch.setenv(ARMING_ENVS["qwen-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
     seen: dict = {}
@@ -703,7 +756,7 @@ def test_qwen_head_is_composed_spawned_and_graded(
     prompt_text, sha, chars = load_prompt(str(prompt_file))
     lane = execute_real_head(
         head="qwen-code",
-        cmd="/usr/bin/qwen",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text=prompt_text,
@@ -714,7 +767,7 @@ def test_qwen_head_is_composed_spawned_and_graded(
 
     assert lane["status"] == "passed" and lane["passed"] is True
     argv = seen["argv"]
-    assert argv[0] == "/usr/bin/qwen"
+    assert argv[0] == cmd
     # One-shot form: the positional prompt is last and carries the
     # runner-owned trailer.
     assert argv[-1] == prompt_text + PROMPT_TRAILER
@@ -743,7 +796,8 @@ def test_qwen_child_env_carries_no_stale_trace_vars(
 ) -> None:
     """The config file is the transport on this path too: a stale trace
     key in the operator's own shell must not ride into the head."""
-    monkeypatch.setenv(ARMING_ENVS["qwen-code"], "/usr/bin/qwen")
+    cmd = _fake_executable(tmp_path, "qwen")
+    monkeypatch.setenv(ARMING_ENVS["qwen-code"], cmd)
     monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE_KEY", "stale-key-value")
     monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE", "/stale/trace")
     attempt_dir = tmp_path / "attempt"
@@ -753,7 +807,7 @@ def test_qwen_child_env_carries_no_stale_trace_vars(
     _stub_grade(monkeypatch, passed=True)
     execute_real_head(
         head="qwen-code",
-        cmd="/usr/bin/qwen",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text="p",
@@ -831,6 +885,7 @@ def test_child_environment_is_an_explicit_allowlist(
     stale trace facts, no arming/control vars, no unrelated secrets."""
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
+    cmd = _fake_executable(tmp_path, "synthetic-head")
     monkeypatch.setenv("PATH", "/synthetic/bin")
     monkeypatch.setenv("HOME", "/synthetic/home")
     monkeypatch.setenv("LANG", "C.UTF-8")
@@ -842,7 +897,7 @@ def test_child_environment_is_an_explicit_allowlist(
     for name, value in _AMBIENT_SENTINELS.items():
         monkeypatch.setenv(name, value)
     for env in ARMING_ENVS.values():
-        monkeypatch.setenv(env, "/usr/bin/synthetic-head")
+        monkeypatch.setenv(env, cmd)
     monkeypatch.setenv(HEAD_TIMEOUT_ENV, "7")
     monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE", "/stale/trace")
     monkeypatch.setenv("SPECAUDIT_CTF_MCP_TRACE_KEY", "stale-key")
@@ -859,7 +914,7 @@ def test_child_environment_is_an_explicit_allowlist(
 
     execute_real_head(
         head=head,
-        cmd="/usr/bin/synthetic-head",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text="p",
@@ -1052,19 +1107,16 @@ def _drive_mcp(
     return proc
 
 
-@pytest.mark.parametrize(
-    ("head", "cmd"),
-    [("claude-code", "/usr/bin/claude"), ("qwen-code", "/usr/bin/qwen")],
-)
+@pytest.mark.parametrize("head", ["claude-code", "qwen-code"])
 def test_private_config_env_drives_the_real_mcp_trace(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     prompt_file: Path,
     head: str,
-    cmd: str,
 ) -> None:
     """Stub the model CLI, but attach the REAL MCP server with exactly
     the private config's env map: the run grades from the server trace."""
+    cmd = _fake_executable(tmp_path, "claude" if head == "claude-code" else "qwen")
     monkeypatch.setenv(ARMING_ENVS[head], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
@@ -1116,7 +1168,7 @@ def test_codex_bounded_env_drives_the_real_mcp_trace(
 ) -> None:
     """The minted codex child env must reach the REAL MCP server: no
     ambient copy, just the bounded allowlist plus the trace facts."""
-    cmd = "/usr/bin/codex"
+    cmd = _fake_executable(tmp_path, "codex")
     monkeypatch.setenv(ARMING_ENVS["codex-cli"], cmd)
     monkeypatch.setattr(
         real_head,
@@ -1228,7 +1280,8 @@ def test_child_stderr_suppresses_short_copied_values(
     monkeypatch.setenv("MY_PROVIDER_KEY", extra_secret)
     monkeypatch.setenv("TINY_FLAG", "1")
     monkeypatch.setenv("ANTHROPIC_API_KEY", api_secret)
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
     attempt_dir = tmp_path / "attempt"
     attempt_dir.mkdir()
 
@@ -1250,7 +1303,7 @@ def test_child_stderr_suppresses_short_copied_values(
     monkeypatch.setattr("exercise.attempt.grade_attempt", failing_grade)
     lane = execute_real_head(
         head="claude-code",
-        cmd="/usr/bin/claude",
+        cmd=cmd,
         attempt_dir=str(attempt_dir),
         expected_path="expected.json",
         prompt_text="p",
@@ -1292,7 +1345,7 @@ def test_minted_trace_cannot_exceed_total_child_environment_bound(
     with pytest.raises(RealHeadError, match="head child environment exceeds"):
         execute_real_head(
             head="codex-cli",
-            cmd="/usr/bin/codex",
+            cmd=_fake_executable(tmp_path, "codex"),
             attempt_dir=str(tmp_path / "attempt"),
             expected_path="expected.json",
             prompt_text="p",
@@ -1313,7 +1366,8 @@ def test_long_copied_credentials_are_redacted_with_stderr_context(
     credential_path = "/synthetic/private/google-credential-file.json"
     monkeypatch.setenv("CLAUDE_CODE_USE_VERTEX", "1")
     monkeypatch.setenv("GOOGLE_APPLICATION_CREDENTIALS", credential_path)
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
 
     class Proc:
         stdout = ""
@@ -1332,7 +1386,7 @@ def test_long_copied_credentials_are_redacted_with_stderr_context(
     monkeypatch.setattr("exercise.attempt.grade_attempt", failing_grade)
     lane = execute_real_head(
         head="claude-code",
-        cmd="/usr/bin/claude",
+        cmd=cmd,
         attempt_dir=str(tmp_path / "attempt"),
         expected_path="expected.json",
         prompt_text="p",
@@ -1388,7 +1442,8 @@ def test_child_stderr_secret_crossing_tail_boundary_is_scrubbed(
 ) -> None:
     secret = "synthetic-cross-boundary-secret"
     monkeypatch.setenv("ANTHROPIC_API_KEY", secret)
-    monkeypatch.setenv(ARMING_ENVS["claude-code"], "/usr/bin/claude")
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
 
     class Proc:
         stdout = ""
@@ -1404,7 +1459,7 @@ def test_child_stderr_secret_crossing_tail_boundary_is_scrubbed(
     monkeypatch.setattr("exercise.attempt.grade_attempt", failing_grade)
     lane = execute_real_head(
         head="claude-code",
-        cmd="/usr/bin/claude",
+        cmd=cmd,
         attempt_dir=str(tmp_path / "attempt"),
         expected_path="expected.json",
         prompt_text="p",
@@ -1414,3 +1469,519 @@ def test_child_stderr_secret_crossing_tail_boundary_is_scrubbed(
     )
     assert secret not in json.dumps(lane)
     assert secret[-8:] not in lane["reason"]
+# --- Launch preflight: child-PATH resolution and fail-closed ordering ---
+
+
+def _nt_os(shim_isfile) -> SimpleNamespace:
+    """An os shim with nt semantics so the resolver's Windows behavior
+    runs on every host (the test_mcp_stdio_env.py SimpleNamespace
+    pattern): the child env decides, never the host filesystem layout."""
+    return SimpleNamespace(
+        name="nt",
+        pathsep=";",
+        X_OK=1,
+        access=lambda candidate, mode: True,
+        path=SimpleNamespace(
+            join=ntpath.join, isfile=shim_isfile, isdir=lambda candidate: False
+        ),
+    )
+
+
+def _posix_os(shim_isfile, shim_access) -> SimpleNamespace:
+    return SimpleNamespace(
+        name="posix",
+        pathsep=":",
+        X_OK=1,
+        access=shim_access,
+        path=SimpleNamespace(
+            join=posixpath.join, isfile=shim_isfile, isdir=lambda candidate: False
+        ),
+    )
+
+
+def test_resolver_refuses_a_blank_command() -> None:
+    with pytest.raises(RealHeadError, match="blank"):
+        real_head._resolve_child_executable("   ", {"PATH": "/synthetic/bin"}, Path("."))
+
+
+def test_resolver_refuses_a_bare_command_without_a_child_path(tmp_path: Path) -> None:
+    with pytest.raises(RealHeadError, match="no PATH"):
+        real_head._resolve_child_executable("synthetic-head", {}, tmp_path)
+
+
+def test_resolver_accepts_an_absolute_file_and_returns_it_verbatim(
+    tmp_path: Path,
+) -> None:
+    exe = _fake_executable(tmp_path, "claude")
+    assert real_head._resolve_child_executable(exe, {}, tmp_path) == exe
+
+
+def test_resolver_refuses_an_absent_absolute_command(tmp_path: Path) -> None:
+    missing = str(tmp_path / "absent" / "claude")
+    with pytest.raises(RealHeadError, match="not an existing file"):
+        real_head._resolve_child_executable(missing, {}, tmp_path)
+
+
+def test_resolver_refuses_a_directory_command(tmp_path: Path) -> None:
+    with pytest.raises(RealHeadError, match="directory"):
+        real_head._resolve_child_executable(str(tmp_path), {}, tmp_path)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX exec-bit discipline")
+def test_resolver_refuses_a_non_executable_absolute_file(tmp_path: Path) -> None:
+    path = tmp_path / "claude"
+    path.write_text("synthetic stub\n", encoding="utf-8")
+    with pytest.raises(RealHeadError, match="not executable"):
+        real_head._resolve_child_executable(str(path), {}, tmp_path)
+
+
+def test_resolver_resolves_a_relative_command_against_the_attempt_dir(
+    tmp_path: Path,
+) -> None:
+    """A separator-carrying relative command resolves against the spawn
+    cwd (the attempt directory), never against the runner's own cwd."""
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    exe = _fake_executable(bin_dir, "claude")
+    relative = os.path.join("bin", os.path.basename(exe))
+    assert real_head._resolve_child_executable(relative, {}, tmp_path) == exe
+    with pytest.raises(RealHeadError, match="not an existing file"):
+        real_head._resolve_child_executable(
+            os.path.join("bin", "absent-head"), {}, tmp_path
+        )
+
+
+def test_resolver_windows_resolves_only_through_the_child_pathext(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Only the child's PATHEXT extensions are candidates: the .exe
+    file sitting in the EARLIER PATH directory is never tried, and the
+    search continues to a later directory holding the extension."""
+    files = {r"C:\other\claude.cmd", r"C:\search\claude.exe"}
+    monkeypatch.setattr(real_head, "os", _nt_os(lambda candidate: candidate in files))
+    resolved = real_head._resolve_child_executable(
+        "claude",
+        {"PATH": r"C:\search;" + r"C:\other", "PATHEXT": ".cmd"},
+        Path("."),
+    )
+    assert resolved == r"C:\other\claude.cmd"
+
+
+def test_resolver_windows_falls_back_to_the_default_pathext(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No child PATHEXT falls back to CPython's default extension list,
+    still resolved inside the child's PATH directories only."""
+    files = {r"C:\search\claude.EXE"}
+    monkeypatch.setattr(real_head, "os", _nt_os(lambda candidate: candidate in files))
+    resolved = real_head._resolve_child_executable(
+        "claude", {"PATH": r"C:\search"}, Path(".")
+    )
+    assert resolved == r"C:\search\claude.EXE"
+
+
+def test_resolver_windows_keeps_an_armed_extension_verbatim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A command already carrying an extension is tried as-is; PATHEXT
+    is never appended to it."""
+    files = {r"C:\search\claude.exe"}
+    monkeypatch.setattr(real_head, "os", _nt_os(lambda candidate: candidate in files))
+    resolved = real_head._resolve_child_executable(
+        "claude.exe", {"PATH": r"C:\search", "PATHEXT": ".cmd"}, Path(".")
+    )
+    assert resolved == r"C:\search\claude.exe"
+
+
+@pytest.mark.parametrize("cmd", [r"C:\bin\claude.exe:ads", "claude.exe:ads"])
+def test_resolver_windows_refuses_alternate_data_streams(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, cmd: str
+) -> None:
+    monkeypatch.setattr(real_head, "os", _nt_os(lambda candidate: True))
+    with pytest.raises(RealHeadError, match="alternate data stream"):
+        real_head._resolve_child_executable(cmd, {"PATH": r"C:\bin"}, tmp_path)
+
+
+def test_resolver_refuses_a_nul_byte_command() -> None:
+    with pytest.raises(RealHeadError, match="NUL"):
+        real_head._resolve_child_executable(
+            "cla\0ude", {"PATH": "/usr/bin"}, Path("/tmp")
+        )
+
+
+def test_resolver_resolves_a_relative_path_entry_against_the_attempt_dir(
+    tmp_path: Path,
+) -> None:
+    """A relative child-PATH entry belongs to the child's cwd — the
+    attempt directory — never the runner's own working directory."""
+    attempt = tmp_path / "attempt"
+    bin_dir = attempt / "bin"
+    bin_dir.mkdir(parents=True)
+    if os.name == "nt":
+        tool = bin_dir / "head.cmd"
+        tool.write_text("", encoding="utf-8")
+    else:
+        tool = bin_dir / "head"
+        tool.write_text("", encoding="utf-8")
+        tool.chmod(0o755)
+    resolved = real_head._resolve_child_executable("head", {"PATH": "bin"}, attempt)
+    assert Path(resolved).resolve() == tool.resolve()
+
+
+def test_resolver_skips_non_executable_and_directory_entries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A directory or a non-executable file earlier on the child PATH is
+    skipped, and the search continues to the executable entry."""
+    kinds = {
+        "/search-a/claude": "dir",
+        "/search-b/claude": "plain-file",
+        "/search-c/claude": "executable",
+    }
+    monkeypatch.setattr(
+        real_head,
+        "os",
+        _posix_os(
+            lambda candidate: kinds.get(candidate) in ("plain-file", "executable"),
+            lambda candidate, mode: kinds.get(candidate) == "executable",
+        ),
+    )
+    resolved = real_head._resolve_child_executable(
+        "claude", {"PATH": "/search-a:/search-b:/search-c"}, Path(".")
+    )
+    assert resolved == "/search-c/claude"
+
+
+def test_absent_command_fails_closed_before_mint_config_or_spawn(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A command that cannot resolve refuses BEFORE anything sensitive
+    happens: no minted key, no private config, no spawn."""
+    missing = str(tmp_path / "absent" / "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], missing)
+    attempt_dir = tmp_path / "attempt"
+    _forbid_mint(monkeypatch)
+    monkeypatch.setattr(
+        real_head.subprocess,
+        "run",
+        lambda *a, **k: pytest.fail("spawned after a refused launch"),
+    )
+    with pytest.raises(RealHeadError, match="not an existing file"):
+        execute_real_head(
+            head="claude-code",
+            cmd=missing,
+            attempt_dir=str(attempt_dir),
+            expected_path="expected.json",
+            prompt_text="p",
+            prompt_sha256="a" * 64,
+            prompt_chars=1,
+            timeout_seconds=7,
+        )
+    assert not (attempt_dir / "mcp-config.json").exists()
+
+
+def test_codex_config_failure_fails_closed_before_mint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A resolvable command with an unwired codex transport still refuses
+    before the key exists (the preflight moved ahead of minting)."""
+    cmd = _fake_executable(tmp_path, "codex")
+    monkeypatch.setenv(ARMING_ENVS["codex-cli"], cmd)
+    monkeypatch.setattr(
+        real_head, "_codex_config_path", lambda: tmp_path / "absent-config.toml"
+    )
+    _forbid_mint(monkeypatch)
+    with pytest.raises(RealHeadError, match="config missing"):
+        execute_real_head(
+            head="codex-cli",
+            cmd=cmd,
+            attempt_dir=str(tmp_path / "attempt"),
+            expected_path="expected.json",
+            prompt_text="p",
+            prompt_sha256="a" * 64,
+            prompt_chars=1,
+            timeout_seconds=7,
+        )
+
+
+def test_extra_env_validation_precedes_executable_preflight(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The operator opt-in is validated before the resolver runs: a
+    reserved name refuses even with a command that cannot resolve."""
+    monkeypatch.setenv(real_head.EXTRA_ENV_ENV, "PYTHONPATH")
+    with pytest.raises(RealHeadError, match="reserved"):
+        execute_real_head(
+            head="claude-code",
+            cmd=str(tmp_path / "absent" / "claude"),
+            attempt_dir=str(tmp_path / "attempt"),
+            expected_path="expected.json",
+            prompt_text="p",
+            prompt_sha256="a" * 64,
+            prompt_chars=1,
+            timeout_seconds=7,
+        )
+
+
+def test_missing_launcher_fails_closed_before_mint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Both private-config heads verify the shared launcher before the
+    key is minted (qwen rides the same launcher as claude)."""
+    for head in ("claude-code", "qwen-code"):
+        cmd = _fake_executable(tmp_path, "head")
+        monkeypatch.setenv(ARMING_ENVS[head], cmd)
+        monkeypatch.setattr(
+            real_head,
+            "_mcp_launcher_path",
+            lambda: tmp_path / "absent" / "launch_mcp.py",
+        )
+        _forbid_mint(monkeypatch)
+        with pytest.raises(RealHeadError, match="launcher"):
+            execute_real_head(
+                head=head,
+                cmd=cmd,
+                attempt_dir=str(tmp_path / "attempt"),
+                expected_path="expected.json",
+                prompt_text="p",
+                prompt_sha256="a" * 64,
+                prompt_chars=1,
+                timeout_seconds=7,
+            )
+
+
+def test_missing_interpreter_fails_closed_before_mint(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The interpreter the private config will name is verified while
+    the preflight runs, not after the key is on disk."""
+    cmd = _fake_executable(tmp_path, "claude")
+    monkeypatch.setenv(ARMING_ENVS["claude-code"], cmd)
+    monkeypatch.setattr(sys, "executable", str(tmp_path / "absent-python"))
+    _forbid_mint(monkeypatch)
+    with pytest.raises(RealHeadError, match="interpreter"):
+        execute_real_head(
+            head="claude-code",
+            cmd=cmd,
+            attempt_dir=str(tmp_path / "attempt"),
+            expected_path="expected.json",
+            prompt_text="p",
+            prompt_sha256="a" * 64,
+            prompt_chars=1,
+            timeout_seconds=7,
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX exec-bit semantics")
+def test_launcher_needs_readability_not_the_exec_bit(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The shared launcher runs as the interpreter's argument, never
+    directly: a readable non-executable launcher is a valid transport."""
+    launcher = tmp_path / "launch_mcp.py"
+    launcher.write_text("# readable, never executed directly\n", encoding="utf-8")
+    launcher.chmod(0o644)
+    monkeypatch.setattr(real_head, "_mcp_launcher_path", lambda: launcher)
+    cmd = _fake_executable(tmp_path, "claude")
+    exec_path, transport_fact = real_head.launch_preflight(
+        "claude-code", cmd, {"PATH": str(tmp_path)}, tmp_path
+    )
+    assert exec_path == cmd and transport_fact is None
+
+
+def test_bare_command_without_a_child_path_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """No ambient fallback: a bare command with no PATH in the bounded
+    child environment refuses instead of searching the runner's PATH."""
+    monkeypatch.delenv("PATH", raising=False)
+    _forbid_mint(monkeypatch)
+    with pytest.raises(RealHeadError, match="no PATH"):
+        execute_real_head(
+            head="claude-code",
+            cmd="synthetic-claude",
+            attempt_dir=str(tmp_path / "attempt"),
+            expected_path="expected.json",
+            prompt_text="p",
+            prompt_sha256="a" * 64,
+            prompt_chars=1,
+            timeout_seconds=7,
+        )
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX exec-bit semantics")
+def test_non_executable_shadow_on_the_child_path_is_skipped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    search_a = tmp_path / "a"
+    search_b = tmp_path / "b"
+    search_a.mkdir()
+    search_b.mkdir()
+    (search_a / "claude").write_text("not executable\n", encoding="utf-8")
+    exe = _fake_executable(search_b, "claude")
+    monkeypatch.setenv("PATH", os.pathsep.join([str(search_a), str(search_b)]))
+    seen: dict = {}
+    _stub_run(monkeypatch, seen=seen)
+    _stub_grade(monkeypatch, passed=True)
+    lane = execute_real_head(
+        head="claude-code",
+        cmd="claude",
+        attempt_dir=str(tmp_path / "attempt"),
+        expected_path="expected.json",
+        prompt_text="p",
+        prompt_sha256="a" * 64,
+        prompt_chars=1,
+        timeout_seconds=7,
+    )
+    assert lane["status"] == "passed"
+    assert seen["argv"][0] == exe
+    # The record keeps the operator's armed command, not the rewrite.
+    assert lane["spawn"]["argv"][0] == "claude"
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX exec-bit semantics")
+def test_only_non_executable_candidates_on_the_child_path_refuses(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    search_a = tmp_path / "a"
+    search_a.mkdir()
+    (search_a / "claude").write_text("not executable\n", encoding="utf-8")
+    monkeypatch.setenv("PATH", str(search_a))
+    _forbid_mint(monkeypatch)
+    with pytest.raises(RealHeadError, match="not found"):
+        execute_real_head(
+            head="claude-code",
+            cmd="claude",
+            attempt_dir=str(tmp_path / "attempt"),
+            expected_path="expected.json",
+            prompt_text="p",
+            prompt_sha256="a" * 64,
+            prompt_chars=1,
+            timeout_seconds=7,
+        )
+
+
+def test_directory_entry_on_the_child_path_is_skipped(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    search_a = tmp_path / "a"
+    search_b = tmp_path / "b"
+    search_a.mkdir()
+    search_b.mkdir()
+    (search_a / ("claude.cmd" if os.name == "nt" else "claude")).mkdir()
+    exe = _fake_executable(search_b, "claude")
+    monkeypatch.setenv("PATH", os.pathsep.join([str(search_a), str(search_b)]))
+    if os.name == "nt":
+        monkeypatch.setenv("PATHEXT", ".cmd;.exe")
+    seen: dict = {}
+    _stub_run(monkeypatch, seen=seen)
+    _stub_grade(monkeypatch, passed=True)
+    lane = execute_real_head(
+        head="claude-code",
+        cmd="claude",
+        attempt_dir=str(tmp_path / "attempt"),
+        expected_path="expected.json",
+        prompt_text="p",
+        prompt_sha256="a" * 64,
+        prompt_chars=1,
+        timeout_seconds=7,
+    )
+    assert lane["status"] == "passed"
+    assert seen["argv"][0] == exe
+
+
+def test_empty_path_entry_never_searches_the_attempt_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """An empty PATH entry means the current directory on some platforms;
+    the spawn cwd (the attempt directory) is never implicitly searched."""
+    attempt_dir = tmp_path / "attempt"
+    attempt_dir.mkdir()
+    _fake_executable(attempt_dir, "claude")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.setenv("PATH", os.pathsep.join(["", str(elsewhere)]))
+    if os.name == "nt":
+        monkeypatch.setenv("PATHEXT", ".cmd;.exe")
+    _forbid_mint(monkeypatch)
+    with pytest.raises(RealHeadError, match="not found"):
+        execute_real_head(
+            head="claude-code",
+            cmd="claude",
+            attempt_dir=str(attempt_dir),
+            expected_path="expected.json",
+            prompt_text="p",
+            prompt_sha256="a" * 64,
+            prompt_chars=1,
+            timeout_seconds=7,
+        )
+    assert not (attempt_dir / "mcp-config.json").exists()
+
+
+def test_child_path_names_the_spawned_binary_not_the_ambient_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The argv[0] rewrite: the CHILD env's PATH decides what spawns. An
+    ambient PATH offering a same-named binary must never win — and the
+    bare command must never reach CreateProcess for a parent-PATH search."""
+    child_dir = tmp_path / "child"
+    ambient_dir = tmp_path / "ambient"
+    child_dir.mkdir()
+    ambient_dir.mkdir()
+    child_exe = _fake_executable(child_dir, "claude")
+    ambient_exe = _fake_executable(ambient_dir, "claude")
+    monkeypatch.setenv("PATH", str(ambient_dir))
+    if os.name == "nt":
+        monkeypatch.setenv("PATHEXT", ".cmd;.exe")
+    # The bounded env is pinned by U-SAFE.d elsewhere; here it is the
+    # seam that lets the child PATH name a different directory than the
+    # runner's own ambient PATH above.
+    child_env = real_head.bounded_child_environment("claude-code")
+    child_env["PATH"] = str(child_dir)
+    monkeypatch.setattr(
+        real_head, "bounded_child_environment", lambda head: child_env
+    )
+    seen: dict = {}
+    _stub_run(monkeypatch, seen=seen)
+    _stub_grade(monkeypatch, passed=True)
+    lane = execute_real_head(
+        head="claude-code",
+        cmd="claude",
+        attempt_dir=str(tmp_path / "attempt"),
+        expected_path="expected.json",
+        prompt_text="p",
+        prompt_sha256="a" * 64,
+        prompt_chars=1,
+        timeout_seconds=7,
+    )
+    assert lane["status"] == "passed"
+    assert seen["argv"][0] == child_exe
+    assert seen["argv"][0] != ambient_exe
+
+
+def test_bare_child_path_command_spawns_the_resolved_absolute_path(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    child_dir = tmp_path / "bin"
+    child_dir.mkdir()
+    exe = _fake_executable(child_dir, "claude")
+    monkeypatch.setenv("PATH", str(child_dir))
+    if os.name == "nt":
+        monkeypatch.setenv("PATHEXT", ".cmd;.exe")
+    seen: dict = {}
+    _stub_run(monkeypatch, seen=seen)
+    _stub_grade(monkeypatch, passed=True)
+    lane = execute_real_head(
+        head="claude-code",
+        cmd="claude",
+        attempt_dir=str(tmp_path / "attempt"),
+        expected_path="expected.json",
+        prompt_text="p",
+        prompt_sha256="a" * 64,
+        prompt_chars=1,
+        timeout_seconds=7,
+    )
+    assert lane["status"] == "passed"
+    # The bare armed name spawns as its resolved absolute child-PATH hit.
+    assert seen["argv"][0] == exe
+    assert lane["spawn"]["argv"][0] == "claude"

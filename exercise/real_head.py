@@ -32,6 +32,17 @@ differs per CLI in a load-bearing way:
   driving the CLI's documented one-shot positional prompt under
   ``--yolo`` with the four MCP tools plus ``write_file`` allowlisted.
 
+Launch preflight runs before any of that materializes: the armed
+command is resolved against the BOUNDED CHILD environment only (never
+the runner's ambient PATH/PATHEXT), and the selected head's transport
+is verified (the codex host-config allowlist; the shared launcher and
+the runner interpreter for claude/qwen) BEFORE the trace key is minted
+or any config is written, so a refused launch leaves nothing to clean
+up. The spawn itself carries the resolved absolute path as argv[0]:
+what preflight checked is what executes, and a child PATH that differs
+from the runner's cannot make Windows CreateProcess run a different
+binary than the one that was verified.
+
 The head process gets a BOUNDED child environment, not a copy of the
 runner's ``os.environ``: an explicit base allowlist (PATH, home/config
 and temp/locale names), the head's explicit auth/config names, and —
@@ -63,7 +74,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import ntpath
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -514,6 +527,13 @@ def _codex_config_path() -> Path:
     return Path.home() / ".codex" / "config.toml"
 
 
+def _mcp_launcher_path() -> Path:
+    """The shared stdio launcher named in the private --mcp-config
+    (claude-code and qwen-code ride the same one). Single source of
+    truth for both the preflight check and the config composition."""
+    return _repo_root() / "extension" / "heads" / "claude-code" / "launch_mcp.py"
+
+
 def codex_preflight() -> dict[str, Any]:
     """Fail closed before spawning codex unless the host config will
     forward the three trace vars to the MCP server."""
@@ -561,6 +581,136 @@ def codex_preflight() -> dict[str, Any]:
     }
 
 
+# The child's PATHEXT, when the bounded environment carries one, replaces
+# this list entirely; the fallback is CPython's own documented default
+# extension list for Windows command resolution.
+DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS;.MSC"
+
+
+def _resolve_child_executable(
+    cmd: str, child_env: dict[str, str], attempt_dir: Path
+) -> str:
+    """Resolve the armed command against the CHILD environment only.
+
+    The runner's ambient PATH/PATHEXT is never consulted: a child PATH
+    naming different directories must not change what the parent spawns
+    (Windows CreateProcess may otherwise search the parent PATH even
+    when a child env is supplied). Blank or NUL-bearing commands,
+    directories, NTFS alternate-data-stream paths, drive-relative
+    commands, and bare names
+    without an explicit child PATH all fail closed, and an empty PATH
+    entry never falls back to the spawn directory. Returns the resolved
+    executable path (an absolute command is returned as given).
+    """
+    if not cmd.strip():
+        raise RealHeadError("armed head command is blank; refusing to spawn")
+    if "\0" in cmd:
+        raise RealHeadError("armed head command contains a NUL byte")
+    windows = os.name == "nt"
+    path_module = ntpath if windows else posixpath
+
+    def is_child_absolute(value: str) -> bool:
+        if windows:
+            return path_module.isabs(value) and bool(path_module.splitdrive(value)[0])
+        return path_module.isabs(value)
+
+    def checked_absolute(candidate: str) -> str:
+        # A stream suffix ("head.exe:ads") is not an executable name.
+        if windows and ":" in path_module.splitdrive(candidate)[1]:
+            raise RealHeadError(
+                f"armed head command must not use an alternate data stream: {cmd}"
+            )
+        if os.path.isdir(candidate):
+            raise RealHeadError(f"armed head command is a directory: {cmd}")
+        if not os.path.isfile(candidate):
+            raise RealHeadError(f"armed head command is not an existing file: {cmd}")
+        if not windows and not os.access(candidate, os.X_OK):
+            raise RealHeadError(f"armed head command is not executable: {cmd}")
+        return candidate
+
+    if is_child_absolute(cmd):
+        return checked_absolute(cmd)
+    if windows and path_module.splitdrive(cmd)[0]:
+        raise RealHeadError(
+            f"armed head command is drive-relative and has no absolute form: {cmd}"
+        )
+    if "/" in cmd or "\\" in cmd:
+        # A relative path resolves against the spawn cwd (the attempt
+        # directory), never against the runner's own cwd.
+        return checked_absolute(str(Path(attempt_dir) / cmd))
+    if windows and ":" in cmd:
+        raise RealHeadError(
+            f"armed head command must not use an alternate data stream: {cmd}"
+        )
+    if "PATH" not in child_env:
+        raise RealHeadError(
+            f"armed head command {cmd!r} is a bare name but the bounded child "
+            "environment has no PATH; refusing to search the runner's own"
+        )
+    if windows:
+        if path_module.splitext(cmd)[1]:
+            names = [cmd]
+        else:
+            pathext = child_env.get("PATHEXT") or DEFAULT_PATHEXT
+            names = [cmd + ext for ext in pathext.split(os.pathsep)]
+    else:
+        names = [cmd]
+    for raw_directory in child_env["PATH"].split(os.pathsep):
+        if not raw_directory:
+            # An empty PATH entry means the current directory on some
+            # platforms; the attempt directory is never implicitly searched.
+            continue
+        if path_module.isabs(raw_directory):
+            directory = raw_directory
+        else:
+            # A relative PATH entry belongs to the CHILD's world (its
+            # cwd is the attempt directory), never the runner's own.
+            directory = str(Path(attempt_dir) / raw_directory)
+        for name in names:
+            candidate = os.path.join(directory, name)
+            if windows and ":" in path_module.splitdrive(candidate)[1]:
+                continue
+            if not os.path.isfile(candidate):
+                continue
+            if not windows and not os.access(candidate, os.X_OK):
+                continue
+            return candidate
+    raise RealHeadError(
+        f"armed head command {cmd!r} not found in the bounded child PATH"
+    )
+
+
+def _require_readable_file(path: Path, description: str) -> None:
+    """The launcher runs as the interpreter's argument, never directly,
+    so existence and readability are the whole transport contract."""
+    if not path.is_file():
+        raise RealHeadError(f"{description} is missing: {path}")
+    if not os.access(path, os.R_OK):
+        raise RealHeadError(f"{description} is not readable: {path}")
+
+
+def launch_preflight(
+    head: str, cmd: str, child_env: dict[str, str], attempt_dir: Path
+) -> tuple[str, dict[str, Any] | None]:
+    """Fail closed before key minting, config writing, or spawn: the
+    armed command must resolve against the bounded child environment,
+    and the selected head's transport must be wired on this host.
+
+    Returns (resolved_executable, transport_fact). codex-cli keeps its
+    host-config allowlist verification as the transport fact; the
+    claude/qwen private-config transport verifies the shared launcher
+    and the interpreter that will run it (their fact is the config
+    written later, so there is nothing to return yet).
+    """
+    exec_path = _resolve_child_executable(cmd, child_env, attempt_dir)
+    if head == "codex-cli":
+        return exec_path, codex_preflight()
+    if head in ("claude-code", "qwen-code"):
+        _require_readable_file(_mcp_launcher_path(), "shared MCP launcher")
+        _require_readable_file(Path(sys.executable), "runner interpreter")
+    return exec_path, None
+
+
 def _write_claude_mcp_config(
     attempt_dir: Path, key: str, attempt_id: str
 ) -> tuple[Path, str]:
@@ -572,15 +722,7 @@ def _write_claude_mcp_config(
         "mcpServers": {
             MCP_SERVER_NAME: {
                 "command": sys.executable,
-                "args": [
-                    str(
-                        _repo_root()
-                        / "extension"
-                        / "heads"
-                        / "claude-code"
-                        / "launch_mcp.py"
-                    )
-                ],
+                "args": [str(_mcp_launcher_path())],
                 "env": {
                     "SPECAUDIT_CTF_MCP_TRACE": str(directory / "trace.ndjson"),
                     "SPECAUDIT_CTF_MCP_TRACE_KEY": key,
@@ -685,7 +827,13 @@ def _elide_argv(argv: list[str], prompt_sha256: str) -> list[str]:
 
 
 def _compose(
-    head: str, cmd: str, prompt_text: str, attempt_dir: Path, key: str, attempt_id: str
+    head: str,
+    cmd: str,
+    prompt_text: str,
+    attempt_dir: Path,
+    key: str,
+    attempt_id: str,
+    transport_fact: dict[str, Any] | None,
 ) -> tuple[list[str], dict[str, str] | None, dict[str, Any], Path | None]:
     """Per-CLI wiring. Returns (composed_argv, child_env_extra, mcp_fact, temp_path).
 
@@ -693,7 +841,8 @@ def _compose(
     caller materializes the real prompt for the spawn and elides it
     with the prompt hash for the record. ``child_env_extra`` is merged
     ONTO the caller's bounded allowlist environment (it is never a
-    parent-environment copy).
+    parent-environment copy). ``transport_fact`` is the fact
+    ``launch_preflight`` verified before the key was minted.
     """
     if head == "claude-code":
         config_path, config_sha256 = _write_claude_mcp_config(
@@ -714,7 +863,12 @@ def _compose(
         argv[-1] = PROMPT_TRAILER_MARKER
         return argv, None, {"kind": "temp-mcp-config", "sha256": config_sha256}, config_path
     if head == "codex-cli":
-        mcp_fact = codex_preflight()
+        # Verified by launch_preflight before the key was minted; calling
+        # codex_preflight again here would re-read host state after the
+        # key exists, buying a TOCTOU window instead of safety.
+        if transport_fact is None:  # pragma: no cover - preflight guarantees
+            raise RealHeadError("codex transport fact missing at composition")
+        mcp_fact = transport_fact
         argv = _codex_argv(cmd, prompt_text, attempt_dir)
         argv[-1] = PROMPT_TRAILER_MARKER
         # Export the MINTED trace facts: codex forwards these named vars
@@ -759,18 +913,26 @@ def execute_real_head(
         directory.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise RealHeadError(f"cannot create the attempt directory {directory}: {exc}") from None
-    key = mint_key()
-    attempt_id = os.urandom(32).hex()
     # Validate the operator opt-in and build the allowlisted child env
-    # BEFORE writing the private mcp-config: a bad extra name must not
-    # leave key material behind.
+    # BEFORE minting or preflighting: a bad extra name must not leave
+    # key material behind, and the preflight needs the CHILD env to
+    # resolve the armed command against.
     child_env = bounded_child_environment(head)
     child_secret_values = _child_secret_values(child_env)
+    # The launch preflight is fail-closed BEFORE key minting, private
+    # config writing, or spawn: a refused launch leaves nothing to clean up.
+    exec_path, transport_fact = launch_preflight(head, cmd, child_env, directory)
+    key = mint_key()
+    attempt_id = os.urandom(32).hex()
     composed_argv, child_env_extra, mcp_fact, temp_path = _compose(
-        head, cmd, prompt_text, directory, key, attempt_id
+        head, cmd, prompt_text, directory, key, attempt_id, transport_fact
     )
     # The child gets the real prompt; the record gets the hash marker.
     spawn_argv = argv_and_prompt(composed_argv, prompt_text)
+    # Spawn the RESOLVED executable: what preflight checked is what runs
+    # (Windows CreateProcess may otherwise search the parent PATH even
+    # with a child env supplied). The record keeps the armed cmd.
+    spawn_argv[0] = exec_path
     recorded_argv = _elide_argv(composed_argv, prompt_sha256)
 
     # Whatever the transport (config file for claude/qwen, exported vars
