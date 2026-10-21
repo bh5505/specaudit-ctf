@@ -1,4 +1,4 @@
-"""Curated sniper arm: dispatch-only composite scan, scope-gated."""
+"""Curated sniper arm: operator-invoked composite scan."""
 
 from __future__ import annotations
 
@@ -13,39 +13,28 @@ from ...contract import (
     Result,
 )
 from ..bounded_capture import run_bounded
-from ..dispatch import authorize, load_scope, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
     CAVEATS,
-    DISPATCH_ACTIONS,
-    ENV_DISPATCH_SCOPE,
     LIST_ACTIONS,
     MAX_OUTPUT_CHARS,
     TIMEOUT_SECONDS,
     argv_for,
-    canonical_target,
     extra_scan_keys,
     mode_refusal,
+    options_refusal,
     resolve_binary,
     target_refusal,
 )
 
 
-def _with_caveat(message: str | None) -> str:
-    text = message or "refused"
-    if CAVEATS and CAVEATS not in text:
-        return f"{text} Caveat: {CAVEATS}"
-    return text
-
-
 class SniperArm:
     """Specialized transport for catalog id sniper.
 
-    Upstream always scans. Dispatch is refused by default and authorized
-    only by an armed SNIPER_DISPATCH_SCOPE containing the target host.
-    Scoping the named target does not bound composite sub-tools.
+    Upstream always scans; the selected mode and target are passed through
+    the fixed command line.
     """
 
     ARM_ID = ARM_ID
@@ -68,14 +57,13 @@ class SniperArm:
         payload = dict(args)
         if action in LIST_ACTIONS:
             return self._list_tools(spec, action, payload)
-        if action not in DISPATCH_ACTIONS:
+        if action not in ALLOWED_ACTIONS:
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error=f"action {action!r} is not on the allowlist "
-                "(list_tools is the read surface; 'scan' is scope-gated dispatch)",
+                error=f"unknown action {action!r}; use scan or list_tools",
             )
         extra = extra_scan_keys(payload)
         if extra:
@@ -84,9 +72,9 @@ class SniperArm:
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error="sniper scan takes only args.target and args.mode (fixed argv)",
+                error="sniper scan takes args.target, args.mode, and optional args.options",
             )
-        for refusal in (target_refusal(payload), mode_refusal(payload)):
+        for refusal in (target_refusal(payload), mode_refusal(payload), options_refusal(payload)):
             if refusal:
                 return Result(
                     ok=False,
@@ -97,20 +85,9 @@ class SniperArm:
                 )
         raw_target = str(payload["target"]).strip()
         mode = str(payload["mode"]).strip()
-        target = canonical_target(raw_target)
-        scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, target)
-        if scope is None:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=_with_caveat(refusal),
-            )
-        log_dispatch(ARM_ID, action, scope, target)
         try:
             proc, overflowed = run_bounded(
-                argv_for(binary, raw_target, mode),
+                argv_for(binary, raw_target, mode, payload.get("options")),
                 maximum=MAX_OUTPUT_CHARS,
                 timeout=self.timeout,
             )
@@ -134,21 +111,20 @@ class SniperArm:
             return Result(ok=False, arm_id=spec.id, action=action, output=None,
                           error="subprocess output exceeded capture cap")
         output: Any = _parse_output(proc.stdout)
-        stamped = {"dispatch": stamp(scope, target), "output": output}
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or f"{action} failed").strip()
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
-                output=stamped,
+                output=output,
                 error=redact(detail[:MAX_OUTPUT_CHARS]),
             )
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
-            output=stamped,
+            output=output,
             error=None,
         )
 
@@ -161,15 +137,12 @@ class SniperArm:
                 output=None,
                 error="list_tools takes no arguments (fixed argv)",
             )
-        scope, _ = load_scope(ENV_DISPATCH_SCOPE)
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
             output={
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": sorted(DISPATCH_ACTIONS),
-                "dispatch_armed": scope is not None,
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "caveats": CAVEATS,
             },
             error=None,

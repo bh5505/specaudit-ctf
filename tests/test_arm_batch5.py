@@ -17,18 +17,12 @@ from extension.arms.darkmoon.policy import (
 from extension.arms.darkmoon.policy import (
     ENV_BIN as DARK_MOON_BIN,
 )
-from extension.arms.darkmoon.policy import (
-    ENV_DISPATCH_SCOPE as DARK_MOON_SCOPE,
-)
 from extension.arms.darkmoon.policy import argv_for as darkmoon_argv_for
-from extension.arms.darkmoon.policy import canonical_host as darkmoon_canonical_host
 from extension.arms.pyrit import ARM_ID as PYRIT_ID
 from extension.arms.pyrit import PyritArm
 from extension.arms.pyrit.policy import CAVEATS as PYRIT_CAVEATS
 from extension.arms.pyrit.policy import ENV_BIN as PYRIT_BIN
-from extension.arms.pyrit.policy import ENV_DISPATCH_SCOPE as PYRIT_SCOPE
 from extension.arms.pyrit.policy import argv_for as pyrit_argv_for
-from extension.arms.pyrit.policy import canonical_host as pyrit_canonical_host
 from extension.contract import ArmSpec, NotInstalledError
 
 
@@ -36,9 +30,7 @@ def _spec(arm_id: str) -> ArmSpec:
     return ArmSpec(
         id=arm_id,
         protocols=("cli",),
-        curated=True,
         notes="Fixture arm.",
-        tier="research",
     )
 
 
@@ -90,32 +82,27 @@ def test_pyrit_not_installed(monkeypatch: pytest.MonkeyPatch) -> None:
 # --- dark-moon ----------------------------------------------------------
 
 
-def test_darkmoon_list_tools_static_and_unarmed(
+def test_darkmoon_list_tools_static(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.delenv(DARK_MOON_SCOPE, raising=False)
     result = DarkMoonArm().invoke(_spec(DARK_MOON_ID), "list_tools", {})
     assert result.ok is True
-    assert result.output["dispatch_armed"] is False
     assert result.output["caveats"] == DARK_MOON_CAVEATS
     assert "composite egress" in result.output["caveats"]
     assert "MCP" in result.output["caveats"]
-    assert "log" in result.output["read_actions"]
-    assert "list_tools" in result.output["read_actions"]
-    assert result.output["dispatch_actions"] == ["campaign", "run"]
+    assert "log" in result.output["actions"]
+    assert "list_tools" in result.output["actions"]
 
 
-def test_darkmoon_list_tools_blanket_scope_is_unarmed(
+def test_darkmoon_list_tools_reports_caveats(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.setenv(DARK_MOON_SCOPE, "*")
     result = DarkMoonArm().invoke(_spec(DARK_MOON_ID), "list_tools", {})
     assert result.ok is True
-    assert result.output["dispatch_armed"] is False
     assert result.output["caveats"] == DARK_MOON_CAVEATS
 
 
@@ -138,7 +125,7 @@ def test_darkmoon_tools_call_refused(
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
     result = DarkMoonArm().invoke(_spec(DARK_MOON_ID), "tools/call", {})
     assert result.ok is False
-    assert "not on the allowlist" in result.error
+    assert "not supported" in result.error
 
 
 def test_darkmoon_log_without_session_id_refused(
@@ -175,24 +162,20 @@ def test_darkmoon_campaign_argv_is_one_token() -> None:
     assert len(cmd) == 2
 
 
-def test_darkmoon_unarmed_refusal_names_env_and_caveat(
+def test_darkmoon_campaign_uses_operator_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.delenv(DARK_MOON_SCOPE, raising=False)
     result = DarkMoonArm().invoke(
         _spec(DARK_MOON_ID), "campaign", {"target": "10.10.0.1"}
     )
-    assert result.ok is False
-    assert DARK_MOON_SCOPE in result.error
-    assert "Caveat:" in result.error
-    assert DARK_MOON_CAVEATS in result.error
-    assert "[redacted]" not in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["TARGET: 10.10.0.1"]
 
 
 @pytest.mark.parametrize("action", ["campaign", "run"])
-def test_darkmoon_armed_in_scope_runs_and_logs(
+def test_darkmoon_campaign_and_run_argv(
     action: str,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -200,104 +183,80 @@ def test_darkmoon_armed_in_scope_runs_and_logs(
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.setenv(DARK_MOON_SCOPE, "10.10.0.0/16")
     result = DarkMoonArm().invoke(
         _spec(DARK_MOON_ID), action, {"target": "10.10.0.1"}
     )
     assert result.ok is True
-    argv = result.output["output"]["argv"]
+    argv = result.output["argv"]
     assert argv == ["TARGET: 10.10.0.1"]
-    assert result.output["dispatch"]["scope"] == "10.10.0.0/16"
-    assert result.output["dispatch"]["target"] == "10.10.0.1"
-    err = capsys.readouterr().err
-    assert "[dispatch]" in err
-    assert "arm=dark-moon" in err
-    assert f"action={action}" in err
-    assert "target=10.10.0.1" in err
 
 
-def test_darkmoon_url_target_one_token_and_host_authorize(
+def test_darkmoon_url_target_one_token(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.setenv(DARK_MOON_SCOPE, "10.10.0.0/16")
     result = DarkMoonArm().invoke(
         _spec(DARK_MOON_ID),
         "campaign",
         {"target": "http://10.10.0.1:3000"},
     )
     assert result.ok is True
-    assert result.output["output"]["argv"] == ["TARGET: http://10.10.0.1:3000"]
-    assert result.output["dispatch"]["target"] == "10.10.0.1"
-    err = capsys.readouterr().err
-    assert "arm=dark-moon" in err
-    assert "target=10.10.0.1" in err
+    assert result.output["argv"] == ["TARGET: http://10.10.0.1:3000"]
 
 
-def test_darkmoon_url_userinfo_refused(
+def test_darkmoon_url_userinfo_passes_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.setenv(DARK_MOON_SCOPE, "10.10.0.0/16")
     result = DarkMoonArm().invoke(
         _spec(DARK_MOON_ID),
         "campaign",
         {"target": "http://user:secret@10.10.0.1/"},
     )
-    assert result.ok is False
-    assert "userinfo" in result.error
-    assert "secret" not in result.error
-    assert "[redacted]" not in result.error
+    assert result.ok is True
+    assert darkmoon_argv_for(str(binary), "campaign", {"target": "http://user:secret@10.10.0.1/"})[-1] == "TARGET: http://user:secret@10.10.0.1/"
+    assert result.output["argv"] == ["TARGET: http://[redacted]@10.10.0.1/"]
 
 
-def test_darkmoon_out_of_scope_refused(
+def test_darkmoon_run_accepts_operator_selected_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.setenv(DARK_MOON_SCOPE, "10.10.0.0/16")
     result = DarkMoonArm().invoke(
         _spec(DARK_MOON_ID), "run", {"target": "8.8.8.8"}
     )
-    assert result.ok is False
-    assert "outside the armed dispatch scope" in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["TARGET: 8.8.8.8"]
 
 
-def test_darkmoon_flag_shaped_target_refused(
+def test_darkmoon_flag_shaped_target_passes_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.setenv(DARK_MOON_SCOPE, "10.10.0.0/16")
     result = DarkMoonArm().invoke(
         _spec(DARK_MOON_ID), "campaign", {"target": "--help"}
     )
-    assert result.ok is False
-    assert "flag-shaped" in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["TARGET: --help"]
 
 
-def test_darkmoon_unbracketed_ipv6_refused(
+def test_darkmoon_unbracketed_ipv6_passes_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.setenv(DARK_MOON_SCOPE, "2001:db8::1")
     result = DarkMoonArm().invoke(
         _spec(DARK_MOON_ID), "campaign", {"target": "2001:db8::1"}
     )
-    assert result.ok is False
-    assert "IPv6" in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["TARGET: 2001:db8::1"]
 
-
-def test_darkmoon_canonical_host_rebrackets_ipv6() -> None:
-    assert darkmoon_canonical_host("[2001:db8::1]") == "[2001:db8::1]"
-    assert darkmoon_canonical_host("http://[2001:db8::1]/") == "[2001:db8::1]"
-    assert darkmoon_canonical_host("10.10.0.1") == "10.10.0.1"
-    assert darkmoon_canonical_host("lab.internal") == "lab.internal"
 
 
 @pytest.mark.parametrize(
@@ -307,7 +266,7 @@ def test_darkmoon_canonical_host_rebrackets_ipv6() -> None:
         ("http://[2001:db8::1]/", "TARGET: http://[2001:db8::1]/"),
     ],
 )
-def test_darkmoon_bracketed_ipv6_armed_in_scope(
+def test_darkmoon_bracketed_ipv6_runs(
     target: str,
     argv_token: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -316,31 +275,57 @@ def test_darkmoon_bracketed_ipv6_armed_in_scope(
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.setenv(DARK_MOON_SCOPE, "2001:db8::1")
     result = DarkMoonArm().invoke(
         _spec(DARK_MOON_ID), "campaign", {"target": target}
     )
     assert result.ok is True
-    assert result.output["output"]["argv"] == [argv_token]
-    assert result.output["dispatch"]["target"] == "[2001:db8::1]"
-    err = capsys.readouterr().err
-    assert "arm=dark-moon" in err
-    assert "target=[2001:db8::1]" in err
+    assert result.output["argv"] == [argv_token]
 
 
 @pytest.mark.parametrize("target", ["[]", "http://[]", "[gggg::1]", "[2001:db8::1"])
-def test_darkmoon_malformed_ipv6_is_result_not_traceback(
+def test_darkmoon_unrestricted_targets_pass_through(
     target: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.setenv(DARK_MOON_SCOPE, "2001:db8::1")
+    result = DarkMoonArm().invoke(
+        _spec(DARK_MOON_ID), "campaign", {"target": target}
+    )
+    assert result.ok is True
+    assert result.output["argv"] == [f"TARGET: {target}"]
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["", "   ", "a\x00b", "a\rb", "a\nb", "a\r\nb"],
+)
+def test_darkmoon_malformed_target_controls_refused(
+    target: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
+    monkeypatch.setenv(DARK_MOON_BIN, str(binary))
     result = DarkMoonArm().invoke(
         _spec(DARK_MOON_ID), "campaign", {"target": target}
     )
     assert result.ok is False
     assert result.error is not None
-    assert "hostname" in result.error or "http(s)" in result.error
+    assert (
+        "requires a target" in result.error
+        or "control characters" in result.error
+    )
+
+
+@pytest.mark.parametrize("target", [None, 123, ["x"], {"t": "x"}])
+def test_darkmoon_nonstring_target_refused(
+    target: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
+    monkeypatch.setenv(DARK_MOON_BIN, str(binary))
+    result = DarkMoonArm().invoke(
+        _spec(DARK_MOON_ID), "campaign", {"target": target}
+    )
+    assert result.ok is False
+    assert "requires a target" in result.error
 
 
 def test_darkmoon_extra_args_refused(
@@ -348,7 +333,6 @@ def test_darkmoon_extra_args_refused(
 ) -> None:
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV)
     monkeypatch.setenv(DARK_MOON_BIN, str(binary))
-    monkeypatch.setenv(DARK_MOON_SCOPE, "10.10.0.0/16")
     result = DarkMoonArm().invoke(
         _spec(DARK_MOON_ID),
         "campaign",
@@ -374,34 +358,29 @@ def test_darkmoon_timeout(
 # --- pyrit --------------------------------------------------------------
 
 
-def test_pyrit_list_tools_static_and_unarmed(
+def test_pyrit_list_tools_static(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.delenv(PYRIT_SCOPE, raising=False)
     result = PyritArm().invoke(_spec(PYRIT_ID), "list_tools", {})
     assert result.ok is True
-    assert result.output["dispatch_armed"] is False
     assert result.output["caveats"] == PYRIT_CAVEATS
     assert "pyrit_scan" in result.output["caveats"]
-    assert "list_scenarios" in result.output["read_actions"]
-    assert result.output["dispatch_actions"] == ["scan"]
+    assert "list_scenarios" in result.output["actions"]
 
 
-def test_pyrit_list_tools_blanket_scope_is_unarmed(
+def test_pyrit_list_tools_reports_caveats(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "*")
     result = PyritArm().invoke(_spec(PYRIT_ID), "tools/list", {})
     assert result.ok is True
-    assert result.output["dispatch_armed"] is False
     assert result.output["caveats"] == PYRIT_CAVEATS
 
 
-def test_pyrit_list_scenarios_argv_frozen_no_dispatch_log(
+def test_pyrit_list_scenarios_argv_frozen(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -411,8 +390,6 @@ def test_pyrit_list_scenarios_argv_frozen_no_dispatch_log(
     result = PyritArm().invoke(_spec(PYRIT_ID), "list_scenarios", {})
     assert result.ok is True
     assert result.output["argv"] == ["--list-scenarios"]
-    err = capsys.readouterr().err
-    assert "[dispatch]" not in err
     assert pyrit_argv_for(str(binary), "list_scenarios", {}) == [
         str(binary),
         "--list-scenarios",
@@ -431,59 +408,47 @@ def test_pyrit_list_scenarios_extra_args_refused(
     assert "fixed argv" in result.error
 
 
-def test_pyrit_unarmed_refusal_names_env_and_caveat(
+def test_pyrit_scan_uses_operator_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.delenv(PYRIT_SCOPE, raising=False)
-    result = PyritArm().invoke(
-        _spec(PYRIT_ID),
-        "scan",
-        {"scenario": "airt.cyber", "target": "10.10.0.1"},
-    )
-    assert result.ok is False
-    assert PYRIT_SCOPE in result.error
-    assert "Caveat:" in result.error
-    assert PYRIT_CAVEATS in result.error
-    assert "[redacted]" not in result.error
-
-
-def test_pyrit_armed_in_scope_runs_and_logs(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
-    monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "10.10.0.0/16")
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",
         {"scenario": "airt.cyber", "target": "10.10.0.1"},
     )
     assert result.ok is True
-    assert result.output["output"]["argv"] == [
-        "airt.cyber",
-        "--target",
-        "10.10.0.1",
-    ]
-    assert result.output["dispatch"]["scope"] == "10.10.0.0/16"
-    assert result.output["dispatch"]["target"] == "10.10.0.1"
-    err = capsys.readouterr().err
-    assert "[dispatch]" in err
-    assert "arm=pyrit" in err
-    assert "target=10.10.0.1" in err
+    assert result.output["argv"] == ["airt.cyber", "--target", "10.10.0.1"]
 
 
-def test_pyrit_url_target_passed_through_host_authorized(
+def test_pyrit_scan_argv(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "lab.internal")
+    result = PyritArm().invoke(
+        _spec(PYRIT_ID),
+        "scan",
+        {"scenario": "airt.cyber", "target": "10.10.0.1"},
+    )
+    assert result.ok is True
+    assert result.output["argv"] == [
+        "airt.cyber",
+        "--target",
+        "10.10.0.1",
+    ]
+
+
+def test_pyrit_url_target_passed_through(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
+    monkeypatch.setenv(PYRIT_BIN, str(binary))
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",
@@ -493,22 +458,18 @@ def test_pyrit_url_target_passed_through_host_authorized(
         },
     )
     assert result.ok is True
-    assert result.output["output"]["argv"] == [
+    assert result.output["argv"] == [
         "foundry.red_team_agent",
         "--target",
         "https://lab.internal/app",
     ]
-    assert result.output["dispatch"]["target"] == "lab.internal"
-    err = capsys.readouterr().err
-    assert "target=lab.internal" in err
 
 
-def test_pyrit_url_userinfo_refused(
+def test_pyrit_url_userinfo_passes_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "10.10.0.0/16")
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",
@@ -517,40 +478,41 @@ def test_pyrit_url_userinfo_refused(
             "target": "http://user:secret@10.10.0.1/",
         },
     )
-    assert result.ok is False
-    assert "userinfo" in result.error
-    assert "secret" not in result.error
-    assert "[redacted]" not in result.error
+    assert result.ok is True
+    assert pyrit_argv_for(str(binary), "scan", {"scenario": "foundry.red_team_agent", "target": "http://user:secret@10.10.0.1/"})[-1] == "http://user:secret@10.10.0.1/"
+    assert result.output["argv"] == [
+        "foundry.red_team_agent",
+        "--target",
+        "http://[redacted]@10.10.0.1/",
+    ]
 
 
-def test_pyrit_out_of_scope_refused(
+def test_pyrit_scan_accepts_operator_selected_target(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "10.10.0.0/16")
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",
         {"scenario": "airt.cyber", "target": "8.8.8.8"},
     )
-    assert result.ok is False
-    assert "outside the armed dispatch scope" in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["airt.cyber", "--target", "8.8.8.8"]
 
 
-def test_pyrit_flag_shaped_target_refused(
+def test_pyrit_flag_shaped_target_passes_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "10.10.0.0/16")
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",
         {"scenario": "airt.cyber", "target": "--target"},
     )
-    assert result.ok is False
-    assert "flag-shaped" in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["airt.cyber", "--target", "--target"]
 
 
 def test_pyrit_scenario_flag_shaped_refused(
@@ -558,7 +520,6 @@ def test_pyrit_scenario_flag_shaped_refused(
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "10.10.0.0/16")
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",
@@ -568,56 +529,51 @@ def test_pyrit_scenario_flag_shaped_refused(
     assert "flag-shaped" in result.error
 
 
-def test_pyrit_scenario_regex_refused(
+def test_pyrit_scenario_without_fixed_pattern_passes_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "10.10.0.0/16")
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",
         {"scenario": "airt/cyber", "target": "10.10.0.1"},
     )
-    assert result.ok is False
-    assert "scenario" in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["airt/cyber", "--target", "10.10.0.1"]
 
 
-def test_pyrit_non_http_scheme_refused(
+def test_pyrit_non_http_scheme_passes_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "10.10.0.0/16")
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",
         {"scenario": "airt.cyber", "target": "file:///etc/passwd"},
     )
-    assert result.ok is False
-    assert "http(s)" in result.error
+    assert result.ok is True
+    assert result.output["argv"] == [
+        "airt.cyber",
+        "--target",
+        "file:///etc/passwd",
+    ]
 
 
-def test_pyrit_unbracketed_ipv6_refused(
+def test_pyrit_unbracketed_ipv6_passes_through(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "2001:db8::1")
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",
         {"scenario": "airt.cyber", "target": "2001:db8::1"},
     )
-    assert result.ok is False
-    assert "IPv6" in result.error
+    assert result.ok is True
+    assert result.output["argv"] == ["airt.cyber", "--target", "2001:db8::1"]
 
-
-def test_pyrit_canonical_host_rebrackets_ipv6() -> None:
-    assert pyrit_canonical_host("[2001:db8::1]") == "[2001:db8::1]"
-    assert pyrit_canonical_host("http://[2001:db8::1]/") == "[2001:db8::1]"
-    assert pyrit_canonical_host("10.10.0.1") == "10.10.0.1"
-    assert pyrit_canonical_host("lab.internal") == "lab.internal"
 
 
 @pytest.mark.parametrize(
@@ -627,7 +583,7 @@ def test_pyrit_canonical_host_rebrackets_ipv6() -> None:
         ("http://[2001:db8::1]/", "http://[2001:db8::1]/"),
     ],
 )
-def test_pyrit_bracketed_ipv6_armed_in_scope(
+def test_pyrit_bracketed_ipv6_runs(
     target: str,
     passed: str,
     monkeypatch: pytest.MonkeyPatch,
@@ -636,31 +592,43 @@ def test_pyrit_bracketed_ipv6_armed_in_scope(
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "2001:db8::1")
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",
         {"scenario": "airt.cyber", "target": target},
     )
     assert result.ok is True
-    assert result.output["output"]["argv"] == [
+    assert result.output["argv"] == [
         "airt.cyber",
         "--target",
         passed,
     ]
-    assert result.output["dispatch"]["target"] == "[2001:db8::1]"
-    err = capsys.readouterr().err
-    assert "arm=pyrit" in err
-    assert "target=[2001:db8::1]" in err
 
 
 @pytest.mark.parametrize("target", ["[]", "http://[]", "[gggg::1]", "[2001:db8::1"])
-def test_pyrit_malformed_ipv6_is_result_not_traceback(
+def test_pyrit_unrestricted_targets_pass_through(
     target: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "2001:db8::1")
+    result = PyritArm().invoke(
+        _spec(PYRIT_ID),
+        "scan",
+        {"scenario": "airt.cyber", "target": target},
+    )
+    assert result.ok is True
+    assert result.output["argv"] == ["airt.cyber", "--target", target]
+
+
+@pytest.mark.parametrize(
+    "target",
+    ["", "   ", "a\x00b", "a\rb", "a\nb", "a\r\nb"],
+)
+def test_pyrit_malformed_target_controls_refused(
+    target: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
+    monkeypatch.setenv(PYRIT_BIN, str(binary))
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",
@@ -668,7 +636,32 @@ def test_pyrit_malformed_ipv6_is_result_not_traceback(
     )
     assert result.ok is False
     assert result.error is not None
-    assert "hostname" in result.error or "http(s)" in result.error
+    assert (
+        "requires a target" in result.error
+        or "control characters" in result.error
+    )
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    ["", "   ", "a\x00b", "a\rb", "a\nb"],
+)
+def test_pyrit_malformed_scenario_controls_refused(
+    scenario: str, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
+    monkeypatch.setenv(PYRIT_BIN, str(binary))
+    result = PyritArm().invoke(
+        _spec(PYRIT_ID),
+        "scan",
+        {"scenario": scenario, "target": "10.10.0.1"},
+    )
+    assert result.ok is False
+    assert result.error is not None
+    assert (
+        "requires a scenario" in result.error
+        or "control characters" in result.error
+    )
 
 
 def test_pyrit_extra_args_refused(
@@ -676,7 +669,6 @@ def test_pyrit_extra_args_refused(
 ) -> None:
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV)
     monkeypatch.setenv(PYRIT_BIN, str(binary))
-    monkeypatch.setenv(PYRIT_SCOPE, "10.10.0.0/16")
     result = PyritArm().invoke(
         _spec(PYRIT_ID),
         "scan",

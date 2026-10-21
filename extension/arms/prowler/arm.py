@@ -23,7 +23,6 @@ from .policy import (
     ARM_ID,
     ENV_ENDPOINT,
     LIST_ACTIONS,
-    TRANSPORT_POLICY,
     refuse_reason,
 )
 
@@ -31,7 +30,7 @@ SessionFactory = Callable[..., Any]
 
 
 def _default_session_factory(url: str, timeout: float = MCP_CALL_TIMEOUT) -> Any:
-    return StreamableHttpClient(url, timeout=timeout, policy=TRANSPORT_POLICY)
+    return StreamableHttpClient(url, timeout=timeout)
 
 
 class ProwlerArm:
@@ -40,9 +39,7 @@ class ProwlerArm:
     Streamable-HTTP dialect (the first-party OSS server's ``--transport
     http`` serves streamable HTTP at /mcp — verified from fastmcp 3.4.5
     source 2026-09-06; the legacy SSE dialect has no first-party
-    server). Endpoint policy is the explicit union: operator-fronted
-    https for self-hosted remote, or literal-loopback http for the
-    first-party local default. The client sends no credential; the
+    server). The operator configures the endpoint. The client sends no credential; the
     server holds everything (hub/docs need no auth at all). Every
     output path runs through the shared redaction before it leaves the
     arm.
@@ -67,7 +64,7 @@ class ProwlerArm:
             raw = self._endpoint_arg
         else:
             raw = os.environ.get(ENV_ENDPOINT)
-        return configured_http_url(raw, TRANSPORT_POLICY)
+        return configured_http_url(raw)
 
     def installed(self, spec: ArmSpec) -> bool:
         return spec.id == ARM_ID and self.endpoint_url() is not None

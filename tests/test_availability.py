@@ -9,7 +9,7 @@ from pathlib import Path
 
 import pytest
 
-from extension.availability import armed_scopes, build_report, host_profile
+from extension.availability import build_report, host_profile
 from extension.contract import Extension
 from extension.__main__ import main as cli_main
 
@@ -42,40 +42,22 @@ def test_non_kali_linux_and_fallback_profiles(tmp_path: Path) -> None:
     assert "os_id" not in profile
 
 
-def test_armed_scopes_lists_only_set_scope_envs() -> None:
-    env = {
-        "NMAP_DISPATCH_SCOPE": "10.10.0.0/16",
-        "ZAP_DISPATCH_SCOPE": "   ",
-        "NMAP_BIN": "x",
-    }
-    assert armed_scopes(env) == ["NMAP_DISPATCH_SCOPE"]
-    assert armed_scopes({}) == []
-
-
 def test_build_report_shape_and_install_probe(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     fake = tmp_path / "nmap-tool"
     fake.write_text("x", encoding="utf-8")
     monkeypatch.setenv("NMAP_BIN", str(fake))
-    monkeypatch.delenv("NMAP_DISPATCH_SCOPE", raising=False)
     release = tmp_path / "os-release"
     release.write_text("ID=kali\n", encoding="utf-8")
     report = build_report(
         Extension(), environ=dict(os.environ), os_release_paths=(str(release),)
     )
     assert report["host"]["is_kali"] is True
-    assert report["armed_scopes"] == []
     by_id = {row["id"]: row for row in report["arms"]}
     assert len(by_id) == 49  # asset-recon, the ivanti VM extractor, and the research-candidate readers
-    assert by_id["nmap"] == {
-        "id": "nmap",
-        "tier": "research",
-        "held": False,
-        "installed": True,
-    }
-    assert by_id["burp-mcp"]["held"] is False
-    assert by_id["agent-wiz"]["tier"] == "maintained"
+    assert by_id["nmap"] == {"id": "nmap", "installed": True}
+    assert "burp-mcp" in by_id and "agent-wiz" in by_id
 
 
 def test_availability_is_read_only(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -105,5 +87,5 @@ def test_cli_availability_subcommand(
     code = cli_main(["availability"])
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
-    assert set(payload) == {"host", "armed_scopes", "arms"}
+    assert set(payload) == {"host", "arms"}
     assert any(row["id"] == "nmap" for row in payload["arms"])

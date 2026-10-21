@@ -57,9 +57,9 @@ def _graph(data: dict, finding: dict) -> dict:
     verdicts = sorted({path["verdict"] for path in review["paths"]})
     return {"source_class": "caller-supplied-graph", "input_sha256": review["input_sha256"],
             "path_verdicts": verdicts, "paths": review["paths"],
-            "next_validation": ["independently verify effective cloud permission and receipt custody"
+            "next_validation": ["check effective cloud permission against the selected environment"
                                 if "configured_candidate" in verdicts else
-                                "resolve blocked or unknown graph prerequisites and receipt custody"],
+                                "check blocked or unknown graph prerequisites"],
             "limitations": review["limitations"]}
 
 
@@ -75,7 +75,7 @@ def _k8s(data: dict, finding: dict) -> dict:
     return {"source_class": "caller-supplied-k8s", "subject": review["subject"],
             "raw_sha256": review["raw_sha256"], "cases": review["case_evaluations"],
             "path_hypotheses": review["findings"],
-            "next_validation": ["verify the reported SSAR and path prerequisites against the authorized cluster"],
+            "next_validation": ["compare the reported SSAR and path prerequisites with the selected cluster"],
             "limitations": [review["conclusion"], review["limitations"]]}
 
 
@@ -101,8 +101,8 @@ def _workpaper(data: dict, finding: dict) -> dict:
             "errors": errors, "claims": [{"id": c.get("id"), "status": c.get("status"),
                                    "validation": c.get("validation"), "residual_risk": c.get("residual_risk")}
                                   for c in claims if isinstance(c, dict)][:32],
-            "next_validation": ["human review of claim conclusions and evidence custody"] if not errors else
-                               ["repair workpaper structure and evidence references before analyst sign-off"],
+            "next_validation": ["check claim conclusions against the supplied evidence"] if not errors else
+                               ["repair workpaper structure and evidence references"],
             "limitations": ["structural review does not establish the truth of workpaper conclusions"]}
 
 
@@ -124,7 +124,7 @@ def _detection(data: dict, finding: dict, techniques: set[str]) -> dict:
             "disposition": "needs-validation" if gaps or review["retest_result"] != "effective"
                            else "reported-effective-retest-needs-independent-confirmation",
             "next_validation": ["validate detection stages: " + ", ".join(gaps)] if gaps else
-                               ["independently confirm reported retest and telemetry custody"],
+                               ["confirm the reported retest against telemetry"],
             "limitations": ["caller-supplied stage records and hashes do not authenticate telemetry or effectiveness"]}
 
 
@@ -153,31 +153,31 @@ def _agent(data: dict, finding: dict) -> dict:
     return {"source_class": "caller-supplied-agent-trace-review",
             "declared_trace_status": review["status"], "trace_sha256_declared": review.get("trace_sha256"),
             "observed_calls": review["observed_calls"], "claims_status": review.get("claims_status", "unbound"),
-            "next_validation": ["operator independently authenticates the attempt HMAC, scope, and tool-event claims"],
+            "next_validation": ["compare the attempt HMAC and tool-event claims with the captured trace"],
             "limitations": ["inline review and per-finding association are declarations; the operator's trusted trace key is not available to this reader"]}
 
 
 def _task(kind: str, review: dict, finding: dict) -> dict:
-    """Actionable operator review queue, not a dispatch or authorization."""
+    """Return a suggested follow-up for the observed finding."""
     if kind == "graph":
         verdicts = review["path_verdicts"]
         action = "verify-effective-permission" if "configured_candidate" in verdicts else "resolve-path-prerequisite"
-        capability = "prowler-mcp (research read tier; verify admission)"
+        capability = "prowler-mcp"
     elif kind == "k8s":
         action = "verify-ssar-and-path-prerequisites"
-        capability = "independent authorized Kubernetes observation"
+        capability = "Kubernetes observation"
     elif kind == "workpaper":
-        action = "review-claim-and-custody" if review["structure_valid"] else "repair-workpaper"
+        action = "review-workpaper-claim" if review["structure_valid"] else "repair-workpaper"
         capability = "human reviewer"
     elif kind == "detection":
         action = "retest-detection-chain" if review["disposition"].startswith("reported-effective") else "resolve-detection-gaps"
-        capability = "authorized telemetry and detection validation"
+        capability = "telemetry and detection validation"
     else:
         action = "authenticate-agent-attempt"
         capability = "operator-side attempt trace verifier"
     return {"action": action, "finding": {"check_id": finding["check_id"],
             "record_locator": finding["record_locator"]}, "suggested_capability": capability,
-            "status": "pending human authorization and validation", "source": kind}
+            "source": kind}
 
 
 def correlate(findings: list[dict], targets: list[dict], packet: dict | None) -> dict:
@@ -224,7 +224,6 @@ def correlate(findings: list[dict], targets: list[dict], packet: dict | None) ->
         else:
             raise ValueError("unrecognized operator evidence kind")
         target["operational_reviews"].setdefault(kind, []).append({"finding_id": key, "review": review})
-        target["threat_model"]["validation_status"] = "supplemental evidence requires human validation"
         target["next_validation"].extend(review["next_validation"])
         target["validation_tasks"].append(_task(kind, review, indexed[key]))
     if "triage" in packet:

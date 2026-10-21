@@ -24,7 +24,7 @@ from ..strict_data import (
 from .policy import (
     ALLOWED_ACTIONS,
     ARG_KEYS,
-    ARMING,
+    INPUT_HINT,
     ARM_ID,
     CAVEATS,
     LIST_ACTIONS,
@@ -71,7 +71,7 @@ class M365PwnedArm:
         if action not in ALLOWED_ACTIONS:
             return _fail(
                 spec, action,
-                f"action {action!r} is not on the allowlist (local consent-case reads only; arming: {ARMING})",
+                f"action {action!r} is not on the allowlist (local consent-case reads only; input: {INPUT_HINT})",
             )
         refusal = args_refusal(action, payload)
         if refusal:
@@ -144,11 +144,10 @@ class M365PwnedArm:
         return _ok(
             spec, action,
             {
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": [],
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "arg_keys": {key: sorted(values) for key, values in ARG_KEYS.items()},
                 "caveats": list(CAVEATS),
-                "arming": ARMING,
+                "input_hint": INPUT_HINT,
             },
         )
 

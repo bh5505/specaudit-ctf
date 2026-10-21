@@ -28,7 +28,7 @@ evidence. The head-attempt lane refuses this contract by design.
 This checkout with Python 3.11+, the lab target built and spawned
 (`lab/build-golden.sh` once, `lab/spawn-target.sh` per session), and
 nmap/zgrab2 binaries present on the invoking host (they are on the
-kali lab host). Scans run only after you arm them. The offline side of
+kali lab host). The offline side of
 the reconciliation needs only this checkout: `lab/target/start-services.sh`
 is the image's declared service set.
 
@@ -40,10 +40,8 @@ is the image's declared service set.
    8000 and 8080). This declared set is one side of the
    reconciliation.
 
-2. **Arm the reads and probe the live device.**
-   From the kali lab host (`export NMAP_DISPATCH_SCOPE=<ip>`,
-   `export ZGRAB2_DISPATCH_SCOPE=<ip>`, `export PAGE_FETCH_DISPATCH_SCOPE=<ip>`;
-   the scope envs are the arming decisions), run:
+2. **Probe the spawned device.**
+   From the kali lab host, run:
    - `python -m extension invoke nmap scan '{"target": "<ip>"}'` — the live port inventory (reconciliation side two, and the evidence for the admin-plane transport finding).
    - `python -m extension invoke zgrab2 scan '{"target": "<ip>", "module": "ssh", "port": 22}'` — the SSH handshake banner (evidence for the version-disclosure finding).
    - `python -m extension invoke page-fetch fetch '{"url": "http://<ip>:8000/notes/"}'` — the auto-indexed directory listing and the redeploy checklist it exposes (evidence for the config-artifact finding).

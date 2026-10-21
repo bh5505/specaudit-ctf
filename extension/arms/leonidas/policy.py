@@ -30,10 +30,10 @@ CAVEATS = (
     "first-party reader over an operator-supplied declarative compatibility corpus",
     "executor bodies are treated as inert text and never executed",
     "the arm obtains or uses no cloud credentials; operator corpora must exclude secrets",
-    "the input digest does not establish upstream revision, schema equivalence, or rights",
+    "the input digest identifies supplied bytes but does not authenticate their source",
 )
 
-ARMING = (
+INPUT_HINT = (
     "pass args.corpus (path to a local Leonidas corpus file in "
     "JSON or YAML)"
 )
@@ -44,7 +44,7 @@ def corpus_refusal(
 ) -> tuple[Path | None, str | None]:
     """Validate a caller-supplied local corpus path.
 
-    Egress gate: the corpus must be an existing local file with a
+    Input contract: the corpus must be an existing local file with a
     JSON/YAML suffix; URLs are refused.  Returns (path, None) or
     (None, refusal).
     """

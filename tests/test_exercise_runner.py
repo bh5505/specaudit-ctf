@@ -97,7 +97,8 @@ def test_arms_lane_offline_success_and_refusal() -> None:
     )
     rows = document["arms"]
     assert rows[0]["status"] == "complete"
-    assert rows[0]["capability_id"] == "agent-wiz.list_tools"
+    assert rows[0]["arm_id"] == "agent-wiz"
+    assert rows[0]["action"] == "list_tools"
     assert rows[1]["status"] == "failed"
     assert document["status"] == "failed"
 

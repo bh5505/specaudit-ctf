@@ -3,8 +3,7 @@
 Primary integration point is the semgrep CLI (local rule scans with an
 inline rule pack; the archived MCP adapter repo is implementation
 minutiae). MCP reads over Streamable HTTP remain available when
-SEMGREP_MCP_ENDPOINT names an operator-configured https endpoint on
-the hardened transport.
+SEMGREP_MCP_ENDPOINT names an operator-configured endpoint.
 """
 
 from __future__ import annotations
@@ -30,27 +29,23 @@ from ..mcp_client import (
     redact,
 )
 from .policy import (
-    ALLOWED_TOOLS,
     ARM_ID,
-    ARMING,
     CAVEATS,
     ENV_ENDPOINT,
     LIST_ACTIONS,
     MAX_FINDINGS,
     TIMEOUT_SECONDS,
-    TRANSPORT_POLICY,
     refuse_reason,
     resolve_binary,
     resolve_target,
     scan_config_refusal,
-    scan_root,
 )
 
 SessionFactory = Callable[..., Any]
 
 
 def _default_session_factory(url: str, timeout: float = MCP_CALL_TIMEOUT) -> Any:
-    return StreamableHttpClient(url, timeout=timeout, policy=TRANSPORT_POLICY)
+    return StreamableHttpClient(url, timeout=timeout)
 
 
 class SemgrepArm:
@@ -75,7 +70,7 @@ class SemgrepArm:
             raw = self._endpoint_arg
         else:
             raw = os.environ.get(ENV_ENDPOINT)
-        return configured_http_url(raw, TRANSPORT_POLICY)
+        return configured_http_url(raw)
 
     def installed(self, spec: ArmSpec) -> bool:
         if spec.id != ARM_ID:
@@ -90,10 +85,8 @@ class SemgrepArm:
         if spec.id != ARM_ID:
             raise NotInstalledError(spec.id)
         endpoint = self.endpoint_url()
-        # Deterministic routing, matching the admitted profiles exactly:
-        # list_tools and semgrep_scan ALWAYS run on the first-party CLI
-        # (subprocess, scan-root contained); an MCP endpoint serves the
-        # read tools only.
+        # The CLI handles local scans; the configured MCP endpoint handles
+        # upstream MCP tools.
         if action in LIST_ACTIONS:
             return self._cli_list_tools(spec, action)
         if action == "semgrep_scan":
@@ -176,14 +169,8 @@ class SemgrepArm:
             action=action,
             output={
                 "surface": "cli",
-                "read_actions": sorted(LIST_ACTIONS),
-                "mcp_endpoint_actions": sorted(
-                    name for name in ALLOWED_TOOLS if name != "semgrep_scan"
-                ),
-                "dispatch_actions": ["semgrep_scan"],
-                "dispatch_armed": scan_root() is not None,
+                "actions": sorted(LIST_ACTIONS | {"semgrep_scan"}),
                 "caveats": CAVEATS,
-                "arming": ARMING,
             },
             error=None,
         )
@@ -204,21 +191,28 @@ class SemgrepArm:
             return Result(
                 ok=False, arm_id=spec.id, action=action, output=None, error=refusal
             )
-        config_fd, config_path = tempfile.mkstemp(
-            prefix="semgrep-config-", suffix=".yaml"
-        )
+        config = str(payload["config"])
+        selection = config.strip()
+        inline = "\n" in config or config.startswith(("{", "rules:"))
+        config_path = None
+        config_fd = None
+        if inline:
+            config_fd, config_path = tempfile.mkstemp(
+                prefix="semgrep-config-", suffix=".yaml"
+            )
         argv = [
             binary,
             "scan",
             "--config",
-            config_path,
+            config_path or selection,
             "--json",
             "--metrics=off",
             target,
         ]
         try:
-            with os.fdopen(config_fd, "w", encoding="utf-8") as fh:
-                fh.write(str(payload["config"]))
+            if config_fd is not None:
+                with os.fdopen(config_fd, "w", encoding="utf-8") as fh:
+                    fh.write(config)
             scan_env = dict(os.environ)
             scan_env["SEMGREP_DISABLE_VERSION_CHECK"] = "1"
             scan_env["SEMGREP_SEND_METRICS"] = "off"
@@ -303,10 +297,11 @@ class SemgrepArm:
                 error=None,
             )
         finally:
-            try:
-                os.unlink(config_path)
-            except OSError:
-                pass
+            if config_path is not None:
+                try:
+                    os.unlink(config_path)
+                except OSError:
+                    pass
 
 
 def _cap_rows(rows: list[Any]) -> list[Any]:

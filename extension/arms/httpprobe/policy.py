@@ -1,4 +1,4 @@
-"""Dispatch-only policy for the bounded curl-based HTTP probe arm.
+"""Policy for the bounded curl-based HTTP probe arm.
 
 curl is the selected transport because it ships on Kali lab images and modern
 Windows. Redirects surface as data, never followed: the fixed argv omits -L.
@@ -14,10 +14,8 @@ from urllib import parse as urllib_parse
 
 ARM_ID = "http-probe"
 ENV_BIN = "HTTP_PROBE_BIN"
-ENV_DISPATCH_SCOPE = "HTTP_PROBE_DISPATCH_SCOPE"
 
-ALLOWED_ACTIONS = frozenset()
-DISPATCH_ACTIONS = frozenset({"probe"})
+ALLOWED_ACTIONS = frozenset({"probe"})
 
 TIMEOUT_SECONDS = 30.0
 MAX_OUTPUT_CHARS = 200_000
@@ -25,7 +23,6 @@ MAX_HEADERS = 8
 HEADER_NAME_RE = re.compile(r"^[A-Za-z0-9-]{1,64}$")
 MAX_VALUE_LEN = 512
 MAX_HEADER_BYTES = 8 * 1024
-FORBIDDEN_NAMES = frozenset({"host", "content-length", "connection"})
 
 
 def resolve_binary() -> str | None:
@@ -38,7 +35,7 @@ def resolve_binary() -> str | None:
 
 
 def target_refusal(payload: dict) -> str | None:
-    """Validate the closed request schema before scope authorization."""
+    """Validate the closed request schema before invocation."""
     extra = [key for key in payload if key not in {"url", "headers"}]
     if extra:
         return f"http-probe probe rejects unknown argument {extra[0]!r}"
@@ -57,8 +54,6 @@ def target_refusal(payload: dict) -> str | None:
         return "probe target must be a well-formed http(s) URL"
     if parsed.scheme not in ("http", "https") or not hostname:
         return "probe target must be an http(s) URL"
-    if parsed.username is not None or parsed.password is not None:
-        return "probe target URL must not contain userinfo credentials"
 
     headers = payload.get("headers", {})
     if not isinstance(headers, dict):
@@ -69,8 +64,6 @@ def target_refusal(payload: dict) -> str | None:
     for name, value in headers.items():
         if not isinstance(name, str) or not HEADER_NAME_RE.fullmatch(name):
             return f"probe header name {name!r} must be an RFC token (1-64 letters, digits, or hyphens)"
-        if name.lower() in FORBIDDEN_NAMES:
-            return f"probe header {name!r} is forbidden because curl would duplicate or mangle it"
         if not isinstance(value, str):
             return f"probe header {name!r} value must be a string"
         if any(ch in value for ch in ("\x00", "\r", "\n")):
@@ -88,7 +81,7 @@ def argv_for(binary: str, action: str, payload: dict) -> list[str] | None:
 
     Redirects surface as data, never followed: no ``-L`` is passed.
     """
-    if action not in DISPATCH_ACTIONS or target_refusal(payload) is not None:
+    if action not in ALLOWED_ACTIONS or target_refusal(payload) is not None:
         return None
     argv = [
         binary,

@@ -1,4 +1,4 @@
-"""Curated checkov arm: fixed-argv offline IaC scan, fixture-contained."""
+"""Checkov IaC scan arm."""
 
 from __future__ import annotations
 
@@ -43,8 +43,7 @@ class CheckovArm:
     ) -> Result:
         if spec.id != ARM_ID:
             raise NotInstalledError(spec.id)
-        # Install gate first: uninstalled arms raise so callers (e.g. the
-        # range runner) can distinguish "skipped" from a real refusal.
+        # Report an absent binary distinctly so exercise composition can skip it.
         binary = resolve_binary()
         if binary is None:
             raise NotInstalledError(spec.id)
@@ -54,18 +53,17 @@ class CheckovArm:
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error=f"action {action!r} is not on the allowlist "
-                "(only 'scan' runs, with fixed argv)",
+                error=f"unsupported checkov action {action!r}; use 'scan'",
             )
-        if dict(args):
+        if set(args) - {"target"}:
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error="checkov scan takes no caller arguments (fixed argv)",
+                error="checkov scan accepts only args.target",
             )
-        root, refusal = resolve_scan_root()
+        root, refusal = resolve_scan_root(args.get("target"))
         if root is None:
             return Result(
                 ok=False,

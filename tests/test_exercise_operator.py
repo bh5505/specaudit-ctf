@@ -154,16 +154,15 @@ def test_missing_portable_read_flags_refuse_cleanly(
         bounded_regular(submission)
 
 
-def test_rehearsal_custodies_full_roster_without_arms(tmp_path: Path) -> None:
+def test_rehearsal_reports_full_roster_without_arms(tmp_path: Path) -> None:
     destination = tmp_path / "operator"
     report = rehearse(destination)
     assert report["status"] == "complete"
-    envelope = json.loads((destination / "range-envelope.json").read_text())
-    assert envelope["status"] == "complete"
-    artifact = next(row for row in report["files"] if row["path"].startswith("artifacts/"))
+    artifact = next(row for row in report["files"] if row["path"] == "range-report.json")
     raw = (destination / artifact["path"]).read_bytes()
     assert hashlib.sha256(raw).hexdigest() == artifact["sha256"]
     range_doc = json.loads(raw)
+    assert range_doc["status"] == "complete"
     assert len(range_doc["fixtures"]) == 10
     assert all(row["arms"] == [] for row in range_doc["fixtures"])
     assert range_doc["live_aws"] is False

@@ -29,10 +29,10 @@ class _Redirect(request.BaseHandler):
 
 
 @pytest.mark.parametrize("arm_name, action, args, header", [
-    ("caldera", "abilities", {}, "Key"),
-    ("caldera", "schedule_operation", {"operation": "op-1"}, "Key"),
-    ("zap", "version", {}, "X-zap-api-key"),
-    ("zap", "ascan_scan", {"url": "http://10.10.0.1/"}, "X-zap-api-key"),
+    ("caldera", "request", {"path": "/api/v2/abilities"}, "Key"),
+    ("caldera", "request", {"path": "/api/v2/operations", "method": "POST", "json": {"name": "op-1"}}, "Key"),
+    ("zap", "request", {"path": "/JSON/core/view/version/"}, "X-zap-api-key"),
+    ("zap", "request", {"path": "/JSON/ascan/action/scan/", "method": "POST", "params": {"url": "http://10.10.0.1/"}}, "X-zap-api-key"),
 ])
 def test_api_redirect_refused_without_followup_request(
     monkeypatch: pytest.MonkeyPatch,
@@ -46,8 +46,6 @@ def test_api_redirect_refused_without_followup_request(
     monkeypatch.setattr(request, "build_opener", lambda *handlers: build_opener(*handlers, redirect))
     monkeypatch.setenv("CALDERA_API_KEY", "test-secret")
     monkeypatch.setenv("ZAP_API_KEY", "test-secret")
-    monkeypatch.setenv("CALDERA_DISPATCH_SCOPE", "lab-agents")
-    monkeypatch.setenv("ZAP_DISPATCH_SCOPE", "10.10.0.0/16")
     arm = (
         CalderaArm(endpoint="http://127.0.0.1:8765")
         if arm_name == "caldera"
@@ -56,9 +54,7 @@ def test_api_redirect_refused_without_followup_request(
     spec = ArmSpec(
         id=arm.ARM_ID,
         protocols=("mcp",),
-        curated=True,
         notes="Synthetic redirect test.",
-        tier="research",
     )
 
     result = arm.invoke(spec, action, args)

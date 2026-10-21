@@ -1,10 +1,8 @@
 """Stdio MCP server exposing list, describe, invoke, and run_range.
 
-X4-PUB parity: ``invoke`` and ``run_range`` return the same
-``execution-result.v1`` envelopes as the CLI JSON surface by sharing
-``extension.dispatch``. Timestamps differ per run; every other field is
-transport-independent. The frozen equivalence matrix lives at
-``tests/goldens/transport-parity/matrix.json``.
+``invoke`` returns the arm's direct result dictionary. ``run_range``
+returns the synthetic range report. Both use the same dispatch functions
+as the CLI.
 
 Transport binding (MCP stdio per spec revision 2025-11-25):
 
@@ -24,26 +22,19 @@ Error boundary
 |-----------------------------------|--------------------------|
 | Bad params shape (non-object      | JSON-RPC -32602          |
 | arguments, missing/invalid        | ``_InvalidParams``       |
-| id/action/seed/arm_ids/attempt    |                          |
-| contract type, unknown tool)      |                          |
-| Attempt/artifact contract error   | JSON-RPC -32602          |
-| (invalid attempt id, unusable     | (pre-dispatch; never a   |
-| artifact dir)                     | tool execution)          |
-| Domain failure (unknown id, held, | ``isError: true`` tool   |
-| not curated, not installed, not   | result whose content is  |
-| an arm, unmanifested action,      | the failed               |
-| range refusal)                    | execution-result.v1      |
-|                                   | envelope                 |
+| id/action/seed/arm_ids,           |                          |
+| unknown tool)                     |                          |
+| Domain failure (unknown id,       | ``isError: true`` tool   |
+| not installed, non-arm id,        | result with direct       |
+| range refusal)                    | result content           |
 | Evaluated non-success (arm        | ``isError: true`` tool   |
-| result ok=False; range status     | result; the envelope     |
-| degraded/failed)                  | carries the verdict      |
+| result ok=False; range status     | result with direct       |
+| degraded/failed)                  | result content           |
 | Unknown method                    | JSON-RPC -32601          |
 | Malformed/oversized/legacy-framed | JSON-RPC -32700          |
 | message                           |                          |
 
 ``isError`` mirrors the CLI exit code (nonzero exit = ``isError: true``).
-It is a transport signal, not a verdict: G-24 keeps verdict vocabulary in
-the envelope's ``status``.
 """
 
 from __future__ import annotations
@@ -69,9 +60,7 @@ from .dispatch import DispatchOutcome, dispatch_invoke, dispatch_range  # noqa: 
 from . import trace as trace_module  # noqa: E402
 
 TOOLS = ("list", "describe", "invoke", "run_range")
-# Legacy-era initialize handshake, newest first. 2025-11-25 is the revision
-# the campaign guardrails cite; the 2026+ per-request-metadata era is out of
-# scope for X4.
+# Supported initialize handshake versions, newest first.
 _SUPPORTED_PROTOCOL_VERSIONS = (
     "2025-11-25",
     "2025-06-18",
@@ -83,10 +72,6 @@ _SERVER_NAME = "specaudit-ctf"
 _SERVER_VERSION = "1.0.0"
 _MAX_BYTES = 1024 * 1024
 _MISSING = object()
-_RESULT_SCHEMA = json.loads(
-    (Path(__file__).resolve().parent / "schema" / "execution-result.v1.schema.json")
-    .read_text(encoding="utf-8")
-)
 
 
 class _ParseError(Exception):
@@ -95,16 +80,7 @@ class _ParseError(Exception):
 
 _INVOKE_TOOL_DEF: dict[str, Any] = {
     "name": "invoke",
-    "description": (
-        "Invoke a curated installed arm that is not held. Only the bounded "
-        "X2-PUB action registry is admitted, including explicitly armed "
-        "network and subprocess dispatch actions; the result is an "
-        "execution-result.v1 envelope identical to `python -m extension "
-        "invoke` output (timestamps differ per run). isError mirrors the "
-        "CLI nonzero exit; the envelope status is the verdict. Dispatches real "
-        "arm actions (network egress / subprocess) bounded by each profile's "
-        "declared approval gate; results are envelopes."
-    ),
+    "description": "Invoke an installed CTF arm. The result contains ok, output, and error.",
     "annotations": {"readOnlyHint": False, "openWorldHint": True},
     "inputSchema": {
         "type": "object",
@@ -115,46 +91,15 @@ _INVOKE_TOOL_DEF: dict[str, Any] = {
                 "type": "object",
                 "description": "Action arguments (default: {}).",
             },
-            "attempt_id": {
-                "type": "string",
-                "description": (
-                    "Optional validator-minted attempt-<64 lowercase hex> "
-                    "echoed in the result envelope."
-                ),
-            },
-            "artifact_dir": {
-                "type": "string",
-                "description": (
-                    "Optional absolute empty Unix directory bound before "
-                    "dispatch for digest-named artifacts (Mode A custody "
-                    "handoff; requires attempt_id; Unix-only)."
-                ),
-            },
         },
         "required": ["id", "action"],
         "additionalProperties": False,
     },
-    "outputSchema": _RESULT_SCHEMA,
 }
 
 _RUN_RANGE_TOOL_DEF: dict[str, Any] = {
     "name": "run_range",
-    "description": (
-        "Run the synthetic range fixtures and return an execution-result.v1 "
-        "envelope wrapping the seed-stable range.lifecycle.v3 document, "
-        "identical to `python -m extension.range` output (timestamps differ "
-        "per run). No live cloud; no `--out` report writes over MCP (`--out` "
-        "stays CLI-only), while an explicitly supplied artifact_dir writes "
-        "digest-named custody artifacts. isError mirrors the CLI nonzero exit; "
-        "degraded/failed "
-        "verdicts live in the envelope status, never in transport success. "
-        "Omit arm_ids to auto-discover curated arms (skip/error is "
-        "degraded). Empty arm_ids is lifecycle-only and may be complete. "
-        "Non-empty arm_ids are required (skip/error is failed). Executes local "
-        "synthetic range fixtures in subprocesses; no live cloud. Report writes "
-        "are CLI-only (`--out`); an explicitly supplied artifact_dir writes "
-        "digest-named custody artifacts."
-    ),
+    "description": "Run the shipped synthetic range fixtures and return their report.",
     "annotations": {"readOnlyHint": False, "openWorldHint": False},
     "inputSchema": {
         "type": "object",
@@ -163,32 +108,11 @@ _RUN_RANGE_TOOL_DEF: dict[str, Any] = {
             "arm_ids": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": (
-                    "Omitted: auto-discover curated arms (optional; "
-                    "skip/error is degraded). Empty: no arms; complete "
-                    "on lifecycle match. Non-empty: required; skip/error "
-                    "is failed."
-                ),
-            },
-            "attempt_id": {
-                "type": "string",
-                "description": (
-                    "Optional validator-minted attempt-<64 lowercase hex> "
-                    "echoed in the result envelope."
-                ),
-            },
-            "artifact_dir": {
-                "type": "string",
-                "description": (
-                    "Optional absolute empty Unix directory bound before "
-                    "dispatch for digest-named artifacts (Mode A custody "
-                    "handoff; requires attempt_id; Unix-only)."
-                ),
+                "description": "Omit to try installed arms; pass [] for fixture-only execution.",
             },
         },
         "additionalProperties": False,
     },
-    "outputSchema": _RESULT_SCHEMA,
 }
 
 _TOOL_DEFS: tuple[dict[str, Any], ...] = (
@@ -429,12 +353,7 @@ class McpServer:
         raise _InvalidParams(f"unknown tool: {name}")
 
     def _invoke_tool(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        """Run one bounded invoke through the shared dispatch.
-
-        Parity: the returned envelope is byte-equivalent to the CLI JSON
-        output for the same logical request modulo started_at/finished_at/
-        spent.elapsed_ms.
-        """
+        """Run an arm through the shared CLI/MCP dispatch."""
         entry_id = _require_id(arguments)
         action = _require_action(arguments)
         # Do not coerce falsy non-mapping values to {}. Only None means
@@ -450,21 +369,14 @@ class McpServer:
             arm_id=entry_id,
             action=action,
             args=args,
-            attempt_id=_optional_str(arguments, "attempt_id"),
-            artifact_dir=_optional_str(arguments, "artifact_dir"),
         )
         return _outcome_content(outcome)
 
     def _run_range_tool(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
-        """Run the synthetic range through the shared dispatch.
+        """Run the synthetic range and return its report.
 
-        Shape errors (seed type, arm_ids shape, attempt/artifact contract)
-        map to -32602 like other param-shape concerns; everything else is
-        an evaluated result inside the execution-result.v1 envelope.
-        Fixtures resolve from the package root only - no path arguments
-        exist on this tool - and no `--out` report is written (`--out` stays
-        CLI-only); an explicitly supplied artifact_dir does write digest-named
-        custody artifacts.
+        Shape errors map to -32602. Fixtures resolve from the package
+        root, and this tool does not write an output file.
         """
         seed = arguments.get("seed")
         if seed is not None:
@@ -480,8 +392,6 @@ class McpServer:
             self.extension,
             seed=seed,
             arm_ids=arm_ids,
-            attempt_id=_optional_str(arguments, "attempt_id"),
-            artifact_dir=_optional_str(arguments, "artifact_dir"),
         )
         return _outcome_content(outcome)
 
@@ -492,21 +402,11 @@ def _outcome_content(outcome: DispatchOutcome) -> dict[str, Any]:
     isError mirrors the CLI exit code (transport signal, not a verdict);
     the envelope inside the content carries the evaluated status.
     """
-    if outcome.contract_error is not None:
-        raise _InvalidParams(str(outcome.contract_error))
-    assert outcome.envelope is not None  # only contract errors lack one
     content = _tool_content(
-        outcome.envelope,
+        outcome.document,
         is_error=outcome.exit_code != 0,
-        structured=outcome.envelope,
+        structured=outcome.document,
     )
-    if outcome.exit_code == 0 and outcome.inline_report is not None:
-        # The first content and structuredContent retain exact v1 parity with
-        # CLI. Only this admitted inline review gets a second, digest-checked
-        # content item so attached heads can read the actual target analysis.
-        content["content"].append({"type": "text", "text": json.dumps(
-            outcome.inline_report, sort_keys=True,
-        )})
     return content
 
 

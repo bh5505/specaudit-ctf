@@ -14,12 +14,12 @@ from extension.arms.assetrecon.model import Refusal
 from extension.arms.assetrecon.sources import ADAPTERS, MALFORMED_CT_NAME_LIMITATION
 from extension.contract import ArmSpec
 
-SPEC = ArmSpec("asset-recon", ("cli",), True, "Hermetic fixture", "research")
+SPEC = ArmSpec("asset-recon", ("cli",), "Hermetic fixture")
 HASH = "0" * 64
 FP = "a" * 64
 MALFORMED = "invalid_name.example.test"
 VALID = "api.example.test"
-OUT_OF_SCOPE = "unrelated.example"
+UNRELATED_NAME = "unrelated.example"
 
 
 def invoke(action, payload):
@@ -53,14 +53,14 @@ def test_certspotter_empty_response_is_negative_evidence(monkeypatch):
 
 
 def test_crtsh_nonempty_all_unbound_response_is_refused(monkeypatch):
-    rows = [{"name_value": OUT_OF_SCOPE}, {"name_value": MALFORMED}]
+    rows = [{"name_value": UNRELATED_NAME}, {"name_value": MALFORMED}]
     monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
     with pytest.raises(Refusal, match="^CT record does not bind query$"):
         worker.collect("crtsh", "domain", "public.com", "subdomains")
 
 
 def test_certspotter_nonempty_all_unbound_response_is_refused(monkeypatch):
-    rows = [{"id": "1", "dns_names": [OUT_OF_SCOPE], "cert_sha256": FP}]
+    rows = [{"id": "1", "dns_names": [UNRELATED_NAME], "cert_sha256": FP}]
     monkeypatch.setattr(worker, "fetch", lambda *a, **k: (rows, HASH))
     with pytest.raises(Refusal, match="issuance does not bind query"):
         worker.collect("certspotter", "domain", "public.com")
@@ -112,17 +112,17 @@ def test_certspotter_mixed_valid_and_malformed_keeps_valid_and_limits():
     assert all(MALFORMED not in value for obs in observations for value in (obs.left, obs.right))
 
 
-def test_valid_out_of_scope_name_is_not_malformed():
-    observations, limitations = consume("crtsh", [{"name_value": OUT_OF_SCOPE, "id": 1}])
-    assert [(obs.relation, obs.right) for obs in observations] == [("query_match", OUT_OF_SCOPE)]
+def test_valid_unrelated_name_is_not_malformed():
+    observations, limitations = consume("crtsh", [{"name_value": UNRELATED_NAME, "id": 1}])
+    assert [(obs.relation, obs.right) for obs in observations] == [("query_match", UNRELATED_NAME)]
     assert limitations == []
 
 
-def test_mixed_out_of_scope_and_malformed_keeps_valid_source_name():
+def test_mixed_unrelated_and_malformed_keeps_valid_source_name():
     observations, limitations = consume("crtsh", [{
-        "name_value": OUT_OF_SCOPE + "\n" + MALFORMED, "id": 1,
+        "name_value": UNRELATED_NAME + "\n" + MALFORMED, "id": 1,
     }])
-    assert any(obs.right == OUT_OF_SCOPE for obs in observations)
+    assert any(obs.right == UNRELATED_NAME for obs in observations)
     assert all(MALFORMED not in value for obs in observations for value in (obs.left, obs.right))
     assert limitations == [MALFORMED_CT_NAME_LIMITATION]
 
@@ -189,7 +189,6 @@ def test_offline_ct_omissions_make_final_result_partial(source, mixed, tmp_path,
 @pytest.mark.parametrize("source,expected_calls", [("crtsh", 2), ("certspotter", 1)])
 def test_empty_ct_collection_keeps_no_result_without_retries(monkeypatch, source, expected_calls):
     calls = []
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", source)
     monkeypatch.setattr(worker, "fetch", lambda *a, **kw: ([], HASH))
 
     def collect(request, timeout):
@@ -197,7 +196,7 @@ def test_empty_ct_collection_keeps_no_result_without_retries(monkeypatch, source
         return worker.collect(request["source"], request["kind"], request["value"], request.get("variant"))
 
     monkeypatch.setattr(arm, "run_worker", collect)
-    result = invoke("ct", {"live": True, "providers": [source], "seeds": {"domains": ["public.com"]},
+    result = invoke("ct", {"providers": [source], "seeds": {"domains": ["public.com"]},
                            "limits": {"retries": 1, "min_interval_ms": 50}})
     assert len(calls) == expected_calls
     assert result.output["evidence"]

@@ -88,7 +88,7 @@ def test_records_every_tool_call_with_a_verifiable_chain(tmp_path: Path) -> None
     first = verification.records[0]
     assert first["tool"] == "list"
     assert first["result"]["isError"] is False
-    assert first["result"]["envelope_status"] is None
+    assert first["result"]["result_status"] is None
 
 
 def test_untraced_methods_and_transport_noise_are_not_records(tmp_path: Path) -> None:
@@ -289,7 +289,7 @@ def test_records_after_close_fail_verification(tmp_path: Path) -> None:
         "type": "call",
         "tool": "list",
         "args": {},
-        "result": {"isError": False, "envelope_status": None, "capability_id": None, "fixture_ids": [], "error": None},
+        "result": {"isError": False, "result_status": None, "result_ok": None, "fixture_ids": [], "error": None},
     }
     body = {k: v for k, v in extension.items() if k != "hmac"}
     import hmac as hmac_module

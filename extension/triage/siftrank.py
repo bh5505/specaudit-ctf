@@ -1,7 +1,7 @@
 """Offline import of a captured SiftRank JSON ranking for human review order.
 
-No provider, executable, endpoint, or evidence/grading interface is invoked here.
-The caller must supply custody metadata independently of the candidate packet.
+Also provides a direct operator-run SiftRank CLI. The operator chooses the
+executable, provider, model, and base URL and is accountable for use and costs.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ import signal
 import subprocess
 import tempfile
 import time
-from urllib.parse import urlsplit
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -37,22 +36,17 @@ class TriageImportError(ValueError):
 
 @dataclass(frozen=True)
 class CaptureBinding:
-    """Custodian-supplied capture record, never inferred from model output.
+    """Hashes and upstream identifiers for a captured ranking.
 
-    The API compares hashes; authentication of this record and custody of its
-    bytes are external responsibilities. A caller-created matching hash alone
-    does not make a capture trustworthy.
+    The hashes compare bytes; they do not authenticate their source.
     """
 
     upstream_revision: str
     input_sha256: str
     ranking_sha256: str
     prompt_sha256: str
-    run_id: str
-    captured_at: str
     provider: str
     model: str
-    custody_ref: str
 
 
 def _digest(raw: bytes) -> str:
@@ -102,18 +96,18 @@ def import_capture(input_bytes: bytes, ranking_bytes: bytes, binding: CaptureBin
     """
     if len(input_bytes) > MAX_INPUT_BYTES or len(ranking_bytes) > MAX_STDOUT_BYTES:
         raise TriageImportError("capture exceeds byte limit")
-    if binding.upstream_revision != UPSTREAM_REVISION:
-        raise TriageImportError("unreviewed SiftRank revision")
+    if not isinstance(binding.upstream_revision, str) or not binding.upstream_revision.strip() or len(binding.upstream_revision) > 256:
+        raise TriageImportError("invalid upstream revision")
     for name in ("prompt_sha256", "input_sha256", "ranking_sha256"):
         value = getattr(binding, name)
         if not isinstance(value, str) or len(value) != 64 or any(c not in "0123456789abcdef" for c in value):
             raise TriageImportError(f"invalid {name}")
-    for name in ("run_id", "captured_at", "provider", "model", "custody_ref"):
+    for name in ("provider", "model"):
         value = getattr(binding, name)
         if not isinstance(value, str) or not value.strip():
             raise TriageImportError(f"missing {name}")
     if _digest(input_bytes) != binding.input_sha256 or _digest(ranking_bytes) != binding.ranking_sha256:
-        raise TriageImportError("capture bytes differ from custodian hashes")
+        raise TriageImportError("capture bytes differ from the recorded hashes")
     candidates = _array(input_bytes, "input")
     ranking = _array(ranking_bytes, "ranking")
     _validate_candidates(candidates)
@@ -144,16 +138,15 @@ def import_capture(input_bytes: bytes, ranking_bytes: bytes, binding: CaptureBin
         ordered.append({"rank": position, "id": candidate["id"], "source": candidate["source"],
                         "input_index": index})
     return {
-        "kind": "review-order-only", "status": "captured-ranking-unverified-custody",
+        "kind": "review-order-only", "status": "captured-ranking",
         "upstream": {"url": UPSTREAM_URL, "revision": binding.upstream_revision},
-        "capture": {"run_id": binding.run_id, "captured_at": binding.captured_at,
-                    "provider": binding.provider, "model": binding.model,
-                    "custody_ref": binding.custody_ref, "prompt_sha256": binding.prompt_sha256,
+        "capture": {"provider": binding.provider, "model": binding.model,
+                    "prompt_sha256": binding.prompt_sha256,
                     "input_sha256": binding.input_sha256, "ranking_sha256": binding.ranking_sha256},
         "review_order": ordered,
         "limitations": ["ranking may vary between runs", "score is not a probability",
                         "rank is neither evidence nor a finding or grade",
-                        "hash comparison does not authenticate custody"],
+                        "hashes identify supplied bytes but do not authenticate their source"],
     }
 
 
@@ -186,9 +179,8 @@ def evaluate_capture(input_bytes: bytes, ranking_bytes: bytes, binding: CaptureB
         labels = json.loads(labels_bytes)
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise TriageImportError("labels must be UTF-8 JSON") from exc
-    if not isinstance(labels, dict) or labels.get("evaluation_scope") not in {
-        "synthetic-format-fixture", "actual-held-out"}:
-        raise TriageImportError("labels require evaluation_scope")
+    if not isinstance(labels, dict):
+        raise TriageImportError("labels must be a JSON object")
     query, k, relevant_ids = labels.get("query"), labels.get("k"), labels.get("relevant_ids")
     if not isinstance(query, str) or not query.strip() or len(query) > 4000:
         raise TriageImportError("invalid labels query")
@@ -207,8 +199,8 @@ def evaluate_capture(input_bytes: bytes, ranking_bytes: bytes, binding: CaptureB
     ranked_recall = recall_at_k(ordered, relevant, k)
     baseline_recall = recall_at_k(baseline, relevant, k)
     return {
-        "kind": "review-order-evaluation-only", "evaluation_scope": labels["evaluation_scope"],
-        "run_id": binding.run_id, "input_sha256": binding.input_sha256,
+        "kind": "review-order-evaluation-only",
+        "input_sha256": binding.input_sha256,
         "ranking_sha256": binding.ranking_sha256, "labels_sha256": _digest(labels_bytes),
         "k": k, "candidate_count": len(ordered), "relevant_count": len(relevant),
         "ranking": {"recall_at_k": ranked_recall, "reviewed_at_k": k,
@@ -224,25 +216,11 @@ def evaluate_capture(input_bytes: bytes, ranking_bytes: bytes, binding: CaptureB
     }
 
 
-def _allowed_endpoint(base_url: str) -> bool:
-    try:
-        url = urlsplit(base_url)
-        if url.username is not None or url.password is not None or url.fragment:
-            return False
-        if not url.hostname or url.port is None and url.scheme == "http":
-            return False
-        if url.scheme == "http":
-            return url.hostname == "127.0.0.1" and url.port is not None
-        return url.scheme == "https" and bool(url.hostname)
-    except ValueError:
-        return False
-
-
 def _bounded_process(argv: list[str], *, env: dict[str, str], cwd: str,
                      timeout_seconds: int) -> bytes:
     """Drain with hard output limits and terminate the entire POSIX process group."""
     if os.name != "posix":
-        raise TriageImportError("opt-in execution requires POSIX process groups")
+        raise TriageImportError("execution requires POSIX process groups")
     try:
         process = subprocess.Popen(argv, env=env, cwd=cwd, stdin=subprocess.DEVNULL,
                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE,
@@ -293,30 +271,33 @@ def _bounded_process(argv: list[str], *, env: dict[str, str], cwd: str,
 
 
 def run_siftrank(
-    input_bytes: bytes, prompt: str, *, executable: Path, executable_sha256: str,
+    input_bytes: bytes, prompt: str, *, executable: Path,
     provider: str, model: str, base_url: str, api_key: str,
-    budget_authority_ref: str, custody_ref: str, run_id: str, captured_at: str,
-    allow_provider_call: bool = False, timeout_seconds: int = 120,
+    executable_sha256: str | None = None,
+    timeout_seconds: int = 120,
 ) -> tuple[dict[str, Any], bytes, CaptureBinding]:
-    """Explicitly authorized bounded CLI experiment, returning raw output too.
+    """Run an operator-selected SiftRank executable, returning raw output too.
 
-    External containment must enforce provider egress and monetary budget. The
-    SiftRank CLI has no hard spend cap; these arguments limit time and trials,
-    not charges. Caller retains raw bytes and independently seals custody.
+    The operator chooses the executable, provider, model, and base URL and is
+    accountable for egress, use, and costs. The SiftRank CLI has no hard spend
+    cap; these arguments limit time and output, not charges. Caller retains raw
+    bytes and any run notes separately.
     """
-    if not allow_provider_call or not budget_authority_ref.strip():
-        raise TriageImportError("provider call requires opt-in and external budget authority")
-    if provider not in {"openai", "jev"} or not model.strip() or not api_key:
-        raise TriageImportError("explicit supported provider, model, and API key required")
-    if not _allowed_endpoint(base_url):
-        raise TriageImportError("explicit HTTPS or loopback provider endpoint required")
+    if provider not in {"openai", "jev"} or not isinstance(model, str) or not model.strip():
+        raise TriageImportError("explicit supported provider and model required")
+    if not isinstance(api_key, str) or not api_key:
+        raise TriageImportError("explicit API key required")
+    if not isinstance(base_url, str) or not base_url.strip():
+        raise TriageImportError("explicit base URL required")
     if not isinstance(timeout_seconds, int) or not 1 <= timeout_seconds <= 120:
         raise TriageImportError("timeout must be 1..120 seconds")
     if not prompt.strip() or len(input_bytes) > MAX_INPUT_BYTES or len(prompt) > 4000:
         raise TriageImportError("input or prompt exceeds experiment bounds")
     _validate_candidates(_array(input_bytes, "input"))
     binary = executable.resolve(strict=True)
-    if not binary.is_file() or _digest(binary.read_bytes()) != executable_sha256:
+    if not binary.is_file():
+        raise TriageImportError("executable must be a file")
+    if executable_sha256 is not None and _digest(binary.read_bytes()) != executable_sha256:
         raise TriageImportError("executable hash mismatch")
     # Environment is deliberately closed: no inherited profiles or ambient keys.
     key_name = "OPENAI_API_KEY" if provider == "openai" else "TYPESAFE_API_KEY"
@@ -336,9 +317,8 @@ def run_siftrank(
                 "--max-trials", "5", "--tokens", "4096"]
         ranking_bytes = _bounded_process(argv, env=env, cwd=directory,
                                          timeout_seconds=timeout_seconds)
-    binding = CaptureBinding(UPSTREAM_REVISION, _digest(input_bytes), _digest(ranking_bytes),
-                             _digest(prompt.encode("utf-8")), run_id, captured_at,
-                             provider, model, custody_ref)
+    binding = CaptureBinding("operator-selected", _digest(input_bytes), _digest(ranking_bytes),
+                             _digest(prompt.encode("utf-8")), provider=provider, model=model)
     return import_capture(input_bytes, ranking_bytes, binding), ranking_bytes, binding
 
 
@@ -353,16 +333,16 @@ def main(argv: list[str] | None = None) -> int:
     if not argv or argv[0] in {"-h", "--help"}:
         print("usage: python -m learning triage {import|rank|evaluate} ...")
         print("  import    validate a retained captured ranking (offline)")
-        print("  rank      opt-in provider CLI run with external budget authority")
+        print("  rank      run an operator-selected SiftRank executable")
         print("  evaluate  compare captured recall@k with a lexical baseline (offline)")
         return 0 if argv else 2
     if argv and argv[0] == "import":
         argv = argv[1:]
-    parser = argparse.ArgumentParser(description="Import a custody-bound, captured SiftRank ranking")
+    parser = argparse.ArgumentParser(description="Import a captured SiftRank ranking")
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--ranking", required=True, type=Path)
     parser.add_argument("--binding", required=True, type=Path,
-                        help="trusted custodian record; never accept from candidate content")
+                        help="retained record with hashes; never accept from candidate content")
     args = parser.parse_args(argv)
     try:
         binding = CaptureBinding(**json.loads(_read_bounded(args.binding, MAX_BINDING_BYTES, "binding")))
@@ -393,23 +373,18 @@ def _evaluate_main(argv: list[str]) -> int:
 
 
 def _rank_main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(description="Opt-in SiftRank CLI experiment (provider call)")
+    parser = argparse.ArgumentParser(description="Run an operator-selected SiftRank executable")
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--prompt-file", required=True, type=Path)
     parser.add_argument("--ranking-output", required=True, type=Path)
     parser.add_argument("--binding-output", required=True, type=Path)
     parser.add_argument("--executable", required=True, type=Path)
-    parser.add_argument("--executable-sha256", required=True)
+    parser.add_argument("--executable-sha256", help="optional check against the selected executable")
     parser.add_argument("--provider", choices=("openai", "jev"), required=True)
     parser.add_argument("--model", required=True)
     parser.add_argument("--base-url", required=True)
     parser.add_argument("--api-key-env", choices=("OPENAI_API_KEY", "TYPESAFE_API_KEY"), required=True)
-    parser.add_argument("--budget-authority-ref", required=True)
-    parser.add_argument("--custody-ref", required=True)
-    parser.add_argument("--run-id", required=True)
-    parser.add_argument("--captured-at", required=True)
     parser.add_argument("--timeout-seconds", type=int, default=120)
-    parser.add_argument("--allow-provider-call", action="store_true")
     args = parser.parse_args(argv)
     expected_key = "OPENAI_API_KEY" if args.provider == "openai" else "TYPESAFE_API_KEY"
     if args.api_key_env != expected_key:
@@ -426,9 +401,7 @@ def _rank_main(argv: list[str]) -> int:
             executable=args.executable, executable_sha256=args.executable_sha256,
             provider=args.provider, model=args.model, base_url=args.base_url,
             api_key=os.environ.get(args.api_key_env, ""),
-            budget_authority_ref=args.budget_authority_ref, custody_ref=args.custody_ref,
-            run_id=args.run_id, captured_at=args.captured_at,
-            allow_provider_call=args.allow_provider_call, timeout_seconds=args.timeout_seconds)
+            timeout_seconds=args.timeout_seconds)
         with args.ranking_output.open("xb") as stream:
             created.append(args.ranking_output)
             stream.write(ranking_bytes)

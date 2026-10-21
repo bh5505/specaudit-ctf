@@ -10,7 +10,7 @@ Personas (all derive their found document from the challenge contract
 at runtime — nothing about the challenges is hard-coded):
 
 - ``competent``: performs genuine tool work (initialize, tools/list,
-  run_range, describe, two admitted invokes) and writes the contract
+  run_range, describe, two invokes) and writes the contract
   as its found findings. Passes: its claims ride on a verified trace
   that covers the fixture roster.
 - ``blind-zero``: performs the handshake and NOTHING else, then writes

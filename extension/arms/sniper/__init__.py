@@ -1,10 +1,10 @@
-"""Curated sniper dispatch-only arm."""
+"""Curated sniper arm."""
 
 from .arm import SniperArm
-from .policy import ARM_ID, DISPATCH_ACTIONS
+from .policy import ALLOWED_ACTIONS, ARM_ID
 
 __all__ = [
+    "ALLOWED_ACTIONS",
     "ARM_ID",
-    "DISPATCH_ACTIONS",
     "SniperArm",
 ]

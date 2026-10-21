@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Spawn an ephemeral lab target from the golden rootfs and print its
-# WSL-internal IP plus the arming commands for the dispatch arms.
+# WSL-internal IP plus example arm commands.
 # Run from Windows (Git Bash). Tear down with lab/teardown-target.sh
 # (or wsl --unregister) — instances are disposable by design.
 #
@@ -46,15 +46,12 @@ cat <<EOF
 
 [lab] target '$NAME' is up at $IP  (ports 22 / 8000 / 8080, WSL-internal NAT only)
 
-From the Kali/dev instance, arm the scopes you want and invoke, e.g.:
+From the Kali/dev instance, invoke an arm against this target, e.g.:
 
-  export NMAP_DISPATCH_SCOPE=$IP
   python -m extension invoke nmap scan '{"target": "$IP"}'
 
-  export WAPITI_DISPATCH_SCOPE=$IP
   python -m extension invoke wapiti scan '{"url": "http://$IP:8080/"}'
 
-  export PAGE_FETCH_DISPATCH_SCOPE=$IP
   python -m extension invoke page-fetch fetch '{"url": "http://$IP:8080/form.html?q=1"}'
 
 Teardown: lab/teardown-target.sh   (fresh instance next spawn; nothing persists)

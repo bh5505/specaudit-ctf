@@ -181,7 +181,7 @@ def main(argv=None):
         errors = validate(json.loads(args.manifest.read_text()), json.loads(args.submission.read_text()), args.evidence_root)
     except (OSError, ValueError) as exc:
         parser.exit(2, f"input error: {exc}\n")
-    print(json.dumps({"structurally_valid": not errors, "human_review_required": True, "errors": errors}, indent=2))
+    print(json.dumps({"structurally_valid": not errors, "errors": errors}, indent=2))
     return 1 if errors else 0
 
 

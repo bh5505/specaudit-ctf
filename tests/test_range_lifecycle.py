@@ -21,7 +21,6 @@ from extension.contract import (
     Result,
     default_extension,
 )
-from extension.envelopes import RESULT_SCHEMA_ID
 from extension.range import (
     ARM_ACTION,
     DEFAULT_SEED,
@@ -185,29 +184,19 @@ def apply_no_curated_tools(monkeypatch: pytest.MonkeyPatch) -> None:
         )
     for env in (
         "ROUTERSPLOIT_BIN",
-        "ROUTERSPLOIT_DISPATCH_SCOPE",
         "SNIPER_BIN",
-        "SNIPER_DISPATCH_SCOPE",
         "ZGRAB2_BIN",
-        "ZGRAB2_DISPATCH_SCOPE",
         "DARK_MOON_BIN",
-        "DARK_MOON_DISPATCH_SCOPE",
         "PYRIT_BIN",
-        "PYRIT_DISPATCH_SCOPE",
         "DEEPSEC_BIN",
         "DEEPSEC_SCAN_ROOT",
-        "DEEPSEC_DISPATCH_SCOPE",
         "VVAH_BIN",
         "VVAH_SCAN_ROOT",
-        "VVAH_DISPATCH_SCOPE",
-        "VVAH_ALLOW_REMEDIATE",
         "AI_DEEP_SAST_BIN",
         "AI_DEEP_SAST_DEEPSCAN_BIN",
         "AI_DEEP_SAST_SCAN_ROOT",
-        "AI_DEEP_SAST_DISPATCH_SCOPE",
         "AGENT_WIZ_BIN",
         "AGENT_WIZ_SCAN_ROOT",
-        "AGENT_WIZ_DISPATCH_SCOPE",
         "OPENAI_API_KEY",
     ):
         monkeypatch.delenv(env, raising=False)
@@ -262,27 +251,21 @@ def _entry(
     *,
     kind: str = "arm",
     protocols: tuple[str, ...] = ("cli",),
-    curated: bool = False,
-    tier: str = "research",
     notes: str = "Range fixture row.",
-    held_reason: str | None = None,
 ) -> CatalogEntry:
     return CatalogEntry(
         id=entry_id,
         kind=kind,
         protocols=protocols,
-        curated=curated,
         notes=notes,
-        tier=tier,
-        held_reason=held_reason,
     )
 
 
 def _catalog() -> Catalog:
     return Catalog(
         [
-            _entry(FIXTURE_ARM_ID, curated=True),
-            _entry(CURATED_ARM_ID, protocols=("mcp", "http"), curated=True),
+            _entry(FIXTURE_ARM_ID),
+            _entry(CURATED_ARM_ID, protocols=("mcp", "http")),
         ]
     )
 
@@ -294,7 +277,7 @@ def _single_arm_extension(
     transport: FakeCliTransport | None = None,
 ) -> tuple[Extension, FakeCliTransport]:
     fake = transport or FakeCliTransport(installed_ids=installed, result=result)
-    catalog = Catalog([_entry(FIXTURE_ARM_ID, curated=True)])
+    catalog = Catalog([_entry(FIXTURE_ARM_ID)])
     ext = Extension(
         catalog=catalog,
         transports={"cli": fake},
@@ -400,101 +383,6 @@ def test_run_range_is_seed_stable() -> None:
     stamped = run_range(seed=DEFAULT_SEED, arm_ids=())
     again = run_range(seed=DEFAULT_SEED, arm_ids=())
     assert stamped == again
-
-
-def test_uninstalled_curated_arm_is_skipped_held_is_error(
-    no_curated_tools: None,
-) -> None:
-    document = run_range()
-    entries = default_extension().list_entries()
-    curated_ids = [
-        entry.id
-        for entry in entries
-        if entry.kind == CATALOG_KIND_ARM and entry.curated
-    ]
-    held_ids = [
-        entry.id
-        for entry in entries
-        if entry.kind == CATALOG_KIND_ARM and entry.curated and entry.tier == "held"
-    ]
-    skipped_ids = [arm_id for arm_id in curated_ids if arm_id not in held_ids]
-    # 48 after asset-recon, the ivanti VM extractor, and the research-candidate readers.
-    assert len(curated_ids) == 49
-    assert CURATED_ARM_ID in curated_ids
-    # Research tier since the doc-21 dossier (2026-09-03): no endpoint
-    # configured, so the arm is skipped as not-installed like other
-    # uninstalled curated arms - not a held error row.
-    assert CURATED_ARM_ID in skipped_ids
-    assert CURATED_ARM_ID not in held_ids
-    # attack-stix-data, rpz-decoder and asset-recon are pure in-process arms: their
-    # handlers are always installed, so the range's observe probe is an
-    # evaluated refusal (error row), not a skip. Every other curated arm
-    # stays skipped.
-    # Catalog order: the merged tree interleaves the feature-branch arms
-    # (vulnify, snmp/ike readtier) with main's research readers. http-probe
-    # needs curl, so under no_curated_tools it is skipped, not an error row.
-    always_installed = (
-        "attack-stix-data", "vulnify", "snmp-readtier", "ike-readtier",
-        "rpz-decoder", "asset-recon", "learning-operator",
-        "security-detections-mcp", "agentseal", "leonidas",
-        "specterops-skills", "detection-in-the-cloud", "pentestkit", "collinear",
-        "ad-pathfinder", "gpohound", "claude-ad", "numasec", "rubeus", "m365pwned",
-    )
-    skipped_ids = [arm_id for arm_id in skipped_ids if arm_id not in always_installed]
-    error_ids = held_ids + [arm_id for arm_id in curated_ids if arm_id in always_installed]
-    # RED lock: matching lifecycle plus one unavailable auto-discovered
-    # arm must not report complete / ok=true.
-    _assert_v3_status(document, "degraded")
-    assert document["coverage"]["attempted"] == curated_ids
-    assert document["coverage"]["skipped"] == skipped_ids
-    assert document["coverage"]["complete"] == []
-    assert document["coverage"]["error"] == error_ids
-    for row in document["fixtures"]:
-        _assert_fixture_v3(row, "degraded")
-        assert row["matched_expected"] is True
-        by_id = {item["arm_id"]: item for item in row["arms"]}
-        assert set(by_id) == set(curated_ids)
-        for arm_id in skipped_ids:
-            assert by_id[arm_id]["status"] == "skipped"
-            assert by_id[arm_id]["reason"] == "not installed"
-        for arm_id in held_ids:
-            assert by_id[arm_id]["status"] == "error"
-            err = by_id[arm_id].get("error") or ""
-            assert "held" in err.lower()
-            # Catalog policy text must not be keyword-mangled ("token").
-            assert "[redacted]" not in err
-            assert "token passthrough" in err.lower()
-        for arm_id in ("attack-stix-data", "rpz-decoder"):
-            observe_row = by_id[arm_id]
-            assert observe_row["status"] == "error"
-            assert "not on the allowlist" in (observe_row.get("error") or "")
-        asset_recon_row = by_id["asset-recon"]
-        assert asset_recon_row["status"] == "error"
-        assert asset_recon_row.get("error") == "operation refused [REDACTED]"
-
-
-def test_held_reason_redacted_when_notes_leak_secrets() -> None:
-    entry = _entry(
-        "held-mcp",
-        protocols=("cli",),
-        curated=True,
-        tier="held",
-        notes="operator pasted token=abc password=xyz",
-        held_reason="HTTP MCP is held; no token passthrough.",
-    )
-    fake = FakeCliTransport(installed_ids={"held-mcp"})
-    ext = Extension(
-        catalog=Catalog([entry]),
-        transports={"cli": fake},
-        arms={"held-mcp": fake},
-    )
-    document = run_range(extension=ext, arm_ids=["held-mcp"])
-    _assert_v3_status(document, "failed")
-    err = document["fixtures"][0]["arms"][0]["error"]
-    assert "[redacted]" in err
-    assert "token" not in err.lower()
-    assert "password" not in err.lower()
-    assert fake.calls == []
 
 
 def test_auto_discovered_missing_arm_is_degraded() -> None:
@@ -710,7 +598,7 @@ def test_document_roll_up_degraded_beats_complete() -> None:
 
     fake = MixedTransport(installed_ids={FIXTURE_ARM_ID})
     ext = Extension(
-        catalog=Catalog([_entry(FIXTURE_ARM_ID, curated=True)]),
+        catalog=Catalog([_entry(FIXTURE_ARM_ID)]),
         transports={"cli": fake},
         arms={FIXTURE_ARM_ID: fake},
     )
@@ -1043,23 +931,6 @@ def test_expected_must_mirror_derived_keys() -> None:
             _load_expected(stale)
 
 
-def test_range_scope_matches_manifest() -> None:
-    """Drift guard: the encoder's capability grant names every fixture.
-
-    The sealed runtime cannot read the manifest at import time, so the
-    grant is a static tuple in encode.py; this test is the lockstep.
-    """
-    from extension.encode import RANGE_SCOPE, _RANGE_SCOPE_BY_FIXTURE
-
-    manifest = json.loads((RANGE_ROOT / "manifest.json").read_text(encoding="utf-8"))
-    assert sorted(_RANGE_SCOPE_BY_FIXTURE) == sorted(manifest["fixtures"])
-    assert [uri.rsplit("/", 1)[-1] for uri in RANGE_SCOPE] == list(
-        manifest["fixtures"]
-    )
-    for fixture_id, uri in _RANGE_SCOPE_BY_FIXTURE.items():
-        assert uri == f"file:///extension/range/{fixture_id}"
-
-
 def test_derive_lifecycle_primary_tie_breaks_by_asset_order() -> None:
     derived = derive_lifecycle(
         _assets(
@@ -1314,16 +1185,15 @@ def test_main_writes_result_document(
 ) -> None:
     code = main([])
     printed = json.loads(capsys.readouterr().out)
-    assert printed["schema"] == RESULT_SCHEMA_ID
-    assert "ok" not in printed
+    assert printed["schema"] == SCHEMA_ID
+    assert isinstance(printed["ok"], bool)
     assert printed["status"] in _RANGE_STATUSES
     assert code == (0 if printed["status"] == "complete" else 1)
     out = tmp_path / "result.json"
     code2 = main(["--out", str(out), "--seed", str(DEFAULT_SEED)])
     written = json.loads(out.read_text(encoding="utf-8"))
-    assert written["schema"] == RESULT_SCHEMA_ID
-    assert written["capability_id"] == "fixture.range-observe"
-    assert "ok" not in written
+    assert written["schema"] == SCHEMA_ID
+    assert isinstance(written["ok"], bool)
     assert code2 == (0 if written["status"] == "complete" else 1)
 
 
@@ -1332,9 +1202,9 @@ def test_main_default_uninstalled_exits_nonzero(
 ) -> None:
     assert main([]) == 1
     printed = json.loads(capsys.readouterr().out)
-    assert printed["schema"] == RESULT_SCHEMA_ID
+    assert printed["schema"] == SCHEMA_ID
     assert printed["status"] == "degraded"
-    assert "ok" not in printed
+    assert isinstance(printed["ok"], bool)
 
 
 def test_module_cli_emits_json() -> None:
@@ -1347,7 +1217,7 @@ def test_module_cli_emits_json() -> None:
         check=False,
     )
     document = json.loads(proc.stdout)
-    assert document["schema"] == RESULT_SCHEMA_ID
-    assert "ok" not in document
+    assert document["schema"] == SCHEMA_ID
+    assert isinstance(document["ok"], bool)
     assert document["status"] in _RANGE_STATUSES
     assert proc.returncode == (0 if document["status"] == "complete" else 1), proc.stderr

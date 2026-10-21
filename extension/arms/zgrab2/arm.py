@@ -1,4 +1,4 @@
-"""Curated zgrab2 arm: closed-module L7 grab, host on stdin, scope-gated."""
+"""zgrab2 arm: operator-selected module and target via separate argv/stdin."""
 
 from __future__ import annotations
 
@@ -13,14 +13,11 @@ from ...contract import (
     Result,
 )
 from ..bounded_capture import run_bounded
-from ..dispatch import authorize, load_scope, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
     CAVEATS,
-    DISPATCH_ACTIONS,
-    ENV_DISPATCH_SCOPE,
     LIST_ACTIONS,
     MAX_OUTPUT_CHARS,
     MODULES,
@@ -29,25 +26,18 @@ from .policy import (
     extra_scan_keys,
     host_refusal,
     module_refusal,
+    options_refusal,
     port_refusal,
     resolve_binary,
     stdin_and_auth_target,
 )
 
 
-def _with_caveat(message: str | None) -> str:
-    text = message or "refused"
-    if CAVEATS and CAVEATS not in text:
-        return f"{text} Caveat: {CAVEATS}"
-    return text
-
-
 class Zgrab2Arm:
     """Specialized transport for catalog id zgrab2.
 
-    list_modules is a static allowlist. scan feeds one host on stdin with
-    a closed module set and optional --port. Dispatch is refused by
-    default until ZGRAB2_DISPATCH_SCOPE names the target.
+    list_modules supplies common examples. Scan feeds one target on stdin;
+    the operator selects a module, optional port, and upstream argv options.
     """
 
     ARM_ID = ARM_ID
@@ -70,16 +60,16 @@ class Zgrab2Arm:
         payload = dict(args)
         if action in LIST_ACTIONS:
             return self._list_tools(spec, action, payload)
-        if action in ALLOWED_ACTIONS:
+        if action == "list_modules":
             return self._list_modules(spec, action, payload)
-        if action not in DISPATCH_ACTIONS:
+        if action not in ALLOWED_ACTIONS:
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
                 error=f"action {action!r} is not on the allowlist "
-                "(list_tools/list_modules are reads; 'scan' is scope-gated dispatch)",
+                f"(supported: {sorted(ALLOWED_ACTIONS | LIST_ACTIONS)})",
             )
         extra = extra_scan_keys(payload)
         if extra:
@@ -88,13 +78,13 @@ class Zgrab2Arm:
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error="zgrab2 scan takes only args.target, args.module, "
-                "optional args.port (fixed argv)",
+                error="zgrab2 scan takes args.target, args.module, optional args.port and args.options",
             )
         for refusal in (
             host_refusal(payload),
             module_refusal(payload),
             port_refusal(payload),
+            options_refusal(payload),
         ):
             if refusal:
                 return Result(
@@ -104,22 +94,12 @@ class Zgrab2Arm:
                     output=None,
                     error=refusal,
                 )
-        stdin_host, auth_target = stdin_and_auth_target(str(payload["target"]))
+        stdin_host, _ = stdin_and_auth_target(str(payload["target"]))
         module = str(payload["module"]).strip()
         port = payload.get("port")
-        scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, auth_target)
-        if scope is None:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=_with_caveat(refusal),
-            )
-        log_dispatch(ARM_ID, action, scope, auth_target)
         try:
             proc, overflowed = run_bounded(
-                argv_for(binary, module, port),
+                argv_for(binary, module, port, payload.get("options")),
                 input=f"{stdin_host}\n",
                 maximum=MAX_OUTPUT_CHARS,
                 timeout=self.timeout,
@@ -144,21 +124,21 @@ class Zgrab2Arm:
             return Result(ok=False, arm_id=spec.id, action=action, output=None,
                           error="subprocess output exceeded capture cap")
         output: Any = _parse_output(proc.stdout)
-        stamped = {"dispatch": stamp(scope, auth_target), "output": output}
+        report = {"output": output}
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or f"{action} failed").strip()
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
-                output=stamped,
+                output=report,
                 error=redact(detail[:MAX_OUTPUT_CHARS]),
             )
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
-            output=stamped,
+            output=report,
             error=None,
         )
 
@@ -171,17 +151,15 @@ class Zgrab2Arm:
                 output=None,
                 error="list_tools takes no arguments (fixed argv)",
             )
-        scope, _ = load_scope(ENV_DISPATCH_SCOPE)
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
             output={
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": sorted(DISPATCH_ACTIONS),
-                "dispatch_armed": scope is not None,
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "caveats": CAVEATS,
                 "modules": sorted(MODULES),
+                "module_note": "common examples; any module accepted by the selected zgrab2 binary can be used",
             },
             error=None,
         )
@@ -199,7 +177,7 @@ class Zgrab2Arm:
             ok=True,
             arm_id=spec.id,
             action=action,
-            output={"modules": sorted(MODULES)},
+            output={"modules": sorted(MODULES), "module_note": "common examples; any module accepted by the selected zgrab2 binary can be used"},
             error=None,
         )
 

@@ -1,4 +1,4 @@
-"""Curated routersploit arm: dispatch-only module run, scope-gated."""
+"""Curated routersploit arm: operator-invoked module run."""
 
 from __future__ import annotations
 
@@ -14,43 +14,31 @@ from ...contract import (
     Result,
 )
 from ..bounded_capture import run_bounded
-from ..dispatch import authorize, load_scope, log_dispatch, stamp
-from ..mcp_client import redact
+from ..mcp_client import redact, redact_values
 from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
     CAVEATS,
-    DISPATCH_ACTIONS,
-    ENV_DISPATCH_SCOPE,
     LIST_ACTIONS,
     MAX_OUTPUT_CHARS,
-    MODULE_RE,
-    OPTION_KEYS,
+    RUN_KEYS,
     TIMEOUT_SECONDS,
     argv_for,
-    canonical_target,
     extra_run_keys,
     module_refusal,
+    options_refusal,
     port_refusal,
     resolve_binary,
+    secret_values,
     target_refusal,
     username_refusal,
 )
 
 
-def _with_caveat(message: str | None) -> str:
-    text = message or "refused"
-    if CAVEATS and CAVEATS not in text:
-        return f"{text} Caveat: {CAVEATS}"
-    return text
-
-
 class RoutersploitArm:
     """Specialized transport for catalog id routersploit.
 
-    Upstream non-interactive -m always executes the module. Dispatch is
-    refused by default and authorized only by an armed
-    ROUTERSPLOIT_DISPATCH_SCOPE containing the target host.
+    Upstream non-interactive -m always executes the module.
     """
 
     ARM_ID = ARM_ID
@@ -73,14 +61,14 @@ class RoutersploitArm:
         payload = dict(args)
         if action in LIST_ACTIONS:
             return self._list_tools(spec, action, payload)
-        if action not in DISPATCH_ACTIONS:
+        if action not in ALLOWED_ACTIONS:
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
                 error=f"action {action!r} is not on the allowlist "
-                "(list_tools is the read surface; 'run' is scope-gated dispatch)",
+                "(list_tools describes the supported actions; 'run' executes the selected module)",
             )
         extra = extra_run_keys(payload)
         if extra:
@@ -89,14 +77,15 @@ class RoutersploitArm:
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error="routersploit run takes only args.module, args.target, "
-                "optional args.port and args.username (fixed argv)",
+                error="routersploit run takes args.module, args.target, and "
+                "optional args.port, args.username, and args.options",
             )
         for refusal in (
             module_refusal(payload),
             target_refusal(payload),
             port_refusal(payload),
             username_refusal(payload),
+            options_refusal(payload),
         ):
             if refusal:
                 return Result(
@@ -106,17 +95,7 @@ class RoutersploitArm:
                     output=None,
                     error=refusal,
                 )
-        target = canonical_target(str(payload["target"]).strip())
-        scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, target)
-        if scope is None:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=_with_caveat(refusal),
-            )
-        log_dispatch(ARM_ID, action, scope, target)
+        secrets = secret_values(payload)
         cmd = argv_for(binary, payload)
         if cmd is None:
             return Result(
@@ -149,27 +128,26 @@ class RoutersploitArm:
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error=redact(str(exc)),
+                error=_scrub(str(exc), secrets),
             )
         if overflowed:
             return Result(ok=False, arm_id=spec.id, action=action, output=None,
                           error="subprocess output exceeded capture cap")
-        output: Any = _parse_output(proc.stdout)
-        stamped = {"dispatch": stamp(scope, target), "output": output}
+        output: Any = _parse_output(proc.stdout, secrets)
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or f"{action} failed").strip()
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
-                output=stamped,
-                error=redact(detail[:MAX_OUTPUT_CHARS]),
+                output=output,
+                error=_scrub(detail[:MAX_OUTPUT_CHARS], secrets),
             )
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
-            output=stamped,
+            output=output,
             error=None,
         )
 
@@ -182,26 +160,41 @@ class RoutersploitArm:
                 output=None,
                 error="list_tools takes no arguments (fixed argv)",
             )
-        scope, _ = load_scope(ENV_DISPATCH_SCOPE)
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
             output={
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": sorted(DISPATCH_ACTIONS),
-                "dispatch_armed": scope is not None,
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "caveats": CAVEATS,
-                "module_pattern": MODULE_RE.pattern,
-                "option_keys": list(OPTION_KEYS),
+                "option_keys": sorted(RUN_KEYS),
+                "options": (
+                    "optional mapping of upstream module options "
+                    "(for example password or other module keys) passed as "
+                    "-s pairs; secret-named values are scrubbed from "
+                    "reported results"
+                ),
             },
             error=None,
         )
 
 
-def _parse_output(stdout: str) -> Any:
-    """Parse JSON tool output when valid; redacted raw text otherwise."""
+def _scrub(text: str, secrets: set[str]) -> str:
+    """Keyword-redact text, scrubbing exact secret values first."""
+    if secrets:
+        text = redact_values(text, secrets)
+    return redact(text)
+
+
+def _parse_output(stdout: str, secrets: set[str]) -> Any:
+    """Parse JSON tool output when valid; scrubbed raw text otherwise.
+
+    Exact secret values are scrubbed before parsing so parsed structures
+    never carry them either.
+    """
     text = (stdout or "")[:MAX_OUTPUT_CHARS]
+    if secrets:
+        text = redact_values(text, secrets)
     stripped = text.strip()
     if stripped:
         try:

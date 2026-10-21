@@ -1,21 +1,20 @@
-"""Dispatch-scoped curl transport for caller-selected HTTP headers."""
+"""Curl transport for caller-selected HTTP headers."""
 
 from __future__ import annotations
 
 import json
+import base64
 import re
 import subprocess
+from urllib import parse as urllib_parse
 from typing import Any, Mapping
 
 from ...contract import TRANSPORT_CLI, ArmSpec, NotInstalledError, Result
 from ..bounded_capture import run_bounded
-from ..dispatch import authorize, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
-    DISPATCH_ACTIONS,
-    ENV_DISPATCH_SCOPE,
     MAX_OUTPUT_CHARS,
     TIMEOUT_SECONDS,
     argv_for,
@@ -49,30 +48,23 @@ class HttpProbeArm:
         binary = resolve_binary()
         if binary is None:
             raise NotInstalledError(spec.id)
-        if action not in ALLOWED_ACTIONS and action not in DISPATCH_ACTIONS:
+        if action not in ALLOWED_ACTIONS:
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error=f"action {action!r} is not on any tier "
-                "(http-probe always reaches the network; 'probe' is scope-gated dispatch)",
+                error=f"action {action!r} is not on the allowlist "
+                f"(supported: {sorted(ALLOWED_ACTIONS)})",
             )
 
         payload = dict(args)
         refusal = target_refusal(payload)
         if refusal:
             return Result(False, spec.id, action, None, refusal)
-        target = payload["url"].strip()
         headers = payload.get("headers", {})
         safe_headers, secret_masks = _masked_headers(headers)
-
-        scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, target)
-        if scope is None:
-            return Result(False, spec.id, action, None, refusal)
-        # Secret-bearing values have been reduced to safe_masks before the
-        # dispatch audit point. log_dispatch itself records only scope/target.
-        log_dispatch(ARM_ID, action, scope, target)
+        secret_masks.update(_url_secret_masks(payload["url"]))
 
         cmd = argv_for(binary, action, payload)
         if cmd is None:
@@ -134,7 +126,7 @@ class HttpProbeArm:
             True,
             spec.id,
             action,
-            {"dispatch": stamp(scope, target), "output": report},
+            {"output": report},
             None,
         )
 
@@ -173,6 +165,21 @@ def _scrub_values(text: str, masks: Mapping[str, str]) -> str:
         if value:
             text = text.replace(value, masks[value])
     return text
+
+
+def _url_secret_masks(url: str) -> dict[str, str]:
+    parsed = urllib_parse.urlsplit(url)
+    if parsed.username is None and parsed.password is None:
+        return {}
+    user = urllib_parse.unquote(parsed.username or "")
+    password = urllib_parse.unquote(parsed.password or "")
+    pair = f"{user}:{password}"
+    raw_userinfo = parsed.netloc.rsplit("@", 1)[0]
+    encoded = base64.b64encode(pair.encode("utf-8")).decode("ascii")
+    masks = {raw_userinfo: "[redacted]", pair: "[redacted]", encoded: "[redacted]"}
+    if len(password) >= 3:
+        masks[password] = "[redacted]"
+    return masks
 
 
 def _response(stdout: str) -> tuple[int, str] | None:

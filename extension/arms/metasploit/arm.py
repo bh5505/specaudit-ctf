@@ -1,8 +1,7 @@
-"""Curated metasploit arm: allowlisted listings, scope-gated execution."""
+"""Curated metasploit arm: allowlisted listings and execution tools."""
 
 from __future__ import annotations
 
-import os
 from typing import Any, Callable, Mapping
 
 from ...contract import (
@@ -11,7 +10,6 @@ from ...contract import (
     NotInstalledError,
     Result,
 )
-from ..dispatch import authorize, log_dispatch, stamp, target_in_scope
 from ..mcp_client import (
     MAX_MCP_ROWS,
     MCP_CALL_TIMEOUT,
@@ -19,34 +17,30 @@ from ..mcp_client import (
     redact,
 )
 from .policy import (
-    ALLOWED_TOOLS,
     ARM_ID,
-    DISPATCH_TOOLS,
-    ENV_DISPATCH_SCOPE,
     LIST_ACTIONS,
-    TRANSPORT_POLICY,
-    audit_target,
     endpoint_url,
-    extract_targets,
 )
 
 SessionFactory = Callable[..., Any]
 
 
 def _default_session_factory(url: str, timeout: float = MCP_CALL_TIMEOUT) -> Any:
-    return SseMcpSession(url, timeout=timeout, policy=TRANSPORT_POLICY)
+    return SseMcpSession(url, timeout=timeout)
 
 
 class MetasploitArm:
     """Specialized transport for catalog id metasploit-mcp.
 
-    Read tier: the four list_* tools. Dispatch tier: the eight
-    execution tools, gated by METASPLOIT_DISPATCH_SCOPE - host-bearing
-    tools (run_exploit, run_auxiliary_module) require every RHOSTS/RHOST
-    member to be inside the scope; session/job tools authorize on scope
-    presence and audit session:<id>/job:<id>. Upstream speaks legacy
-    HTTP+SSE (verified 2026-08-24), so the shared SseMcpSession is the
-    client and the session factory stays injectable for a later swap.
+    The listing tools and the execution tools (run_exploit,
+    run_auxiliary_module, run_post_module, generate_payload,
+    send_session_command, terminate_session, start_listener, stop_job)
+    all invoke through the operator-run loopback SSE server based on
+    their real arguments and the endpoint configuration. The competent
+    human operator is responsible for choosing targets and for how the
+    tool is used. Upstream speaks legacy HTTP+SSE (verified 2026-08-24),
+    so the shared SseMcpSession is the client and the session factory
+    stays injectable for a later swap.
     """
 
     ARM_ID = ARM_ID
@@ -67,7 +61,7 @@ class MetasploitArm:
         if self._explicit_endpoint:
             from ..mcp_client import configured_http_url
 
-            return configured_http_url(self._endpoint_arg, TRANSPORT_POLICY)
+            return configured_http_url(self._endpoint_arg)
         return endpoint_url()
 
     def installed(self, spec: ArmSpec) -> bool:
@@ -80,12 +74,6 @@ class MetasploitArm:
         if spec.id != ARM_ID or endpoint is None:
             raise NotInstalledError(spec.id)
         payload = dict(args)
-        # Execution surfaces gate BEFORE any dial: scope authorization,
-        # target containment, and the audit stamp are decided from the
-        # armed scope alone, so an unarmed (or out-of-scope) invocation
-        # never opens a connection to the msf server.
-        if action in DISPATCH_TOOLS:
-            return self._dispatch_call(spec, action, payload, endpoint)
         session = self._session_factory(endpoint, timeout=self.timeout)
         try:
             session.connect()
@@ -102,98 +90,10 @@ class MetasploitArm:
                     action=action,
                     output={
                         "tools": tools[:MAX_MCP_ROWS],
-                        "read_tier": sorted(ALLOWED_TOOLS),
-                        "dispatch_tier": sorted(DISPATCH_TOOLS),
-                        "dispatch_armed": os.environ.get(
-                            ENV_DISPATCH_SCOPE, ""
-                        ).strip()
-                        != "",
+                        "actions": sorted(names),
                     },
                     error=None,
                 )
-            if action in ALLOWED_TOOLS:
-                result_obj = session.call_tool(action, payload)
-                data = _normalize(result_obj)
-                if isinstance(data, dict) and data.get("isError"):
-                    return Result(
-                        ok=False,
-                        arm_id=spec.id,
-                        action=action,
-                        output={"data": data},
-                        error=redact(str(data.get("error") or "tool error")),
-                    )
-                return Result(
-                    ok=True,
-                    arm_id=spec.id,
-                    action=action,
-                    output={"data": data},
-                    error=None,
-                )
-            reason = "is not on the allowlist"
-            if action in {"exploit", "run", "payload"}:
-                reason = (
-                    "is not an upstream tool name; the dispatch tier is "
-                    f"{sorted(DISPATCH_TOOLS)}"
-                )
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=f"tool {action!r} {reason}",
-            )
-        except Exception as exc:  # noqa: BLE001 - surface as Result, stay closed
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=redact(str(exc)),
-            )
-        finally:
-            session.close()
-
-    def _dispatch_call(
-        self, spec: ArmSpec, action: str, payload: dict, endpoint: str
-    ) -> Result:
-        """Gate an execution call BEFORE any dial, then execute it.
-
-        Order is the admission's teeth: target extraction, scope
-        authorization, containment, and the audit line all run against
-        the armed scope alone - an unarmed or out-of-scope invocation
-        never opens a connection to the msf server. Only a fully
-        authorized call reaches the server-surface check and the tool
-        call.
-        """
-        targets, refusal = extract_targets(payload)
-        if refusal:
-            return Result(
-                ok=False, arm_id=spec.id, action=action, output=None, error=refusal
-            )
-        scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, None)
-        if scope is None:
-            return Result(
-                ok=False, arm_id=spec.id, action=action, output=None, error=refusal
-            )
-        for host in targets or ():
-            if not target_in_scope(host, scope):
-                return Result(
-                    ok=False,
-                    arm_id=spec.id,
-                    action=action,
-                    output=None,
-                    error=f"target {host!r} is outside the armed dispatch scope",
-                )
-        audited = audit_target(payload, targets)
-        session = self._session_factory(endpoint, timeout=self.timeout)
-        try:
-            session.connect()
-            tools = session.list_tools()
-            names = {
-                str(item.get("name"))
-                for item in tools
-                if isinstance(item, dict) and item.get("name")
-            }
             if action not in names:
                 return Result(
                     ok=False,
@@ -202,10 +102,6 @@ class MetasploitArm:
                     output=None,
                     error=f"tool {action!r} is not available on the server",
                 )
-            # The audit line fires only once the tool is known to exist
-            # on the server: it records an authorized AND available
-            # dispatch, never a refused attempt.
-            log_dispatch(ARM_ID, action, scope, audited)
             result_obj = session.call_tool(action, payload)
             data = _normalize(result_obj)
             if isinstance(data, dict) and data.get("isError"):
@@ -220,10 +116,7 @@ class MetasploitArm:
                 ok=True,
                 arm_id=spec.id,
                 action=action,
-                output={
-                    "dispatch": stamp(scope, audited),
-                    "data": data,
-                },
+                output={"data": data},
                 error=None,
             )
         except Exception as exc:  # noqa: BLE001 - surface as Result, stay closed

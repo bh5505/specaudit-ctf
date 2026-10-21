@@ -8,20 +8,18 @@ from typing import Any
 
 import pytest
 
-from extension.arms.semgrep import ALLOWED_TOOLS, ARM_ID, BLOCKED_TOOLS, SemgrepArm
+from extension.arms.semgrep import ARM_ID, SemgrepArm
 from extension.arms.semgrep.policy import ENV_BIN, ENV_ENDPOINT, scan_config_refusal
 from extension.contract import ArmSpec, Extension, NotInstalledError
 
-ALL_TOOLS = tuple(ALLOWED_TOOLS) + tuple(BLOCKED_TOOLS)
+ALL_TOOLS = ("semgrep_scan", "semgrep_findings", "get_abstract_syntax_tree", "supported_languages", "semgrep_rule_schema", "security_check", "semgrep_scan_with_custom_rule")
 
 
 def _spec() -> ArmSpec:
     return ArmSpec(
         id=ARM_ID,
         protocols=("mcp", "http"),
-        curated=True,
-        notes="Fixture curated MCP arm.",
-        tier="research",
+        notes="Fixture MCP arm.",
     )
 
 
@@ -109,20 +107,19 @@ def test_endpoint_with_crlf_refused(monkeypatch: pytest.MonkeyPatch) -> None:
 # --- policy -------------------------------------------------------------
 
 
-def test_blocked_tool_refused() -> None:
+def test_advertised_security_check_runs() -> None:
     session = FakeSession()
     arm = _arm(session)
     result = arm.invoke(_spec(), "security_check", {})
-    assert result.ok is False
-    assert "is blocked" in result.error
-    assert session.calls == []
+    assert result.ok is True
+    assert session.calls == [("security_check", {})]
 
 
 def test_unknown_tool_refused() -> None:
     session = FakeSession()
     result = _arm(session).invoke(_spec(), "semgrep_publish", {})
     assert result.ok is False
-    assert "not on the allowlist" in result.error
+    assert "not available on the server" in result.error
 
 
 def test_tool_not_on_server_refused() -> None:
@@ -132,12 +129,12 @@ def test_tool_not_on_server_refused() -> None:
     assert "not available on the server" in result.error
 
 
-def test_scan_config_egress_gate() -> None:
+def test_scan_config_input_shape() -> None:
     assert scan_config_refusal({}) is not None
-    assert "inline rule pack" in scan_config_refusal({})
-    assert "registry" in scan_config_refusal({"config": "auto"})
-    assert "registry" in scan_config_refusal({"config": "p/xss"})
-    assert "URL" in scan_config_refusal({"config": "https://rules.example/r.yaml"})
+    assert "args.config" in scan_config_refusal({})
+    assert scan_config_refusal({"config": "auto"}) is None
+    assert scan_config_refusal({"config": "p/xss"}) is None
+    assert scan_config_refusal({"config": "https://rules.example/r.yaml"}) is None
     assert "NUL" in scan_config_refusal({"config": "rules:\n\x00"})
     assert scan_config_refusal({"config": "rules:\n  - id: x"}) is None
 
@@ -173,10 +170,6 @@ def test_list_tools_is_cli_static_with_endpoint_set(
     result = _arm(session).invoke(_spec(), "list_tools", {})
     assert result.ok is True
     assert result.output["surface"] == "cli"
-    # The MCP tool names are still surfaced as the endpoint-action list.
-    # Only the endpoint-routed reads: semgrep_scan is CLI-routed (the
-    # dispatch profile), and blocked tools are not endpoint actions.
-    assert set(result.output["mcp_endpoint_actions"]) == set(ALLOWED_TOOLS) - {"semgrep_scan"}
     assert session.calls == []
 
 
@@ -273,13 +266,8 @@ def test_extension_invoke_with_env() -> None:
     assert result.ok is True
 
 
-def test_scan_config_multiline_body_not_prefix_matched() -> None:
-    """Multi-line inline rule bodies are never prefix-matched (review fix).
-
-    A YAML body can legitimately reference URLs or contain
-    registry-shaped keys; only single-line tokens are egress-checked.
-    """
+def test_scan_config_accepts_inline_and_operator_selected_sources() -> None:
     body = "p/example:\n  - id: x\n    references: https://r.example"
     assert scan_config_refusal({"config": body}) is None
-    assert "URL" in scan_config_refusal({"config": "https://rules.example"})
-    assert "registry" in scan_config_refusal({"config": "p/xss"})
+    assert scan_config_refusal({"config": "https://rules.example"}) is None
+    assert scan_config_refusal({"config": "p/xss"}) is None

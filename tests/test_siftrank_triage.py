@@ -1,4 +1,4 @@
-"""SiftRank captured-format and trust-boundary tests; no model call is made."""
+"""SiftRank captured-format and direct-run tests; no model call is made."""
 
 from dataclasses import replace
 import hashlib
@@ -58,14 +58,26 @@ def test_malformed_even_when_rehashed_by_test_custodian(edit):
         import_capture(source, altered, binding)
 
 
-def test_tamper_and_unreviewed_revision_fail_closed():
+def test_tamper_and_provider_model_checks():
     source, ranking, binding = capture()
     with pytest.raises(TriageImportError, match="hashes"):
         import_capture(source + b" ", ranking, binding)
+    assert import_capture(source, ranking, replace(binding, upstream_revision="operator-supplied"))["kind"] == "review-order-only"
     with pytest.raises(TriageImportError, match="revision"):
-        import_capture(source, ranking, replace(binding, upstream_revision="latest"))
-    with pytest.raises(TriageImportError, match="custody_ref"):
-        import_capture(source, ranking, replace(binding, custody_ref=""))
+        import_capture(source, ranking, replace(binding, upstream_revision=""))
+    with pytest.raises(TriageImportError, match="missing provider"):
+        import_capture(source, ranking, replace(binding, provider="  "))
+    with pytest.raises(TriageImportError, match="missing model"):
+        import_capture(source, ranking, replace(binding, model=""))
+    binding_from_hashes = CaptureBinding(
+        upstream_revision=binding.upstream_revision,
+        input_sha256=binding.input_sha256,
+        ranking_sha256=binding.ranking_sha256,
+        prompt_sha256=binding.prompt_sha256,
+        provider=binding.provider,
+        model=binding.model,
+    )
+    assert import_capture(source, ranking, binding_from_hashes)["kind"] == "review-order-only"
 
 
 def test_duplicate_candidate_id_and_invalid_labels():
@@ -89,27 +101,28 @@ def _fake_binary(tmp_path, source):
 def _options(binary):
     return dict(executable=binary, executable_sha256=hashlib.sha256(binary.read_bytes()).hexdigest(),
                 provider="openai", model="local-test-model", base_url="http://127.0.0.1:8000/v1",
-                api_key="sentinel", budget_authority_ref="test-only:budget",
-                custody_ref="test-only:capture", run_id="test-only:run",
-                captured_at="2026-10-03T00:00:00Z")
+                api_key="sentinel")
 
 
-def test_optional_cli_uses_fixed_argv_and_closed_environment(tmp_path, monkeypatch, capsys):
+def test_direct_cli_uses_fixed_argv_and_closed_environment(tmp_path, monkeypatch, capsys):
     source, ranking, _ = capture()
     binary = _fake_binary(tmp_path, "import os, sys\n"
         "assert '--max-trials' in sys.argv and '--file' in sys.argv\n"
             "assert os.environ['OPENAI_API_KEY'] == 'sentinel' and 'HOME' not in os.environ\n"
         f"sys.stdout.buffer.write({ranking!r})\n")
     options = _options(binary)
-    with pytest.raises(TriageImportError, match="opt-in"):
-        run_siftrank(source, "Prioritize missing evidence", **options)
-    result, raw, binding = run_siftrank(source, "Prioritize missing evidence",
-                                         allow_provider_call=True, **options)
+    result, raw, binding = run_siftrank(source, "Prioritize missing evidence", **options)
     assert result["kind"] == "review-order-only" and raw == ranking
     assert binding.ranking_sha256 == hashlib.sha256(ranking).hexdigest()
+    assert binding.provider == "openai" and binding.model == "local-test-model"
+    assert run_siftrank(source, "Prioritize missing evidence", **{key: value for key, value in options.items() if key != "executable_sha256"})[0]["kind"] == "review-order-only"
     with pytest.raises(TriageImportError, match="hash mismatch"):
-        run_siftrank(source, "Prioritize missing evidence", allow_provider_call=True,
+        run_siftrank(source, "Prioritize missing evidence",
                      **{**options, "executable_sha256": "0" * 64})
+    with pytest.raises(TriageImportError, match="base URL"):
+        run_siftrank(source, "Prioritize missing evidence", **{**options, "base_url": "  "})
+    with pytest.raises(TriageImportError, match="API key"):
+        run_siftrank(source, "Prioritize missing evidence", **{**options, "api_key": ""})
     (tmp_path / "input.json").write_bytes(source)
     (tmp_path / "prompt.txt").write_text("Prioritize missing evidence")
     monkeypatch.setenv("OPENAI_API_KEY", "sentinel")
@@ -117,9 +130,7 @@ def test_optional_cli_uses_fixed_argv_and_closed_environment(tmp_path, monkeypat
              "--ranking-output", str(tmp_path / "output.json"), "--binding-output", str(tmp_path / "binding.json"),
              "--executable", str(binary), "--executable-sha256", options["executable_sha256"],
              "--provider", "openai", "--model", "local-test-model", "--base-url", options["base_url"],
-             "--api-key-env", "OPENAI_API_KEY", "--budget-authority-ref", "test-only:budget",
-             "--custody-ref", "test-only:capture", "--run-id", "test-only:run",
-             "--captured-at", "2026-10-03T00:00:00Z", "--allow-provider-call"]
+             "--api-key-env", "OPENAI_API_KEY"]
     assert main(flags) == 0
     assert (tmp_path / "output.json").read_bytes() == ranking
     assert "sentinel" not in capsys.readouterr().out
@@ -128,19 +139,32 @@ def test_optional_cli_uses_fixed_argv_and_closed_environment(tmp_path, monkeypat
                  "--binding", str(tmp_path / "binding.json")]) == 0
 
 
+def test_direct_run_uses_operator_base_url_verbatim(tmp_path):
+    source, ranking, _ = capture()
+    for index, base_url in enumerate(("https://operator-chosen.example/v1", "http://192.168.0.10:8000/v1")):
+        workdir = tmp_path / f"endpoint-{index}"
+        workdir.mkdir()
+        binary = _fake_binary(workdir, "import sys\n"
+                              f"assert '--base-url' in sys.argv and sys.argv[sys.argv.index('--base-url') + 1] == {base_url!r}\n"
+                              f"sys.stdout.buffer.write({ranking!r})\n")
+        options = {**_options(binary), "base_url": base_url}
+        result, raw, _ = run_siftrank(source, "rank", **options)
+        assert raw == ranking and result["kind"] == "review-order-only"
+
+
 def test_execution_output_caps_and_descendant_timeout(tmp_path):
     source, _, _ = capture()
     for stream in ("stdout", "stderr"):
         binary = _fake_binary(tmp_path, f"import sys\nsys.{stream}.buffer.write(b'x' * 1100000)\n")
         with pytest.raises(TriageImportError, match=stream + " limit"):
-            run_siftrank(source, "rank", allow_provider_call=True, **_options(binary))
+            run_siftrank(source, "rank", **_options(binary))
     marker = tmp_path / "descendant-survived"
     binary = _fake_binary(tmp_path,
         "import subprocess, sys, time\n"
         f"subprocess.Popen([sys.executable, '-c', {('import time; from pathlib import Path; time.sleep(2); Path(' + repr(str(marker)) + ').write_text(\'bad\')')!r}])\n"
         "time.sleep(10)\n")
     with pytest.raises(TriageImportError, match="timed out"):
-        run_siftrank(source, "rank", allow_provider_call=True, timeout_seconds=1, **_options(binary))
+        run_siftrank(source, "rank", timeout_seconds=1, **_options(binary))
     time.sleep(2.2)
     assert not marker.exists()
 
@@ -172,7 +196,7 @@ def test_evaluate_cli_and_top_level_help(capsys):
     source, ranking, binding = capture()
     labels = (FIXTURES / "labels.synthetic.json").read_bytes()
     result = evaluate_capture(source, ranking, binding, labels)
-    assert result["evaluation_scope"] == "synthetic-format-fixture"
+    assert "evaluation_scope" not in result
     assert result["ranking"]["recall_at_k"] == 1
     assert result["lexical_baseline"]["recall_at_k"] == pytest.approx(2 / 3)
     assert result["lexical_baseline"]["omitted_relevant_ids"] == ["C03"]
@@ -184,21 +208,9 @@ def test_evaluate_cli_and_top_level_help(capsys):
                  "--binding", str(FIXTURES / "binding.synthetic.json"),
                  "--labels", str(FIXTURES / "labels.synthetic.json")]) == 0
     assert json.loads(capsys.readouterr().out)["kind"] == "review-order-evaluation-only"
-    malformed = json.dumps({"query": "evidence", "k": 2, "relevant_ids": ["C01"]}).encode()
-    with pytest.raises(TriageImportError, match="evaluation_scope"):
+    malformed = json.dumps(["not an object"]).encode()
+    with pytest.raises(TriageImportError, match="JSON object"):
         evaluate_capture(source, ranking, binding, malformed)
-
-
-@pytest.mark.parametrize("url", [
-    "http://127.0.0.1:1@evil.example/v1", "http://127.0.0.1.evil.example:8000/v1",
-    "https://user:pass@example.com/v1", "http://127.0.0.1:bad/v1",
-])
-def test_spoofed_provider_authority_is_refused(tmp_path, url):
-    source, _, _ = capture()
-    binary = _fake_binary(tmp_path, "raise AssertionError('must not execute')\n")
-    with pytest.raises(TriageImportError, match="endpoint"):
-        run_siftrank(source, "rank", allow_provider_call=True,
-                     **{**_options(binary), "base_url": url})
 
 
 def test_rank_cli_removes_partial_artifact_if_second_write_fails(tmp_path, monkeypatch):
@@ -224,8 +236,6 @@ def test_rank_cli_removes_partial_artifact_if_second_write_fails(tmp_path, monke
               "--binding-output", str(binding), "--executable", str(binary),
               "--executable-sha256", options["executable_sha256"], "--provider", "openai",
               "--model", "local-test-model", "--base-url", options["base_url"],
-              "--api-key-env", "OPENAI_API_KEY", "--budget-authority-ref", "test-only:budget",
-              "--custody-ref", "test-only:capture", "--run-id", "test-only:run",
-              "--captured-at", "2026-10-03T00:00:00Z", "--allow-provider-call"])
+              "--api-key-env", "OPENAI_API_KEY"])
     assert exc.value.code == 2
     assert not output.exists() and not binding.exists()

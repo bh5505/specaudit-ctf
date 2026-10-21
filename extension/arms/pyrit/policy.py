@@ -2,24 +2,17 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
-import re
 from pathlib import Path
-from urllib.parse import urlparse
 
 ARM_ID = "pyrit"
 ENV_BIN = "PYRIT_BIN"
-ENV_DISPATCH_SCOPE = "PYRIT_DISPATCH_SCOPE"
 
-ALLOWED_ACTIONS = frozenset({"list_scenarios"})
-DISPATCH_ACTIONS = frozenset({"scan"})
+ALLOWED_ACTIONS = frozenset({"list_scenarios", "scan"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 
 TIMEOUT_SECONDS = 600.0
 MAX_OUTPUT_CHARS = 200_000
-
-SCENARIO_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{0,63}$")
 
 CAVEATS = (
     "Requires operator PyRIT config (~/.pyrit). Community MCP wrappers "
@@ -29,77 +22,38 @@ CAVEATS = (
 
 
 def scenario_refusal(payload: dict) -> str | None:
+    """Operator-selected scenario: one data argv token.
+
+    Only technical guards stay here: nonempty string without NUL/CR/LF,
+    plus a flag-shape guard so a positional scenario cannot be mistaken
+    for an upstream flag. No fixed name pattern constrains the operator.
+    """
     raw = payload.get("scenario")
     if not isinstance(raw, str) or not raw.strip():
         return "scan requires a scenario in args.scenario"
     scenario = raw.strip()
+    if "\x00" in scenario or "\r" in scenario or "\n" in scenario:
+        return "scenario contains control characters"
     if scenario.startswith("-"):
         return "scenario must not be flag-shaped"
-    if not SCENARIO_RE.fullmatch(scenario):
-        return "scenario must match [A-Za-z][A-Za-z0-9_.-]{0,63}"
     return None
 
 
-def _parsed_hostname(target: str) -> str | None:
-    """urlparse hostname, or None when missing or malformed (bad IPv6)."""
-    try:
-        parsed = urlparse(target if "://" in target else "//" + target)
-        return parsed.hostname
-    except ValueError:
-        return None
-
-
 def target_refusal(payload: dict) -> str | None:
+    """Operator-selected target: one data argv token (--target <raw>).
+
+    Only technical guards stay here: the value must be a nonempty string
+    without NUL/CR/LF controls. Eligibility (where the operator may point
+    the tool) is the operator's decision, not the tool's. Separate argv
+    (no shell) carries the raw value through to pyrit_scan.
+    """
     raw = payload.get("target")
     if not isinstance(raw, str) or not raw.strip():
         return "scan requires a target in args.target"
     target = raw.strip()
     if "\x00" in target or "\r" in target or "\n" in target:
         return "target contains control characters"
-    if " " in target:
-        return "target must be a hostname or http(s) URL"
-    if target.startswith("-"):
-        return "target must not be flag-shaped"
-    if "://" in target:
-        try:
-            parsed = urlparse(target)
-            host = parsed.hostname
-        except ValueError:
-            return "target must be an http(s) URL or hostname"
-        if parsed.scheme not in ("http", "https") or not host:
-            return "target must be an http(s) URL or hostname"
-        # userinfo would sit on argv (--target <raw>); never echo the secret.
-        if (
-            parsed.username is not None
-            or parsed.password is not None
-            or "@" in (parsed.netloc or "")
-        ):
-            return "target must not include URL userinfo"
-        return None
-    # Unbracketed IPv6 mangles under urlparse.
-    if ":" in target and not target.startswith("["):
-        return "IPv6 targets must be bracketed"
-    allowed = set("abcdefghijklmnopqrstuvwxyz0123456789-.[]:")
-    if not target or any(ch not in allowed for ch in target.lower()):
-        return "target must be an http(s) URL or hostname"
-    if _parsed_hostname(target) is None:
-        return "target must be an http(s) URL or hostname"
     return None
-
-
-def canonical_host(target: str) -> str:
-    """Hostname used for authorize / audit; argv still carries the raw target.
-
-    IPv6 is re-bracketed: target_in_scope mangles unbracketed literals.
-    """
-    host = _parsed_hostname(target) or target
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return host
-    if ip.version == 6:
-        return f"[{ip}]"
-    return host
 
 
 def resolve_binary() -> str | None:

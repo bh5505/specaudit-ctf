@@ -24,7 +24,7 @@ from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
     ARG_KEYS,
-    ARMING,
+    INPUT_HINT,
     CAVEATS,
     LIST_ACTIONS,
     MAX_METHOD_BYTES,
@@ -69,7 +69,7 @@ class ClaudeAdArm:
             return _fail(
                 spec, action,
                 f"action {action!r} is not on the allowlist "
-                f"(AD methodology reads over a local file; arming: {ARMING})",
+                f"(AD methodology reads over a local file; input: {INPUT_HINT})",
             )
         refusal = args_refusal(action, payload)
         if refusal:
@@ -148,11 +148,10 @@ class ClaudeAdArm:
         return _ok(
             spec, action,
             {
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": [],
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "arg_keys": {key: sorted(values) for key, values in ARG_KEYS.items()},
                 "caveats": list(CAVEATS),
-                "arming": ARMING,
+                "input_hint": INPUT_HINT,
             },
         )
 

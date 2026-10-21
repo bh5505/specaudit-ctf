@@ -1,4 +1,4 @@
-"""Tier rules for the zgrab2 arm: closed modules, host on stdin."""
+"""Request input for the zgrab2 arm: module argv and target stdin."""
 
 from __future__ import annotations
 
@@ -8,13 +8,11 @@ from pathlib import Path
 
 ARM_ID = "zgrab2"
 ENV_BIN = "ZGRAB2_BIN"
-ENV_DISPATCH_SCOPE = "ZGRAB2_DISPATCH_SCOPE"
 
-ALLOWED_ACTIONS = frozenset({"list_modules"})
-DISPATCH_ACTIONS = frozenset({"scan"})
+ALLOWED_ACTIONS = frozenset({"list_modules", "scan"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 
-CLOSED_SCAN_KEYS = frozenset({"target", "module", "port"})
+SCAN_KEYS = frozenset({"target", "module", "port", "options"})
 
 MODULES = frozenset({
     "http", "tls", "ssh", "dns", "ntp", "redis", "mysql", "postgres",
@@ -45,7 +43,7 @@ def resolve_binary() -> str | None:
 
 
 def extra_scan_keys(payload: dict) -> frozenset[str]:
-    return frozenset(payload) - CLOSED_SCAN_KEYS
+    return frozenset(payload) - SCAN_KEYS
 
 
 def module_refusal(payload: dict) -> str | None:
@@ -55,8 +53,8 @@ def module_refusal(payload: dict) -> str | None:
     module = raw.strip()
     if module.startswith("-"):
         return "module must not be flag-shaped"
-    if module not in MODULES:
-        return f"module must be one of {sorted(MODULES)}"
+    if any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7f for ch in module):
+        return "module must be one argv token without control characters"
     return None
 
 
@@ -66,23 +64,19 @@ def host_refusal(payload: dict) -> str | None:
         return "scan requires a target in args.target"
     host = raw.strip()
     # stdin CSV treats extra comma fields as a port override.
-    if any(ch in host for ch in ("\x00", "\r", "\n", " ", ",")):
+    if any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7f for ch in host) or "," in host:
         return "scan target must not contain spaces, commas, or control characters"
-    if host.startswith("-"):
-        return "scan target must not be flag-shaped"
-    if "/" in host or "@" in host or "://" in host:
-        return "scan target must be a hostname, IPv4, or IPv6 address"
-    stdin_host = host.strip("[]")
-    if stdin_host.startswith("-"):
-        return "scan target must not be flag-shaped"
-    try:
-        ipaddress.ip_address(stdin_host)
-        return None
-    except ValueError:
-        pass
-    allowed = set("abcdefghijklmnopqrstuvwxyz0123456789.-")
-    if not stdin_host or any(ch not in allowed for ch in stdin_host.lower()):
-        return "scan target must be a hostname, IPv4, or IPv6 address"
+    return None
+
+
+def options_refusal(payload: dict) -> str | None:
+    options = payload.get("options", [])
+    if not isinstance(options, list) or any(
+        not isinstance(option, str) or not option or
+        any(ord(ch) < 0x20 or ord(ch) == 0x7f for ch in option)
+        for option in options
+    ):
+        return "scan options must be an array of nonempty argv tokens without control characters"
     return None
 
 
@@ -105,21 +99,23 @@ def _is_ipv6(host: str) -> bool:
 
 
 def stdin_and_auth_target(raw: str) -> tuple[str, str]:
-    """Unbracketed stdin host and bracketed IPv6 authorize/log/stamp target.
+    """Unbracketed stdin host and bracketed IPv6 display target.
 
-    Unbracketed IPv6 fails target_in_scope (urlparse hostname is the first
-    hextet). Operators arm ZGRAB2_DISPATCH_SCOPE with the unbracketed
-    literal; stdin is a host, not a URL.
+    Stdin is a host, not a URL; IPv6 is shown bracketed for display
+    while stdin carries the unbracketed literal.
     """
-    stdin_host = raw.strip().strip("[]")
+    stdin_host = raw.strip()
+    if stdin_host.startswith("[") and stdin_host.endswith("]") and _is_ipv6(stdin_host[1:-1]):
+        stdin_host = stdin_host[1:-1]
     if _is_ipv6(stdin_host):
         return stdin_host, f"[{ipaddress.ip_address(stdin_host)}]"
     return stdin_host, stdin_host
 
 
-def argv_for(binary: str, module: str, port: int | None) -> list[str]:
-    """Fixed argv: module plus optional --port. Host is never on argv."""
+def argv_for(binary: str, module: str, port: int | None, options: list[str] | None = None) -> list[str]:
+    """Separate argv: module, optional port, and operator options. Target stays on stdin."""
     cmd = [binary, module]
     if port is not None:
         cmd.extend(["--port", str(port)])
+    cmd.extend(options or [])
     return cmd

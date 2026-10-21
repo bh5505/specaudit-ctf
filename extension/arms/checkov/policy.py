@@ -1,4 +1,4 @@
-"""Fixed-argv and scan-root rules for the checkov arm."""
+"""Checkov command construction and scan-target resolution."""
 
 from __future__ import annotations
 
@@ -9,13 +9,9 @@ ARM_ID = "checkov"
 ENV_BIN = "CHECKOV_BIN"
 ENV_SCAN_ROOT = "CHECKOV_SCAN_ROOT"
 
-# The only action this arm runs. Every argument is fixed; callers pass
-# no free-form args (an non-empty args dict is refused).
 ALLOWED_ACTIONS = frozenset({"scan"})
 
-# Offline first: --skip-download stops the policy-bundle download so a
-# scan never egresses (the same doctrine as the semgrep inline rule
-# pack). --soft-fail makes the exit code 0 even when findings exist —
+# --soft-fail makes the exit code 0 even when findings exist —
 # findings are the PRODUCT of the scan and live in the JSON output;
 # without it checkov 3.x exits 1 on any finding and the arm would
 # misread planted violations as tool failure. (Measured against
@@ -27,7 +23,6 @@ FIXED_ARGV_TAIL = (
     "terraform",
     "-o",
     "json",
-    "--skip-download",
     "--soft-fail",
 )
 
@@ -37,7 +32,7 @@ MAX_OUTPUT_CHARS = 200_000
 
 
 def default_scan_root() -> Path:
-    """Packaged synthetic range root: the only default scan target."""
+    """Packaged synthetic range root used when no target is supplied."""
     from ...range.runner import default_range_root
 
     return default_range_root()
@@ -56,30 +51,20 @@ def resolve_binary() -> str | None:
     return shutil.which(ARM_ID)
 
 
-def resolve_scan_root() -> tuple[Path | None, str | None]:
-    """Resolve and contain the scan root.
-
-    The root must stay inside the packaged fixtures tree (the synthetic
-    range). An operator-set CHECKOV_SCAN_ROOT outside that tree is the
-    path blocklist firing: scanning arbitrary host directories is not
-    what this arm is for.
-    """
-    base = default_scan_root().resolve()
-    raw = os.environ.get(ENV_SCAN_ROOT)
-    root = Path(raw).resolve() if raw else base
-    if not root.is_dir():
-        return None, f"scan root is not a directory: {root}"
+def resolve_scan_root(target: object = None) -> tuple[Path | None, str | None]:
+    """Resolve the operator-selected directory, with the demo range as default."""
+    raw = target if target is not None else os.environ.get(ENV_SCAN_ROOT)
+    if raw is not None and (not isinstance(raw, str) or not raw.strip()):
+        return None, "scan target must be a nonempty path"
     try:
-        root.relative_to(base)
-    except ValueError:
-        return (
-            None,
-            "scan root must stay inside the packaged synthetic range "
-            f"(got {root}, base {base})",
-        )
+        root = Path(raw).expanduser().resolve() if raw else default_scan_root().resolve()
+    except (OSError, ValueError):
+        return None, "scan target could not be resolved"
+    if not root.is_dir():
+        return None, f"scan target is not a directory: {root}"
     return root, None
 
 
 def argv_for(binary: str, root: Path) -> list[str]:
-    """Fixed argv; no caller-supplied fragment ever reaches it."""
+    """Build the scan command without shell interpolation."""
     return [binary, "-d", str(root), *FIXED_ARGV_TAIL]

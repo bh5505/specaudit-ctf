@@ -1,4 +1,4 @@
-"""Hermetic contract tests for the dispatch-scoped http-probe arm."""
+"""Hermetic contract tests for the HTTP probe arm."""
 
 from __future__ import annotations
 
@@ -15,14 +15,13 @@ from typing import Any
 import pytest
 
 from extension.arms.httpprobe import ARM_ID, HttpProbeArm
-from extension.arms.httpprobe.arm import _run_bounded
-from extension.arms.httpprobe.policy import argv_for
+from extension.arms.httpprobe.arm import _run_bounded, _url_secret_masks
+from extension.arms.httpprobe.policy import argv_for, target_refusal
 from extension.contract import ArmSpec, Extension, load_catalog
-from extension.invoke_profiles import invoke_profile
 
 
 def _spec() -> ArmSpec:
-    return ArmSpec(ARM_ID, ("cli",), True, "Fixture arm.", "research")
+    return ArmSpec(ARM_ID, ("cli",), "HTTP probe fixture.")
 
 
 def _fake_curl(tmp_path: Path) -> Path:
@@ -82,22 +81,6 @@ def _report(result: Any) -> dict[str, Any]:
     return json.loads(result.output["output"])
 
 
-def test_scope_absent_refuses(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    arm = _arm(monkeypatch, tmp_path)
-    monkeypatch.delenv("HTTP_PROBE_DISPATCH_SCOPE", raising=False)
-    result = arm.invoke(_spec(), "probe", {"url": "http://127.0.0.1:9/"})
-    assert result.ok is False
-    assert "HTTP_PROBE_DISPATCH_SCOPE" in result.error
-
-
-def test_blanket_scope_refuses(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    arm = _arm(monkeypatch, tmp_path)
-    monkeypatch.setenv("HTTP_PROBE_DISPATCH_SCOPE", "*")
-    result = arm.invoke(_spec(), "probe", {"url": "http://127.0.0.1:9/"})
-    assert result.ok is False
-    assert "blanket scope" in result.error
-
-
 def test_loopback_delivers_headers_exactly(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     received: dict[str, str] = {}
 
@@ -114,7 +97,6 @@ def test_loopback_delivers_headers_exactly(monkeypatch: pytest.MonkeyPatch, tmp_
 
     server, _ = _serve(Handler)
     try:
-        monkeypatch.setenv("HTTP_PROBE_DISPATCH_SCOPE", "127.0.0.1")
         sent = {"Header-X": "one", "Header-Y": "two spaces", "Header-Z": "z:3"}
         result = _arm(monkeypatch, tmp_path).invoke(
             _spec(), "probe", {"url": f"http://127.0.0.1:{server.server_port}/", "headers": sent}
@@ -132,7 +114,7 @@ def test_loopback_delivers_headers_exactly(monkeypatch: pytest.MonkeyPatch, tmp_
 @pytest.mark.parametrize(
     "headers, reason",
     [
-        ({"Host": "elsewhere"}, "duplicate or mangle"),
+        ({"X-Injected": "one\r\ntwo"}, "control characters"),
         ({"X-Long": "x" * 513}, "exceeds 512"),
         ({"Bad_Name": "x"}, "RFC token"),
     ],
@@ -144,7 +126,6 @@ def test_invalid_headers_refused_before_dispatch(
     headers: dict[str, str],
     reason: str,
 ) -> None:
-    monkeypatch.setenv("HTTP_PROBE_DISPATCH_SCOPE", "127.0.0.1")
     result = _arm(monkeypatch, tmp_path).invoke(
         _spec(), "probe", {"url": "http://127.0.0.1:9/", "headers": headers}
     )
@@ -157,19 +138,32 @@ def test_closed_schema_and_malformed_url_refuse_before_dispatch(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    monkeypatch.setenv("HTTP_PROBE_DISPATCH_SCOPE", "127.0.0.1")
     arm = _arm(monkeypatch, tmp_path)
     extra = arm.invoke(
         _spec(), "probe", {"url": "http://127.0.0.1:9/", "surprise": True}
     )
     malformed = arm.invoke(_spec(), "probe", {"url": "http://[broken/"})
     bad_port = arm.invoke(_spec(), "probe", {"url": "http://127.0.0.1:notaport/"})
-    userinfo = arm.invoke(_spec(), "probe", {"url": "http://user:secret@127.0.0.1/"})
     assert extra.ok is False and "surprise" in extra.error
     assert malformed.ok is False and "well-formed" in malformed.error
     assert bad_port.ok is False and "well-formed" in bad_port.error
-    assert userinfo.ok is False and "userinfo credentials" in userinfo.error
     assert "[dispatch]" not in capsys.readouterr().err
+
+
+def test_userinfo_and_operator_headers_are_request_data() -> None:
+    payload = {"url": "http://user:secret@example.test/path", "headers": {
+        "Host": "chosen.test", "Connection": "close", "Content-Length": "0",
+    }}
+    assert target_refusal(payload) is None
+    argv = argv_for("curl", "probe", payload)
+    assert argv is not None
+    assert argv[-2:] == ["--", payload["url"]]
+    assert "Host: chosen.test" in argv
+    assert "Connection: close" in argv
+    assert "Content-Length: 0" in argv
+    masks = _url_secret_masks(payload["url"])
+    assert "user:secret" in masks
+    assert "dXNlcjpzZWNyZXQ=" in masks
 
 
 def test_secret_header_is_masked_everywhere(
@@ -188,7 +182,6 @@ def test_secret_header_is_masked_everywhere(
 
     server, _ = _serve(Handler)
     try:
-        monkeypatch.setenv("HTTP_PROBE_DISPATCH_SCOPE", "127.0.0.1")
         result = _arm(monkeypatch, tmp_path).invoke(
             _spec(),
             "probe",
@@ -233,7 +226,6 @@ def test_redirects_surface_as_data_and_are_never_followed(
 
     redirect, _ = _serve(Redirect)
     try:
-        monkeypatch.setenv("HTTP_PROBE_DISPATCH_SCOPE", "127.0.0.1")
         result = _arm(monkeypatch, tmp_path).invoke(
             _spec(), "probe", {"url": f"http://127.0.0.1:{redirect.server_port}/"}
         )
@@ -254,7 +246,6 @@ def test_timeout_is_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> 
 
     server, _ = _serve(Slow)
     try:
-        monkeypatch.setenv("HTTP_PROBE_DISPATCH_SCOPE", "127.0.0.1")
         result = _arm(monkeypatch, tmp_path, timeout=0.05).invoke(
             _spec(), "probe", {"url": f"http://127.0.0.1:{server.server_port}/"}
         )
@@ -296,8 +287,5 @@ def test_argv_and_catalog_registration() -> None:
         "-H", "X-One: 1", "-H", "X-Two: 2", "--", "https://example.test/p",
     ]
     entry = load_catalog().get(ARM_ID)
-    assert entry.curated is True and entry.protocols == ("cli",)
+    assert entry.protocols == ("cli",)
     assert ARM_ID in Extension().arms
-    profile = invoke_profile(ARM_ID, "probe")
-    assert profile is not None
-    assert profile.approval_ref == "operator://dispatch-scope/HTTP_PROBE_DISPATCH_SCOPE"

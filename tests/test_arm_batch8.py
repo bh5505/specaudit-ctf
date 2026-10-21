@@ -39,11 +39,11 @@ import extension.arms.m365pwned.arm as m365pwned_module
 
 
 def _spec(arm_id: str) -> ArmSpec:
-    return ArmSpec(id=arm_id, protocols=("cli",), curated=True, notes="test", tier="research")
+    return ArmSpec(id=arm_id, protocols=("cli",), notes="test")
 
 
 def _ext(arm_id: str, handler) -> Extension:
-    entry = CatalogEntry(id=arm_id, kind="arm", protocols=("cli",), curated=True, notes="test", tier="research")
+    entry = CatalogEntry(id=arm_id, kind="arm", protocols=("cli",), notes="test")
     return Extension(catalog=Catalog([entry]), arms={arm_id: handler})
 
 
@@ -217,7 +217,7 @@ class TestR02AdPathfinder:
 
     def test_list_tools(self) -> None:
         result = _ext(R02_ID, AdPathfinderArm()).invoke(R02_ID, "list_tools", {})
-        assert result.ok is True and "path" in result.output["read_actions"]
+        assert result.ok is True and "path" in result.output["actions"]
 
     def test_path_by_id(self, ad_export: Path) -> None:
         result = _ext(R02_ID, AdPathfinderArm()).invoke(R02_ID, "path", {"export": str(ad_export), "path_id": "P1"})
@@ -340,7 +340,7 @@ class TestR08Gpohound:
 
     def test_list_tools(self) -> None:
         result = _ext(R08_ID, GpohoundArm()).invoke(R08_ID, "list_tools", {})
-        assert result.ok is True and "policy" in result.output["read_actions"]
+        assert result.ok is True and "policy" in result.output["actions"]
 
     def test_policy_by_id(self, gpo_evidence: Path) -> None:
         result = _ext(R08_ID, GpohoundArm()).invoke(R08_ID, "policy", {"evidence": str(gpo_evidence), "policy_id": "GPO-001"})
@@ -415,7 +415,7 @@ class TestR25ClaudeAd:
 
     def test_list_tools(self) -> None:
         result = _ext(R25_ID, ClaudeAdArm()).invoke(R25_ID, "list_tools", {})
-        assert result.ok is True and "technique" in result.output["read_actions"]
+        assert result.ok is True and "technique" in result.output["actions"]
 
     def test_technique_by_id(self, ad_method: Path) -> None:
         result = _ext(R25_ID, ClaudeAdArm()).invoke(R25_ID, "technique", {"method_file": str(ad_method), "technique_id": "AD-01"})
@@ -573,7 +573,7 @@ class TestR17Numasec:
 
     def test_list_tools(self) -> None:
         result = _ext(R17_ID, NumasecArm()).invoke(R17_ID, "list_tools", {})
-        assert result.ok is True and "finding" in result.output["read_actions"]
+        assert result.ok is True and "finding" in result.output["actions"]
 
     def test_finding_by_id(self, finding_ledger: Path) -> None:
         result = _ext(R17_ID, NumasecArm()).invoke(R17_ID, "finding", {"ledger": str(finding_ledger), "finding_id": "F001"})
@@ -615,7 +615,7 @@ class TestR36Rubeus:
 
     def test_list_tools(self) -> None:
         result = _ext(R36_ID, RubeusArm()).invoke(R36_ID, "list_tools", {})
-        assert result.ok is True and "telemetry" in result.output["read_actions"]
+        assert result.ok is True and "telemetry" in result.output["actions"]
 
     def test_telemetry_by_id(self, ad_telemetry: Path) -> None:
         result = _ext(R36_ID, RubeusArm()).invoke(R36_ID, "telemetry", {"telemetry_file": str(ad_telemetry), "event_id": "E001"})
@@ -672,7 +672,7 @@ class TestR38M365Pwned:
 
     def test_list_tools(self) -> None:
         result = _ext(R38_ID, M365PwnedArm()).invoke(R38_ID, "list_tools", {})
-        assert result.ok is True and "case_study" in result.output["read_actions"]
+        assert result.ok is True and "case_study" in result.output["actions"]
 
     def test_case_study_by_id(self, m365_cases: Path) -> None:
         result = _ext(R38_ID, M365PwnedArm()).invoke(R38_ID, "case_study", {"cases_file": str(m365_cases), "case_id": "C001"})

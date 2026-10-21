@@ -1,10 +1,9 @@
-"""Curated wapiti dispatch-only arm."""
+"""Curated wapiti arm."""
 
 from .arm import WapitiArm
-from .policy import ARM_ID, DISPATCH_ACTIONS
+from .policy import ARM_ID
 
 __all__ = [
     "ARM_ID",
-    "DISPATCH_ACTIONS",
     "WapitiArm",
 ]

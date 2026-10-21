@@ -10,7 +10,6 @@ from extension.contract import ArmSpec
 @pytest.mark.parametrize("discover_address", [False, True])
 def test_exact_cap_reports_only_unfinished_expansion(monkeypatch, providers, discover_address):
     calls = []
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", ",".join(providers))
 
     def collect(request, timeout):
         calls.append(request)
@@ -21,9 +20,9 @@ def test_exact_cap_reports_only_unfinished_expansion(monkeypatch, providers, dis
 
     monkeypatch.setattr(arm, "run_worker", collect)
     result = AssetReconArm().invoke(
-        ArmSpec("asset-recon", ("cli",), True, "Hermetic fixture", "research"),
+        ArmSpec("asset-recon", ("cli",), "Hermetic fixture"),
         "discover",
-        {"live": True, "providers": list(providers), "seeds": {"domains": ["public.com"]},
+        {"providers": list(providers), "seeds": {"domains": ["public.com"]},
          "limits": {"max_requests": 2 * len(providers), "min_interval_ms": 50}},
     )
     assert len(calls) == 2 * len(providers)

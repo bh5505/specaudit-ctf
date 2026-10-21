@@ -117,9 +117,7 @@ def _spec(entry_id: str) -> ArmSpec:
     return ArmSpec(
         id=entry_id,
         protocols=("cli",),
-        curated=True,
         notes="Fixture arm for stdin hygiene.",
-        tier="research",
     )
 
 
@@ -145,11 +143,10 @@ def test_wapiti_child_gets_empty_stdin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from extension.arms.wapiti.arm import WapitiArm
-    from extension.arms.wapiti.policy import ENV_BIN, ENV_DISPATCH_SCOPE
+    from extension.arms.wapiti.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "wapiti", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "10.10.0.0/16")
     stdin_text, argv = _stdin_and_argv(
         WapitiArm().invoke(
             _spec("wapiti"), "scan", {"url": "http://10.10.0.1/app.php?id=1"}
@@ -163,11 +160,10 @@ def test_commix_fix_held_ignore_stdin_and_devnull(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from extension.arms.commix.arm import CommixArm
-    from extension.arms.commix.policy import ENV_BIN, ENV_DISPATCH_SCOPE
+    from extension.arms.commix.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "commix", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "10.10.0.0/16")
     stdin_text, argv = _stdin_and_argv(
         CommixArm().invoke(
             _spec("commix"), "scan", {"url": "http://10.10.0.1/f?id=1"}
@@ -182,11 +178,10 @@ def test_nmap_child_gets_empty_stdin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from extension.arms.nmap.arm import NmapArm
-    from extension.arms.nmap.policy import ENV_BIN, ENV_DISPATCH_SCOPE
+    from extension.arms.nmap.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "nmap", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "10.10.0.0/16")
     stdin_text, argv = _stdin_and_argv(
         NmapArm().invoke(
             _spec("nmap"), "scan", {"target": "10.10.0.5", "ports": [22]}
@@ -200,11 +195,10 @@ def test_routersploit_child_gets_empty_stdin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from extension.arms.routersploit.arm import RoutersploitArm
-    from extension.arms.routersploit.policy import ENV_BIN, ENV_DISPATCH_SCOPE
+    from extension.arms.routersploit.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "routersploit", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "10.10.0.0/16")
     stdin_text, argv = _stdin_and_argv(
         RoutersploitArm().invoke(
             _spec("routersploit"),
@@ -228,11 +222,10 @@ def test_osmedeus_child_gets_empty_stdin(
     # merges it into the -t target list — an inherited pipe with data
     # would scan uninvited hosts. DEVNULL keeps targeting argv-only.
     from extension.arms.osmedeus.arm import OsmedeusArm
-    from extension.arms.osmedeus.policy import ENV_BIN, ENV_DISPATCH_SCOPE
+    from extension.arms.osmedeus.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "osmedeus", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "lab.internal")
     stdin_text, argv = _stdin_and_argv(
         OsmedeusArm().invoke(
             _spec("osmedeus"), "scan", {"target": "http://lab.internal/"}
@@ -246,11 +239,10 @@ def test_page_fetch_feeds_url_on_stdin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from extension.arms.pagefetch.arm import PageFetchArm
-    from extension.arms.pagefetch.policy import ENV_BIN, ENV_DISPATCH_SCOPE
+    from extension.arms.pagefetch.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "page-fetch", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "10.10.0.0/16")
     stdin_text, argv = _stdin_and_argv(
         PageFetchArm().invoke(
             _spec("page-fetch"), "fetch", {"url": "http://10.10.0.1/"}
@@ -267,11 +259,10 @@ def test_zdns_child_gets_empty_stdin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from extension.arms.zdns.arm import ZdnsArm
-    from extension.arms.zdns.policy import ENV_BIN, ENV_DISPATCH_SCOPE
+    from extension.arms.zdns.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "zdns", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "example.com")
     stdin_text, argv = _stdin_and_argv(
         ZdnsArm().invoke(
             _spec("zdns"),
@@ -290,11 +281,10 @@ def test_sniper_child_gets_empty_stdin(
     # prompts (update check, workspace delete); EOF-on-DEVNULL answers
     # them with the safe default instead of an ambient pipe's bytes.
     from extension.arms.sniper.arm import SniperArm
-    from extension.arms.sniper.policy import ENV_BIN, ENV_DISPATCH_SCOPE
+    from extension.arms.sniper.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "sniper", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "10.10.0.0/16")
     stdin_text, argv = _stdin_and_argv(
         SniperArm().invoke(
             _spec("sniper"),
@@ -313,11 +303,10 @@ def test_garak_child_gets_empty_stdin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from extension.arms.garak.arm import GarakArm
-    from extension.arms.garak.policy import ENV_BIN, ENV_TARGET
+    from extension.arms.garak.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "garak", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_TARGET, "local")
     stdin_text, argv = _stdin_and_argv(
         GarakArm().invoke(_spec("garak"), "list_probes", {})
     )
@@ -370,11 +359,10 @@ def test_pyrit_child_gets_empty_stdin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from extension.arms.pyrit.arm import PyritArm
-    from extension.arms.pyrit.policy import ENV_BIN, ENV_DISPATCH_SCOPE
+    from extension.arms.pyrit.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "pyrit_scan", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "10.10.0.0/16")
     stdin_text, argv = _stdin_and_argv(
         PyritArm().invoke(
             _spec("pyrit"),
@@ -395,11 +383,10 @@ def test_vuls_child_gets_empty_stdin(
     # vuls reads stdin only behind an explicit --pipe flag (subcmds/
     # scan.go); DEVNULL keeps even that door closed to ambient pipes.
     from extension.arms.vuls.arm import VulsArm
-    from extension.arms.vuls.policy import ENV_BIN, ENV_DISPATCH_SCOPE
+    from extension.arms.vuls.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "vuls", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "10.10.0.0/16")
     stdin_text, argv = _stdin_and_argv(
         VulsArm().invoke(_spec("vuls"), "scan", {})
     )
@@ -411,12 +398,11 @@ def test_stratus_child_gets_empty_stdin(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     from extension.arms.stratus.arm import StratusArm
-    from extension.arms.stratus.policy import ENV_BIN, ENV_DISPATCH_SCOPE
+    from extension.arms.stratus.policy import ENV_BIN
 
     binary = _fake_binary(tmp_path, "stratus", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
     # The scope binds the technique id (2026-09-05 review follow-up).
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "aws.exfiltration.s3")
     stdin_text, argv = _stdin_and_argv(
         StratusArm().invoke(
             _spec("stratus-red-team"),
@@ -433,15 +419,12 @@ def test_darkmoon_child_gets_empty_stdin(
 ) -> None:
     from extension.arms.darkmoon.arm import DarkMoonArm
     from extension.arms.darkmoon.policy import (
-        DISPATCH_ACTIONS,
         ENV_BIN,
-        ENV_DISPATCH_SCOPE,
     )
 
     binary = _fake_binary(tmp_path, "darkmoon", ECHO_ARGV_AND_STDIN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "10.10.0.0/16")
-    action = sorted(DISPATCH_ACTIONS)[0]
+    action = "run"
     stdin_text, argv = _stdin_and_argv(
         DarkMoonArm().invoke(
             _spec("dark-moon"), action, {"target": "10.10.0.1"}
@@ -467,7 +450,6 @@ def test_deepsec_child_gets_empty_stdin(
     from extension.arms.deepsec.arm import DeepsecArm
     from extension.arms.deepsec.policy import (
         ENV_BIN,
-        ENV_DISPATCH_SCOPE,
         ENV_SCAN_ROOT,
     )
 
@@ -480,7 +462,6 @@ def test_deepsec_child_gets_empty_stdin(
     )
     monkeypatch.setenv(ENV_BIN, str(binary))
     monkeypatch.setenv(ENV_SCAN_ROOT, str(workspace))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "localhost")
     stdin_text, argv = _stdin_and_argv(
         DeepsecArm().invoke(
             _spec("deepsec"), "process", {"project_id": "my-app"}
@@ -496,15 +477,11 @@ def test_vvah_child_gets_empty_stdin(
     from extension.arms.vvah.arm import VvahArm
     from extension.arms.vvah.policy import (
         ENV_BIN,
-        ENV_DISPATCH_SCOPE,
-        ENV_SCAN_ROOT,
     )
 
     binary = _fake_binary(tmp_path, "vvaharness", ECHO_ARGV_AND_STDIN)
     root, repo = _scan_tree(tmp_path)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_SCAN_ROOT, str(root))
-    monkeypatch.setenv(ENV_DISPATCH_SCOPE, "localhost")
     stdin_text, argv = _stdin_and_argv(
         VvahArm().invoke(_spec("vvah"), "scan", {"repo": str(repo)})
     )
@@ -567,7 +544,7 @@ def test_semgrep_child_gets_empty_stdin(
     # The fake must emit a semgrep report shape; the probe rides along
     # inside a finding's evidence (the arm passes the doc through).
     from extension.arms.semgrep.arm import SemgrepArm
-    from extension.arms.semgrep.policy import ENV_BIN, ENV_SCAN_ROOT
+    from extension.arms.semgrep.policy import ENV_BIN
 
     body = (
         "import json, sys\n"
@@ -577,7 +554,6 @@ def test_semgrep_child_gets_empty_stdin(
     )
     binary = _fake_binary(tmp_path, "semgrep", body)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_SCAN_ROOT, str(tmp_path))
     result = SemgrepArm().invoke(
         _spec("semgrep-mcp"), "semgrep_scan", {"config": "rules: []\n"}
     )
@@ -611,9 +587,7 @@ def test_cli_transport_child_gets_empty_stdin(
     spec = ArmSpec(
         id="generic-arm",
         protocols=("cli",),
-        curated=True,
         notes="synthetic spec for the generic CLI transport",
-        tier="research",
     )
     result = transport.invoke(spec, "demoaction", {"k": "v"})
     assert result.ok is True

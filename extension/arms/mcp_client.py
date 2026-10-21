@@ -12,16 +12,10 @@ Two transports live here:
 Both enforce the shared guards: MAX_MCP_BYTES caps, credential
 redaction, redirect refusal, CR/LF endpoint refusal.
 
-Transport-gate properties (the seven named by the HTTP-MCP
-held_reason): P1 https-or-literal-loopback endpoints per
-HttpTransportPolicy; P2 no token passthrough (only an explicitly
-configured ArmCredential is sent, its value scrubbed from every
-output); P3/P4 OAuth resource+audience binding with PKCE, conditional
-and fail-closed (OAuthRequiredError when a server demands OAuth and
-the arm has no OAuth configuration); P5 Origin emission plus
-single-origin session pinning; P6 resolve-once DNS pinning with
-rebinding refusal; P7 the loopback OAuth callback receiver - the only
-listener this module ever creates, and it never speaks MCP.
+Credentials are sent only when explicitly configured. OAuth, Origin,
+and response handling follow the MCP transport protocol. The endpoint
+is selected by the operator; URL parsing does not classify where the
+client may connect.
 """
 
 from __future__ import annotations
@@ -30,7 +24,6 @@ import base64
 import hashlib
 import http.client
 import http.server
-import ipaddress
 import json
 import queue
 import re
@@ -52,9 +45,8 @@ CLIENT_VERSION = "1.0"
 USER_AGENT = f"{CLIENT_NAME}/{CLIENT_VERSION}"
 _REDACT_RE = re.compile(r"(token|password|passwd|secret|api[_-]?key|authorization|bearer|cookie)", re.IGNORECASE)
 
-# Transport-gate constants (P5/P7).
+# The OAuth callback receiver binds a local address.
 LOOPBACK_IPS = ("127.0.0.1", "::1")
-BIND_ANY_IPS = ("0.0.0.0", "::")
 # Non-browser clients have no real web origin. The Origin header names
 # the ENDPOINT'S OWN RFC 6454 origin (emitted per request from the
 # base_url): a port-less loopback constant is rejected by strict
@@ -92,67 +84,28 @@ def redact_values(text: str, values: set[str]) -> str:
     return text
 
 
-class HttpTransportPolicy:
-    """Endpoint-shape policy (P1): which URLs a transport may dial.
-
-    - loopback(): literal 127.0.0.1/[::1] endpoints only; http or
-      https. For arms whose real upstream is a local server (Burp,
-      Metasploit).
-    - remote_https(): https to non-loopback hosts only. The default
-      and the policy for remote-armed catalogs (GTI, Semgrep);
-      loopback endpoints are refused outright so a rebinding
-      name or a misconfigured local front cannot smuggle traffic.
-    - remote_https_or_loopback(): https to non-loopback hosts, plus
-      literal 127.0.0.1/[::1] endpoints over http or https. For arms
-      whose first-party upstream both ships a local server with no
-      TLS story (Prowler's OSS MCP server binds 127.0.0.1 plain http
-      by default) and documents self-hosted remote HTTP behind an
-      operator's TLS front (https upstream). Loopback http is
-      confined to the two literals exactly like loopback(); a
-      hostname that resolves to loopback is still refused by the
-      DNS pin (P6).
-    - general_http(): http or https to any host. NOT part of the
-      HTTP-MCP gate - this shape exists for non-MCP REST arms (ZAP,
-      Caldera) whose endpoints are operator-scoped lab resources.
-      Scheme and loopback stay operator-scoped as before the gate;
-      the shared shape rules still apply and are slightly TIGHTER
-      than the pre-gate helper (userinfo, bind-any, zone IDs, junk
-      ports, and non-canonical loopback literals are now refused).
-    """
-
-    __slots__ = ("name", "loopback_only", "allow_loopback_http")
-
-    def __init__(self, name: str, loopback_only: bool, allow_loopback_http: bool) -> None:
-        self.name = name
-        self.loopback_only = loopback_only
-        self.allow_loopback_http = allow_loopback_http
-
-    @classmethod
-    def loopback(cls) -> "HttpTransportPolicy":
-        return cls("loopback-http", loopback_only=True, allow_loopback_http=True)
-
-    @classmethod
-    def remote_https(cls) -> "HttpTransportPolicy":
-        return cls("remote-https", loopback_only=False, allow_loopback_http=False)
-
-    @classmethod
-    def remote_https_or_loopback(cls) -> "HttpTransportPolicy":
-        return cls(
-            "remote-https+loopback", loopback_only=False, allow_loopback_http=True
-        )
-
-    @classmethod
-    def general_http(cls) -> "HttpTransportPolicy":
-        return cls("general-http", loopback_only=False, allow_loopback_http=True)
-
-    def __repr__(self) -> str:  # pragma: no cover - diagnostics only
-        return "HttpTransportPolicy(%s)" % self.name
+def redact_url_userinfo(text: str, url: str) -> str:
+    """Mask URL credentials if an upstream tool echoes the selected target."""
+    if "://" not in url or "@" not in url:
+        return text
+    try:
+        parsed = urllib_parse.urlsplit(url)
+    except ValueError:
+        return text
+    if parsed.username is None and parsed.password is None:
+        return text
+    raw = parsed.netloc.rsplit("@", 1)[0]
+    user = urllib_parse.unquote(parsed.username or "")
+    password = urllib_parse.unquote(parsed.password or "")
+    encoded = base64.b64encode(f"{user}:{password}".encode("utf-8")).decode("ascii")
+    values = {raw, f"{user}:{password}", encoded}
+    if len(password) >= 3:
+        values.add(password)
+    return redact_values(text, values)
 
 
-def endpoint_problem(url: str | None, policy: HttpTransportPolicy | None = None) -> str | None:
-    """Return why *url* is refused for *policy*, or None if it is valid."""
-    if policy is None:
-        policy = HttpTransportPolicy.remote_https()
+def endpoint_problem(url: str | None) -> str | None:
+    """Return a URL parsing problem, if any."""
     if url is None:
         return "no endpoint configured"
     # Reject control characters even before stripping; trailing CR/LF
@@ -176,70 +129,24 @@ def endpoint_problem(url: str | None, policy: HttpTransportPolicy | None = None)
         return "invalid port"
     if "%" in host:
         return "zone-id addresses are not allowed"
-    if host in BIND_ANY_IPS:
-        return "bind-any addresses are not allowed"
-    host_ip = _host_ip(host)
-    # Exact-spelling allowlist: even loopback-shaped literals must be the
-    # canonical 127.0.0.1/[::1] forms; decimal/hex/mapped encodings and the
-    # rest of 127.0.0.0/8 are refused outright.
-    if host_ip is not None and _is_loopback_ip(host_ip):
-        if host not in LOOPBACK_IPS:
-            return "loopback literals must be written as 127.0.0.1 or [::1]"
-    is_loopback = host in LOOPBACK_IPS
-    if policy.name == "general-http":
-        pass  # non-MCP REST arms: scheme and loopback are operator-scoped
-    elif policy.loopback_only:
-        if not is_loopback:
-            return "policy %s allows only literal loopback endpoints" % policy.name
-        if parsed.scheme == "http" and not policy.allow_loopback_http:
-            return "policy %s does not allow http" % policy.name
-    else:
-        if is_loopback:
-            if not policy.allow_loopback_http:
-                return "policy %s refuses loopback endpoints" % policy.name
-        elif parsed.scheme != "https":
-            return (
-                "policy %s requires https for non-loopback endpoints"
-                " (http is only for literal loopback endpoints)" % policy.name
-            )
     return None
 
 
-def configured_http_url(url: str | None, policy: HttpTransportPolicy | None = None) -> str | None:
-    """Return a stripped http(s) URL the policy allows, else None."""
+def configured_http_url(url: str | None) -> str | None:
+    """Return a stripped http(s) URL when parseable, else None."""
     if url is None:
         return None
-    if endpoint_problem(url, policy) is not None:
+    if endpoint_problem(url) is not None:
         return None
     return url.strip()
 
 
-def _host_ip(host: str) -> "ipaddress.IPv4Address | ipaddress.IPv6Address | None":
-    """Parse *host* as an IP literal (unwrapping IPv4-mapped forms), or None.
-
-    Bare-decimal encodings (http://2130706433/) are literals too. Hex and
-    octal dotted forms are not parseable here; the DNS-layer rebinding
-    refusal (DnsPin.resolve) is the backstop for those.
-    """
-    addr = None
-    try:
-        addr = ipaddress.ip_address(host)
-    except ValueError:
-        if host.isdigit():
-            try:
-                addr = ipaddress.ip_address(int(host))
-            except ValueError:
-                addr = None
-    if addr is None:
+def _oauth_https_url(url: str | None) -> str | None:
+    """Validate an OAuth authority URL before sending credentials to it."""
+    configured = configured_http_url(url)
+    if configured is None or urllib_parse.urlparse(configured).scheme != "https":
         return None
-    mapped = getattr(addr, "ipv4_mapped", None)
-    if mapped is not None:
-        return mapped
-    return addr
-
-
-def _is_loopback_ip(ip: "ipaddress.IPv4Address | ipaddress.IPv6Address") -> bool:
-    return ip.is_loopback or ip.is_unspecified
+    return configured
 
 
 def _origin(parsed: urllib_parse.ParseResult) -> tuple[str, str, int]:
@@ -664,7 +571,7 @@ class OAuthAuthorizationFlow:
 def _as_metadata_url(authorization_server: str) -> str:
     """RFC 8414 authorization-server metadata URL for an issuer root."""
     server = authorization_server.rstrip("/")
-    if not configured_http_url(server, HttpTransportPolicy.remote_https()):
+    if not _oauth_https_url(server):
         raise RuntimeError("authorization server must be an https origin: %s" % redact(server))
     parsed = urllib_parse.urlparse(server)
     path = parsed.path or ""
@@ -675,7 +582,7 @@ def _as_metadata_url(authorization_server: str) -> str:
 
 
 def _https_json_get(url: str, timeout: float) -> dict[str, Any]:
-    if not configured_http_url(url, HttpTransportPolicy.remote_https()):
+    if not _oauth_https_url(url):
         raise RuntimeError("OAuth metadata URL must be https: %s" % redact(url))
     opener = DnsPin(url).opener()
     req = urllib_request.Request(url, headers={"Accept": "application/json", "User-Agent": USER_AGENT}, method="GET")
@@ -690,7 +597,7 @@ def _https_json_get(url: str, timeout: float) -> dict[str, Any]:
 
 
 def _https_form_post(url: str, fields: dict[str, str], timeout: float) -> dict[str, Any]:
-    if not configured_http_url(url, HttpTransportPolicy.remote_https()):
+    if not _oauth_https_url(url):
         raise RuntimeError("OAuth token endpoint must be https: %s" % redact(url))
     opener = DnsPin(url).opener()
     body = urllib_parse.urlencode(fields).encode("utf-8")
@@ -765,15 +672,10 @@ class OAuthAuthorizationManager:
         token_endpoint = as_metadata.get("token_endpoint")
         if not isinstance(authorization_endpoint, str) or not isinstance(token_endpoint, str):
             raise RuntimeError("authorization-server metadata lacks endpoints")
-        # Server-controlled metadata: both endpoints must pass the same
-        # remote-https gate before the operator's browser (authorize URL)
-        # or the token exchange ever sees them.
-        sanitized_authorize = configured_http_url(
-            authorization_endpoint, HttpTransportPolicy.remote_https()
-        )
-        sanitized_token = configured_http_url(
-            token_endpoint, HttpTransportPolicy.remote_https()
-        )
+        # Parse the metadata endpoints before handing them to the browser
+        # or token exchange.
+        sanitized_authorize = _oauth_https_url(authorization_endpoint)
+        sanitized_token = _oauth_https_url(token_endpoint)
         if sanitized_authorize is None:
             raise RuntimeError(
                 "authorization_endpoint must be https: %s" % redact(authorization_endpoint)
@@ -840,12 +742,6 @@ class DnsPin:
             raise RuntimeError("endpoint host does not resolve: %s" % self.host)
         _family, _socktype, _proto, _canonname, sockaddr = infos[0]
         ip = sockaddr[0]
-        addr = _host_ip(ip)
-        if self.host not in LOOPBACK_IPS and addr is not None and _is_loopback_ip(addr):
-            raise RuntimeError(
-                "hostname %r resolves to a loopback address - DNS-rebinding signature, refusing"
-                % self.host
-            )
         self._addr = (ip, sockaddr[1] or self.port)
         self._resolved = True
         return self._addr
@@ -925,12 +821,10 @@ class SseMcpSession:
         self,
         base_url: str,
         timeout: float = MCP_CALL_TIMEOUT,
-        policy: HttpTransportPolicy | None = None,
         credential: ArmCredential | None = None,
         oauth_config: OAuthConfig | None = None,
     ) -> None:
-        self._policy = policy or HttpTransportPolicy.remote_https()
-        problem = endpoint_problem(base_url, self._policy)
+        problem = endpoint_problem(base_url)
         if problem is not None:
             raise RuntimeError("invalid SSE endpoint URL: %s" % problem)
         self.base_url = base_url.strip().rstrip("/")
@@ -1334,12 +1228,10 @@ class StreamableHttpClient:
         self,
         base_url: str,
         timeout: float = MCP_CALL_TIMEOUT,
-        policy: HttpTransportPolicy | None = None,
         credential: ArmCredential | None = None,
         oauth_config: OAuthConfig | None = None,
     ) -> None:
-        self._policy = policy or HttpTransportPolicy.remote_https()
-        problem = endpoint_problem(base_url, self._policy)
+        problem = endpoint_problem(base_url)
         if problem is not None:
             raise RuntimeError("invalid streamable HTTP endpoint URL: %s" % problem)
         self.base_url = base_url.strip().rstrip("/")

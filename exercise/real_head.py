@@ -1,73 +1,7 @@
-"""Operator-armed real-head execution: the runner spawns the named
-agent CLI headless, wired to this checkout's stdio MCP server.
+"""Run a selected agent CLI against the CTF MCP server and grade its findings.
 
-Arming discipline (same pattern as every dispatch arm — default-off,
-operator-armed, audited): the mode exists per head only when the
-head's arming env names its binary:
-
-- ``EXERCISE_HEAD_CLAUDE_CODE_CMD`` (claude-code)
-- ``EXERCISE_HEAD_CODEX_CLI_CMD`` (codex-cli)
-- ``EXERCISE_HEAD_QWEN_CODE_CMD`` (qwen-code)
-
-Unset → the runner refuses exactly as before (the fake head stays the
-only ``--head-execute`` driver on unarmed hosts — CI and hermetic
-tests never spawn a real CLI). The value is the bare command/path; the
-runner composes the headless incantation itself, because the wiring
-differs per CLI in a load-bearing way:
-
-- claude-code gets a PRIVATE ``--mcp-config`` JSON (0600, inside the
-  attempt directory, deleted after the run) whose per-server ``env``
-  map carries the three trace vars — documented as "environment
-  variables passed to the server", so no project ``.mcp.json`` is
-  touched and no parent-env inheritance is assumed;
-- codex-cli forwards parent env to stdio MCP servers only through an
-  allowlist in the USER-GLOBAL config, so the runner preflights
-  ``~/.codex/config.toml`` (``mcp_servers.specaudit-ctf`` present,
-  ``env_vars`` naming all three trace vars) and exports the vars into
-  the child env. A missing allowlist fails closed BEFORE the spawn —
-  a zero-call trace must never masquerade as an agent failure.
-- qwen-code (gemini-lineage) rides the claude-shaped transport: the
-  same PRIVATE ``--mcp-config`` (same shared launcher, per-server
-  ``env`` map, same deletion discipline) with no child-env mutation,
-  driving the CLI's documented one-shot positional prompt under
-  ``--yolo`` with the four MCP tools plus ``write_file`` allowlisted.
-
-Launch preflight runs before any of that materializes: the armed
-command is resolved against the BOUNDED CHILD environment only (never
-the runner's ambient PATH/PATHEXT), and the selected head's transport
-is verified (the codex host-config allowlist; the shared launcher and
-the runner interpreter for claude/qwen) BEFORE the trace key is minted
-or any config is written, so a refused launch leaves nothing to clean
-up. The spawn itself carries the resolved absolute path as argv[0]:
-what preflight checked is what executes, and a child PATH that differs
-from the runner's cannot make Windows CreateProcess run a different
-binary than the one that was verified.
-
-The head process gets a BOUNDED child environment, not a copy of the
-runner's ``os.environ``: an explicit base allowlist (PATH, home/config
-and temp/locale names), the head's explicit auth/config names, and —
-for claude-code only — AWS or Google provider credentials when
-``CLAUDE_CODE_USE_BEDROCK`` / ``CLAUDE_CODE_USE_VERTEX`` explicitly
-selects that provider. Codex gets the minted trace vars added to that
-bounded set; claude/qwen carry them in the private config instead.
-Unrelated ambient credentials, proxies, loader/injection values, stale
-parent trace facts, and all ``EXERCISE_HEAD_*`` arming/control values
-never reach the child. An operator may opt in additional credential
-env NAMES with ``EXERCISE_HEAD_EXTRA_ENV`` (comma/whitespace separated
-names, at most 64 names and 32 KiB of copied names/values); reserved
-names and excess copies are refused before any spawn. Values are not
-serialized into the lane record, and the retained child-stderr tail is
-scrubbed of copied credential values. This contract bounds only the
-child's initial environment; it is not an OS sandbox or a containment
-claim.
-
-Evidence stays server-side: the spawn is context, never proof; the
-attempt grades through the same ``grade_attempt`` chain as the fake
-path (HMAC-chained trace + close record + coverage roster), and the
-agent's self-report is not evidence. The attempt prompt is operator
-supplied (``--attempt-prompt`` file); the runner appends a fixed
-trailer naming the deliverable and the four tools, records only the
-prompt's hash and size in the report, and never records the trace key.
+The operator chooses the head, prompt, target inputs, and process environment.
+The runner supplies MCP wiring and records the subprocess outcome.
 """
 
 from __future__ import annotations
@@ -86,20 +20,6 @@ from pathlib import Path
 from typing import Any
 
 HEAD_TIMEOUT_ENV = "EXERCISE_HEAD_TIMEOUT_SECONDS"
-EXTRA_ENV_ENV = "EXERCISE_HEAD_EXTRA_ENV"
-# Same fail-closed shape as the MCP stdio environment contract: a
-# bounded number of names and a bounded total of names/values.
-EXTRA_ENV_MAX_VARS = 64
-EXTRA_ENV_MAX_BYTES = 32 * 1024
-CHILD_ENV_MAX_BYTES = 128 * 1024
-# Proxy-only hosts may explicitly opt in these conventional names. They are
-# never copied by default, and arbitrary *_PROXY names remain reserved.
-EXPLICIT_PROXY_ENV_NAMES = frozenset(
-    {"HTTP_PROXY", "HTTPS_PROXY", "NO_PROXY", "ALL_PROXY"}
-)
-# A short copied credential cannot be replaced without mangling ordinary
-# stderr. Suppress the whole tail instead of retaining the credential.
-SECRET_REDACT_MIN_CHARS = 8
 DEFAULT_TIMEOUT_SECONDS = 900
 MCP_SERVER_NAME = "specaudit-ctf"
 MCP_TOOL_NAMES = ("list", "describe", "invoke", "run_range")
@@ -111,377 +31,60 @@ TRACE_VARS = (
     "SPECAUDIT_CTF_MCP_TRACE_ATTEMPT",
 )
 
-# Per-head arming envs. Presence (non-blank) arms that head only;
-# absence of all three is the mode's kill-switch.
-ARMING_ENVS = {
+# Optional per-head command overrides. Selecting --head-execute is the
+# operator's explicit request to run a head.
+HEAD_COMMAND_ENVS = {
     "claude-code": "EXERCISE_HEAD_CLAUDE_CODE_CMD",
     "codex-cli": "EXERCISE_HEAD_CODEX_CLI_CMD",
     "qwen-code": "EXERCISE_HEAD_QWEN_CODE_CMD",
 }
-
-# The real head is spawned with an explicit allowlist, never a copy of
-# the runner's ambient environment. These base names locate the armed
-# binary and its per-user CLI state (auth files under HOME/APPDATA) and
-# keep locale/temp behavior predictable. They are not credentials.
-BASE_ENV_NAMES = (
-    "PATH",
-    "HOME",
-    "USERPROFILE",
-    "HOMEDRIVE",
-    "HOMEPATH",
-    "APPDATA",
-    "LOCALAPPDATA",
-    "SystemRoot",
-    "WINDIR",
-    "COMSPEC",
-    "PATHEXT",
-    "TMPDIR",
-    "TEMP",
-    "TMP",
-    "LANG",
-    "LC_ALL",
-    "LC_CTYPE",
-    "XDG_CONFIG_HOME",
-    "XDG_CACHE_HOME",
-    "XDG_DATA_HOME",
-)
-
-# Explicit per-head auth/config names. File-backed logins still use the
-# base home/config names above; these are the documented environment
-# credentials each CLI can read directly. Nothing outside the head's
-# own list (or the operator opt-in below) is copied.
-CLAUDE_AUTH_ENV = (
-    "ANTHROPIC_API_KEY",
-    "ANTHROPIC_AUTH_TOKEN",
-    "ANTHROPIC_BASE_URL",
-    "CLAUDE_CODE_OAUTH_TOKEN",
-    "CLAUDE_CONFIG_DIR",
-    "CLAUDE_CODE_USE_BEDROCK",
-    "CLAUDE_CODE_USE_VERTEX",
-)
-CLAUDE_BEDROCK_ENV = (
-    "AWS_ACCESS_KEY_ID",
-    "AWS_SECRET_ACCESS_KEY",
-    "AWS_SESSION_TOKEN",
-    "AWS_REGION",
-    "AWS_DEFAULT_REGION",
-    "AWS_PROFILE",
-    "AWS_CONFIG_FILE",
-    "AWS_SHARED_CREDENTIALS_FILE",
-    "AWS_BEARER_TOKEN_BEDROCK",
-)
-CLAUDE_VERTEX_ENV = (
-    "GOOGLE_APPLICATION_CREDENTIALS",
-    "GOOGLE_CLOUD_PROJECT",
-    "CLOUD_ML_REGION",
-    "ANTHROPIC_VERTEX_PROJECT_ID",
-    "ANTHROPIC_VERTEX_BASE_URL",
-)
-CODEX_AUTH_ENV = (
-    "OPENAI_API_KEY",
-    "OPENAI_BASE_URL",
-    "OPENAI_ORG_ID",
-    "OPENAI_ORGANIZATION",
-    "OPENAI_PROJECT_ID",
-    "OPENAI_PROJECT",
-    "CODEX_HOME",
-)
-QWEN_AUTH_ENV = (
-    "GEMINI_API_KEY",
-    "GOOGLE_API_KEY",
-    "GOOGLE_GENAI_USE_VERTEXAI",
-    "GOOGLE_CLOUD_PROJECT",
-    "GOOGLE_CLOUD_LOCATION",
-    "GOOGLE_APPLICATION_CREDENTIALS",
-    "OPENAI_API_KEY",
-    "OPENAI_BASE_URL",
-    "OPENAI_MODEL",
-    "OPENAI_API_VERSION",
-    "DASHSCOPE_API_KEY",
-)
-HEAD_AUTH_ENV = {
-    "claude-code": CLAUDE_AUTH_ENV,
-    "codex-cli": CODEX_AUTH_ENV,
-    "qwen-code": QWEN_AUTH_ENV,
+DEFAULT_HEAD_COMMANDS = {
+    "claude-code": "claude",
+    "codex-cli": "codex",
+    "qwen-code": "qwen",
 }
-
-# Auth-list names whose values are credentials or locations of credential
-# files/config. These are scrubbed from the child stderr tail if a chatty
-# head echoes them. Endpoints, selectors, and provider metadata are excluded.
-_SECRET_ENV_NAMES = frozenset(
-    {
-        "ANTHROPIC_API_KEY",
-        "ANTHROPIC_AUTH_TOKEN",
-        "CLAUDE_CODE_OAUTH_TOKEN",
-        "CLAUDE_CONFIG_DIR",
-        "AWS_ACCESS_KEY_ID",
-        "AWS_SECRET_ACCESS_KEY",
-        "AWS_SESSION_TOKEN",
-        "AWS_BEARER_TOKEN_BEDROCK",
-        "AWS_CONFIG_FILE",
-        "AWS_SHARED_CREDENTIALS_FILE",
-        "OPENAI_API_KEY",
-        "CODEX_HOME",
-        "GEMINI_API_KEY",
-        "GOOGLE_API_KEY",
-        "GOOGLE_APPLICATION_CREDENTIALS",
-        "DASHSCOPE_API_KEY",
-    }
-)
-
-_ENV_NAME_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}\Z")
-_IDENTITY_ENV = frozenset(
-    (*BASE_ENV_NAMES, *CLAUDE_AUTH_ENV, *CODEX_AUTH_ENV, *QWEN_AUTH_ENV)
-)
-# The operator opt-in may add credential names, never trace transport,
-# arming/control, loader/injection, proxy, or base-environment names.
-_RESERVED_PREFIXES = (
-    "PYTHON",
-    "LD_",
-    "DYLD_",
-    "GIT_CONFIG",
-    "GIT_TRACE",
-    "EXERCISE_HEAD_",
-    "SPECAUDIT_CTF_",
-)
-_RESERVED_ENV = frozenset(
-    {
-        *TRACE_VARS,
-        EXTRA_ENV_ENV,
-        HEAD_TIMEOUT_ENV,
-        *ARMING_ENVS.values(),
-        "PWD",
-        "OLDPWD",
-        "CDPATH",
-        "ENV",
-        "BASH_ENV",
-        "BASHOPTS",
-        "SHELLOPTS",
-        "NODE_OPTIONS",
-        "NODE_PATH",
-        "RUBYOPT",
-        "RUBYLIB",
-        "PERL5OPT",
-        "PERL5LIB",
-        "SYSTEMROOT",
-        "JAVA_TOOL_OPTIONS",
-        "_JAVA_OPTIONS",
-        "JDK_JAVA_OPTIONS",
-        "GCONV_PATH",
-        "LOCPATH",
-        "ZDOTDIR",
-    }
-) | _IDENTITY_ENV
 
 # The runner-owned trailer appended to every operator prompt: the
 # deliverable contract and the tool surface, identical for every head.
 PROMPT_TRAILER = (
     "\n\nDeliverable: write your claimed findings as valid JSON to "
     "found.json in your current working directory (this is the attempt "
-    f"directory). Use only the {MCP_SERVER_NAME} MCP tools "
+    f"directory). The {MCP_SERVER_NAME} MCP server provides "
     + ", ".join(MCP_TOOL_NAMES)
-    + ". Your prose is never the evidence - the server records what "
-    "you actually did.\n"
+    + ". The challenge grader checks found.json.\n"
 )
 
 
 class RealHeadError(Exception):
-    """Fail-closed real-head arming/wiring error (usage error class)."""
+    """Real-head command or MCP setup error (usage error class)."""
 
 
-def arming_env_for(head: str) -> str:
-    env = ARMING_ENVS.get(head)
+def command_env_for(head: str) -> str:
+    env = HEAD_COMMAND_ENVS.get(head)
     if env is None:
         raise RealHeadError(
-            f"unknown real head: {head} (armed heads: {', '.join(sorted(ARMING_ENVS))})"
+            f"unknown real head: {head} (supported: {', '.join(sorted(HEAD_COMMAND_ENVS))})"
         )
     return env
 
 
-def armed_cmd_for(head: str) -> str | None:
-    """The armed command for a head, or None when the head is unarmed."""
-    value = os.environ.get(arming_env_for(head), "")
-    return value.strip() or None
-
-
-def extra_env_names() -> tuple[str, ...]:
-    """Operator opt-in names copied from the parent, verbatim.
-
-    The opt-in exists for a credential/configuration variable the
-    per-head lists do not know about. It grants nothing by itself:
-    trace/arming/control names, loader and injection names, arbitrary proxy
-    names, and base/head-auth names are refused before any spawn. The four
-    conventional proxy names are permitted only by explicit opt-in. At most
-    64 names may be declared. Values are not serialized into the lane
-    record; copied credential values are scrubbed from the retained
-    child-stderr tail.
-    """
-    raw = os.environ.get(EXTRA_ENV_ENV, "")
-    names: list[str] = []
-    folded: set[str] = set()
-    for token in re.split(r"[\s,]+", raw.strip()):
-        if not token:
-            continue
-        if not _ENV_NAME_RE.fullmatch(token):
-            raise RealHeadError(
-                f"{EXTRA_ENV_ENV} contains an invalid environment name: {token!r}"
-            )
-        key = token.upper()
-        if key in folded:
-            if token in names:
-                continue
-            raise RealHeadError(
-                f"{EXTRA_ENV_ENV} names a case-ambiguous environment variable: {token}"
-            )
-        if _is_reserved_extra(token):
-            raise RealHeadError(
-                f"{EXTRA_ENV_ENV} names a reserved environment variable: {token} "
-                "(trace, arming/control, loader/injection, arbitrary proxy, "
-                "and base/head-auth names are refused)"
-            )
-        if len(names) >= EXTRA_ENV_MAX_VARS:
-            raise RealHeadError(
-                f"{EXTRA_ENV_ENV} names more than {EXTRA_ENV_MAX_VARS} variables"
-            )
-        folded.add(key)
-        names.append(token)
-    return tuple(names)
-
-
-def _is_reserved_extra(name: str) -> bool:
-    key = name.upper()
-    return (
-        key in _RESERVED_ENV
-        or key.startswith(_RESERVED_PREFIXES)
-        or (key.endswith("_PROXY") and key not in EXPLICIT_PROXY_ENV_NAMES)
-        or "TRACE" in key
-    )
-
-
-def _ambient_entry(name: str) -> tuple[str, str] | None:
-    """Return (actual name, value) without assuming POSIX case rules.
-
-    Windows enumerates the environment case-insensitively; an ambiguous
-    case match fails closed instead of guessing which value to copy.
-    """
-    if name in os.environ:
-        return name, os.environ[name]
-    if os.name == "nt":
-        matches = [
-            (key, value)
-            for key, value in os.environ.items()
-            if key.upper() == name.upper()
-        ]
-        if len(matches) > 1:
-            raise RealHeadError(
-                f"ambient environment is case-ambiguous for {name}; refusing to guess"
-            )
-        if matches:
-            return matches[0]
-    return None
-
-
-def _copy_ambient(child: dict[str, str], names: tuple[str, ...]) -> None:
-    for name in names:
-        if name in child:
-            continue
-        entry = _ambient_entry(name)
-        if entry is not None:
-            # Store under the canonical allowlist spelling, even when the
-            # host enumerated a differently-cased name.
-            child[name] = entry[1]
-
-
-def _enabled(value: str | None) -> bool:
-    return (value or "").strip().lower() in {"1", "true", "yes", "on"}
+def command_for(head: str) -> str | None:
+    """The operator's command override or the head's usual CLI name."""
+    value = os.environ.get(command_env_for(head), "")
+    return value.strip() or DEFAULT_HEAD_COMMANDS[head]
 
 
 def bounded_child_environment(head: str) -> dict[str, str]:
-    """Build the head child env from explicit allowlists only.
+    """Use the operator's process environment for the selected head.
 
-    No ambient copy: unnamed parent variables (unrelated credentials,
-    proxies, loader/injection settings, stale trace facts, arming and
-    control variables) never reach the child. ``_compose`` adds the
-    minted trace facts for codex-cli; claude-code and qwen-code carry
-    them in the private per-server config instead.
+    Old trace values belong to another attempt; the current attempt's values
+    are added after the runner mints them.
     """
-    arming_env_for(head)
-    child: dict[str, str] = {}
-    _copy_ambient(child, BASE_ENV_NAMES)
-    _copy_ambient(child, HEAD_AUTH_ENV[head])
-    if head == "claude-code":
-        # Provider credentials ride along only when that provider is the
-        # explicitly selected one; an unrelated ambient AWS/Google key
-        # is never copied just because the head could theoretically use it.
-        if _enabled(child.get("CLAUDE_CODE_USE_BEDROCK")):
-            _copy_ambient(child, CLAUDE_BEDROCK_ENV)
-        if _enabled(child.get("CLAUDE_CODE_USE_VERTEX")):
-            _copy_ambient(child, CLAUDE_VERTEX_ENV)
-    extra_bytes = 0
-    for name in extra_env_names():
-        entry = _ambient_entry(name)
-        if entry is None:
-            continue
-        value = entry[1]
-        if "\0" in value:
-            raise RealHeadError(
-                f"{EXTRA_ENV_ENV} value for {name} contains a NUL byte"
-            )
-        try:
-            extra_bytes += (
-                len(name.encode("utf-8")) + len(value.encode("utf-8")) + 2
-            )
-        except UnicodeEncodeError:
-            raise RealHeadError(
-                f"{EXTRA_ENV_ENV} value for {name} is not valid UTF-8 text"
-            ) from None
-        if extra_bytes > EXTRA_ENV_MAX_BYTES:
-            raise RealHeadError(
-                f"{EXTRA_ENV_ENV} copies more than {EXTRA_ENV_MAX_BYTES} "
-                "bytes of names/values"
-            )
-        child[name] = value
-    # Defense in depth: even a future allowlist edit cannot smuggle a
-    # stale trace fact or arming/control value into the head process.
+    command_env_for(head)
+    child = dict(os.environ)
     for name in TRACE_VARS:
         child.pop(name, None)
-    for name in ARMING_ENVS.values():
-        child.pop(name, None)
-    child.pop(HEAD_TIMEOUT_ENV, None)
-    _check_child_environment_size(child)
     return child
-
-
-def _check_child_environment_size(child: dict[str, str]) -> None:
-    """Bound the complete environment, including minted trace variables."""
-    try:
-        total_bytes = sum(
-            len(name.encode("utf-8")) + len(value.encode("utf-8")) + 2
-            for name, value in child.items()
-        )
-    except UnicodeEncodeError:
-        raise RealHeadError("head child environment requires UTF-8 text") from None
-    if total_bytes > CHILD_ENV_MAX_BYTES:
-        raise RealHeadError(
-            f"head child environment exceeds {CHILD_ENV_MAX_BYTES} bytes"
-        )
-
-
-def _child_secret_values(child: dict[str, str]) -> tuple[str, ...]:
-    """Copied credential values the child might echo, longest first.
-
-    Short values cause the entire stderr tail to be suppressed rather than
-    risk either credential leakage or destructive substring replacement.
-    """
-    values: list[str] = []
-    seen: set[str] = set()
-    for name in {*_SECRET_ENV_NAMES, *extra_env_names()}:
-        value = child.get(name)
-        if value and value not in seen:
-            seen.add(value)
-            values.append(value)
-    values.sort(key=len, reverse=True)
-    return tuple(values)
 
 
 def resolve_timeout() -> int:
@@ -590,7 +193,7 @@ DEFAULT_PATHEXT = ".COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS;.MSC"
 def _resolve_child_executable(
     cmd: str, child_env: dict[str, str], attempt_dir: Path
 ) -> str:
-    """Resolve the armed command against the CHILD environment only.
+    """Resolve the head command against the child environment only.
 
     The runner's ambient PATH/PATHEXT is never consulted: a child PATH
     naming different directories must not change what the parent spawns
@@ -603,9 +206,9 @@ def _resolve_child_executable(
     executable path (an absolute command is returned as given).
     """
     if not cmd.strip():
-        raise RealHeadError("armed head command is blank; refusing to spawn")
+        raise RealHeadError("head command is blank; refusing to spawn")
     if "\0" in cmd:
-        raise RealHeadError("armed head command contains a NUL byte")
+        raise RealHeadError("head command contains a NUL byte")
     windows = os.name == "nt"
     path_module = ntpath if windows else posixpath
 
@@ -618,21 +221,21 @@ def _resolve_child_executable(
         # A stream suffix ("head.exe:ads") is not an executable name.
         if windows and ":" in path_module.splitdrive(candidate)[1]:
             raise RealHeadError(
-                f"armed head command must not use an alternate data stream: {cmd}"
+                f"head command must not use an alternate data stream: {cmd}"
             )
         if os.path.isdir(candidate):
-            raise RealHeadError(f"armed head command is a directory: {cmd}")
+            raise RealHeadError(f"head command is a directory: {cmd}")
         if not os.path.isfile(candidate):
-            raise RealHeadError(f"armed head command is not an existing file: {cmd}")
+            raise RealHeadError(f"head command is not an existing file: {cmd}")
         if not windows and not os.access(candidate, os.X_OK):
-            raise RealHeadError(f"armed head command is not executable: {cmd}")
+            raise RealHeadError(f"head command is not executable: {cmd}")
         return candidate
 
     if is_child_absolute(cmd):
         return checked_absolute(cmd)
     if windows and path_module.splitdrive(cmd)[0]:
         raise RealHeadError(
-            f"armed head command is drive-relative and has no absolute form: {cmd}"
+            f"head command is drive-relative and has no absolute form: {cmd}"
         )
     if "/" in cmd or "\\" in cmd:
         # A relative path resolves against the spawn cwd (the attempt
@@ -640,11 +243,11 @@ def _resolve_child_executable(
         return checked_absolute(str(Path(attempt_dir) / cmd))
     if windows and ":" in cmd:
         raise RealHeadError(
-            f"armed head command must not use an alternate data stream: {cmd}"
+            f"head command must not use an alternate data stream: {cmd}"
         )
     if "PATH" not in child_env:
         raise RealHeadError(
-            f"armed head command {cmd!r} is a bare name but the bounded child "
+            f"head command {cmd!r} is a bare name but the child "
             "environment has no PATH; refusing to search the runner's own"
         )
     if windows:
@@ -676,7 +279,7 @@ def _resolve_child_executable(
                 continue
             return candidate
     raise RealHeadError(
-        f"armed head command {cmd!r} not found in the bounded child PATH"
+        f"head command {cmd!r} not found in the child PATH"
     )
 
 
@@ -693,11 +296,11 @@ def launch_preflight(
     head: str, cmd: str, child_env: dict[str, str], attempt_dir: Path
 ) -> tuple[str, dict[str, Any] | None]:
     """Fail closed before key minting, config writing, or spawn: the
-    armed command must resolve against the bounded child environment,
+    head command must resolve against the child environment,
     and the selected head's transport must be wired on this host.
 
     Returns (resolved_executable, transport_fact). codex-cli keeps its
-    host-config allowlist verification as the transport fact; the
+    host-config trace-forwarding verification as the transport fact; the
     claude/qwen private-config transport verifies the shared launcher
     and the interpreter that will run it (their fact is the config
     written later, so there is nothing to return yet).
@@ -770,12 +373,8 @@ def _claude_argv(cmd: str, prompt_text: str, config_path: Path) -> list[str]:
         "json",
         "--max-turns",
         str(HEAD_MAX_TURNS),
-        "--allowedTools",
-        f"mcp__{MCP_SERVER_NAME}__*",
-        "Write",
         "--mcp-config",
         str(config_path),
-        "--strict-mcp-config",
     ]
 
 
@@ -783,8 +382,6 @@ def _codex_argv(cmd: str, prompt_text: str, attempt_dir: Path) -> list[str]:
     return [
         cmd,
         "exec",
-        "--sandbox",
-        "workspace-write",
         "--skip-git-repo-check",
         "-C",
         str(attempt_dir),
@@ -794,13 +391,7 @@ def _codex_argv(cmd: str, prompt_text: str, attempt_dir: Path) -> list[str]:
 
 # qwen-code (gemini-cli lineage) speaks MCP through the same mcpServers
 # config shape claude uses, so it rides the private temp-config path and
-# the shared stdio launcher (extension/heads/other-agent-cli.md blesses
-# exactly that attachment). The four MCP tools are allowlisted by their
-# per-server names and write_file is the CLI's own file-write tool; the
-# positional prompt is the CLI's documented one-shot form.
-QWEN_ALLOWED_TOOLS = ",".join(
-    [f"mcp__{MCP_SERVER_NAME}__{tool}" for tool in MCP_TOOL_NAMES] + ["write_file"]
-)
+# the shared stdio launcher. The positional prompt is the CLI's one-shot form.
 
 
 def _qwen_argv(cmd: str, prompt_text: str, config_path: Path) -> list[str]:
@@ -808,8 +399,6 @@ def _qwen_argv(cmd: str, prompt_text: str, config_path: Path) -> list[str]:
         cmd,
         "--mcp-config",
         str(config_path),
-        "--allowed-tools",
-        QWEN_ALLOWED_TOOLS,
         "--yolo",
         prompt_text,
     ]
@@ -840,8 +429,7 @@ def _compose(
     ``composed_argv`` carries the marker at the prompt position; the
     caller materializes the real prompt for the spawn and elides it
     with the prompt hash for the record. ``child_env_extra`` is merged
-    ONTO the caller's bounded allowlist environment (it is never a
-    parent-environment copy). ``transport_fact`` is the fact
+    onto the caller's child environment. ``transport_fact`` is the fact
     ``launch_preflight`` verified before the key was minted.
     """
     if head == "claude-code":
@@ -895,7 +483,7 @@ def execute_real_head(
     timeout_seconds: int,
     claims_path: Path | None = None,
 ) -> dict[str, Any]:
-    """Spawn the armed head, then grade whatever the SERVER recorded.
+    """Spawn the selected head, then grade whatever the server recorded.
 
     Mirrors the fake-head lane: the runner mints the trace key and
     attempt id (they travel by env/config, never into the report),
@@ -913,12 +501,9 @@ def execute_real_head(
         directory.mkdir(parents=True, exist_ok=True)
     except OSError as exc:
         raise RealHeadError(f"cannot create the attempt directory {directory}: {exc}") from None
-    # Validate the operator opt-in and build the allowlisted child env
-    # BEFORE minting or preflighting: a bad extra name must not leave
-    # key material behind, and the preflight needs the CHILD env to
-    # resolve the armed command against.
+    # Build the child environment before minting; preflight resolves the
+    # executable against that environment.
     child_env = bounded_child_environment(head)
-    child_secret_values = _child_secret_values(child_env)
     # The launch preflight is fail-closed BEFORE key minting, private
     # config writing, or spawn: a refused launch leaves nothing to clean up.
     exec_path, transport_fact = launch_preflight(head, cmd, child_env, directory)
@@ -940,7 +525,6 @@ def execute_real_head(
     # environment; stale parent trace values never survive the allowlist.
     if child_env_extra:
         child_env.update(child_env_extra)
-    _check_child_environment_size(child_env)
 
     print(
         f"[head-spawn] head={head} attempt={attempt_id} "
@@ -954,10 +538,7 @@ def execute_real_head(
             spawn_argv,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
+            stderr=subprocess.DEVNULL,
             timeout=timeout_seconds,
             cwd=str(directory),
             env=child_env,
@@ -1024,16 +605,7 @@ def execute_real_head(
             except OSError:
                 pass
     exit_code: int | None = proc.returncode
-    # Scrub BEFORE the tail slice: a credential that straddles the
-    # 400-character boundary is still a full occurrence in the raw text
-    # and must not survive as a partial prefix/suffix.
-    stderr_tail = _scrub_secrets(
-        (proc.stderr or "").strip(),
-        directory,
-        key,
-        attempt_id,
-        child_secret_values,
-    )[-400:]
+    stderr_tail = ""
     duration_s = round(time.monotonic() - started, 1)
     print(
         f"[head-reap] head={head} exit={exit_code} duration={duration_s}s",
@@ -1074,7 +646,7 @@ def execute_real_head(
     if exit_code not in (0, None):
         # Context for the measured record, never a verdict: grading
         # already decided the lane from server-side evidence.
-        lane["spawn_note"] = f"head exited {exit_code}: {stderr_tail}"
+        lane["spawn_note"] = f"head exited {exit_code}"
     return lane
 
 
@@ -1085,25 +657,6 @@ def argv_and_prompt(argv: list[str], prompt_text: str) -> list[str]:
         prompt_text + PROMPT_TRAILER if element == PROMPT_TRAILER_MARKER else element
         for element in argv
     ]
-
-
-def _scrub_secrets(
-    text: str,
-    directory: Path,
-    key: str,
-    attempt_id: str,
-    secret_values: tuple[str, ...] = (),
-) -> str:
-    """The head's own output must never become the report's leak path:
-    the minted trace facts AND copied credential values are scrubbed
-    from anything the child printed before it can reach a persisted
-    lane field."""
-    if text and any(len(value) < SECRET_REDACT_MIN_CHARS for value in secret_values):
-        return "<redacted child stderr>"
-    for secret in (key, attempt_id, str(directory / "trace.ndjson"), *secret_values):
-        if secret:
-            text = text.replace(secret, "<redacted>")
-    return text
 
 
 def _failed_real_lane(

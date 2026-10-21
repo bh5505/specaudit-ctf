@@ -15,14 +15,14 @@ import pytest
 from extension.arms.assetrecon import AssetReconArm
 from extension.arms.assetrecon import arm, worker
 from extension.arms.assetrecon.graph import Graph
-from extension.arms.assetrecon.model import Budget, Exclusions, Observation, Refusal, live_value, normalize, pattern_covers, seeds
+from extension.arms.assetrecon.model import Budget, Exclusions, Observation, Refusal, normalize, pattern_covers, seeds
 from extension.arms.assetrecon.probe_policy import validate_target
 from extension.arms.assetrecon.runner import WorkerRefusal, _accept_result, run_worker
 from extension.arms.assetrecon.sanitize import safe_text
 from extension.arms.assetrecon.sources import ADAPTERS, decode, read_fixture, shodan
 from extension.contract import ArmSpec
 
-SPEC = ArmSpec("asset-recon", ("cli",), True, "Hermetic fixture", "research")
+SPEC = ArmSpec("asset-recon", ("cli",), "Hermetic fixture")
 FIXTURES = Path(arm.__file__).parent / "fixtures"
 FP = "a" * 64
 HASH = "0" * 64
@@ -101,19 +101,10 @@ def test_plan_normalizes_exclusions_and_does_not_collect(monkeypatch):
     assert not result.output["nodes"] and not result.output["evidence"]
 
 
-@pytest.mark.parametrize("action", ["ct", "ptr", "discover"])
-def test_live_is_default_off(action, monkeypatch):
-    monkeypatch.delenv("ASSET_RECON_PROVIDERS", raising=False)
-    monkeypatch.setattr(arm, "run_worker", lambda *_: pytest.fail("unarmed request"))
-    result = invoke(action, dict(seeds={"domains": ["public.com"]}, live=True, providers=["crtsh"]))
-    assert not result.ok
-
-
 @pytest.mark.parametrize("action,provider", [("ct", "google"), ("ptr", "crtsh"), ("ct", "shodan"), ("ptr", "registry")])
 def test_provider_family_mismatch_never_runs(action, provider, monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", provider)
     monkeypatch.setattr(arm, "run_worker", lambda *_: pytest.fail("wrong family ran"))
-    assert not invoke(action, dict(seeds={"domains": ["public.com"], "ips": ["8.8.8.8"]}, live=True, providers=[provider])).ok
+    assert not invoke(action, dict(seeds={"domains": ["public.com"], "ips": ["8.8.8.8"]}, providers=[provider])).ok
 
 
 @pytest.mark.parametrize(
@@ -126,9 +117,8 @@ def test_provider_family_mismatch_never_runs(action, provider, monkeypatch):
 def test_bulk_collection_actions_refuse_wrong_seed_family_before_worker(
     action, seeds_value, provider, monkeypatch,
 ):
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", provider)
     monkeypatch.setattr(arm, "run_worker", lambda *_: pytest.fail("wrong seed family ran"))
-    result = invoke(action, {"live": True, "providers": [provider], "seeds": seeds_value})
+    result = invoke(action, {"providers": [provider], "seeds": seeds_value})
     assert not result.ok and result.output["status"] == "failed"
 
 
@@ -136,7 +126,8 @@ def test_list_tools_separates_fixture_only_sources():
     result = invoke("list_tools", {})
     assert "dns" in result.output["fixture_sources"]
     assert "dns" not in result.output["live_providers"]
-    assert result.output["maximum_limits"]["max_requests"] == 32
+    assert result.output["default_limits"]["max_requests"] == 16
+    assert "maximum_limits" not in result.output
     assert {"networks", "domains_file", "targets_file"} <= set(result.output["seed_fields"])
     assert {"http", "tcp-hello", "nmap", "zgrab2"} <= set(result.output["probe_methods"])
 
@@ -144,10 +135,9 @@ def test_list_tools_separates_fixture_only_sources():
 def test_list_tools_does_not_expose_mutable_limit_defaults():
     result = invoke("list_tools", {})
     result.output["default_limits"]["max_requests"] = 999
-    result.output["maximum_limits"]["max_requests"] = 999
     second = invoke("list_tools", {})
     assert second.output["default_limits"]["max_requests"] == 16
-    assert second.output["maximum_limits"]["max_requests"] == 32
+    assert "maximum_limits" not in second.output
 
 
 def test_exclusions_override_seeds_and_edges():
@@ -194,19 +184,15 @@ def test_cidr_expansion_is_bounded():
         seeds({"networks": ["2001:db8::/64"]}, Exclusions())
 
 
-@pytest.mark.parametrize("value", ["192.0.2.1", "127.0.0.1", "10.0.0.1", "224.0.0.1", "ff02::1", "fec0::1", "2001:db8::1", "169.254.1.1", "::1"])
-def test_non_global_probe_values_refused(value, monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROBE_SCOPE", value)
-    monkeypatch.setattr(arm, "run_worker", lambda *_: pytest.fail("reserved probe attempted"))
-    assert not invoke("probe", dict(live=True, targets=[{"ip": value, "port": 80, "method": "tcp"}])).ok
+@pytest.mark.parametrize("value", ["8.8.8.8", "10.0.0.1", "127.0.0.1", "192.0.2.1", "2001:db8::1"])
+def test_operator_selected_ip_classes_are_not_denied_by_classification(value, monkeypatch):
+    monkeypatch.setattr(arm, "run_worker", lambda *_: {"ok": True, "connected": True})
+    result = invoke("probe", {"targets": [{"ip": value, "port": 80, "method": "tcp"}]})
+    assert result.ok, result.output
+    assert result.output["probes"][0]["target"]["ip"] == value
 
 
-@pytest.mark.parametrize("number,allowed", [(23456, False), (64495, True), (64496, False), (64511, False), (64512, False), (65534, False), (65535, False), (65536, False), (65551, False), (65552, True), (131071, True), (4199999999, True), (4200000000, False), (4294967295, False)])
-def test_asn_boundaries(number, allowed):
-    assert live_value("asn", str(number)) is allowed
-
-
-@pytest.mark.parametrize("limits", [[], {"max_nodes": True}, {"max_depth": 6}, {"max_output_bytes": 10}, {"unknown": 1}])
+@pytest.mark.parametrize("limits", [[], {"max_nodes": True}, {"max_depth": -1}, {"max_output_bytes": 0}, {"unknown": 1}])
 def test_bad_limits_refuse(limits):
     assert not invoke("plan", dict(seeds={"domains": ["example.test"]}, limits=limits)).ok
 
@@ -288,12 +274,10 @@ def test_failed_fixture_still_records_selected_source(tmp_path):
 
 
 def test_invalid_worker_digest_cannot_enter_provenance(monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "google")
     monkeypatch.setattr(arm, "run_worker", lambda *a, **k: {
         "ok": True, "digest": "not-a-digest", "data": [], "dns_status": 0,
     })
     result = invoke("discover", {
-        "live": True,
         "providers": ["google"],
         "seeds": {"domains": ["public.com"]},
         "limits": {"min_interval_ms": 50},
@@ -397,7 +381,6 @@ def test_ptr_rfc2317_alias_binding(monkeypatch):
 
 
 def test_certspotter_cursor_cycle_preserves_partial(monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter")
     cursors = iter(["one", "two", "one"])
     calls = []
     def fake(request, timeout):
@@ -405,24 +388,22 @@ def test_certspotter_cursor_cycle_preserves_partial(monkeypatch):
         cursor = next(cursors)
         return {"ok": True, "digest": HASH, "data": [{"id": cursor, "dns_names": ["api.public.com"], "cert_sha256": FP}], "cursor": cursor}
     monkeypatch.setattr(arm, "run_worker", fake)
-    result = invoke("ct", {"live": True, "providers": ["certspotter"], "seeds": {"domains": ["public.com"]}, "limits": {"min_interval_ms": 50}})
+    result = invoke("ct", {"providers": ["certspotter"], "seeds": {"domains": ["public.com"]}, "limits": {"min_interval_ms": 50}})
     assert not result.ok and result.output["edges"] and len(calls) == 3
 
 
 def test_certspotter_pagination_empty_page_closes(monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter")
     calls = []
     def fake(request, timeout):
         calls.append(request)
         return {"ok": True, "digest": HASH, "data": [{"id": "opaque", "dns_names": ["api.public.com"], "cert_sha256": FP}], "cursor": "opaque"} if len(calls) == 1 else {"ok": True, "digest": HASH, "data": [], "cursor": None}
     monkeypatch.setattr(arm, "run_worker", fake)
-    result = invoke("ct", {"live": True, "providers": ["certspotter"], "seeds": {"domains": ["public.com"]}, "limits": {"min_interval_ms": 50}})
+    result = invoke("ct", {"providers": ["certspotter"], "seeds": {"domains": ["public.com"]}, "limits": {"min_interval_ms": 50}})
     assert result.ok and len(calls) == 2
     assert calls[1]["variant"] == "opaque"
 
 
 def multi_provider_discover(monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "crtsh,certspotter")
     calls = []
 
     def fake(request, timeout):
@@ -440,7 +421,6 @@ def multi_provider_discover(monkeypatch):
 
     monkeypatch.setattr(arm, "run_worker", fake)
     result = invoke("discover", {
-        "live": True,
         "providers": ["crtsh", "certspotter"],
         "seeds": {"domains": ["public.com"]},
         "limits": {"min_interval_ms": 50},
@@ -469,7 +449,6 @@ def test_per_provider_cap_binds_under_asymmetric_unbounded_pagination(monkeypatc
     removed certspotter consumes the remaining global budget (14 of 16); with
     them it stops at max_requests//2 and the leftover slots stay unused (the
     fair share is static and is not redistributed)."""
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter,google")
     calls = []
 
     def fake(request, timeout):
@@ -487,7 +466,6 @@ def test_per_provider_cap_binds_under_asymmetric_unbounded_pagination(monkeypatc
     monkeypatch.setattr(arm, "run_worker", fake)
     max_requests = 16
     result = invoke("discover", {
-        "live": True,
         "providers": ["certspotter", "google"],
         "seeds": {"domains": ["public.com"]},
         "limits": {"min_interval_ms": 50, "retries": 0, "max_requests": max_requests},
@@ -508,7 +486,6 @@ def test_round_robin_seed_before_expansion(monkeypatch):
 
 
 def test_slow_failing_provider_does_not_starve_others(monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "crtsh,certspotter,google")
     calls = []
 
     def fake(request, timeout):
@@ -523,7 +500,6 @@ def test_slow_failing_provider_does_not_starve_others(monkeypatch):
 
     monkeypatch.setattr(arm, "run_worker", fake)
     result = invoke("discover", {
-        "live": True,
         "providers": ["crtsh", "certspotter", "google"],
         "seeds": {"domains": ["public.com"]},
         "limits": {"min_interval_ms": 50, "retries": 2},
@@ -535,7 +511,6 @@ def test_slow_failing_provider_does_not_starve_others(monkeypatch):
 
 
 def test_pagination_is_interleaved_not_run_to_completion(monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter,google")
     calls = []
 
     def fake(request, timeout):
@@ -550,7 +525,6 @@ def test_pagination_is_interleaved_not_run_to_completion(monkeypatch):
 
     monkeypatch.setattr(arm, "run_worker", fake)
     invoke("discover", {
-        "live": True,
         "providers": ["certspotter", "google"],
         "seeds": {"domains": ["public.com"]},
         "limits": {"min_interval_ms": 50},
@@ -561,7 +535,6 @@ def test_pagination_is_interleaved_not_run_to_completion(monkeypatch):
 
 
 def test_retries_yield_to_next_provider(monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter,google")
     calls = []
     failed = False
 
@@ -577,7 +550,6 @@ def test_retries_yield_to_next_provider(monkeypatch):
 
     monkeypatch.setattr(arm, "run_worker", fake)
     invoke("discover", {
-        "live": True,
         "providers": ["certspotter", "google"],
         "seeds": {"domains": ["public.com"]},
         "limits": {"min_interval_ms": 50, "retries": 1},
@@ -587,11 +559,14 @@ def test_retries_yield_to_next_provider(monkeypatch):
     assert any(calls[index]["source"] == "google" for index in range(provider_calls[0] + 1, provider_calls[1]))
 
 
-def test_large_isp_preset_raises_limits():
-    result = invoke("plan", {"seeds": {"domains": ["example.test"]}, "limits": {"large_isp": True}})
-    assert result.output["context"]["limits"]["max_requests"] == 32
-    assert result.output["context"]["limits"]["wall_seconds"] == 60
-    assert not invoke("plan", {"seeds": {"domains": ["example.test"]}, "limits": {"large_isp": 1}}).ok
+def test_operator_can_choose_run_limits_above_old_ceiling():
+    result = invoke("plan", {"seeds": {"domains": ["example.test"]},
+                             "limits": {"max_requests": 1000, "wall_seconds": 120,
+                                        "min_interval_ms": 0}})
+    assert result.ok is True
+    assert result.output["context"]["limits"]["max_requests"] == 1000
+    assert result.output["context"]["limits"]["wall_seconds"] == 120
+    assert result.output["context"]["limits"]["min_interval_ms"] == 0
 
 
 def test_per_provider_counts_in_output():
@@ -601,36 +576,39 @@ def test_per_provider_counts_in_output():
 
 
 def test_dns_negative_disagreement_and_provenance(monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "google,cloudflare")
     monkeypatch.setattr(arm, "run_worker", lambda request, timeout: {"ok": True, "digest": HASH, "data": [], "dns_status": 3 if request["source"] == "google" else 0})
-    result = invoke("ptr", {"live": True, "providers": ["google", "cloudflare"], "seeds": {"ips": ["8.8.8.8"]}, "limits": {"min_interval_ms": 50}})
+    result = invoke("ptr", {"providers": ["google", "cloudflare"], "seeds": {"ips": ["8.8.8.8"]}, "limits": {"min_interval_ms": 50}})
     assert not result.ok
     assert {e["source"] for e in result.output["evidence"]} == {"google", "cloudflare"}
     assert {e["relation"] for e in result.output["edges"]} == {"dns_nxdomain", "dns_nodata"}
 
 
-@pytest.mark.parametrize("changes", [{"method": "exploit"}, {"port": True}, {"method": "tcp-hello", "hello": "DELETE /"}, {"extra": 1}, {"method": "http", "url": "http://8.8.8.8/?key=secret"}, {"method": "http", "url": "http://8.8.8.8/admin"}])
+@pytest.mark.parametrize("changes", [{"method": "exploit"}, {"port": True}, {"method": "tcp-hello", "hello": 123}, {"extra": 1}])
 def test_direct_worker_rejects_bad_probe_before_network(changes, monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROBE_SCOPE", "8.8.8.8")
     monkeypatch.setattr(worker, "probe", lambda *_: pytest.fail("invalid worker request touched network"))
     with pytest.raises(Refusal):
-        worker.execute({"operation": "probe", "live": True, "target": {"ip": "8.8.8.8", "port": 80, "method": "tcp", **changes}})
+        worker.execute({"operation": "probe", "target": {"ip": "8.8.8.8", "port": 80, "method": "tcp", **changes}})
+
+
+def test_http_probe_accepts_operator_selected_path_and_query():
+    target = validate_target({
+        "ip": "8.8.8.8", "port": 80, "method": "http",
+        "url": "http://8.8.8.8/admin?view=summary",
+    })
+    assert target["url"] == "http://8.8.8.8/admin?view=summary"
 
 
 @pytest.mark.parametrize("source,kind,variant", [("dns", "ip", None), ("google", "certificate", None), ("crtsh", "certificate", None), ("google", "domain", "TXT"), ("registry", "asn", "any-url")])
 def test_direct_worker_rejects_bad_collect_before_network(source, kind, variant, monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", source)
     monkeypatch.setattr(worker, "collect", lambda *_: pytest.fail("invalid worker collected"))
     with pytest.raises(Refusal):
-        worker.execute({"operation": "collect", "live": True, "source": source, "kind": kind, "value": "8.8.8.8", "variant": variant})
+        worker.execute({"operation": "collect", "source": source, "kind": kind, "value": "8.8.8.8", "variant": variant})
 
 
-def test_probe_dual_scope_and_host_binding(monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROBE_SCOPE", "8.8.8.8,public.com")
-    monkeypatch.delenv("NMAP_DISPATCH_SCOPE", raising=False)
-    with pytest.raises(Refusal):
-        validate_target({"ip": "8.8.8.8", "port": 443, "method": "nmap"})
-    target, _, _ = validate_target({"ip": "8.8.8.8", "port": 443, "method": "http", "host": "public.com", "url": "https://public.com/"})
+def test_explicit_target_and_host_binding():
+    target = validate_target({"ip": "10.0.0.2", "port": 443, "method": "nmap"})
+    assert target["ip"] == "10.0.0.2"
+    target = validate_target({"ip": "8.8.8.8", "port": 443, "method": "http", "host": "public.com", "url": "https://public.com/"})
     assert target["ip"] == "8.8.8.8" and target["host"] == "public.com"
     with pytest.raises(Refusal):
         validate_target(dict(target, url="https://other.com/"))
@@ -698,9 +676,8 @@ def test_certspotter_cursor_is_bounded_opaque_and_url_encoded(monkeypatch):
         return [row], HASH
 
     monkeypatch.setattr(worker, "fetch", fake)
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "certspotter")
     request = worker.validate_request({
-        "operation": "collect", "live": True, "source": "certspotter",
+        "operation": "collect", "source": "certspotter",
         "kind": "domain", "value": "public.com", "variant": row["id"],
     })
     response = worker.collect(request["source"], request["kind"], request["value"], request["variant"])
@@ -716,8 +693,7 @@ def test_real_worker_success_contract_with_hermetic_boundary(monkeypatch):
     def fake(*args, **kwargs):
         return original([sys.executable, "-c", script], **kwargs)
     monkeypatch.setattr(runner.subprocess, "Popen", fake)
-    monkeypatch.setenv("ASSET_RECON_PROVIDERS", "google")
-    request = {"operation": "collect", "live": True, "source": "google", "kind": "domain", "value": "public.com", "variant": "A"}
+    request = {"operation": "collect", "source": "google", "kind": "domain", "value": "public.com", "variant": "A"}
     # Probe only in a disposable child: these hard limits must never affect
     # pytest itself. Linux must retain the successful real-boundary assertion;
     # other POSIX hosts may reject RLIMIT_AS and must then refuse the worker.
@@ -805,6 +781,20 @@ def test_hello_sends_only_fixed_greeting_and_reads_once(method, monkeypatch):
     assert "Demo Server 1.2" in result["preview"]
 
 
+def test_hello_sends_operator_text(monkeypatch):
+    sock = FakeSocket([b"ready\r\n"])
+    monkeypatch.setattr(worker.socket, "socket", lambda *a: sock)
+    target = validate_target({"ip": "8.8.8.8", "port": 1234, "method": "tcp-hello", "hello": "PING café\r\n"})
+    result = worker.probe(target)
+    assert sock.sent == ["PING café\r\n".encode("utf-8")]
+    assert "ready" in result["preview"]
+
+
+def test_zgrab2_module_is_operator_selected():
+    target = validate_target({"ip": "8.8.8.8", "port": 443, "method": "zgrab2", "module": "jarm"})
+    assert target["module"] == "jarm"
+
+
 def test_native_http_host_does_not_resolve(monkeypatch):
     sock = FakeSocket([b"HTTP/1.1 200 OK\r\n\r\nHello"])
     monkeypatch.setattr(worker.socket, "socket", lambda *a: sock)
@@ -879,15 +869,6 @@ def test_shodan_live_results_must_bind_query(monkeypatch):
         worker.collect("shodan", "certificate", FP)
 
 
-def test_live_network_value_is_public_global_only():
-    # P2: a network (CIDR) is worth a live query only when it is a globally
-    # routable announced prefix; private/reserved ranges are skipped.
-    assert live_value("network", "104.16.0.0/12") is True
-    assert live_value("network", "104.16.0.0/12".replace("12", "20")) is True
-    assert live_value("network", "10.0.0.0/8") is False
-    assert live_value("network", "192.0.2.0/24") is False
-
-
 def test_shodan_network_query_expands_to_hosts(monkeypatch):
     # P2: an ASN-seed discover expands announced-prefix network nodes down to
     # observed origin hosts via a shodan net: search instead of stalling.
@@ -909,7 +890,7 @@ def test_shodan_network_query_expands_to_hosts(monkeypatch):
 
 def test_crtsh_retries_transient_502_with_backoff(monkeypatch):
     # P3: crt.sh intermittently 502s; the adapter retries with backoff so a
-    # transient failure is absorbed in-process instead of failing the governed
+    # transient failure is absorbed in-process instead of failing the
     # path on the first attempt.
     calls = {"n": 0}
 
@@ -1047,14 +1028,12 @@ def test_probe_refusal_category_survives_worker_redaction(monkeypatch):
     with pytest.raises(Refusal) as untrusted:
         _accept_result({**failure, "reason": "secret-target"}, "probe")
     assert type(untrusted.value) is Refusal
-
-    monkeypatch.setenv("ASSET_RECON_PROBE_SCOPE", "8.8.8.8")
     monkeypatch.setattr(
         arm, "run_worker", lambda *_args: (_ for _ in ()).throw(exc.value)
     )
     result = invoke(
         "probe",
-        {"live": True, "targets": [{"ip": "8.8.8.8", "port": 80, "method": "tcp"}]},
+        {"targets": [{"ip": "8.8.8.8", "port": 80, "method": "tcp"}]},
     )
     assert result.ok is False
     assert result.error == "reason:probe_connection_refused"
@@ -1071,14 +1050,12 @@ def test_worker_failure_categories_never_include_exception_text():
 
 
 def test_probe_partial_capture_stays_partial(monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROBE_SCOPE", "8.8.8.8")
     monkeypatch.setattr(arm, "run_worker", lambda *a: {"ok": True, "complete": False, "http_status": 200, "body_preview": "partial"})
-    result = invoke("probe", {"live": True, "targets": [{"ip": "8.8.8.8", "port": 80, "method": "http", "url": "http://8.8.8.8/"}]})
+    result = invoke("probe", {"targets": [{"ip": "8.8.8.8", "port": 80, "method": "http", "url": "http://8.8.8.8/"}]})
     assert not result.ok and result.output["status"] == "partial" and result.output["probes"]
 
 
 def test_probe_output_trimming_preserves_earlier_limitations(monkeypatch):
-    monkeypatch.setenv("ASSET_RECON_PROBE_SCOPE", "8.8.8.8")
     monkeypatch.setattr(
         arm,
         "run_worker",
@@ -1087,7 +1064,6 @@ def test_probe_output_trimming_preserves_earlier_limitations(monkeypatch):
     result = invoke(
         "probe",
         {
-            "live": True,
             "targets": [{"ip": "8.8.8.8", "port": 80, "method": "tcp"}],
             "limits": {"max_output_bytes": 4096},
         },

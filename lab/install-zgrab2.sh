@@ -27,7 +27,7 @@ if ! command -v zgrab2 >/dev/null 2>&1; then
   GOBIN=/usr/local/bin go install "github.com/zmap/zgrab2/cmd/zgrab2@${TAG}"
 fi
 # v1.0.0 fatals on a missing blocklist config; an empty file means
-# "block nothing" (the suite's scope gate is the actual control).
+# "block nothing" for the operator-selected target.
 mkdir -p /root/.config/zgrab2
 [ -f /root/.config/zgrab2/blocklist.conf ] || : > /root/.config/zgrab2/blocklist.conf
 command -v zgrab2 >/dev/null || { echo "[lab] zgrab2 install failed" >&2; exit 1; }
@@ -36,10 +36,9 @@ EOF
 
 cat <<EOF
 
-[lab] done. The zgrab2 availability row now resolves from PATH; arming
-example against a spawned target:
+[lab] done. The zgrab2 availability row now resolves from PATH; example
+against a spawned target:
 
-  export ZGRAB2_DISPATCH_SCOPE=<target-ip>
   python -m extension invoke zgrab2 scan \\
     '{"target": "<target-ip>", "module": "http"}'
 EOF

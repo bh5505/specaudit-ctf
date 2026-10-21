@@ -1,4 +1,4 @@
-"""Validate extension/coverage.yaml against the published schema."""
+"""Validate extension/coverage.yaml against the published schema and loader."""
 
 from __future__ import annotations
 
@@ -11,14 +11,13 @@ import jsonschema
 import pytest
 import yaml
 
-from extension.arms.aideepsast.policy import CAVEATS as AI_DEEP_SAST_CAVEATS
-from extension.contract import ExtensionError, describe, load_catalog
+from extension.contract import ExtensionError, UnknownIdError, describe, load_catalog
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG_PATH = ROOT / "extension" / "coverage.yaml"
 SCHEMA_PATH = ROOT / "extension" / "schema" / "coverage.schema.json"
 
-# Public kebab slugs for every classified survey row, in registry order.
+# Public kebab slugs for every catalog row, in registry order.
 EXPECTED_IDS = (
     "learning-operator",
     "loopback",
@@ -89,13 +88,15 @@ EXPECTED_IDS = (
     "m365pwned",
     "ivanti",
 )
-CURATED_ARM_ID = "burp-mcp"
 
 _TEXT_SUFFIXES = {".yaml", ".yml", ".md", ".json", ".py", ".txt", ".toml", ".ini", ".tf"}
 _SKIP_DIR_NAMES = {".git", ".venv", "venv", "__pycache__", ".pytest_cache", "node_modules"}
+_ENTRY_FIELDS = {"id", "kind", "protocols", "notes"}
+_KINDS = ["head", "arm", "methodology-only"]
+_PROTOCOLS = ["mcp", "cli", "http", "none"]
 
 
-def _load_catalog() -> dict:
+def _load_catalog_yaml() -> dict:
     with CATALOG_PATH.open(encoding="utf-8") as handle:
         data = yaml.safe_load(handle)
     assert isinstance(data, dict)
@@ -121,9 +122,27 @@ def _forbidden_tokens() -> tuple[str, ...]:
     )
 
 
+def _minimal_entry(**overrides: object) -> dict:
+    entry: dict = {
+        "id": "probe-cli",
+        "kind": "arm",
+        "protocols": ["cli"],
+        "notes": "a",
+    }
+    entry.update(overrides)
+    return entry
+
+
+def _minimal_document(entry: dict | None = None, *, version: object = 1) -> dict:
+    document: dict = {"entries": [entry or _minimal_entry()]}
+    if version is not None:
+        document["version"] = version
+    return document
+
+
 @pytest.fixture(scope="module")
 def catalog() -> dict:
-    return _load_catalog()
+    return _load_catalog_yaml()
 
 
 @pytest.fixture(scope="module")
@@ -133,14 +152,62 @@ def entries(catalog: dict) -> list[dict]:
     return rows
 
 
+def test_schema_entry_contract() -> None:
+    schema = _load_schema()
+    assert schema["required"] == ["version", "entries"]
+    assert schema["additionalProperties"] is False
+    entry = schema["definitions"]["entry"]
+    assert entry["required"] == ["id", "kind", "protocols", "notes"]
+    assert entry["additionalProperties"] is False
+    assert set(entry["properties"]) == _ENTRY_FIELDS
+    assert entry["properties"]["kind"]["enum"] == _KINDS
+    protocols = entry["properties"]["protocols"]
+    assert protocols["minItems"] == 1
+    assert protocols["uniqueItems"] is True
+    assert protocols["items"]["enum"] == _PROTOCOLS
+    assert entry["properties"]["notes"]["minLength"] == 1
+    assert entry["properties"]["id"]["pattern"] == r"^[a-z][a-z0-9]*(-[a-z0-9]+)*$"
+
+
 def test_catalog_matches_schema(catalog: dict) -> None:
     jsonschema.validate(instance=catalog, schema=_load_schema())
+
+
+def test_schema_rejects_removed_admission_fields() -> None:
+    schema = _load_schema()
+    jsonschema.validate(instance=_minimal_document(), schema=schema)
+    for extra in (
+        {"tier": "research"},
+        {"curated": False},
+        {"held_reason": "because"},
+    ):
+        document = _minimal_document(_minimal_entry(**extra))
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            jsonschema.validate(instance=document, schema=schema)
+
+
+def test_schema_rejects_shape_the_loader_does_not() -> None:
+    """Schema requires version and unique protocols. The loader does not."""
+    schema = _load_schema()
+    missing_version = _minimal_document(version=None)
+    duplicate_protocols = _minimal_document(_minimal_entry(protocols=["cli", "cli"]))
+    for document in (missing_version, duplicate_protocols):
+        with pytest.raises(jsonschema.exceptions.ValidationError):
+            jsonschema.validate(instance=document, schema=schema)
 
 
 def test_survey_ids_match_frozen_set(entries: list[dict]) -> None:
     ids = [row["id"] for row in entries]
     assert ids == list(EXPECTED_IDS)
     assert sorted(ids) == sorted(EXPECTED_IDS)
+
+
+def test_published_rows_have_only_catalog_fields(entries: list[dict]) -> None:
+    for row in entries:
+        assert set(row) == _ENTRY_FIELDS
+        assert row["kind"] in _KINDS
+        assert row["protocols"]
+        assert isinstance(row["notes"], str) and row["notes"].strip()
 
 
 def test_entry_ids_unique_and_kebab_case(entries: list[dict]) -> None:
@@ -152,72 +219,6 @@ def test_entry_ids_unique_and_kebab_case(entries: list[dict]) -> None:
         assert entry_id[0].isalpha()
 
 
-def test_methodology_only_rows_are_not_curated(entries: list[dict]) -> None:
-    curated_methodology = [
-        row["id"]
-        for row in entries
-        if row["kind"] == "methodology-only" and row["curated"]
-    ]
-    assert curated_methodology == []
-
-
-def test_curated_arms_are_exactly_the_curated_set(entries: list[dict]) -> None:
-    curated = [row for row in entries if row["curated"]]
-    assert {row["id"] for row in curated} == {
-        "burp-mcp",
-        "semgrep-mcp",
-        "checkov",
-        "prowler-mcp",
-        "garak",
-        "zaproxy",
-        "wapiti",
-        "commix",
-        "mitreattack-python",
-        "vuls",
-        "stratus-red-team",
-        "osmedeus",
-        "zdns",
-        "page-fetch",
-        "http-probe",
-        "caldera",
-        "google-mcp-security",
-        "metasploit-mcp",
-        "routersploit",
-        "sniper",
-        "zgrab2",
-        "nmap",
-        "dark-moon",
-        "pyrit",
-        "deepsec",
-        "vvah",
-        "ai-deep-sast",
-        "agent-wiz",
-        "attack-stix-data",
-        "vulnify",
-        "snmp-readtier",
-        "ike-readtier",
-        "rpz-decoder",
-        "asset-recon",
-        "security-detections-mcp",
-        "agentseal",
-        "learning-operator",
-        "leonidas",
-        "specterops-skills",
-        "detection-in-the-cloud",
-        "pentestkit",
-        "collinear",
-        "ad-pathfinder",
-        "gpohound",
-        "claude-ad",
-        "numasec",
-        "rubeus",
-        "m365pwned",
-        "ivanti",
-    }
-    for arm in curated:
-        assert arm["kind"] == "arm"
-
-
 def test_none_protocol_is_exclusive(entries: list[dict]) -> None:
     for row in entries:
         protocols = row["protocols"]
@@ -225,25 +226,56 @@ def test_none_protocol_is_exclusive(entries: list[dict]) -> None:
             assert protocols == ["none"], row["id"]
 
 
-def test_describe_ai_deep_sast_notes_match_live_caveats() -> None:
-    notes = describe("ai-deep-sast").notes
-    for phrase in (
-        "--skip-llm",
-        "AI_DEEP_SAST_SEMGREP_CONFIG",
-        "no registry p/",
-        "Foundation-Sec",
-        "llama-completion",
-        "dry_run --dry-run",
-    ):
-        assert phrase in AI_DEEP_SAST_CAVEATS, phrase
-        assert phrase in notes, phrase
-    assert "redacted source" not in notes.lower()
+def test_load_catalog_reads_published_rows() -> None:
+    loaded = load_catalog()
+    assert loaded.version == 1
+    assert [entry.id for entry in loaded.entries] == list(EXPECTED_IDS)
+    for entry in loaded.entries:
+        assert set(entry.to_dict()) == _ENTRY_FIELDS
+        assert entry.protocols
+        assert entry.notes.strip()
+
+
+def test_load_catalog_accepts_minimal_row(tmp_path: Path) -> None:
+    path = tmp_path / "coverage.yaml"
+    path.write_text(
+        "version: 1\n"
+        "entries:\n"
+        "- id: probe-cli\n"
+        "  kind: arm\n"
+        "  protocols: [cli]\n"
+        "  notes: a\n",
+        encoding="utf-8",
+    )
+    loaded = load_catalog(path)
+    assert loaded.version == 1
+    assert len(loaded.entries) == 1
+    entry = loaded.entries[0]
+    assert entry.id == "probe-cli"
+    assert entry.kind == "arm"
+    assert entry.protocols == ("cli",)
+    assert entry.notes == "a"
+
+
+def test_describe_returns_catalog_row() -> None:
+    described = describe("ai-deep-sast")
+    row = next(item for item in _load_catalog_yaml()["entries"] if item["id"] == "ai-deep-sast")
+    assert described.id == "ai-deep-sast"
+    assert described.kind == row["kind"] == "arm"
+    assert described.protocols == tuple(row["protocols"]) == ("cli",)
+    assert described.notes == row["notes"]
+
+
+def test_describe_unknown_id() -> None:
+    with pytest.raises(UnknownIdError) as err:
+        describe("not-a-catalog-id")
+    assert str(err.value) == "unknown id: not-a-catalog-id"
 
 
 def test_language_bar_on_catalog_ids_and_notes(entries: list[dict]) -> None:
     forbidden = tuple(token.lower() for token in _forbidden_tokens())
     for row in entries:
-        haystack = f"{row['id']}\n{row['notes']}\n{row.get('held_reason') or ''}".lower()
+        haystack = f"{row['id']}\n{row['notes']}".lower()
         for token in forbidden:
             assert token not in haystack, f"{row['id']} contains banned token"
 
@@ -287,153 +319,118 @@ def test_language_bar_on_added_tree() -> None:
                 hits.append(f"{path.relative_to(ROOT)}: {token}")
     assert hits == []
 
+
 @pytest.mark.parametrize(
     "document",
     [
-        # top-level mapping required
-        "- not-a-mapping\n",
-        # entries must be a list
-        "entries: not-a-list\n",
-        # duplicate id
-        "entries:\n"
-        "- id: dup\n"
-        "  kind: arm\n"
-        "  protocols: [cli]\n"
-        "  curated: false\n"
-        "  notes: a\n"
-        "- id: dup\n"
-        "  kind: arm\n"
-        "  protocols: [cli]\n"
-        "  curated: false\n"
-        "  notes: b\n",
-        # empty protocols list
-        "entries:\n"
-        "- id: empty\n"
-        "  kind: arm\n"
-        "  protocols: []\n"
-        "  curated: false\n"
-        "  notes: a\n",
-        # non-list protocols
-        "entries:\n"
-        "- id: bad\n"
-        "  kind: arm\n"
-        "  protocols: cli\n"
-        "  curated: false\n"
-        "  notes: a\n",
-        # missing id
-        "entries:\n"
-        "- kind: arm\n"
-        "  protocols: [cli]\n"
-        "  curated: false\n"
-        "  notes: a\n",
-        # missing kind
-        "entries:\n"
-        "- id: probe-cli\n"
-        "  protocols: [cli]\n"
-        "  curated: false\n"
-        "  notes: a\n",
-        # missing notes
-        "entries:\n"
-        "- id: probe-cli\n"
-        "  kind: arm\n"
-        "  protocols: [cli]\n"
-        "  curated: false\n",
-        # bad kind value
-        "entries:\n"
-        "- id: probe-cli\n"
-        "  kind: bad\n"
-        "  protocols: [cli]\n"
-        "  curated: false\n"
-        "  notes: a\n",
-        # methodology-only must not be curated
-        "entries:\n"
-        "- id: probe-cli\n"
-        "  kind: methodology-only\n"
-        "  protocols: [none]\n"
-        "  curated: true\n"
-        "  notes: a\n",
-        # bad id pattern (uppercase)
-        "entries:\n"
-        "- id: Bad_ID\n"
-        "  kind: arm\n"
-        "  protocols: [cli]\n"
-        "  curated: false\n"
-        "  notes: a\n",
-        # invalid protocol value
-        "entries:\n"
-        "- id: probe-cli\n"
-        "  kind: arm\n"
-        "  protocols: [badproto]\n"
-        "  curated: false\n"
-        "  notes: a\n",
-        # none must be exclusive
-        "entries:\n"
-        "- id: probe-cli\n"
-        "  kind: arm\n"
-        "  protocols: [none, cli]\n"
-        "  curated: false\n"
-        "  notes: a\n",
-        # version non-integer
-        "version: x\nentries:\n- id: probe-cli\n  kind: arm\n  protocols: [cli]\n  curated: false\n  notes: a\n",
-        # missing tier
-        "entries:\n"
-        "- id: probe-cli\n"
-        "  kind: arm\n"
-        "  protocols: [cli]\n"
-        "  curated: false\n"
-        "  notes: a\n",
-        # invalid tier
-        "entries:\n"
-        "- id: probe-cli\n"
-        "  kind: arm\n"
-        "  protocols: [cli]\n"
-        "  curated: false\n"
-        "  tier: stable\n"
-        "  notes: a\n",
-        # methodology-only must not be maintained
-        "entries:\n"
-        "- id: teach-only\n"
-        "  kind: methodology-only\n"
-        "  protocols: [none]\n"
-        "  curated: false\n"
-        "  tier: maintained\n"
-        "  notes: a\n",
-        # held requires a reason
-        "entries:\n"
-        "- id: held-mcp\n"
-        "  kind: arm\n"
-        "  protocols: [mcp]\n"
-        "  curated: true\n"
-        "  tier: held\n"
-        "  notes: a\n",
-        # curated must be a real boolean, not a string
-        "entries:\n"
-        "- id: probe-cli\n"
-        "  kind: arm\n"
-        "  protocols: [cli]\n"
-        "  curated: 'true'\n"
-        "  tier: research\n"
-        "  notes: a\n",
-        # curated integer is not a boolean
-        "entries:\n"
-        "- id: probe-cli\n"
-        "  kind: arm\n"
-        "  protocols: [cli]\n"
-        "  curated: 1\n"
-        "  tier: research\n"
-        "  notes: a\n",
-        # missing curated
-        "entries:\n"
-        "- id: probe-cli\n"
-        "  kind: arm\n"
-        "  protocols: [cli]\n"
-        "  tier: research\n"
-        "  notes: a\n",
+        pytest.param("- not-a-mapping\n", id="top-level-not-mapping"),
+        pytest.param("entries: not-a-list\n", id="entries-not-list"),
+        pytest.param(
+            "entries:\n"
+            "- id: dup\n"
+            "  kind: arm\n"
+            "  protocols: [cli]\n"
+            "  notes: a\n"
+            "- id: dup\n"
+            "  kind: arm\n"
+            "  protocols: [cli]\n"
+            "  notes: b\n",
+            id="duplicate-id",
+        ),
+        pytest.param(
+            "entries:\n"
+            "- id: empty\n"
+            "  kind: arm\n"
+            "  protocols: []\n"
+            "  notes: a\n",
+            id="empty-protocols",
+        ),
+        pytest.param(
+            "entries:\n"
+            "- id: bad\n"
+            "  kind: arm\n"
+            "  protocols: cli\n"
+            "  notes: a\n",
+            id="protocols-not-list",
+        ),
+        pytest.param(
+            "entries:\n"
+            "- kind: arm\n"
+            "  protocols: [cli]\n"
+            "  notes: a\n",
+            id="missing-id",
+        ),
+        pytest.param(
+            "entries:\n"
+            "- id: probe-cli\n"
+            "  protocols: [cli]\n"
+            "  notes: a\n",
+            id="missing-kind",
+        ),
+        pytest.param(
+            "entries:\n"
+            "- id: probe-cli\n"
+            "  kind: arm\n"
+            "  protocols: [cli]\n",
+            id="missing-notes",
+        ),
+        pytest.param(
+            "entries:\n"
+            "- id: probe-cli\n"
+            "  kind: arm\n"
+            "  protocols: [cli]\n"
+            "  notes: '   '\n",
+            id="blank-notes",
+        ),
+        pytest.param(
+            "entries:\n"
+            "- id: probe-cli\n"
+            "  kind: bad\n"
+            "  protocols: [cli]\n"
+            "  notes: a\n",
+            id="bad-kind",
+        ),
+        pytest.param(
+            "entries:\n"
+            "- id: Bad_ID\n"
+            "  kind: arm\n"
+            "  protocols: [cli]\n"
+            "  notes: a\n",
+            id="bad-id",
+        ),
+        pytest.param(
+            "entries:\n"
+            "- id: probe-cli\n"
+            "  kind: arm\n"
+            "  protocols: [badproto]\n"
+            "  notes: a\n",
+            id="bad-protocol",
+        ),
+        pytest.param(
+            "entries:\n"
+            "- id: probe-cli\n"
+            "  kind: arm\n"
+            "  protocols: [none, cli]\n"
+            "  notes: a\n",
+            id="none-not-exclusive",
+        ),
+        pytest.param(
+            "version: x\n"
+            "entries:\n"
+            "- id: probe-cli\n"
+            "  kind: arm\n"
+            "  protocols: [cli]\n"
+            "  notes: a\n",
+            id="version-not-integer",
+        ),
+        pytest.param(
+            "entries:\n"
+            "- not-a-mapping\n",
+            id="entry-not-mapping",
+        ),
     ],
 )
-def test_load_catalog_rejects_malformed_documents(
-    tmp_path: Path, document: str
-) -> None:
+def test_load_catalog_rejects_malformed_documents(tmp_path: Path, document: str) -> None:
     path = tmp_path / "coverage.yaml"
     path.write_text(document, encoding="utf-8")
     with pytest.raises(ExtensionError):
@@ -448,26 +445,23 @@ def test_load_catalog_invalid_yaml_is_extension_error(tmp_path: Path) -> None:
     assert "invalid catalog yaml" in str(err.value).lower()
 
 
-@pytest.mark.parametrize("curated_yaml", ('"true"', '"false"', '"yes"', "1", "0", "null"))
-def test_load_catalog_rejects_non_boolean_curated(
-    tmp_path: Path, curated_yaml: str
-) -> None:
+def test_load_catalog_duplicate_id_is_not_row_indexed(tmp_path: Path) -> None:
     path = tmp_path / "coverage.yaml"
     path.write_text(
         "entries:\n"
-        "- id: probe-cli\n"
+        "- id: dup\n"
         "  kind: arm\n"
         "  protocols: [cli]\n"
-        f"  curated: {curated_yaml}\n"
-        "  tier: research\n"
-        "  notes: a\n",
+        "  notes: a\n"
+        "- id: dup\n"
+        "  kind: arm\n"
+        "  protocols: [cli]\n"
+        "  notes: b\n",
         encoding="utf-8",
     )
     with pytest.raises(ExtensionError) as err:
         load_catalog(path)
-    message = str(err.value).lower()
-    assert "curated" in message
-    assert "boolean" in message
+    assert str(err.value) == "duplicate catalog id: dup"
 
 
 def test_load_catalog_error_includes_row_index(tmp_path: Path) -> None:
@@ -477,13 +471,9 @@ def test_load_catalog_error_includes_row_index(tmp_path: Path) -> None:
         "- id: probe-cli\n"
         "  kind: arm\n"
         "  protocols: [cli]\n"
-        "  curated: false\n"
-        "  tier: research\n"
         "  notes: a\n"
         "- kind: arm\n"
         "  protocols: [cli]\n"
-        "  curated: false\n"
-        "  tier: research\n"
         "  notes: b\n",
         encoding="utf-8",
     )

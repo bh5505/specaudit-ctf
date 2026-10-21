@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import tempfile
 import uuid
 from pathlib import Path
 from importlib.resources import files
@@ -15,7 +14,6 @@ from review_workpaper.__main__ import validate
 from extension.arms.learning_operator import SAMPLE_ACTIONS, ARM_ID, _sample
 from extension.contract import Extension
 from extension.dispatch import dispatch_invoke
-from learning.operator import _read_report
 
 
 def main():
@@ -79,18 +77,15 @@ def main():
         CaptureBinding(**json.loads(triage.joinpath("binding.synthetic.json").read_bytes())),
         triage.joinpath("labels.synthetic.json").read_bytes(),
     )
-    assert metrics["evaluation_scope"] == "synthetic-format-fixture"
-    with tempfile.TemporaryDirectory() as temp:
-        for index, action in enumerate(sorted(SAMPLE_ACTIONS)):
-            artifact_dir = Path(temp) / str(index)
-            artifact_dir.mkdir()
-            outcome = dispatch_invoke(Extension(), arm_id=ARM_ID, action=action,
-                                      args=_sample(action), attempt_id="attempt-" + f"{index+1:064x}",
-                                      artifact_dir=str(artifact_dir))
-            assert outcome.exit_code == 0, (action, outcome.stderr_line)
-            assert outcome.envelope["status"] == "complete"
-            report = _read_report(str(artifact_dir), outcome.envelope["artifacts"][0]["digest"])
-            assert report["workflow"] == action and report["assessment"]
+    assert metrics["ranking"]["reviewed_at_k"] > 0
+    # The grading key is supplied separately above; other samples are bundled.
+    for action in sorted(SAMPLE_ACTIONS - {"agent_grade"}):
+        outcome = dispatch_invoke(Extension(), arm_id=ARM_ID, action=action,
+                                  args=_sample(action))
+        assert outcome.exit_code == 0, (action, outcome.stderr_line)
+        assert outcome.document["ok"] is True
+        output = outcome.document["output"]
+        assert output["workflow"] == action and output["assessment"]
     print("installed-wheel offline workflows passed")
 
 

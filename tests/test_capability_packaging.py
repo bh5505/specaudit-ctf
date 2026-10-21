@@ -1,4 +1,4 @@
-"""The built distribution must provide every advertised capability helper.
+"""The built distribution must provide the public CTF runtime.
 
 Build with the already-installed build backend, never with dependency fetching,
 and import from an extracted wheel in an isolated interpreter outside either
@@ -16,22 +16,24 @@ import zipfile
 
 
 HELPERS = {
-    "attempt_ledger.risk_metrics": "compute_risk_sensitive_metrics",
     "audit_workpaper": "grade_workpaper",
-    "caller_path_binding": "bind_caller_path",
-    "candidate_admission": "validate_candidate_admission",
-    "challenger_head": "run_experiment",
-    "containment_evidence": "verify_containment",
-    "deliverable_substrate": "validate_deliverable",
-    "formal_assessment": "validate_formal_assessment",
-    "frozen_slices": "validate_vuln_slice",
-    "promotion_verifier": "verify_promotion",
-    "telecom_case": "validate_telecom_case",
-    "capability_records": "is_sha256_digest",
+    "extension.contract": "Extension",
+    "extension.range.runner": "run_range",
+    "score.grading": "grade_files",
+    "exercise.runner": "run_exercise",
+    "learning.agent_security_harness": "grade",
 }
 
+REMOVED_PACKAGES = (
+    "attempt_ledger", "caller_path_binding", "candidate_admission",
+    "capability_records", "challenger_head", "containment",
+    "containment_evidence", "deliverable_substrate", "formal_assessment",
+    "frozen_slices", "governance", "promotion_verifier", "reader_evidence",
+    "runtime", "safety", "telecom_case",
+)
 
-def test_built_wheel_provides_capability_helpers_outside_checkout(tmp_path: Path):
+
+def test_built_wheel_provides_ctf_runtime_outside_checkout(tmp_path: Path):
     root = Path(__file__).resolve().parents[1]
     source = tmp_path / "source"
     shutil.copytree(
@@ -56,7 +58,7 @@ def test_built_wheel_provides_capability_helpers_outside_checkout(tmp_path: Path
     installed = tmp_path / "installed"
     installed.mkdir()
     with zipfile.ZipFile(wheels[0]) as archive:
-        assert not any(name.startswith(("governance/", "safety/"))
+        assert not any(name.startswith(tuple(f"{package}/" for package in REMOVED_PACKAGES))
                        for name in archive.namelist())
         archive.extractall(installed)
 
@@ -69,7 +71,6 @@ for name, export in helpers.items():
     module = importlib.import_module(name)
     assert pathlib.Path(module.__file__).resolve().is_relative_to(installed), name
     assert callable(getattr(module, export)), (name, export)
-assert callable(importlib.import_module('frozen_slices').validate_rule_slice)
 print(json.dumps(sorted(helpers)))
 """
     result = subprocess.run(
@@ -78,3 +79,14 @@ print(json.dumps(sorted(helpers)))
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert json.loads(result.stdout) == sorted(HELPERS)
+
+    smoke = subprocess.run(
+        [sys.executable, "-I", "-c",
+         "import runpy, sys; "
+         "sys.path.insert(0, sys.argv[1]); "
+         "runpy.run_path(sys.argv[2], run_name='__main__')",
+         str(installed), str(root / "tests" / "wheel_smoke.py")],
+        cwd=tmp_path, capture_output=True, text=True, timeout=30,
+    )
+    assert smoke.returncode == 0, smoke.stdout + smoke.stderr
+    assert "installed-wheel offline workflows passed" in smoke.stdout

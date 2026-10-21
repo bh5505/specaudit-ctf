@@ -2,9 +2,9 @@
 models + attack chains.
 
 The ``tools/*.py`` scripts provide durable cores. This module composes them
-for an operator with approved evidence and report paths. It is not an MCP tool:
-attached callers use the four-tool admitted MCP surface, while filesystem
-custody and pack/report destinations remain operator decisions.
+for an operator with selected evidence and report paths. It is not an MCP tool:
+attached callers use the four-tool MCP surface, while filesystem
+and pack/report destinations remain operator decisions.
 
 The end-to-end path:
 
@@ -12,18 +12,17 @@ The end-to-end path:
              asset-recon, gti, vulnify, zdns,   description of the target
              zgrab2, httpprobe, nmap, ...       environment -> assets + intel
     step 2   operator pack_run                 an explicitly supplied pack
-                                             over operator-approved evidence
+                                             over operator-selected evidence
                                                  -> report.json (findings)
     step 3   operator prioritize_targets       report -> prioritized target list
                                                  with threat models + attack
-                                                 chains (HUMAN VALIDATION GATE
-                                                 deliverable for red-team review)
+                                                 chains and suggested checks
     step 4   invoke <scan arm>                 agentic exploitability validation
-             nmap, zgrab2, httpprobe,          of the human-validated targets
+             nmap, zgrab2, httpprobe,          of the selected targets
              snmp_readtier, ike_readtier, ...
 
-Steps 1 and 4 use the admitted ``invoke`` arm surface. The operator runs
-steps 2 and 3 after validating local evidence, custody and output paths. The
+Steps 1 and 4 use the ``invoke`` arm surface. The operator selects
+evidence, pack, and output paths for steps 2 and 3. The
 pack root, the G3 pairing tables/join predicate, and any check-id tier mapping
 are operator-supplied joint-run configuration; this repository ships no pack.
 The cores imported here are the same deterministic logic the ``tools/demo_*``
@@ -90,11 +89,8 @@ def _asset_role(ports: list) -> str:
 def _threat_model(ip: str, target: dict) -> dict:
     """Build a concise per-target threat model from pack findings.
 
-    This is the human-validation framing: what the asset is, how it is most
-    likely to be reached, what happens after, and why it is ranked where it is.
-    It is deliberately a *hypothesis to be validated* -- every assertion is
-    grounded in the pack finding provenance, and the human red-team analyst is
-    the gate before any agentic exploitability validation proceeds.
+    This is an evidence-linked hypothesis: what the asset is, how it may
+    be reached, what happens after, and why it is ranked where it is.
     """
     steps = target.get("steps", [])
     initial = next((s for s in steps if s.get("phase") == "Initial Access"), None)
@@ -124,7 +120,6 @@ def _threat_model(ip: str, target: dict) -> dict:
         ],
         "likely_impact": impact.get("technique") if impact else None,
         "phases_observed": sorted(set(phases_seen), key=lambda p: _PHASE_ORDER.index(p) if p in _PHASE_ORDER else 99),
-        "validation_status": "awaiting human red-team analyst validation",
     }
 
 
@@ -161,7 +156,7 @@ def pack_run(
     run_id: str | None = None,
     fast_csv: bool = False,
 ) -> dict:
-    """Run an explicitly supplied pack over operator-approved evidence.
+    """Run an explicitly supplied pack over operator-selected evidence.
 
     The pack root is operator-supplied (for example an external pack checkout
     available in the joint-run environment); this repository ships no pack.
@@ -267,9 +262,8 @@ def prioritize_targets(
 
     Consumes the pack report (from ``pack_run``) plus optional evidence/CVE
     cross-reference and the curated CVE->technique map, and produces the
-    human-validation-ready deliverable: ranked targets, each with a threat
-    model and a grounded multi-step ATT&CK attack chain, plus the rendered
-    markdown report for human red-team analysts to validate.
+    ranked targets, each with a threat model and a grounded multi-step
+    ATT&CK attack chain, plus a rendered markdown report.
 
     ``map_path`` defaults to the curated map shipped with the vulnify arm.
     ``evidence_dir`` enables CVE cross-reference (banner-inferred + scan CVEs).
@@ -329,8 +323,7 @@ def prioritize_targets(
                                   "invocation": {"arm_id": "nmap", "action": "scan",
                                                  "args": {"target": ip, "mode": "version-light",
                                                           **({"ports": p["ports"]} if p["ports"] else {})}},
-                                  "prerequisite": "human-reviewed target and separately authorized NMAP_DISPATCH_SCOPE",
-                                  "status": "pending human authorization and validation"}],
+                                  }],
         })
 
     # Preserve non-IP findings as first-class target identities. The ATT&CK
@@ -353,15 +346,13 @@ def prioritize_targets(
                 "priority_justification": "pack finding requires review; no IP ATT&CK path inferred",
                 "expected_initial_access": {"technique": None, "evidence": None, "provenance": None},
                 "post_initial_access": [], "likely_impact": None, "phases_observed": [],
-                "validation_status": "awaiting human red-team analyst validation",
             },
             "finding": {"check_id": finding["check_id"], "record_locator": locator,
                         "title": finding.get("title")},
             "operational_reviews": {},
             "next_validation": ["validate pack finding and asset identity before target contact"],
             "validation_tasks": [{"action": "validate-pack-finding", "subject": locator,
-                                  "suggested_capability": "independent authorized observation",
-                                  "status": "pending human authorization and validation"}],
+                                  "suggested_capability": "observation"}],
         })
     targets.sort(key=lambda t: (-int(bool(t["convergence"])),
                                 -(t["score"] if isinstance(t["score"], (int, float)) else 0),
@@ -381,7 +372,6 @@ def prioritize_targets(
             "by_asset_role": _count_by(targets, lambda t: t["threat_model"]["asset_role"]),
             "pairing_available": pairing["available"],
             "pairing_incomplete_reason": None if pairing["available"] else pairing["reason"],
-            "human_validation_gate": "REQUIRED before any agentic exploitability validation",
             "supplemental": supplement,
         },
     }
@@ -405,12 +395,11 @@ def _count_by(targets: list[dict], key) -> dict:
 
 
 def _validation_report_markdown(targets: list[dict], findings: list[dict]) -> str:
-    """Human red-team validation report: prioritized targets, threat models,
-    attack chains, and an explicit analyst sign-off gate."""
+    """Render prioritized targets, threat models, and attack chains."""
     lines = [
-        "# Prioritized Target List — Threat Models & Attack Chains (human validation gate)\n",
+        "# Prioritized Target List — Threat Models & Attack Chains\n",
         f"_{len(targets)} prioritized targets derived from {len(findings)} pack findings. "
-        "Review and sign off below before any agentic exploitability validation._\n",
+        "These are hypotheses derived from the supplied report._\n",
     ]
     for i, t in enumerate(targets, 1):
         tm = t["threat_model"]
@@ -430,7 +419,6 @@ def _validation_report_markdown(targets: list[dict], findings: list[dict]) -> st
             lines.append(f"- **Post-initial-access chain**: {chain}")
         if tm["likely_impact"]:
             lines.append(f"- **Likely impact**: {tm['likely_impact']}")
-        lines.append(f"- **Validation status**: {tm['validation_status']}")
         if t.get("finding"):
             lines.append(f"- **Pack finding**: {t['finding']['check_id']} — {t['finding'].get('title') or ''}")
         for kind, rows in t["operational_reviews"].items():
@@ -452,11 +440,7 @@ def _validation_report_markdown(targets: list[dict], findings: list[dict]) -> st
             lines.append(f"- **Captured triage review order**: {t['review_order']} (not evidence priority)")
         lines.append("- **Next validation**: " + "; ".join(t["next_validation"]))
         for task in t["validation_tasks"]:
-            lines.append("  - " + task["action"] + " — " + task["status"])
-    lines.append("\n---\n## Human red-team analyst validation gate\n")
-    lines.append("For each target: confirm the asset role, initial-access hypothesis and")
-    lines.append("attack chain are correct before agentic exploitability validation runs.")
-    lines.append("\n- [ ] target set reviewed and confirmed\n")
+            lines.append("  - " + task["action"])
     return "\n".join(lines) + "\n"
 
 

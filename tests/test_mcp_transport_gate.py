@@ -1,16 +1,16 @@
-"""Transport-gate hermetic evidence (doc 21: the seven held_reason
-properties).
+"""Hermetic MCP transport evidence.
 
 Every test here is hermetic: fake endpoints on loopback, a stub
 resolver, a fake authorization server. No live upstream is ever
-contacted. Test ids are the dossier-citable evidence units:
+contacted. The sections cover endpoint parsing, credentials, OAuth,
+MCP origin/session behavior, DNS transport behavior, and OAuth callbacks.
 
-- P1 https with a literal-loopback exception (HttpTransportPolicy)
+- URL parsing accepts HTTP(S) endpoints without classifying host addresses
 - P2 no token passthrough (explicit ArmCredential only, values scrubbed)
 - P3 OAuth resource + audience binding (RFC 9728/8414/8707, fail-closed)
 - P4 PKCE S256 + state
 - P5 Origin emission + single-origin session pinning
-- P6 resolve-once DNS pinning + rebinding refusal + inert proxies
+- P6 resolve-once DNS pinning + inert proxies
 - P7 loopback OAuth callback receiver (the only listener; never MCP)
 """
 
@@ -27,12 +27,9 @@ from urllib import request as urllib_request
 
 import pytest
 
-from extension.arms.burp.arm import BurpArm
-from extension.arms.gti.arm import GtiArm
 from extension.arms.mcp_client import (
     ArmCredential,
     DnsPin,
-    HttpTransportPolicy,
     LoopbackCallbackReceiver,
     OAuthAuthorizationFlow,
     OAuthAuthorizationManager,
@@ -50,10 +47,6 @@ from extension.arms.mcp_client import (
     token_aud_covers,
 )
 from urllib.parse import urlparse
-
-LOOPBACK = HttpTransportPolicy.loopback()
-REMOTE = HttpTransportPolicy.remote_https()
-
 
 # --- fakes ----------------------------------------------------------------
 
@@ -235,108 +228,54 @@ def _make_jwt(aud: str) -> str:
     return "header.%s.signature" % payload
 
 
-# --- P1: https with a literal-loopback exception --------------------------
+# --- URL parsing -----------------------------------------------------------
 
 
-def test_p1_endpoint_policy_table() -> None:
-    # Allowed shapes.
-    assert endpoint_problem("http://127.0.0.1:9876", LOOPBACK) is None
-    assert endpoint_problem("http://[::1]:9876", LOOPBACK) is None
-    assert endpoint_problem("https://127.0.0.1:9876", LOOPBACK) is None
-    assert endpoint_problem("https://mcp.prowler.example/mcp", REMOTE) is None
-    assert endpoint_problem("https://example.com", REMOTE) is None
-    # Names can rebind: http must be literal-loopback only.
-    assert "loopback" in endpoint_problem("http://localhost:9876", LOOPBACK)
-    assert "https" in endpoint_problem("http://mcp.example.com", REMOTE)
-    # Remote transports refuse loopback endpoints outright.
-    assert "refuses loopback" in endpoint_problem("https://127.0.0.1:9876", REMOTE)
-    assert "refuses loopback" in endpoint_problem("http://127.0.0.1:9876", REMOTE)
-    # Loopback transports refuse non-literal-loopback hosts; the rest of
-    # 127.0.0.0/8 and encoded loopback forms are refused everywhere and
-    # must be written canonically.
-    assert "written as 127.0.0.1" in endpoint_problem("http://127.0.0.2:9876", LOOPBACK)
-    assert "literal loopback" in endpoint_problem("http://example.com:9876", LOOPBACK)
-    assert endpoint_problem("http://2130706433:9876", LOOPBACK)
-    assert endpoint_problem("http://0x7f.0.0.1:9876", LOOPBACK)
-    assert endpoint_problem("http://[::ffff:127.0.0.1]:9876", LOOPBACK)
-    assert endpoint_problem("https://2130706433", REMOTE)
-    assert endpoint_problem("http://127.000.000.001:9876", LOOPBACK)
-    # Bind-any, zone IDs, userinfo, control characters, junk ports.
-    assert endpoint_problem("http://0.0.0.0:9876", LOOPBACK)
-    assert endpoint_problem("http://[::]:9876", LOOPBACK)
-    assert endpoint_problem("http://[fe80::1%25eth0]:9876", LOOPBACK)
-    assert endpoint_problem("http://u:p@127.0.0.1:9876", LOOPBACK)
-    assert endpoint_problem("http://127.0.0.1:9876/\r\nX: y", LOOPBACK)
-    assert endpoint_problem("http://127.0.0.1:junk", LOOPBACK)
-    assert endpoint_problem("ftp://127.0.0.1", LOOPBACK)
+def test_endpoint_url_parsing_does_not_classify_host_addresses() -> None:
+    # The operator selects and owns the endpoint. Parsing accepts both
+    # HTTP(S) schemes across loopback, private, and public host forms.
+    for url in (
+        "http://127.0.0.1:9876",
+        "http://localhost:9876",
+        "http://10.0.0.5:9876",
+        "http://mcp.example.invalid:9876",
+        "https://127.0.0.1:9443",
+        "https://mcp.example.invalid/mcp",
+    ):
+        assert endpoint_problem(url) is None
+        assert configured_http_url(url) == url
+
+    for invalid in (
+        "ftp://mcp.example.invalid",
+        "http:///missing-host",
+        "http://mcp.example.invalid:junk",
+        "http://u:p@mcp.example.invalid",
+        "http://mcp.example.invalid/\r\nX: y",
+    ):
+        assert endpoint_problem(invalid) is not None
+        assert configured_http_url(invalid) is None
 
 
-def test_p1_union_policy_table() -> None:
-    # remote_https_or_loopback (Prowler, 2026-09-06): https off-loopback
-    # AND literal-loopback http/https are allowed; plain http
-    # off-loopback, the loopback NAME, encoded loopback forms, and
-    # bind-any are refused. Same canonical-literal and shape rules as
-    # the other two policies.
-    UNION = HttpTransportPolicy.remote_https_or_loopback()
-    assert endpoint_problem("https://mcp.prowler.example/mcp", UNION) is None
-    assert endpoint_problem("http://127.0.0.1:8000/mcp", UNION) is None
-    assert endpoint_problem("http://[::1]:8000/mcp", UNION) is None
-    assert endpoint_problem("https://127.0.0.1:8443/mcp", UNION) is None
-    assert "https" in endpoint_problem("http://mcp.example.com", UNION)
-    assert endpoint_problem("http://localhost:8000/mcp", UNION)
-    assert "written as 127.0.0.1" in endpoint_problem("http://127.0.0.2:8000", UNION)
-    assert endpoint_problem("http://[::ffff:127.0.0.1]:8000", UNION)
-    assert endpoint_problem("http://0.0.0.0:8000", UNION)
-    assert endpoint_problem("http://u:p@127.0.0.1:8000", UNION)
-    assert endpoint_problem("ftp://127.0.0.1:8000", UNION)
+def test_arm_endpoint_configuration_uses_url_parsing_only(monkeypatch: pytest.MonkeyPatch) -> None:
+    from extension.arms.burp.arm import BurpArm
+    from extension.arms.gti.arm import GtiArm
+    from extension.arms.prowler.arm import ProwlerArm
 
-
-def test_p1_default_policy_is_remote_https() -> None:
-    assert configured_http_url("http://example.com") is None
-    assert configured_http_url("https://example.com") == "https://example.com"
-
-
-def test_p1_constructors_refuse_disallowed_endpoints() -> None:
-    with pytest.raises(RuntimeError, match="literal loopback"):
-        SseMcpSession("http://example.com:9876")
-    with pytest.raises(RuntimeError, match="refuses loopback"):
-        StreamableHttpClient("https://127.0.0.1:9876")
-    with pytest.raises(RuntimeError, match="requires https"):
-        StreamableHttpClient("http://example.com")
-
-
-def test_p1_burp_arm_loopback_policy(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("BURP_MCP_ENDPOINT", "http://127.0.0.1:9876")
-    assert BurpArm().endpoint_url() == "http://127.0.0.1:9876"
-    monkeypatch.setenv("BURP_MCP_ENDPOINT", "http://localhost:9876")
-    assert BurpArm().endpoint_url() is None
-    monkeypatch.setenv("BURP_MCP_ENDPOINT", "http://10.0.0.5:9876")
-    assert BurpArm().endpoint_url() is None
-
-
-def test_p1_remote_arms_refuse_loopback_and_http(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("GTI_MCP_ENDPOINT", "http://127.0.0.1:9999")
-    assert GtiArm().endpoint_url() is None
-    monkeypatch.setenv("GTI_MCP_ENDPOINT", "http://front.example.invalid/")
-    assert GtiArm().endpoint_url() is None
-    monkeypatch.setenv("GTI_MCP_ENDPOINT", "https://front.example.invalid/")
-    assert GtiArm().endpoint_url() == "https://front.example.invalid/"
-    # Prowler rides the UNION policy EXPLICITLY (not via the shared
-    # client's implicit default) — pin it so a defaults change can
-    # neither open nor close the arm silently. The union accepts the
-    # first-party local shape (literal-loopback plain http, upstream
-    # ships no TLS) and self-hosted remote https; it refuses plain http
-    # off-loopback and the loopback NAME (a name can rebind).
-    from extension.arms.prowler import ProwlerArm
-
-    monkeypatch.setenv("PROWLER_MCP_ENDPOINT", "http://127.0.0.1:8000/mcp")
-    assert ProwlerArm().endpoint_url() == "http://127.0.0.1:8000/mcp"
-    monkeypatch.setenv("PROWLER_MCP_ENDPOINT", "http://localhost:8000/mcp")
-    assert ProwlerArm().endpoint_url() is None
-    monkeypatch.setenv("PROWLER_MCP_ENDPOINT", "http://prowler.example.invalid/")
-    assert ProwlerArm().endpoint_url() is None
-    monkeypatch.setenv("PROWLER_MCP_ENDPOINT", "https://prowler.example.invalid/")
-    assert ProwlerArm().endpoint_url() == "https://prowler.example.invalid/"
+    endpoints = (
+        ("BURP_MCP_ENDPOINT", BurpArm),
+        ("GTI_MCP_ENDPOINT", GtiArm),
+        ("PROWLER_MCP_ENDPOINT", ProwlerArm),
+    )
+    for variable, arm_type in endpoints:
+        for url in (
+            "http://localhost:9876",
+            "http://10.0.0.5:9876",
+            "http://mcp.example.invalid",
+        ):
+            monkeypatch.setenv(variable, url)
+            assert arm_type().endpoint_url() == url
+        monkeypatch.setenv(variable, "ftp://mcp.example.invalid")
+        assert arm_type().endpoint_url() is None
 
 
 # --- P2: no token passthrough ---------------------------------------------
@@ -355,7 +294,7 @@ def test_p2_no_credentials_on_the_wire_without_configuration(
         "NETRC",
     ):
         monkeypatch.setenv(key, "poisoned-secret-%s" % key)
-    client = StreamableHttpClient(url, timeout=5, policy=LOOPBACK)
+    client = StreamableHttpClient(url, timeout=5)
     client.connect()
     client.list_tools()
     for request in state["requests"]:
@@ -369,7 +308,7 @@ def test_p2_configured_credential_sent_and_scrubbed(gate_streamable_server) -> N
     state["secret"] = secret
     state["mode"] = "echo_secret"
     client = StreamableHttpClient(
-        url, timeout=5, policy=LOOPBACK, credential=ArmCredential.bearer(secret)
+        url, timeout=5, credential=ArmCredential.bearer(secret)
     )
     with pytest.raises(RuntimeError) as err:
         client._request("tools/list", {})  # noqa: SLF001 - exercising the wire directly
@@ -406,7 +345,7 @@ def test_p3_401_with_resource_metadata_fails_closed_unconfigured(
     refused, never talked around."""
     url, state = gate_streamable_server
     state["mode"] = "always_401_meta"
-    client = StreamableHttpClient(url, timeout=5, policy=LOOPBACK)
+    client = StreamableHttpClient(url, timeout=5)
     with pytest.raises(OAuthRequiredError, match="no OAuth configuration"):
         client.connect()
 
@@ -416,7 +355,7 @@ def test_p3_401_without_resource_metadata_is_a_plain_error(
 ) -> None:
     url, state = gate_streamable_server
     state["mode"] = "always_401_plain"
-    client = StreamableHttpClient(url, timeout=5, policy=LOOPBACK)
+    client = StreamableHttpClient(url, timeout=5)
     with pytest.raises(RuntimeError, match="HTTP 401") as err:
         client.connect()
     assert not isinstance(err.value, OAuthRequiredError)
@@ -584,7 +523,6 @@ def test_p3_sse_repeat_challenge_is_terminal(gate_sse_server) -> None:
     session = SseMcpSession(
         url,
         timeout=5,
-        policy=LOOPBACK,
         oauth_config=OAuthConfig(
             arm_id="sse-test",
             client_id="client-1",
@@ -721,7 +659,6 @@ def test_p3_client_terminates_after_one_oauth_retry(gate_streamable_server) -> N
     client = StreamableHttpClient(
         url,
         timeout=5,
-        policy=LOOPBACK,
         oauth_config=OAuthConfig(
             arm_id="gate-test",
             client_id="client-1",
@@ -758,7 +695,6 @@ def test_p3_client_runs_flow_and_retries_with_token(gate_streamable_server) -> N
     client = StreamableHttpClient(
         url,
         timeout=5,
-        policy=LOOPBACK,
         oauth_config=OAuthConfig(
             arm_id="gate-test",
             client_id="client-1",
@@ -824,7 +760,7 @@ def test_p4_state_mismatch_refused() -> None:
 
 def test_p5_origin_header_emitted_on_streamable_requests(gate_streamable_server) -> None:
     url, state = gate_streamable_server
-    client = StreamableHttpClient(url, timeout=5, policy=LOOPBACK)
+    client = StreamableHttpClient(url, timeout=5)
     client.connect()
     client.list_tools()
     assert state["requests"]
@@ -838,7 +774,7 @@ def test_p5_origin_header_emitted_on_streamable_requests(gate_streamable_server)
 
 def test_p5_origin_header_emitted_on_sse_requests(gate_sse_server) -> None:
     url, state = gate_sse_server
-    session = SseMcpSession(url, timeout=5, policy=LOOPBACK)
+    session = SseMcpSession(url, timeout=5)
     try:
         session.connect()
         tools = session.list_tools()
@@ -856,7 +792,7 @@ def test_p5_session_id_never_crosses_origins(gate_streamable_server) -> None:
     only reachable shape is an internal inconsistency - which the guard
     must still refuse before any wire IO."""
     url, _state = gate_streamable_server
-    client = StreamableHttpClient(url, timeout=5, policy=LOOPBACK)
+    client = StreamableHttpClient(url, timeout=5)
     client._session_id = "sess-tampered"  # noqa: SLF001 - deliberate tamper
     client._session_origin = "https://elsewhere.example"
     with pytest.raises(RuntimeError, match="cross origins"):
@@ -875,16 +811,6 @@ def test_p5_sse_post_endpoint_same_origin_only() -> None:
 
 
 # --- P6: DNS pinning --------------------------------------------------------
-
-
-def test_p6_hostname_resolving_to_loopback_refused(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_getaddrinfo(host: str, port: int, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
-        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port))]
-
-    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
-    pin = DnsPin("https://public.example.com:9443/mcp")
-    with pytest.raises(RuntimeError, match="DNS-rebinding"):
-        pin.resolve()
 
 
 def test_p6_resolve_once_and_pin_violation_guard(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -926,8 +852,8 @@ def test_p6_pinned_dial_uses_pin_not_name() -> None:
     port = server.server_address[1]
     resolves: list[str] = []
     dialed: list[tuple[str, int]] = []
-    # The fake DNS resolves the NAME to a NON-loopback address (so the
-    # rebinding refusal stays silent); create_connection records what it
+    # The fake DNS resolves the NAME to a TEST-NET address;
+    # create_connection records what it
     # was asked to dial (the pin) and redirects to the real server.
     pinned_ip = "192.0.2.1"
 
@@ -955,7 +881,7 @@ def test_p6_pinned_dial_uses_pin_not_name() -> None:
         assert response.status == 200
         conn.close()
         assert seen["host"] == "name.example.invalid:%d" % port
-        # The dial went to the PINNED address, never the name; the name
+        # The dial went to the pinned address, never the name; the name
         # was resolved exactly once.
         assert dialed == [(pinned_ip, port)]
         assert resolves.count("name.example.invalid") == 1
@@ -972,8 +898,7 @@ def test_p6_no_second_resolution_when_dial_fails(monkeypatch: pytest.MonkeyPatch
 
     def fake_getaddrinfo(host: str, port: int, *args: Any, **kwargs: Any) -> list[tuple[Any, ...]]:
         calls.append(host)
-        # A non-loopback, unroutable TEST-NET address (not loopback, so the
-        # rebinding refusal stays out of the way; the dial then fails).
+        # An unroutable TEST-NET address; the dial then fails.
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.1", port))]
 
     monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
@@ -993,7 +918,7 @@ def test_p6_proxy_environment_is_inert(
     url, _state = gate_streamable_server
     for key in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "all_proxy", "ALL_PROXY"):
         monkeypatch.setenv(key, "http://127.0.0.1:9")
-    client = StreamableHttpClient(url, timeout=5, policy=LOOPBACK)
+    client = StreamableHttpClient(url, timeout=5)
     client.connect()
     assert client.list_tools() == [{"name": "get_domain_report"}]
 

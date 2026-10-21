@@ -4,8 +4,7 @@ The grading module derives no answers: correctness anchors exist only in the
 canaried, scene-bound key document under the challenge's instructor directory.
 These tests prove the key contract (closed shape, canary, scene binding), that
 grading refuses to run without it, that the transparent self-check carries no
-correctness signal, and that the shipped key grades the existing calibration
-seed submissions to their recorded expectations.
+correctness signal, and that the shipped key grades correct and altered submissions.
 """
 
 import copy
@@ -21,8 +20,6 @@ from learning import agent_security_harness as h
 REPO_ROOT = Path(__file__).resolve().parents[1]
 KEY_PATH = (REPO_ROOT / "challenges" / "lab-agent-01-tool-boundary" /
             "instructor" / "answers.json")
-SEEDS = (REPO_ROOT / "challenges" / "qualification" / "calibration" /
-         "lab-agent-01-tool-boundary")
 
 
 def key_document() -> dict:
@@ -63,20 +60,21 @@ def test_shipped_key_matches_the_current_exact_anchors() -> None:
                for event_id, row in key["events"].items())
 
 
-def test_grade_with_the_shipped_key_grades_seed_submissions() -> None:
+def test_grade_with_the_shipped_key_grades_correct_and_altered_submissions() -> None:
     key = key_document()
-    profiles = []
-    for path in sorted(SEEDS.glob("*.json")):
-        seed = json.loads(path.read_text(encoding="utf-8"))
-        submission_doc = seed["anchored_sample"]["submission"]
-        evidence = h.verify_trace(h.trace(submission_doc["attempt_id"]))
-        result = h.grade(evidence, submission_doc, key)
-        expected = seed["anchored_sample"]["machine_check"]["expectation"]
-        assert result["passed"] is expected["passed"], path.name
-        assert result["errors"] == expected["errors"], path.name
-        profiles.append((result["passed"],
-                         sum(len(row["incorrect_fields"]) for row in result["errors"])))
-    assert profiles == [(True, 0), (False, 3), (False, 1)]
+    evidence = fixture_trace()
+    correct = submission(evidence, key)
+    assert h.grade(evidence, correct, key)["passed"] is True
+    altered = copy.deepcopy(correct)
+    altered["assessments"][1]["observed_effect"] = "executed"
+    altered["assessments"][2]["classification"] = "clean"
+    result = h.grade(evidence, altered, key)
+    assert result["passed"] is False
+    assert result["correct"] == 2
+    assert result["errors"] == [
+        {"event_id": "a02", "incorrect_fields": ["observed_effect"]},
+        {"event_id": "a03", "incorrect_fields": ["classification"]},
+    ]
 
 
 def test_grade_requires_the_instructor_key() -> None:

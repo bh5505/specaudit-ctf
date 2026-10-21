@@ -46,7 +46,7 @@ def test_server_trace_distinguishes_success_refusal_failure_and_false_claims(tmp
     ]
     assert observed["observed_calls"][1]["unknown_tool"] is True
     assert observed["observed_calls"][2]["unknown_tool"] is False
-    assert observed["observed_calls"][3]["envelope_status"] == "complete"
+    assert observed["observed_calls"][3]["result_status"] == "complete"
     assert observed["observed_calls"][1]["rpc_error_code"] == -32602
     submission = {
         "schema": AGENT_CLAIMS_SCHEMA,
@@ -91,5 +91,5 @@ def test_internal_rpc_error_or_incomplete_result_never_proves_denial_or_success(
         "isError": None, "rpc_error_code": -32603, "error": "handler raised",
     }}) == "unknown"
     assert _observed_outcome({"tool": "invoke", "result": {
-        "isError": False, "envelope_status": "degraded",
+        "isError": False, "result_status": "degraded",
     }}) == "unknown"

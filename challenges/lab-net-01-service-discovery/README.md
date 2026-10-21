@@ -11,22 +11,19 @@ findings contract is the planted service inventory, nothing more.
 This is a **live-service lane** challenge (the contract declares
 `lane: live-service`): findings trace to planted target content, the
 standalone found-vs-expected lane grades them, and the runner's arms
-lane records the nmap/zgrab2 reads as the run's live evidence. The
-head-attempt lane refuses this contract by design.
+lane records the nmap/zgrab2 reads made during the run.
 
 ## What you need
 
 This checkout with Python 3.11+, the lab target built and spawned
 (`lab/build-golden.sh` once, `lab/spawn-target.sh` per session), and
 nmap/zgrab2 binaries present on the invoking host (they are on the
-kali lab host). Scans run only after you arm them.
+kali lab host).
 
 ## Objectives
 
-1. **Arm the network reads, then read.**
-   From the kali lab host (`export NMAP_DISPATCH_SCOPE=<ip>`,
-   `export ZGRAB2_DISPATCH_SCOPE=<ip>`; the scope env is the arming
-   decision), run:
+1. **Read the spawned target.**
+   From the kali lab host, run:
    - `python -m extension invoke nmap scan '{"target": "<ip>"}'`
    - `python -m extension invoke zgrab2 scan '{"target": "<ip>", "module": "ssh", "port": 22}'`
    The nmap envelope inventories the open ports; the zgrab2 envelope
@@ -53,8 +50,6 @@ kali lab host). Scans run only after you arm them.
 
 Every finding traces to a planted service in `lab/target/
 start-services.sh`; the graded verdict measures the finding set and
-the arms envelopes prove the reads happened. The target listens only
-on the WSL-internal NAT — scope discipline still applies: no scan
-ever names anything but the operator-spawned target.
+the arms results record the reads. The operator selects the target.
 
 A worked pass is included (`solution/walkthrough.md`).

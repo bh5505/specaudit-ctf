@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Measure the admitted vuls scan in LOCAL mode against the Kali lab
+# Measure the vuls scan in LOCAL mode against the Kali lab
 # host itself. Run from Windows (Git Bash).
 #
 # Why local mode and not the spawned target: the target's sshd is a
@@ -10,15 +10,8 @@
 # host="localhost" port="local") collects the REAL package inventory
 # of the lab host with no SSH and no egress beyond loopback.
 #
-# Honesty notes this script exists to preserve:
-# - VULS_DISPATCH_SCOPE arms the scan ACTION; the scanned host comes
-#   from vuls's own config discovery (config.toml in the invoke cwd),
-#   so the audit line records target=unknown. The workdir config names
-#   exactly one host: localhost, local mode.
-# - No CVE dictionaries are fetched (fetch stays blocked on no tier;
-#   never spent from the lab), so the report carries no CVE counts.
-#   The measured claim is the complete envelope plus the real
-#   inventory the scan collected — not findings.
+# This script's config names one host: localhost, local mode. It does not
+# fetch CVE dictionaries; it measures the inventory collected by scan.
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
 
@@ -34,7 +27,7 @@ WORK="$(mktemp -d /tmp/vuls-lab.XXXXXX)"
 cleanup() { rm -rf "$WORK"; }
 trap cleanup EXIT
 
-# 1. The config is the scope in practice: one host, localhost, local
+# 1. Configure one host, localhost, local
 #    mode (no SSH, loopback collection only).
 cat >"$WORK/config.toml" <<'TOML'
 [servers]
@@ -44,31 +37,27 @@ host = "localhost"
 port = "local"
 TOML
 
-mkdir -p "$WORK/attempt"
-export VULS_DISPATCH_SCOPE="localhost"
 export PYTHONPATH=/root/ctf
-AID="attempt-$(python3 -c 'import secrets; print(secrets.token_hex(32))')"
 
-# 2. Armed invoke from the workdir so upstream config discovery finds
+# 2. Invoke from the workdir so upstream config discovery finds
 #    exactly this config (echoed and asserted below).
 cd "$WORK"
 echo "[lab] invoke cwd: $(pwd)"; echo "[lab] config:"; cat config.toml
 /opt/ctf/bin/python -m extension invoke vuls scan \
-  --attempt-id "$AID" \
-  --artifact-dir "$WORK/attempt" >"$WORK/envelope.json" 2>"$WORK/stderr.txt" || true
+  >"$WORK/result.json" 2>"$WORK/stderr.txt" || true
 
-echo "--- stderr (audit line):"
+echo "--- stderr:"
 cat "$WORK/stderr.txt"
-echo "--- envelope:"
-python3 - "$WORK/envelope.json" <<'PY'
+echo "--- result:"
+python3 - "$WORK/result.json" <<'PY'
 import json, sys
 try:
-    env = json.load(open(sys.argv[1]))
+    result = json.load(open(sys.argv[1]))
 except (OSError, ValueError):
-    print("(no envelope JSON was produced)")
+    print("(no result JSON was produced)")
     raise SystemExit(1)
-print("status:", env["status"], "| transport_ok:", env["transport_ok"],
-      "| capability:", env["capability_id"], "| side_effects:", env["side_effects"])
+print("ok:", result.get("ok"), "| action:", result.get("action"),
+      "| error:", result.get("error"))
 PY
 echo "--- scan results (vuls results dir):"
 if [ -d "$WORK/results" ]; then
@@ -78,7 +67,7 @@ from pathlib import Path
 # vuls writes one per-server file per run: results/<timestamp>/<server>.json
 files = sorted(Path(sys.argv[1]).rglob("*.json"))
 if not files:
-    print("(no results JSON written — check the envelope/stderr above)")
+    print("(no results JSON written — check the result/stderr above)")
     raise SystemExit(0)
 doc = json.loads(files[-1].read_text(encoding="utf-8"))
 pkgs = doc.get("packages") or {}
@@ -88,7 +77,7 @@ print("platform:", doc.get("platform"), doc.get("release"))
 print("packages collected:", len(pkgs), "| scanMode:", doc.get("mode"))
 PY
 else
-  echo "(no results dir — check the envelope/stderr above)"
+  echo "(no results dir — check the result/stderr above)"
 fi
 EOF
 echo "[lab] vuls local-mode measurement done."

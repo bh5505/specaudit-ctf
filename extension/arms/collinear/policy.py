@@ -28,18 +28,16 @@ CAVEATS = (
     "exact-match verdict, not answer counts or partial scores",
     "empty instructor answer sets are rejected rather than grading an absent key as pass",
     "the caller-supplied scenario file and submission are not trusted grading evidence",
-    "instructor storage, attempt limits, identity, custody, and environment "
-    "separation remain external controls",
 )
 
-ARMING = (
+INPUT_HINT = (
     "pass args.scenarios_file (path to a local scenarios file); "
     "expected findings and trace keys are instructor-held and never returned to the read path"
 )
 
 
 def scenarios_refusal(raw: object, *, max_bytes: int = MAX_SCENARIOS_BYTES) -> tuple[Path | None, str | None]:
-    """Validate a caller-supplied scenarios file path.  Egress gate."""
+    """Validate a caller-supplied scenarios file path."""
     if not isinstance(raw, str) or not raw.strip():
         return None, "this action requires a local scenarios file in args.scenarios_file"
     text = raw.strip()

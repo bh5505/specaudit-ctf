@@ -1,76 +1,31 @@
-"""Transport-neutral invoke/range dispatch shared by CLI JSON and stdio MCP.
-
-X4-PUB parity is by construction: both transports call these functions with
-the same logical inputs, so ``python -m extension invoke ...`` and the MCP
-``invoke`` tool emit byte-equivalent ``execution-result.v1`` envelopes
-modulo wall-clock fields. The transports differ only in how they surface
-:attr:`DispatchOutcome.exit_code` (process exit vs ``isError``) and in
-argument shape checks that exist only on one transport (for example the
-CLI's JSON-string parsing of ``args``).
-"""
+"""Shared CLI and MCP dispatch for CTF arms and the synthetic range."""
 
 from __future__ import annotations
 
-import hashlib
 from dataclasses import dataclass
 from typing import Any, Mapping, Sequence
 
-from .contract import (
-    CATALOG_KIND_ARM,
-    TIER_HELD,
-    Extension,
-    ExtensionError,
-    NotCuratedError,
-    NotHeldError,
-    NotInstalledError,
-    UnmanifestedCapabilityError,
-)
-from .encode import (
-    ArtifactHandoffError,
-    ArtifactSink,
-    AttemptContractError,
-    _canonical_bytes,
-    bind_artifact_dir,
-    encode_invoke_failure,
-    encode_invoke_result,
-    encode_range_document,
-    encode_range_failure,
-    parse_attempt_id,
-    utc_now,
-)
-from .invoke_profiles import invoke_profile
-
-STATUS_COMPLETE = "complete"
-_DISPATCH_SCOPE_APPROVAL_PREFIX = "operator://dispatch-scope/"
-
-
-class RangeRunnerUnavailable(Exception):
-    """The range runner module is absent from this runtime.
-
-    The sealed runtime bundle deliberately excludes ``extension/range/*``
-    (the sealed invocations never run a range), so a ``run_range`` request
-    against it is an evaluated non-success, carried as a typed failed
-    execution-result envelope — never a raw import traceback on the wire.
-    """
+from .contract import CATALOG_KIND_ARM, Extension, ExtensionError, Result
 
 
 @dataclass(frozen=True)
 class DispatchOutcome:
-    """One dispatch result shared by both transports.
-
-    ``envelope`` is ``None`` only for pre-dispatch attempt/artifact contract
-    errors, which never reach a tool execution on either transport: the CLI
-    prints ``stderr_line`` and exits 2 without stdout; MCP maps
-    ``contract_error`` to JSON-RPC ``-32602`` invalid params.
-    """
-
-    envelope: Mapping[str, Any] | None
+    document: Mapping[str, Any]
     exit_code: int
-    stderr_line: str | None
-    contract_error: AttemptContractError | None = None
-    # Only learning-operator.analyze_pack can return a bounded inline review
-    # alongside its v1 envelope; digest verification is performed below.
-    inline_report: Mapping[str, Any] | None = None
+    stderr_line: str | None = None
+
+
+def _result_document(result: Result, arm_id: str, action: str) -> dict[str, Any]:
+    if (
+        not isinstance(result, Result)
+        or type(result.ok) is not bool
+        or result.arm_id != arm_id
+        or result.action != action
+        or (result.ok and result.error is not None)
+        or (not result.ok and not isinstance(result.error, str))
+    ):
+        raise ValueError("arm returned an invalid result")
+    return result.to_dict()
 
 
 def dispatch_invoke(
@@ -79,160 +34,22 @@ def dispatch_invoke(
     arm_id: str,
     action: str,
     args: Mapping[str, Any] | None = None,
-    args_error: ExtensionError | None = None,
-    attempt_id: str | None = None,
-    artifact_dir: str | None = None,
+    args_error: Exception | None = None,
 ) -> DispatchOutcome:
-    """Run one bounded invoke and encode its execution-result.v1 envelope.
-
-    ``args_error`` carries the CLI's JSON-string parse failure so the shared
-    failure encoder owns the "invalid JSON arguments" envelope; MCP callers
-    never pass it (their arguments arrive pre-parsed).
-    """
-    sink: ArtifactSink | None = None
+    """Invoke the named handler and return its execution result directly."""
+    if args_error is not None:
+        return DispatchOutcome(Result(False, arm_id, action, error=str(args_error)).to_dict(), 2)
     try:
-        try:
-            parsed_attempt = parse_attempt_id(attempt_id)
-            sink = bind_artifact_dir(artifact_dir, attempt_id=parsed_attempt)
-        except AttemptContractError as exc:
-            return DispatchOutcome(None, 2, str(exc), exc)
-        started = utc_now()
-        profile = None
-        invoked = False
-        try:
-            spec = extension.arm_spec(arm_id)
-            if spec.tier == TIER_HELD:
-                raise NotHeldError(spec.id, spec.held_reason)
-            if not spec.curated:
-                raise NotCuratedError(spec.id)
-            profile = invoke_profile(arm_id, action)
-            if profile is None:
-                raise UnmanifestedCapabilityError(arm_id, action)
-            if args_error is not None:
-                raise args_error
-            payload = dict(args) if args is not None else {}
-            invoked = True
-            result = extension.invoke(arm_id, action, payload)
-        except ExtensionError as exc:
-            effects_possible = invoked and not isinstance(exc, NotInstalledError)
-            envelope = encode_invoke_failure(
-                exc,
-                arm_id=arm_id,
-                action=action,
-                profile=profile,
-                started_at=started,
-                finished_at=utc_now(),
-                tool_steps=1 if effects_possible else 0,
-                effects_possible=effects_possible,
-                invalid_args=exc is args_error and not invoked,
-                attempt_id=parsed_attempt,
-                artifact_dir=sink,
-            )
-            if invoked and not isinstance(exc, NotInstalledError):
-                return DispatchOutcome(envelope, 1, "invoke failed")
-            return DispatchOutcome(envelope, 2, str(exc))
-        except Exception as exc:
-            # An arm consumes operator-controlled data.  A missed parser edge
-            # must therefore become an evaluated failure, never a traceback or
-            # a dropped MCP response.  Keep the concrete exception out of the
-            # wire/stderr surface: it may contain a local path or input text.
-            envelope = encode_invoke_failure(
-                exc,
-                arm_id=arm_id,
-                action=action,
-                profile=profile,
-                started_at=started,
-                finished_at=utc_now(),
-                tool_steps=1 if invoked else 0,
-                effects_possible=invoked,
-                attempt_id=parsed_attempt,
-                artifact_dir=sink,
-            )
-            return DispatchOutcome(envelope, 1, "invoke failed")
-        try:
-            envelope = encode_invoke_result(
-                result,
-                profile=profile,
-                started_at=started,
-                finished_at=utc_now(),
-                attempt_id=parsed_attempt,
-                artifact_dir=sink,
-            )
-        except ArtifactHandoffError as exc:
-            return DispatchOutcome(exc.envelope, 2, str(exc))
-        except Exception as exc:
-            # A malformed Result or an encoder edge is still part of the
-            # transport boundary.  Convert it to the same admitted failure
-            # envelope without exposing the exception or caller data.
-            try:
-                envelope = encode_invoke_failure(
-                    exc,
-                    arm_id=arm_id,
-                    action=action,
-                    profile=profile,
-                    started_at=started,
-                    finished_at=utc_now(),
-                    tool_steps=1,
-                    effects_possible=True,
-                    attempt_id=parsed_attempt,
-                    artifact_dir=sink,
-                )
-            except ArtifactHandoffError as handoff_exc:
-                return DispatchOutcome(
-                    handoff_exc.envelope, 2, str(handoff_exc)
-                )
-            return DispatchOutcome(envelope, 1, "invoke failed")
-        status = envelope.get("status")
-        if status == STATUS_COMPLETE:
-            if (
-                arm_id == "learning-operator"
-                and action == "analyze_pack"
-                and isinstance(result.output, dict)
-            ):
-                artifacts = envelope.get("artifacts")
-                digest = "sha256:" + hashlib.sha256(_canonical_bytes(result.output)).hexdigest()
-                if (
-                    isinstance(artifacts, list)
-                    and len(artifacts) == 1
-                    and artifacts[0].get("kind") == "policy-report"
-                    and artifacts[0].get("digest") == digest
-                ):
-                    return DispatchOutcome(envelope, 0, None, inline_report=result.output)
-            return DispatchOutcome(envelope, 0, None)
-        # The admitted envelope, not a child-controlled Result field, owns the
-        # process/MCP success signal. Keep child error text out of stderr: an
-        # arm may accidentally include caller paths, evidence, or secrets.
-        return DispatchOutcome(envelope, 1, _safe_result_failure_line(profile))
-    finally:
-        if sink is not None:
-            sink.close()
-
-
-def _safe_result_failure_line(profile: Any) -> str:
-    """Return actionable producer-owned guidance without child error text."""
-    approval_ref = getattr(profile, "approval_ref", None)
-    if isinstance(approval_ref, str) and approval_ref.startswith(
-        _DISPATCH_SCOPE_APPROVAL_PREFIX
-    ):
-        scope_env = approval_ref.removeprefix(_DISPATCH_SCOPE_APPROVAL_PREFIX)
-        capability_id = getattr(profile, "capability_id", "admitted capability")
-        if scope_env and all(
-            ch.isupper() or ch.isdigit() or ch == "_" for ch in scope_env
-        ):
-            return (
-                f"invoke failed for {capability_id}; verify {scope_env} arming "
-                "and whether the request is outside the armed dispatch scope"
-            )
-    return "invoke failed"
-
-
-def _load_range_runner() -> tuple[type[Exception], Any]:
-    # Imported here, not at module top: the sealed CLI-JSON invocation never
-    # touches the range runner, and the measured runtime bundle's producer
-    # closure is exactly what that invocation imports (runtime/_tracer.py).
-    from .range.runner import RangeError, run_range
-
-    return RangeError, run_range
+        result = extension.invoke(arm_id, action, args)
+        document = _result_document(result, arm_id, action)
+    except ExtensionError as exc:
+        return DispatchOutcome(Result(False, arm_id, action, error=str(exc)).to_dict(), 2)
+    except Exception:
+        return DispatchOutcome(
+            Result(False, arm_id, action, error="arm execution failed").to_dict(), 1,
+            "arm execution failed",
+        )
+    return DispatchOutcome(document, 0 if result.ok else 1)
 
 
 def dispatch_range(
@@ -240,74 +57,26 @@ def dispatch_range(
     *,
     seed: int | None = None,
     arm_ids: Sequence[str] | None = None,
-    attempt_id: str | None = None,
-    artifact_dir: str | None = None,
 ) -> DispatchOutcome:
-    """Run the synthetic range and encode its execution-result.v1 envelope."""
-    sink: ArtifactSink | None = None
+    """Run the shipped synthetic fixtures and return their report directly."""
+    from .range.runner import RangeError, run_range
+
+    if arm_ids is not None:
+        for arm_id in arm_ids:
+            try:
+                entry = extension.describe(arm_id)
+            except ExtensionError as exc:
+                return DispatchOutcome({"status": "failed", "error": str(exc)}, 2)
+            if entry.kind != CATALOG_KIND_ARM:
+                return DispatchOutcome(
+                    {"status": "failed", "error": f"{arm_id} is not an arm"}, 2
+                )
     try:
-        try:
-            parsed_attempt = parse_attempt_id(attempt_id)
-            sink = bind_artifact_dir(artifact_dir, attempt_id=parsed_attempt)
-        except AttemptContractError as exc:
-            return DispatchOutcome(None, 2, str(exc), exc)
-        try:
-            RangeError, run_range = _load_range_runner()
-        except ImportError as exc:
-            # The sealed runtime bundle deliberately excludes range/* (the
-            # sealed invocations never run a range). A run_range request
-            # against such a runtime is an evaluated non-success with a typed
-            # failed envelope — never a raw import traceback on the wire.
-            message = f"range runner unavailable in this runtime: {exc}"
-            envelope = encode_range_failure(
-                RangeRunnerUnavailable(message),
-                started_at=utc_now(),
-                finished_at=utc_now(),
-                attempt_id=parsed_attempt,
-                artifact_dir=sink,
-            )
-            return DispatchOutcome(envelope, 1, message)
-        if arm_ids is not None:
-            curated = {
-                entry.id
-                for entry in extension.list_entries()
-                if entry.kind == CATALOG_KIND_ARM and entry.curated
-            }
-            for arm in arm_ids:
-                if arm not in curated:
-                    message = f"run_range arm_ids must be curated arms: {arm}"
-                    envelope = encode_range_failure(
-                        RangeError(message),
-                        started_at=utc_now(),
-                        finished_at=utc_now(),
-                        attempt_id=parsed_attempt,
-                    )
-                    return DispatchOutcome(envelope, 2, message)
-        started = utc_now()
-        try:
-            document = run_range(
-                seed=seed, extension=extension, arm_ids=arm_ids
-            )
-        except RangeError as exc:
-            envelope = encode_range_failure(
-                exc,
-                started_at=started,
-                finished_at=utc_now(),
-                attempt_id=parsed_attempt,
-            )
-            return DispatchOutcome(envelope, 2, str(exc))
-        try:
-            envelope = encode_range_document(
-                document,
-                started_at=started,
-                finished_at=utc_now(),
-                attempt_id=parsed_attempt,
-                artifact_dir=sink,
-            )
-        except ArtifactHandoffError as exc:
-            return DispatchOutcome(exc.envelope, 2, str(exc))
-        status = envelope.get("status")
-        return DispatchOutcome(envelope, 0 if status == STATUS_COMPLETE else 1, None)
-    finally:
-        if sink is not None:
-            sink.close()
+        document = run_range(seed=seed, extension=extension, arm_ids=arm_ids)
+    except RangeError as exc:
+        return DispatchOutcome({"status": "failed", "error": str(exc)}, 2)
+    except Exception:
+        return DispatchOutcome({"status": "failed", "error": "range execution failed"}, 1)
+    if not isinstance(document, dict):
+        return DispatchOutcome({"status": "failed", "error": "invalid range result"}, 1)
+    return DispatchOutcome(document, 0 if document.get("status") == "complete" else 1)

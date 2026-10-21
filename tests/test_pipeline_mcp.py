@@ -111,7 +111,7 @@ def test_prioritize_targets_hermetic():
     assert ips == {"1.1.1.1", "2.2.2.2"}
     for t in res["targets"]:
         tm = t["threat_model"]
-        assert tm["validation_status"].startswith("awaiting human")
+        assert "validation_status" not in tm
         assert t["attack_chain"]
         # Every attack-chain step is a grounded ATT&CK technique entry.
         for step in t["attack_chain"]:
@@ -123,12 +123,10 @@ def test_prioritize_targets_hermetic():
     # 2.2.2.2 carries a T1110 alert too; without a curated anchor the demo
     # core prefers the T1110 brute-force hypothesis for initial access.
     assert by_ip["2.2.2.2"]["threat_model"]["expected_initial_access"]["technique"] == "T1110"
-    assert res["summary"]["human_validation_gate"] == (
-        "REQUIRED before any agentic exploitability validation"
-    )
+    assert "human_validation_gate" not in res["summary"]
     assert "markdown" in res
-    assert "## Human red-team analyst validation gate" in res["markdown"]
-    assert "- [ ] target set reviewed and confirmed" in res["markdown"]
+    assert "## Human red-team analyst validation gate" not in res["markdown"]
+    assert "# Prioritized Target List" in res["markdown"]
 
 
 def test_prioritize_convergence_flagging():
@@ -375,9 +373,8 @@ def test_captured_triage_order_is_bound_to_actual_targets():
     binding = {"upstream_revision": UPSTREAM_REVISION,
                "input_sha256": hashlib.sha256(raw_candidates.encode()).hexdigest(),
                "ranking_sha256": hashlib.sha256(raw_ranking.encode()).hexdigest(),
-               "prompt_sha256": "a" * 64, "run_id": "synthetic-captured-order",
-               "captured_at": "2026-10-04T00:00:00Z", "provider": "synthetic",
-               "model": "synthetic", "custody_ref": "synthetic-only"}
+               "prompt_sha256": "a" * 64, "provider": "synthetic",
+               "model": "synthetic"}
     triage = {"candidates_json": raw_candidates, "ranking_json": raw_ranking, "binding": binding}
     packet = {"schema": "specaudit.operator-evidence.v1", "items": [], "triage": triage}
     result = prioritize_targets(report=findings, operator_evidence=packet)
@@ -466,7 +463,7 @@ def test_workpaper_review_checks_real_manifest_and_exact_finding_subject():
     packet = {"schema": "specaudit.operator-evidence.v1", "items": [item]}
     target = prioritize_targets(report=[finding], operator_evidence=packet)["targets"][0]
     assert target["operational_reviews"]["workpaper"][0]["review"]["structure_valid"] is True
-    assert target["validation_tasks"][-1]["action"] == "review-claim-and-custody"
+    assert target["validation_tasks"][-1]["action"] == "review-workpaper-claim"
     submission["subject"] = "another-bucket"
     with pytest.raises(ValueError, match="subject differs"):
         prioritize_targets(report=[finding], operator_evidence=packet)

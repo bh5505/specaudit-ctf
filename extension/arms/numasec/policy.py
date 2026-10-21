@@ -52,7 +52,7 @@ CAVEATS = (
     "not a trusted signature or identity binding",
 )
 
-ARMING = (
+INPUT_HINT = (
     "pass args.ledger (path to a local finding lifecycle JSON/JSONL file); "
     "results include the supplied snapshot's exact-byte digest"
 )
@@ -63,7 +63,7 @@ def ledger_refusal(
 ) -> tuple[Path | None, str | None]:
     """Validate a caller-supplied local ledger path.
 
-    Egress gate: the ledger must be an existing local file with a
+    Input contract: the ledger must be an existing local file with a
     recognised suffix; URLs are refused.  Returns (path, None) or
     (None, refusal).
     """

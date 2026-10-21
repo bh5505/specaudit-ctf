@@ -10,10 +10,9 @@ functionality preserved):
   * **Snapshot/batch interface (feature branch)** — ``args.bundle_path``
     (frozen local JSON snapshot keyed by canonical CVE id) with an
     ``args.cve_ids`` list; Finding-E curated-technique fallback (via
-    :mod:`reader`) and a ``vulnify.lookup-receipt.v1`` custody receipt to
-    stderr.
+    :mod:`reader`).
 
-``lookup`` dispatches on the caller arg: ``cve_ids`` present → batch layer;
+``lookup`` selects on the caller arg: ``cve_ids`` present → batch layer;
 otherwise → feed layer.
 """
 
@@ -24,7 +23,6 @@ import io
 import json
 import math
 import re
-import sys
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -49,7 +47,7 @@ from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
     ARG_KEYS,
-    ARMING,
+    INPUT_HINT,
     CAVEATS,
     LIST_ACTIONS,
     MAX_BUNDLE_BYTES,
@@ -106,12 +104,11 @@ class VulnifyArm:
                 spec,
                 action,
                 f"action {action!r} is not on the allowlist "
-                "(offline reads over a local vulnerability feed or snapshot only; "
-                "there is no dispatch tier)",
+                "(offline reads over a local vulnerability feed or snapshot only)",
             )
-        # Feature-branch batch interface: args.cve_ids (list) over a
-        # args.bundle_path frozen snapshot. Dispatches to the snapshot reader,
-        # Finding-E curated fallback, and custody receipt.
+        # Batch interface: args.cve_ids (list) over an
+        # args.bundle_path frozen snapshot. Reads via the snapshot reader
+        # with Finding-E curated fallback.
         if action == "lookup" and "cve_ids" in payload:
             return self._lookup_batch(spec, action, payload)
         # Main's feed interface: args.feed with cve_id/name (lookup) or list_vulns.
@@ -177,23 +174,20 @@ class VulnifyArm:
         )
 
     def _lookup_batch(self, spec: ArmSpec, action: str, payload: dict) -> Result:
-        """Feature-branch batch lookup: args.cve_ids over a frozen snapshot."""
-        args_hash = _normalized_args_hash(payload)
+        """Batch lookup: args.cve_ids over a frozen snapshot."""
         bundle_sha: str | None = None
-        queries: list[dict[str, Any]] = []
         refusal = args_refusal(action, payload)
         raw_ids = payload.get("cve_ids")
         if refusal or not isinstance(raw_ids, list):
             reason = "cve_ids_not_a_list" if not isinstance(raw_ids, list) else "input_refusal"
-            if isinstance(raw_ids, list):
-                queries = [_query_receipt(value, "failed", reason) for value in raw_ids]
-            return _failure(spec, action, args_hash, bundle_sha, queries, reason, refusal or reason)
+            output = {"reason": reason, "snapshot_sha256": bundle_sha, "results": [], "count_matched": 0}
+            return Result(False, spec.id, action, output, refusal or reason)
 
         path, path_refusal = bundle_refusal(payload.get("bundle_path"))
         if path_refusal or path is None:
             reason = "bundle_too_large" if path_refusal and "read cap" in path_refusal else "bundle_missing"
-            queries = [_query_receipt(value, "failed", reason) for value in raw_ids]
-            return _failure(spec, action, args_hash, bundle_sha, queries, reason, path_refusal or reason)
+            output = {"reason": reason, "snapshot_sha256": bundle_sha, "results": [], "count_matched": 0}
+            return Result(False, spec.id, action, output, path_refusal or reason)
 
         try:
             snapshot = _read_bundle_snapshot(path)
@@ -201,8 +195,8 @@ class VulnifyArm:
             index = reader.load_bundle_bytes(snapshot)
         except (reader.BundleError, OSError) as exc:
             reason = "bundle_invalid_json"
-            queries = [_query_receipt(value, "failed", reason) for value in raw_ids]
-            return _failure(spec, action, args_hash, bundle_sha, queries, reason, f"{reason}: {redact(str(exc))}")
+            output = {"reason": reason, "snapshot_sha256": bundle_sha, "results": [], "count_matched": 0}
+            return Result(False, spec.id, action, output, f"{reason}: {redact(str(exc))}")
 
         results: list[dict[str, Any]] = []
         for raw_id in raw_ids:
@@ -226,15 +220,12 @@ class VulnifyArm:
                     "snapshot_sha256": bundle_sha,
                 }
             results.append(row)
-            queries.append({key: row[key] for key in ("cve_id", "status", "reason")})
-            if "query_sha256" in row:
-                queries[-1]["query_sha256"] = row["query_sha256"]
 
         output = {"reason": None, "snapshot_sha256": bundle_sha, "results": results, "count_matched": sum(row["status"] == "matched" for row in results)}
         if len(_canonical_json(output)) > MAX_OUTPUT_CHARS:
             reason = "output_too_large"
-            return _failure(spec, action, args_hash, bundle_sha, queries, reason, "lookup output exceeds output cap")
-        _write_receipt(args_hash, bundle_sha, queries, output, True, None)
+            failed = {"reason": reason, "snapshot_sha256": bundle_sha, "results": [], "count_matched": 0}
+            return Result(False, spec.id, action, failed, "lookup output exceeds output cap")
         return Result(True, spec.id, action, output, None)
 
     def _list_vulns(
@@ -278,12 +269,11 @@ class VulnifyArm:
             spec,
             action,
             {
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": [],
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "demo_bundle": str(demo_bundle_path()),
                 "arg_keys": {key: sorted(values) for key, values in ARG_KEYS.items()},
                 "caveats": list(CAVEATS),
-                "arming": ARMING,
+                "input_hint": INPUT_HINT,
             },
         )
 
@@ -596,54 +586,9 @@ def _value_hash(value: Any) -> str:
     return hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _normalized_args_hash(payload: dict[str, Any]) -> str:
-    ids = payload.get("cve_ids")
-    normalized_ids: Any = (
-        [(_normalize_cve(value) or {"sha256": _value_hash(value)}) for value in ids]
-        if isinstance(ids, list)
-        else {"type": type(ids).__name__}
-    )
-    path = payload.get("bundle_path")
-    return _value_hash({
-        "bundle_path": str(Path(path).expanduser()) if isinstance(path, str) else {"type": type(path).__name__},
-        "cve_ids": normalized_ids,
-        "arg_keys": sorted(payload),
-    })
-
-
 def _read_bundle_snapshot(path: Path) -> bytes:
     with path.open("rb") as handle:
         snapshot = handle.read(MAX_BUNDLE_BYTES + 1)
     if len(snapshot) > MAX_BUNDLE_BYTES:
         raise reader.BundleError(f"bundle exceeds the {MAX_BUNDLE_BYTES} byte read cap")
     return snapshot
-
-
-def _query_receipt(raw: Any, status: str, reason: str) -> dict[str, Any]:
-    normalized = _normalize_cve(raw)
-    row = {"cve_id": normalized, "status": status, "reason": reason}
-    if normalized is None:
-        row["query_sha256"] = _value_hash(raw)
-    return row
-
-
-def _failure(spec: ArmSpec, action: str, args_hash: str, bundle_sha: str | None, queries: list[dict[str, Any]], reason: str, error: str) -> Result:
-    output = {"reason": reason, "snapshot_sha256": bundle_sha, "results": [], "count_matched": 0}
-    _write_receipt(args_hash, bundle_sha, queries, output, False, reason)
-    return Result(False, spec.id, action, output, error)
-
-
-def _write_receipt(args_hash: str, bundle_sha: str | None, queries: list[dict[str, Any]], output: dict[str, Any], ok: bool, reason: str | None) -> None:
-    receipt = {
-        "schema": "vulnify.lookup-receipt.v1",
-        "arm": ARM_ID,
-        "action": "lookup",
-        "normalized_args_sha256": args_hash,
-        "bundle_sha256": bundle_sha,
-        "queries": queries,
-        "count_matched": sum(row.get("status") == "matched" for row in queries),
-        "status": "complete" if ok else "failed",
-        "reason": reason,
-        "output_sha256": hashlib.sha256(_canonical_json(output).encode("utf-8")).hexdigest(),
-    }
-    print(_canonical_json(receipt), file=sys.stderr, flush=True)

@@ -14,7 +14,6 @@ from extension.arms.semgrep import SemgrepArm
 from extension.arms.semgrep.policy import (
     ENV_BIN,
     ENV_ENDPOINT,
-    ENV_SCAN_ROOT,
 )
 from tests.test_arm_semgrep import _spec
 
@@ -50,7 +49,10 @@ ECHO_SCAN = (
     "import json, sys\n"
     "argv = sys.argv[1:]\n"
     "assert argv[0] == 'scan' and argv[1] == '--config', argv\n"
-    "cfg = open(argv[2], encoding='utf-8').read()\n"
+    "try:\n"
+    "    cfg = open(argv[2], encoding='utf-8').read()\n"
+    "except OSError:\n"
+    "    cfg = argv[2]\n"
     "evidence = {'argv_tail': argv[3:], 'config': cfg}\n"
     "print(json.dumps({'results': [{'check_id': 'demo', 'path': 'a.py',"
     " 'evidence': evidence}], 'errors': []}))\n"
@@ -64,21 +66,18 @@ def cli_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     root.mkdir()
     (root / "a.py").write_text("print('x')\n", encoding="utf-8")
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_SCAN_ROOT, str(root))
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
     return root
 
 
 def test_cli_list_tools_static(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
-    monkeypatch.delenv(ENV_SCAN_ROOT, raising=False)
     monkeypatch.setenv(ENV_BIN, str(tmp_path / "missing"))
     result = SemgrepArm().invoke(_spec(), "list_tools", {})
     assert result.ok is True
     assert result.output["surface"] == "cli"
-    assert result.output["dispatch_actions"] == ["semgrep_scan"]
-    assert result.output["dispatch_armed"] is False
-    assert result.output["mcp_endpoint_actions"]
+    assert "semgrep_scan" in result.output["actions"]
+    assert "caveats" in result.output
 
 
 def test_cli_scan_runs_inline_config_hermetic(cli_env: Path) -> None:
@@ -88,38 +87,33 @@ def test_cli_scan_runs_inline_config_hermetic(cli_env: Path) -> None:
     first = result.output["results"][0]
     assert first["check_id"] == "demo"
     # The inline rule pack reached the binary as a file; metrics off;
-    # JSON mode; the target is the scan root.
+    # JSON mode; the default target is the process's working directory.
     evidence = first["evidence"]
     assert evidence["config"] == RULES
     assert "--metrics=off" in evidence["argv_tail"]
     assert "--json" in evidence["argv_tail"]
-    assert Path(result.output["target"]).name == "root"
+    assert Path(result.output["target"]) == Path.cwd()
 
 
-def test_cli_scan_refusals(cli_env: Path) -> None:
+def test_cli_scan_accepts_operator_path_and_rule_selector(cli_env: Path, tmp_path: Path) -> None:
     arm = SemgrepArm()
-    # Registry config refused (egress gate).
-    refused = arm.invoke(_spec(), "semgrep_scan", {"config": "p/python"})
-    assert refused.ok is False
-    assert "registry" in refused.error
-    # Target must stay inside the scan root.
-    escape = arm.invoke(
-        _spec(), "semgrep_scan", {"config": RULES, "target": "../outside"}
-    )
-    assert escape.ok is False
-    assert "inside the scan root" in escape.error
+    outside = tmp_path / "outside.py"
+    outside.write_text("print('outside')\n", encoding="utf-8")
+    result = arm.invoke(_spec(), "semgrep_scan", {"config": "p/python", "target": str(outside)})
+    assert result.ok, result.error
+    assert result.output["target"] == str(outside)
+    assert result.output["results"][0]["evidence"]["config"] == "p/python"
 
 
-def test_cli_scan_requires_scan_root(
+def test_cli_scan_defaults_to_cwd(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     binary = _fake_semgrep(tmp_path, ECHO_SCAN)
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.delenv(ENV_SCAN_ROOT, raising=False)
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
     result = SemgrepArm().invoke(_spec(), "semgrep_scan", {"config": RULES})
-    assert result.ok is False
-    assert ENV_SCAN_ROOT in result.error
+    assert result.ok, result.error
+    assert result.output["target"] == str(Path.cwd())
 
 
 def test_cli_scan_binary_failure_is_honest(
@@ -131,14 +125,13 @@ def test_cli_scan_binary_failure_is_honest(
     root = tmp_path / "root"
     root.mkdir()
     monkeypatch.setenv(ENV_BIN, str(binary))
-    monkeypatch.setenv(ENV_SCAN_ROOT, str(root))
     monkeypatch.delenv(ENV_ENDPOINT, raising=False)
     result = SemgrepArm().invoke(_spec(), "semgrep_scan", {"config": RULES})
     assert result.ok is False
     assert "boom" in result.error
 
 
-def test_cli_invoke_end_to_end_envelope(
+def test_cli_invoke_end_to_end_result(
     cli_env: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     from extension.__main__ import main as invoke_main
@@ -147,6 +140,7 @@ def test_cli_invoke_end_to_end_envelope(
     code = invoke_main(["invoke", "semgrep-mcp", "semgrep_scan", args_json])
     payload = json.loads(capsys.readouterr().out)
     assert code == 0
-    assert payload["capability_id"] == "semgrep-mcp.semgrep_scan"
-    assert payload["status"] == "complete"
-    assert payload["transport_ok"] is True
+    assert payload["arm_id"] == "semgrep-mcp"
+    assert payload["action"] == "semgrep_scan"
+    assert payload["ok"] is True
+    assert payload["output"]["total"] == 1

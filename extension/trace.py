@@ -247,11 +247,11 @@ class TraceSink:
 def _result_summary(
     tool: str, arguments: Mapping[str, Any], response: Mapping[str, Any] | None
 ) -> dict[str, Any]:
-    """Bounded, redacted result facts; never the full envelope body."""
+    """Bounded, redacted result facts; never the full response body."""
     summary: dict[str, Any] = {
         "isError": None,
-        "envelope_status": None,
-        "capability_id": None,
+        "result_status": None,
+        "result_ok": None,
         "fixture_ids": [],
         "error": None,
         "rpc_error_code": None,
@@ -273,13 +273,14 @@ def _result_summary(
         summary["error"] = "missing tool result"
         return summary
     summary["isError"] = result.get("isError") is True
-    envelope = result.get("structuredContent")
-    if isinstance(envelope, Mapping):
-        summary["envelope_status"] = _cap_str(envelope.get("status"))
-        summary["capability_id"] = _cap_str(envelope.get("capability_id"))
-        limitations = envelope.get("limitations")
-        if isinstance(limitations, list) and limitations:
-            summary["error"] = _cap_str(limitations[0])
+    document = result.get("structuredContent")
+    if isinstance(document, Mapping):
+        if isinstance(document.get("status"), str):
+            summary["result_status"] = _cap_str(document["status"])
+        if type(document.get("ok")) is bool:
+            summary["result_ok"] = document["ok"]
+        if isinstance(document.get("error"), str):
+            summary["error"] = _cap_str(document["error"])
     if tool == "run_range" and summary["isError"] is False:
         # One successful run_range covers the shipped fixture roster.
         summary["fixture_ids"] = list(range_fixture_ids())

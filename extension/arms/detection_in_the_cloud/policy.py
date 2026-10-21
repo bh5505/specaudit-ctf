@@ -26,15 +26,14 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 }
 
 CAVEATS = (
-    "the operator must pin page and definition revisions; a local path alone "
-    "does not prove source identity or custody",
+    "the input digest identifies local bytes but does not authenticate their source",
     "a rule listing is never read as operating effectiveness",
     "companion methodology, not a second detection engine",
     "list_playbooks digests only the returned name/format listing; playbook "
     "and list_rules bind the exact file bytes they parse",
 )
 
-ARMING = "pass args.playbook_dir (path to a local directory containing detection playbook files)"
+INPUT_HINT = "pass args.playbook_dir (path to a local directory containing detection playbook files)"
 
 
 def playbook_dir_refusal(raw: object) -> tuple[str | None, str | None]:

@@ -23,17 +23,8 @@ from ..contract import (
 _MAX_BYTES = 1024 * 1024
 _MAX_ENV_BYTES = 32 * 1024
 _MAX_ENV_VARS = 64
-_MAX_PATH_DIRS = 16
 _ENV_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}\Z")
 _GENERATED_ENV = {"LANG": "C.UTF-8", "LC_ALL": "C.UTF-8"}
-_RESERVED_ENV = {
-    "LANG", "LANGUAGE", "LC_ALL", "LC_CTYPE", "PWD", "OLDPWD", "CDPATH",
-    "ENV", "BASH_ENV", "BASHOPTS", "SHELLOPTS", "NODE_OPTIONS", "NODE_PATH",
-    "RUBYOPT", "RUBYLIB", "PERL5OPT", "PERL5LIB",
-    "SYSTEMROOT", "JAVA_TOOL_OPTIONS", "_JAVA_OPTIONS", "JDK_JAVA_OPTIONS",
-    "GCONV_PATH", "LOCPATH", "ZDOTDIR",
-}
-_RESERVED_PREFIXES = ("PYTHON", "LD_", "DYLD_", "GIT_CONFIG", "GIT_TRACE")
 
 
 class McpTransport:
@@ -247,11 +238,6 @@ def _stdio_environments(
                 raise ValueError("stdio environment has invalid or ambiguous names")
             if name != "PATH" and folded == "PATH":
                 raise ValueError("stdio environment PATH must use its canonical name")
-            if (
-                folded in _RESERVED_ENV or folded.startswith(_RESERVED_PREFIXES)
-                or folded.endswith("_PROXY") or "TRACE" in folded
-            ):
-                raise ValueError("stdio environment contains a reserved variable")
             if not isinstance(entry, str) or "\0" in entry:
                 raise ValueError("stdio environment values must be NUL-free strings")
             try:
@@ -262,18 +248,6 @@ def _stdio_environments(
                 raise ValueError("stdio environment exceeds byte limit")
             names.add(folded)
             copied[name] = entry
-        if "PATH" in copied:
-            parts = copied["PATH"].split(os.pathsep)
-            if (
-                len(parts) > _MAX_PATH_DIRS
-                or len({_path_key(part) for part in parts}) != len(parts)
-                or any(
-                    not part or not _absolute_path(part)
-                    or ".." in re.split(r"[/\\]", part)
-                    for part in parts
-                )
-            ):
-                raise ValueError("stdio PATH requires distinct absolute directories")
         environments[arm_id] = copied
     return environments
 

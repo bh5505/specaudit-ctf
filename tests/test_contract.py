@@ -1,12 +1,9 @@
-"""Fail-closed invoke contract and generic transports."""
+"""Catalog, invocation, and transport contract tests."""
 
 from __future__ import annotations
 
-import inspect
 import json
-import subprocess
 import sys
-from dataclasses import MISSING, fields
 from pathlib import Path
 from typing import Any, Mapping
 from urllib.error import URLError
@@ -22,41 +19,30 @@ from extension.contract import (
     HeadSpec,
     NotAHeadError,
     NotAnArmError,
-    NotCuratedError,
-    NotHeldError,
     NotInstalledError,
     Result,
     UnknownIdError,
-    describe,
-    invoke,
-    list_entries,
+    load_catalog,
 )
 from extension.__main__ import main
+from extension.dispatch import dispatch_invoke
+from extension.mcp_server import McpServer
 from extension.transports.cli import CliTransport
 from extension.transports.mcp import McpTransport
 
-ROOT = Path(__file__).resolve().parents[1]
-CURATED_ARM_ID = "burp-mcp"
-RESEARCH_ARM_ID = "checkov"
-NON_CURATED_ARM_ID = "deepsec"
-METHODOLOGY_ID = "vulnhunter"
-UNKNOWN_ID = "no-such-arm"
-FIXTURE_ARM_ID = "probe-cli"
-FIXTURE_HEAD_ID = "agent-cli"
+ARM_ID = "fixture-cli"
+MCP_ARM_ID = "fixture-mcp"
+HEAD_ID = "fixture-head"
+METHODOLOGY_ID = "fixture-methodology"
+UNKNOWN_ID = "no-such-entry"
 
 
-class FakeCliTransport:
+class FakeTransport:
     protocol = "cli"
 
-    def __init__(
-        self,
-        *,
-        installed_ids: set[str] | None = None,
-        result: Result | None = None,
-    ) -> None:
+    def __init__(self, *, installed_ids: set[str] | None = None) -> None:
         self.installed_ids = set(installed_ids or ())
         self.calls: list[tuple[str, str, dict[str, Any]]] = []
-        self.result = result
 
     def installed(self, spec: ArmSpec) -> bool:
         return spec.id in self.installed_ids
@@ -66,15 +52,7 @@ class FakeCliTransport:
     ) -> Result:
         payload = dict(args)
         self.calls.append((spec.id, action, payload))
-        if self.result is not None:
-            return self.result
-        return Result(
-            ok=True,
-            arm_id=spec.id,
-            action=action,
-            output={"echo": payload},
-            error=None,
-        )
+        return Result(True, spec.id, action, {"echo": payload})
 
 
 def _entry(
@@ -82,646 +60,340 @@ def _entry(
     *,
     kind: str = "arm",
     protocols: tuple[str, ...] = ("cli",),
-    curated: bool = False,
-    notes: str = "Fixture row.",
-    tier: str = "research",
-    held_reason: str | None = None,
+    notes: str = "Fixture entry.",
 ) -> CatalogEntry:
-    return CatalogEntry(
-        id=entry_id,
-        kind=kind,
-        protocols=protocols,
-        curated=curated,
-        notes=notes,
-        tier=tier,
-        held_reason=held_reason,
-    )
+    return CatalogEntry(entry_id, kind, protocols, notes)
 
 
 def _fixture_catalog() -> Catalog:
     return Catalog(
         [
-            _entry(FIXTURE_ARM_ID, curated=True, notes="Fixture curated CLI arm."),
-            _entry(FIXTURE_HEAD_ID, kind="head", notes="Fixture head."),
-            _entry(METHODOLOGY_ID, kind="methodology-only", protocols=("none",)),
-            _entry(NON_CURATED_ARM_ID, curated=False),
+            _entry(ARM_ID, notes="Fixture CLI arm."),
+            _entry(MCP_ARM_ID, protocols=("mcp",), notes="Fixture MCP arm."),
+            _entry(HEAD_ID, kind="head", notes="Fixture head."),
             _entry(
-                CURATED_ARM_ID,
-                protocols=("mcp", "http"),
-                curated=True,
-                notes="Fixture curated MCP arm.",
+                METHODOLOGY_ID,
+                kind="methodology-only",
+                protocols=("none",),
+                notes="Fixture methodology row.",
             ),
         ]
     )
 
 
-def test_list_entries_reads_coverage_catalog() -> None:
-    """Test that list_entries loads and returns the full coverage catalog."""
-    rows = list_entries()
-    ids = [row.id for row in rows]
-    assert CURATED_ARM_ID in ids
-    assert METHODOLOGY_ID in ids
-    burp = next(row for row in rows if row.id == CURATED_ARM_ID)
-    assert burp.kind == "arm"
-    assert burp.curated is True
-    assert burp.tier == "research"
-    checkov = next(row for row in rows if row.id == RESEARCH_ARM_ID)
-    assert checkov.curated is True
-    assert checkov.tier != "maintained"
+def _extension(fake: FakeTransport | None = None) -> tuple[Extension, FakeTransport]:
+    transport = fake or FakeTransport(installed_ids={ARM_ID})
+    ext = Extension(
+        catalog=_fixture_catalog(),
+        transports={"cli": transport},
+        arms={ARM_ID: transport},
+    )
+    return ext, transport
 
 
-def test_describe_known_and_unknown() -> None:
-    """Test describe() with valid and invalid entry IDs."""
-    row = describe(CURATED_ARM_ID)
-    assert row.id == CURATED_ARM_ID
+def test_catalog_loads_full_coverage_and_serializes_four_fields() -> None:
+    catalog = load_catalog()
+    assert catalog.entries
+    row = catalog.get("burp-mcp")
     assert row.kind == "arm"
-    assert row.tier == "research"
-    assert not row.held_reason
-    with pytest.raises(UnknownIdError) as err:
-        describe(UNKNOWN_ID)
-    assert err.value.entry_id == UNKNOWN_ID
+    assert set(row.to_dict()) == {"id", "kind", "protocols", "notes"}
 
 
-def test_invoke_unknown_id_is_hard_error() -> None:
-    """Test that invoking an unknown ID raises UnknownIdError immediately."""
-    with pytest.raises(UnknownIdError) as err:
-        invoke(UNKNOWN_ID, "ping", {})
-    assert isinstance(err.value, ExtensionError)
-    assert err.value.entry_id == UNKNOWN_ID
+def test_catalog_rejects_duplicate_ids() -> None:
+    with pytest.raises(ExtensionError, match="duplicate catalog id"):
+        Catalog([_entry(ARM_ID), _entry(ARM_ID, kind="head")])
 
 
-def test_invoke_non_curated_arm_refused() -> None:
-    """Test that invoking a non-curated arm raises NotCuratedError."""
-    fake = FakeCliTransport(installed_ids={NON_CURATED_ARM_ID})
-    ext = Extension(catalog=_fixture_catalog(), transports={"cli": fake})
-    with pytest.raises(NotCuratedError) as err:
-        ext.invoke(NON_CURATED_ARM_ID, "scan", {})
-    assert err.value.entry_id == NON_CURATED_ARM_ID
-    assert fake.calls == []
-
-
-def test_invoke_methodology_only_refused() -> None:
-    """Test that invoking a methodology-only entry raises NotAnArmError."""
-    fake = FakeCliTransport(installed_ids={METHODOLOGY_ID})
-    ext = Extension(transports={"cli": fake})
-    with pytest.raises(NotAnArmError) as err:
-        ext.invoke(METHODOLOGY_ID, "extract", {})
-    assert err.value.kind == "methodology-only"
-    assert fake.calls == []
-
-
-def test_invoke_head_refused() -> None:
-    """Test that invoking a head entry raises NotAnArmError."""
-    fake = FakeCliTransport(installed_ids={FIXTURE_HEAD_ID})
-    ext = Extension(
-        catalog=_fixture_catalog(),
-        transports={"cli": fake},
-        arms={FIXTURE_ARM_ID: fake},
-    )
-    with pytest.raises(NotAnArmError) as err:
-        ext.invoke(FIXTURE_HEAD_ID, "run", {})
-    assert err.value.kind == "head"
-    spec = ext.head_spec(FIXTURE_HEAD_ID)
-    assert isinstance(spec, HeadSpec)
-    assert spec.id == FIXTURE_HEAD_ID
-    with pytest.raises(NotAHeadError):
-        ext.head_spec(FIXTURE_ARM_ID)
-
-
-def test_invoke_curated_arm_not_installed(
-    monkeypatch: pytest.MonkeyPatch,
+@pytest.mark.parametrize(
+    ("row", "message"),
+    [
+        ([], "mapping"),
+        ({"id": "Bad ID", "kind": "arm", "protocols": ["cli"], "notes": "x"}, "kebab-case"),
+        ({"id": ARM_ID, "kind": "unknown", "protocols": ["cli"], "notes": "x"}, "kind"),
+        ({"id": ARM_ID, "kind": "arm", "protocols": [], "notes": "x"}, "protocols"),
+        ({"id": ARM_ID, "kind": "arm", "protocols": ["none", "cli"], "notes": "x"}, "exclusive"),
+        ({"id": ARM_ID, "kind": "arm", "protocols": ["cli"], "notes": " "}, "notes"),
+    ],
+)
+def test_catalog_rejects_invalid_rows(
+    tmp_path: Path, row: Any, message: str
 ) -> None:
-    """Test that invoking a curated but unavailable arm raises NotInstalledError."""
-    monkeypatch.setattr("extension.arms.checkov.arm.resolve_binary", lambda: None)
-    ext = Extension()
-    with pytest.raises(NotInstalledError) as err:
-        ext.invoke(RESEARCH_ARM_ID, "scan", {})
-    assert err.value.entry_id == RESEARCH_ARM_ID
+    path = tmp_path / "coverage.yaml"
+    import yaml
+
+    path.write_text(yaml.safe_dump({"entries": [row]}), encoding="utf-8")
+    with pytest.raises(ExtensionError, match=message):
+        load_catalog(path)
 
 
-def test_invoke_held_arm_refused_even_if_curated() -> None:
-    """Pinned on the fixture catalog: the live catalog holds nothing
-    anymore (the 2026-09-04 campaign closed the HTTP-MCP held set)."""
-    from extension.contract import Catalog, CatalogEntry
-
-    held_id = "held-mcp"
-    entry = CatalogEntry(
-        id=held_id,
-        kind="arm",
-        protocols=("mcp", "http"),
-        curated=True,
-        notes="Fixture held HTTP MCP arm.",
-        tier="held",
-        held_reason="HTTP MCP is held on this public cut.",
-    )
-    fake = FakeCliTransport(installed_ids={held_id})
-    ext = Extension(
-        catalog=Catalog([entry]),
-        transports={"mcp": fake},
-        arms={held_id: fake},
-    )
-    with pytest.raises(NotHeldError) as err:
-        ext.invoke(held_id, "list_tools", {})
-    assert err.value.entry_id == held_id
-    assert fake.calls == []
+def test_catalog_and_specs_expose_arm_and_head_shapes() -> None:
+    ext, _ = _extension()
+    arm = ext.arm_spec(ARM_ID)
+    head = ext.head_spec(HEAD_ID)
+    assert isinstance(arm, ArmSpec)
+    assert arm.to_dict() == {
+        "id": ARM_ID,
+        "kind": "arm",
+        "protocols": ["cli"],
+        "notes": "Fixture CLI arm.",
+    }
+    assert isinstance(head, HeadSpec)
+    assert head.to_dict()["kind"] == "head"
+    with pytest.raises(NotAnArmError):
+        ext.arm_spec(HEAD_ID)
+    with pytest.raises(NotAHeadError):
+        ext.head_spec(ARM_ID)
 
 
-def test_invoke_fake_cli_transport_records_call() -> None:
-    """Test that successful invocations record calls and return results."""
-    fake = FakeCliTransport(installed_ids={FIXTURE_ARM_ID})
+def test_describe_known_and_unknown_entries() -> None:
+    ext, _ = _extension()
+    assert ext.describe(ARM_ID).id == ARM_ID
+    with pytest.raises(UnknownIdError) as err:
+        ext.describe(UNKNOWN_ID)
+    assert err.value.entry_id == UNKNOWN_ID
+
+
+def test_invoke_calls_installed_arm_and_returns_its_result() -> None:
+    ext, fake = _extension()
+    result = ext.invoke(ARM_ID, "unrestricted-action-name", {"x": 1})
+    assert result == Result(True, ARM_ID, "unrestricted-action-name", {"echo": {"x": 1}})
+    assert fake.calls == [(ARM_ID, "unrestricted-action-name", {"x": 1})]
+
+
+def test_invoke_uses_generic_transport_when_no_arm_handler_is_registered() -> None:
+    fake = FakeTransport(installed_ids={ARM_ID})
     ext = Extension(
         catalog=_fixture_catalog(),
         transports={"cli": fake},
-        arms={FIXTURE_ARM_ID: fake},
+        arms={},
     )
-    result = ext.invoke(FIXTURE_ARM_ID, "echo", {"x": 1})
+    result = ext.invoke(ARM_ID, "echo", {"x": 1})
     assert result.ok is True
-    assert result.arm_id == FIXTURE_ARM_ID
-    assert result.action == "echo"
-    assert result.output == {"echo": {"x": 1}}
-    assert fake.calls == [(FIXTURE_ARM_ID, "echo", {"x": 1})]
+    assert fake.calls == [(ARM_ID, "echo", {"x": 1})]
 
 
-def test_invoke_non_mapping_args_refused() -> None:
-    """Test that non-mapping args parameter is rejected with ExtensionError."""
-    fake = FakeCliTransport(installed_ids={FIXTURE_ARM_ID})
-    ext = Extension(
-        catalog=_fixture_catalog(),
-        transports={"cli": fake},
-        arms={FIXTURE_ARM_ID: fake},
-    )
-    with pytest.raises(ExtensionError) as err:
-        ext.invoke(FIXTURE_ARM_ID, "echo", "oops")
-    assert "args must be a mapping" in str(err.value)
+def test_invoke_rejects_unknown_non_arm_and_uninstalled_entries() -> None:
+    ext, fake = _extension(FakeTransport())
+    with pytest.raises(UnknownIdError):
+        ext.invoke(UNKNOWN_ID, "run", {})
+    with pytest.raises(NotAnArmError):
+        ext.invoke(HEAD_ID, "run", {})
+    with pytest.raises(NotAnArmError):
+        ext.invoke(METHODOLOGY_ID, "run", {})
+    with pytest.raises(NotInstalledError):
+        ext.invoke(ARM_ID, "run", {})
     assert fake.calls == []
 
 
-def test_cli_transport_runs_configured_command() -> None:
-    """Test that CLI transport executes configured commands and parses JSON output."""
+@pytest.mark.parametrize("action", ["", "   ", 123, None])
+def test_invoke_requires_nonempty_string_action(action: Any) -> None:
+    ext, fake = _extension()
+    with pytest.raises(ExtensionError, match="action is required"):
+        ext.invoke(ARM_ID, action, {})
+    assert fake.calls == []
+
+
+def test_invoke_normalizes_none_args_and_rejects_non_mapping_args() -> None:
+    ext, fake = _extension()
+    ext.invoke(ARM_ID, "echo", None)
+    assert fake.calls == [(ARM_ID, "echo", {})]
+    with pytest.raises(ExtensionError, match="args must be a mapping"):
+        ext.invoke(ARM_ID, "echo", "invalid")  # type: ignore[arg-type]
+    assert len(fake.calls) == 1
+
+
+def test_cli_transport_runs_configured_command_and_decodes_json() -> None:
     script = (
         "import json,sys; "
         "print(json.dumps({'action': sys.argv[1], 'args': json.loads(sys.argv[2])}))"
     )
-    transport = CliTransport(
-        commands={FIXTURE_ARM_ID: [sys.executable, "-c", script]}
-    )
-    spec = ArmSpec(
-        id=FIXTURE_ARM_ID,
-        protocols=("cli",),
-        curated=True,
-        notes="Fixture curated CLI arm.",
-        tier="research",
-    )
-    assert transport.installed(spec) is True
+    spec = ArmSpec(ARM_ID, ("cli",), "Fixture CLI arm.")
+    transport = CliTransport(commands={ARM_ID: [sys.executable, "-c", script]})
+    assert transport.installed(spec)
     result = transport.invoke(spec, "echo", {"k": "v"})
-    assert result.ok is True
+    assert result.ok
     assert result.output == {"action": "echo", "args": {"k": "v"}}
 
 
-def test_mcp_transport_not_installed_by_default() -> None:
-    """Test that MCP transport is not installed by default without endpoint configuration."""
-    spec = ArmSpec(
-        id=CURATED_ARM_ID,
-        protocols=("mcp", "http"),
-        curated=True,
-        notes="Fixture curated MCP arm.",
-        tier="research",
+def test_cli_transport_reports_command_failure_as_result() -> None:
+    spec = ArmSpec(ARM_ID, ("cli",), "Fixture CLI arm.")
+    transport = CliTransport(
+        commands={ARM_ID: [sys.executable, "-c", "import sys; print('bad'); sys.exit(3)"]}
     )
-    transport = McpTransport()
+    result = transport.invoke(spec, "echo", {})
+    assert result.ok is False
+    assert result.output == "bad"
+    assert "exit 3" not in (result.error or "")
+
+
+def test_cli_transport_empty_command_is_not_installed() -> None:
+    spec = ArmSpec(ARM_ID, ("cli",), "Fixture CLI arm.")
+    transport = CliTransport(commands={ARM_ID: []})
     assert transport.installed(spec) is False
     with pytest.raises(NotInstalledError):
-        transport.invoke(spec, "ping", {})
+        transport.invoke(spec, "echo", {})
 
 
 def test_mcp_transport_http_tools_call(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that MCP transport makes HTTP requests with proper JSON-RPC format."""
     captured: dict[str, Any] = {}
 
-    class _Resp:
+    class Response:
         def read(self, n: int = -1) -> bytes:
             return json.dumps(
-                {"jsonrpc": "2.0", "id": 1, "result": {"ok": True}}
-            ).encode("utf-8")
+                {"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": "ok"}]}}
+            ).encode()
 
-        def __enter__(self) -> _Resp:
+        def __enter__(self) -> Response:
             return self
 
         def __exit__(self, *args: object) -> None:
             return None
 
-    def _urlopen(req: Any, timeout: float | None = None) -> _Resp:
+    def urlopen(req: Any, timeout: float | None = None) -> Response:
         captured["url"] = req.full_url
-        captured["body"] = json.loads(req.data.decode("utf-8"))
+        captured["body"] = json.loads(req.data.decode())
         captured["timeout"] = timeout
-        return _Resp()
+        return Response()
 
-    monkeypatch.setattr(
-        "extension.transports.mcp.urllib_request.urlopen", _urlopen
-    )
-    spec = ArmSpec(
-        id=CURATED_ARM_ID,
-        protocols=("mcp",),
-        curated=True,
-        notes="Fixture curated MCP arm.",
-        tier="research",
-    )
-    transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
-    assert transport.installed(spec) is True
-    result = transport.invoke(spec, "ping", {"n": 2})
-    assert result.ok is True
-    assert result.output == {"ok": True}
+    monkeypatch.setattr("extension.transports.mcp.urllib_request.urlopen", urlopen)
+    spec = ArmSpec(MCP_ARM_ID, ("mcp",), "Fixture MCP arm.")
+    transport = McpTransport(endpoints={MCP_ARM_ID: "http://127.0.0.1/mcp"})
+    assert transport.installed(spec)
+    result = transport.invoke(spec, "list_tools", {"n": 2})
+    assert result.ok
+    assert result.output == {"content": [{"type": "text", "text": "ok"}]}
     assert captured["url"] == "http://127.0.0.1/mcp"
     assert captured["body"]["method"] == "tools/call"
-    assert captured["body"]["params"] == {"name": "ping", "arguments": {"n": 2}}
+    assert captured["body"]["params"] == {
+        "name": "list_tools",
+        "arguments": {"n": 2},
+    }
 
 
-def test_mcp_transport_unreachable_is_result(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that unreachable MCP endpoints return failure results (not exceptions)."""
-    def _urlopen(req: Any, timeout: float | None = None) -> Any:
+def test_mcp_transport_unreachable_is_failure_result(monkeypatch: pytest.MonkeyPatch) -> None:
+    def urlopen(req: Any, timeout: float | None = None) -> Any:
         raise URLError("refused")
 
+    monkeypatch.setattr("extension.transports.mcp.urllib_request.urlopen", urlopen)
+    spec = ArmSpec(MCP_ARM_ID, ("mcp",), "Fixture MCP arm.")
+    transport = McpTransport(endpoints={MCP_ARM_ID: "http://127.0.0.1/mcp"})
+    result = transport.invoke(spec, "list_tools", {})
+    assert result.ok is False
+    assert result.error and "unreachable" in result.error
+
+
+def test_mcp_transport_refuses_malformed_and_tool_error_responses(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Response:
+        body = b"[]"
+
+        def read(self, n: int = -1) -> bytes:
+            return self.body
+
+        def __enter__(self) -> Response:
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+    response = Response()
     monkeypatch.setattr(
-        "extension.transports.mcp.urllib_request.urlopen", _urlopen
+        "extension.transports.mcp.urllib_request.urlopen", lambda *args, **kwargs: response
     )
-    spec = ArmSpec(
-        id=CURATED_ARM_ID,
-        protocols=("mcp",),
-        curated=True,
-        notes="Fixture curated MCP arm.",
-        tier="research",
-    )
-    transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
-    result = transport.invoke(spec, "ping", {})
-    assert result.ok is False
-    assert result.error is not None
+    spec = ArmSpec(MCP_ARM_ID, ("mcp",), "Fixture MCP arm.")
+    transport = McpTransport(endpoints={MCP_ARM_ID: "http://127.0.0.1/mcp"})
+    malformed = transport.invoke(spec, "list_tools", {})
+    assert malformed.ok is False
+    assert malformed.error == "malformed JSON-RPC response"
+
+    response.body = json.dumps(
+        {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "result": {"isError": True, "content": [{"type": "text", "text": "denied"}]},
+        }
+    ).encode()
+    failed = transport.invoke(spec, "list_tools", {})
+    assert failed.ok is False
+    assert "denied" in (failed.error or "")
 
 
-def test_main_list_and_describe(capsys: pytest.CaptureFixture[str]) -> None:
-    """Test the main() CLI entry point for list and describe commands."""
+def test_dispatch_returns_direct_result_and_exit_status() -> None:
+    ext, _ = _extension()
+    outcome = dispatch_invoke(
+        ext, arm_id=ARM_ID, action="echo", args={"value": 3}
+    )
+    assert outcome.exit_code == 0
+    assert outcome.document == {
+        "ok": True,
+        "arm_id": ARM_ID,
+        "action": "echo",
+        "output": {"echo": {"value": 3}},
+        "error": None,
+    }
+
+
+def test_dispatch_converts_invocation_errors_to_failure_result() -> None:
+    ext, _ = _extension()
+    outcome = dispatch_invoke(ext, arm_id=UNKNOWN_ID, action="echo")
+    assert outcome.exit_code == 2
+    assert outcome.document["ok"] is False
+    assert outcome.document["arm_id"] == UNKNOWN_ID
+    assert "unknown id" in outcome.document["error"]
+
+
+def test_cli_list_describe_and_invoke_return_json(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    ext, _ = _extension()
+    monkeypatch.setattr("extension.__main__.Extension", lambda: ext)
     assert main(["list"]) == 0
-    listed = json.loads(capsys.readouterr().out)
-    assert any(row["id"] == CURATED_ARM_ID for row in listed)
-    assert main(["describe", CURATED_ARM_ID]) == 0
-    described = json.loads(capsys.readouterr().out)
-    assert described["id"] == CURATED_ARM_ID
-    assert described["curated"] is True
-    assert described["tier"] == "research"
+    rows = json.loads(capsys.readouterr().out)
+    assert any(row["id"] == ARM_ID for row in rows)
+
+    assert main(["describe", ARM_ID]) == 0
+    assert json.loads(capsys.readouterr().out)["id"] == ARM_ID
+
+    assert main(["invoke", ARM_ID, "echo", '{"x":1}']) == 0
+    result = json.loads(capsys.readouterr().out)
+    assert result["ok"] is True
+    assert result["output"] == {"echo": {"x": 1}}
 
 
-def test_main_invoke_unknown_id_is_hard_error(
-    capsys: pytest.CaptureFixture[str],
+def test_cli_invalid_args_and_unknown_entry_return_failure(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    """Test that invoking unknown ID via main() exits with error code 2."""
-    assert main(["invoke", UNKNOWN_ID, "ping"]) == 2
-    err = capsys.readouterr().err
-    assert "unknown id" in err.lower()
+    ext, _ = _extension()
+    monkeypatch.setattr("extension.__main__.Extension", lambda: ext)
+    assert main(["invoke", ARM_ID, "echo", "[]"]) == 2
+    invalid = json.loads(capsys.readouterr().out)
+    assert invalid["ok"] is False
+    assert "object" in invalid["error"]
+
+    assert main(["invoke", UNKNOWN_ID, "echo"]) == 2
+    unknown = json.loads(capsys.readouterr().out)
+    assert unknown["ok"] is False
+    assert "unknown id" in unknown["error"]
 
 
-def test_main_invoke_unmanifested_action_is_refused(
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    """CLI refuses actions outside the bounded read-only manifest.
+def test_mcp_server_list_describe_and_direct_invoke_result() -> None:
+    ext, fake = _extension()
+    server = McpServer(extension=ext)
 
-    sniper.scan is the standing unadmitted example (the deliberate
-    doc-20 deferral): checkov.scan was admitted on 2026-09-05, so it
-    can no longer play this role."""
-    monkeypatch.setattr("extension.arms.sniper.arm.resolve_binary", lambda: None)
-    assert main(["invoke", "sniper", "scan"]) == 2
-    err = capsys.readouterr().err
-    assert "read-only manifest" in err.lower()
+    listed = server.handle({"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list", "arguments": {}}})
+    assert listed is not None
+    rows = json.loads(listed["result"]["content"][0]["text"])
+    assert any(row["id"] == ARM_ID for row in rows)
 
+    described = server.handle({"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "describe", "arguments": {"id": ARM_ID}}})
+    assert described is not None
+    assert json.loads(described["result"]["content"][0]["text"])["id"] == ARM_ID
 
-def test_module_cli_list() -> None:
-    """Test that the module CLI interface works via python -m extension list."""
-    proc = subprocess.run(
-        [sys.executable, "-m", "extension", "list"],
-        cwd=ROOT,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
-    )
-    assert proc.returncode == 0, proc.stderr
-    rows = json.loads(proc.stdout)
-    assert any(row["id"] == CURATED_ARM_ID for row in rows)
-
-def test_cli_transport_empty_argv_is_not_installed() -> None:
-    spec = ArmSpec(
-        id=FIXTURE_ARM_ID,
-        protocols=("cli",),
-        curated=True,
-        notes="x",
-        tier="research",
-    )
-    transport = CliTransport(commands={FIXTURE_ARM_ID: []})
-    assert transport.installed(spec) is False
-    with pytest.raises(NotInstalledError):
-        transport.invoke(spec, "ping", {})
-
-
-def test_mcp_transport_empty_stdio_argv_is_not_installed_but_preserved() -> None:
-    spec = ArmSpec(
-        id=FIXTURE_ARM_ID,
-        protocols=("mcp",),
-        curated=True,
-        notes="x",
-        tier="research",
-    )
-    transport = McpTransport(stdio_cmds={FIXTURE_ARM_ID: []})
-    # Empty list is preserved (not discarded) but counts as not installed
-    assert FIXTURE_ARM_ID in transport._stdio_cmds
-    assert transport._stdio_cmds[FIXTURE_ARM_ID] == []
-    assert transport.installed(spec) is False
-    with pytest.raises(NotInstalledError):
-        transport.invoke(spec, "ping", {})
-
-
-def test_mcp_transport_non_object_body_is_malformed(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Resp:
-        def read(self, n: int = -1) -> bytes:
-            return json.dumps([]).encode("utf-8")
-
-        def __enter__(self) -> _Resp:
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-    monkeypatch.setattr("extension.transports.mcp.urllib_request.urlopen", lambda req, timeout=None: _Resp())
-    spec = ArmSpec(
-        id=CURATED_ARM_ID,
-        protocols=("mcp",),
-        curated=True,
-        notes="x",
-        tier="research",
-    )
-    transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
-    result = transport.invoke(spec, "ping", {})
-    assert result.ok is False
-    assert result.error == "malformed JSON-RPC response"
-
-
-def test_mcp_transport_non_dict_result_is_malformed(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Resp:
-        def read(self, n: int = -1) -> bytes:
-            return json.dumps({"jsonrpc": "2.0", "id": 1, "result": "not-dict"}).encode("utf-8")
-
-        def __enter__(self) -> _Resp:
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-    monkeypatch.setattr("extension.transports.mcp.urllib_request.urlopen", lambda req, timeout=None: _Resp())
-    spec = ArmSpec(
-        id=CURATED_ARM_ID,
-        protocols=("mcp",),
-        curated=True,
-        notes="x",
-        tier="research",
-    )
-    transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
-    result = transport.invoke(spec, "ping", {})
-    assert result.ok is False
-    assert result.error == "malformed tool result"
-
-
-def test_mcp_transport_is_error_true_propagates_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Resp:
-        def read(self, n: int = -1) -> bytes:
-            return json.dumps(
-                {"jsonrpc": "2.0", "id": 1, "result": {"content": [{"type": "text", "text": "denied"}], "isError": True}}
-            ).encode("utf-8")
-
-        def __enter__(self) -> _Resp:
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-    monkeypatch.setattr("extension.transports.mcp.urllib_request.urlopen", lambda req, timeout=None: _Resp())
-    spec = ArmSpec(
-        id=CURATED_ARM_ID,
-        protocols=("mcp",),
-        curated=True,
-        notes="x",
-        tier="research",
-    )
-    transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
-    result = transport.invoke(spec, "ping", {})
-    assert result.ok is False
-    assert result.error is not None and "denied" in result.error
-
-
-def test_mcp_transport_empty_error_object_is_failure(monkeypatch: pytest.MonkeyPatch) -> None:
-    class _Resp:
-        def read(self, n: int = -1) -> bytes:
-            return json.dumps({"jsonrpc": "2.0", "id": 1, "error": {}}).encode("utf-8")
-
-        def __enter__(self) -> _Resp:
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-    monkeypatch.setattr("extension.transports.mcp.urllib_request.urlopen", lambda req, timeout=None: _Resp())
-    spec = ArmSpec(
-        id=CURATED_ARM_ID,
-        protocols=("mcp",),
-        curated=True,
-        notes="x",
-        tier="research",
-    )
-    transport = McpTransport(endpoints={CURATED_ARM_ID: "http://127.0.0.1/mcp"})
-    result = transport.invoke(spec, "ping", {})
-    assert result.ok is False
-
-
-def test_extension_main_unknown_args_returns_2(capsys: pytest.CaptureFixture[str]) -> None:
-    """Test that unknown command-line arguments return exit code 2."""
-    assert main(["--bogus"]) == 2
-
-
-def test_cli_decode_strips_trailing_newline_on_invalid_json() -> None:
-    """Test that CLI transport decoder strips trailing newlines from non-JSON output."""
-    from extension.transports.cli import _decode_output
-
-    assert _decode_output('not json\n') == "not json"
-
-
-def test_invoke_with_none_args_uses_empty_dict() -> None:
-    """Test that None args parameter is treated as empty dict (valid input)."""
-    fake = FakeCliTransport(installed_ids={FIXTURE_ARM_ID})
-    ext = Extension(
-        catalog=_fixture_catalog(),
-        transports={"cli": fake},
-        arms={FIXTURE_ARM_ID: fake},
-    )
-    result = ext.invoke(FIXTURE_ARM_ID, "echo", None)
-    assert result.ok is True
-    assert fake.calls == [(FIXTURE_ARM_ID, "echo", {})]
-
-
-def test_invoke_empty_action_raises_error() -> None:
-    """Test that empty string action is rejected with ExtensionError."""
-    fake = FakeCliTransport(installed_ids={FIXTURE_ARM_ID})
-    ext = Extension(
-        catalog=_fixture_catalog(),
-        transports={"cli": fake},
-        arms={FIXTURE_ARM_ID: fake},
-    )
-    with pytest.raises(ExtensionError) as err:
-        ext.invoke(FIXTURE_ARM_ID, "", {})
-    assert "action is required" in str(err.value)
-    assert fake.calls == []
-
-
-def test_invoke_whitespace_only_action_raises_error() -> None:
-    """Test that whitespace-only action is rejected with ExtensionError."""
-    fake = FakeCliTransport(installed_ids={FIXTURE_ARM_ID})
-    ext = Extension(
-        catalog=_fixture_catalog(),
-        transports={"cli": fake},
-        arms={FIXTURE_ARM_ID: fake},
-    )
-    with pytest.raises(ExtensionError) as err:
-        ext.invoke(FIXTURE_ARM_ID, "   ", {})
-    assert "action is required" in str(err.value)
-    assert fake.calls == []
-
-
-def test_invoke_non_string_action_raises_error() -> None:
-    """Test that non-string action types are rejected with ExtensionError."""
-    fake = FakeCliTransport(installed_ids={FIXTURE_ARM_ID})
-    ext = Extension(
-        catalog=_fixture_catalog(),
-        transports={"cli": fake},
-        arms={FIXTURE_ARM_ID: fake},
-    )
-    with pytest.raises(ExtensionError) as err:
-        ext.invoke(FIXTURE_ARM_ID, 123, {})
-    assert "action is required" in str(err.value)
-    assert fake.calls == []
-
-
-def test_arm_spec_from_non_arm_raises_error() -> None:
-    """Test that arm_spec() on a non-arm entry raises NotAnArmError."""
-    ext = Extension(catalog=_fixture_catalog())
-    with pytest.raises(NotAnArmError) as err:
-        ext.arm_spec(FIXTURE_HEAD_ID)
-    assert err.value.kind == "head"
-
-
-def test_head_spec_from_non_head_raises_error() -> None:
-    """Test that head_spec() on a non-head entry raises NotAHeadError."""
-    ext = Extension(catalog=_fixture_catalog())
-    with pytest.raises(NotAHeadError) as err:
-        ext.head_spec(FIXTURE_ARM_ID)
-    assert err.value.kind == "arm"
-
-
-def test_curated_arms_have_specialized_handlers() -> None:
-    """P0 guard: every curated catalog arm ships a specialized handler."""
-    ext = Extension()
-    curated = [
-        entry.id
-        for entry in ext.list_entries()
-        if entry.kind == "arm" and entry.curated
-    ]
-    assert curated, "catalog must curate at least one arm"
-    for arm_id in curated:
-        assert arm_id in ext.arms, arm_id
-
-
-def test_default_extension_wires_drain_arms(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Extension() maps the nine later arms; uninstalled list_tools is
-    NotInstalled -- except agent-wiz, whose list_tools enumerates from the
-    measured bundled/catalog source and needs no external binary."""
-    ids_and_mods = (
-        ("routersploit", "routersploit"),
-        ("sniper", "sniper"),
-        ("zgrab2", "zgrab2"),
-        ("dark-moon", "darkmoon"),
-        ("pyrit", "pyrit"),
-        ("deepsec", "deepsec"),
-        ("vvah", "vvah"),
-        ("ai-deep-sast", "aideepsast"),
-        ("agent-wiz", "agentwiz"),
-    )
-    for env in (
-        "ROUTERSPLOIT_BIN",
-        "SNIPER_BIN",
-        "ZGRAB2_BIN",
-        "DARK_MOON_BIN",
-        "PYRIT_BIN",
-        "DEEPSEC_BIN",
-        "VVAH_BIN",
-        "AI_DEEP_SAST_BIN",
-        "AGENT_WIZ_BIN",
-    ):
-        monkeypatch.delenv(env, raising=False)
-    for _, mod in ids_and_mods:
-        monkeypatch.setattr(
-            f"extension.arms.{mod}.arm.resolve_binary", lambda: None
-        )
-    ext = Extension()
-    for arm_id, _ in ids_and_mods:
-        assert arm_id in ext.arms
-        if arm_id == "agent-wiz":
-            result = ext.invoke(arm_id, "list_tools", {})
-            assert result.ok is True
-            continue
-        with pytest.raises(NotInstalledError):
-            ext.invoke(arm_id, "list_tools", {})
-
-
-def test_curated_arm_never_falls_back_to_generic_transport() -> None:
-    """P0 guard: curated arm without a handler is a hard error."""
-    fake = FakeCliTransport(installed_ids={RESEARCH_ARM_ID})
-    ext = Extension(transports={"cli": fake}, arms={})
-    with pytest.raises(ExtensionError) as err:
-        ext.invoke(RESEARCH_ARM_ID, "anything", {})
-    assert "specialized handler" in str(err.value)
-    assert fake.calls == []
-
-
-def test_catalog_types_require_explicit_tier() -> None:
-    for cls in (CatalogEntry, ArmSpec, HeadSpec):
-        param = inspect.signature(cls).parameters["tier"]
-        assert param.default is inspect.Parameter.empty
-        by_name = {item.name: item for item in fields(cls)}
-        assert by_name["tier"].default is MISSING
-        assert by_name["tier"].default_factory is MISSING
-        kwargs: dict[str, Any] = {
-            "id": FIXTURE_ARM_ID,
-            "protocols": ("cli",),
-            "curated": False,
-            "notes": "n",
-        }
-        if cls is CatalogEntry:
-            kwargs["kind"] = "arm"
-        with pytest.raises(TypeError):
-            cls(**kwargs)
-
-
-@pytest.mark.parametrize(
-    "curated",
-    ("true", "false", "yes", "1", 1, 0, None, "", []),
-)
-def test_catalog_types_reject_non_boolean_curated(curated: Any) -> None:
-    for cls in (CatalogEntry, ArmSpec, HeadSpec):
-        kwargs: dict[str, Any] = {
-            "id": FIXTURE_ARM_ID,
-            "protocols": ("cli",),
-            "curated": curated,
-            "notes": "n",
-            "tier": "research",
-        }
-        if cls is CatalogEntry:
-            kwargs["kind"] = "arm"
-        with pytest.raises(ExtensionError, match="curated") as err:
-            cls(**kwargs)
-        assert "boolean" in str(err.value).lower()
+    invoked = server.handle({"jsonrpc": "2.0", "id": 3, "method": "tools/call", "params": {"name": "invoke", "arguments": {"id": ARM_ID, "action": "echo", "args": {"x": 4}}}})
+    assert invoked is not None
+    payload = json.loads(invoked["result"]["content"][0]["text"])
+    assert invoked["result"]["isError"] is False
+    assert payload["ok"] is True
+    assert payload["output"] == {"echo": {"x": 4}}
+    assert fake.calls == [(ARM_ID, "echo", {"x": 4})]

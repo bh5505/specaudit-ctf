@@ -37,12 +37,10 @@ REQUIRED = {
 }
 SAMPLE_ACTIONS = frozenset(ACTIONS) - {"analyze_pack"}
 CAVEATS = (
-    "offline import and synthetic exercise only; no upstream collector, provider, or target dispatch",
-    "hashes bind supplied bytes but do not authenticate source or custody",
-    "graph paths and Kubernetes checks do not establish effective access",
-    "workpaper structure needs human conclusion review; triage ranking is review order, not evidence",
-    "inline captured data can be real; apply host egress, identity, and data controls externally",
-    "pack analysis is a hypothesis and review handoff, not an authorization to validate exploitability",
+    "analyzes supplied data; does not contact an upstream collector or target",
+    "hashes identify supplied bytes but do not authenticate their source",
+    "graph and Kubernetes observations may differ from current effective access",
+    "triage ranking orders review and does not establish a finding",
 )
 
 
@@ -60,8 +58,7 @@ class LearningOperatorArm:
             payload = dict(args)
             if action == "list_tools":
                 _shape(payload, frozenset(), frozenset())
-                return _ok(spec, action, {"read_actions": sorted((*ACTIONS, "sample", "list_tools")),
-                                          "dispatch_actions": [],
+                return _ok(spec, action, {"actions": sorted((*ACTIONS, "sample", "list_tools")),
                                           "arg_keys": {key: sorted(value) for key, value in ACTIONS.items()},
                                           "sample_arg_keys": ["workflow"],
                                           "sample_workflows": sorted(SAMPLE_ACTIONS),
@@ -119,7 +116,7 @@ def _run(action: str, args: dict) -> dict:
         if evidence is not None and not isinstance(evidence, dict):
             raise ValueError("operator_evidence must be an inline object")
         # The markdown rendering duplicates every target's details. Keep the
-        # admitted inline result focused on structured targets so ordinary
+        # inline result focused on structured targets so ordinary
         # multi-finding packs fit the bounded result channel. Operators can
         # render a separate human report through the pipeline API.
         return prioritize_targets(report=report, operator_evidence=evidence, with_report=False)
@@ -142,7 +139,7 @@ def _run(action: str, args: dict) -> dict:
         if len(contents) != len(evidence):
             raise ValueError("evidence names must be text")
         errors = validate(args["manifest"], args["submission"], evidence_bytes=contents)
-        return {"structurally_valid": not errors, "human_review_required": True, "errors": errors}
+        return {"structurally_valid": not errors, "errors": errors}
     if action == "agent_grade":
         # Correctness grading is instructor-held: the caller must supply the
         # canaried key document; the harness derives no answers itself.

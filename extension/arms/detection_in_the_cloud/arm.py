@@ -22,7 +22,7 @@ from ..strict_data import (
 from .policy import (
     ALLOWED_ACTIONS,
     ARG_KEYS,
-    ARMING,
+    INPUT_HINT,
     ARM_ID,
     CAVEATS,
     LIST_ACTIONS,
@@ -75,7 +75,7 @@ class DetectionInTheCloudArm:
                 spec,
                 action,
                 f"action {action!r} is not on the allowlist "
-                f"(local playbook reads only; arming: {ARMING})",
+                f"(local playbook reads only; input: {INPUT_HINT})",
             )
         refusal = args_refusal(action, payload)
         if refusal:
@@ -212,11 +212,10 @@ class DetectionInTheCloudArm:
             spec,
             action,
             {
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": [],
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "arg_keys": {key: sorted(values) for key, values in ARG_KEYS.items()},
                 "caveats": list(CAVEATS),
-                "arming": ARMING,
+                "input_hint": INPUT_HINT,
             },
         )
 

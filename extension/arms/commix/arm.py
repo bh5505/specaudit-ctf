@@ -1,4 +1,4 @@
-"""Curated commix arm: dispatch-only injection probe, scope-gated."""
+"""Commix injection probe arm."""
 
 from __future__ import annotations
 
@@ -13,12 +13,10 @@ from ...contract import (
     Result,
 )
 from ..bounded_capture import run_bounded
-from ..dispatch import authorize, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
+    ALLOWED_ACTIONS,
     ARM_ID,
-    DISPATCH_ACTIONS,
-    ENV_DISPATCH_SCOPE,
     MAX_OUTPUT_CHARS,
     TIMEOUT_SECONDS,
     argv_for,
@@ -30,10 +28,7 @@ from .policy import (
 class CommixArm:
     """Specialized transport for catalog id commix.
 
-    Upstream has no read-only mode, so every action here is
-    dispatch-class: refused by default, authorized only by an armed
-    COMMIX_DISPATCH_SCOPE containing the target host, logged, and
-    stamped on the Result.
+    Upstream has no read-only mode; the single scan action runs the probe.
     """
 
     ARM_ID = ARM_ID
@@ -53,15 +48,14 @@ class CommixArm:
         binary = resolve_binary()
         if binary is None:
             raise NotInstalledError(spec.id)
-        if action not in DISPATCH_ACTIONS:
+        if action not in ALLOWED_ACTIONS:
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
                 error=f"action {action!r} is not on the allowlist "
-                "(commix is an active prober with no read-only mode; "
-                "'scan' is the only action and it is dispatch-class)",
+                f"(supported: {sorted(ALLOWED_ACTIONS)})",
             )
         payload = dict(args)
         extra = {k: v for k, v in payload.items() if k != "url"}
@@ -82,16 +76,6 @@ class CommixArm:
                 output=None,
                 error=refusal,
             )
-        scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, target)
-        if scope is None:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=refusal,
-            )
-        log_dispatch(ARM_ID, action, scope, target)
         try:
             proc, overflowed = run_bounded(
                 argv_for(binary, target),
@@ -122,21 +106,21 @@ class CommixArm:
             return Result(ok=False, arm_id=spec.id, action=action, output=None,
                           error="subprocess output exceeded capture cap")
         output: Any = _parse_output(proc.stdout)
-        stamped = {"dispatch": stamp(scope, target), "output": output}
+        report = {"output": output}
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or "scan failed").strip()
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
-                output=stamped,
+                output=report,
                 error=redact(detail[:MAX_OUTPUT_CHARS]),
             )
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
-            output=stamped,
+            output=report,
             error=None,
         )
 

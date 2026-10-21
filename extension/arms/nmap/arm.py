@@ -1,4 +1,4 @@
-"""Curated nmap arm: closed-flag single-host scans, XML on stdout."""
+"""Nmap arm: operator-supplied targets and options, XML on stdout."""
 
 from __future__ import annotations
 
@@ -12,14 +12,11 @@ from ...contract import (
     Result,
 )
 from ..bounded_capture import run_bounded
-from ..dispatch import authorize, load_scope, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
     CAVEATS,
-    DISPATCH_ACTIONS,
-    ENV_DISPATCH_SCOPE,
     LIST_ACTIONS,
     MAX_OUTPUT_CHARS,
     MODES,
@@ -28,6 +25,7 @@ from .policy import (
     extra_scan_keys,
     host_refusal,
     mode_refusal,
+    options_refusal,
     ports_refusal,
     resolve_binary,
 )
@@ -36,10 +34,9 @@ from .policy import (
 class NmapArm:
     """Specialized transport for catalog id nmap.
 
-    list_tools is a static allowlist. scan dispatches one single-host
-    nmap run with a closed flag set (connect/version/version-light, fixed -T4,
-    explicit top-ports default, XML on stdout) and is refused by default
-    until NMAP_DISPATCH_SCOPE names the target.
+    list_tools describes the supported actions. scan runs one
+    nmap invocation with optional operator-supplied argv tokens and XML
+    on stdout.
     """
 
     ARM_ID = ARM_ID
@@ -62,16 +59,14 @@ class NmapArm:
         payload = dict(args)
         if action in LIST_ACTIONS:
             return self._list_tools(spec, action, payload)
-        if action in ALLOWED_ACTIONS:
-            return self._static_read(spec, action, payload)
-        if action not in DISPATCH_ACTIONS:
+        if action not in ALLOWED_ACTIONS:
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
                 error=f"action {action!r} is not on the allowlist "
-                "(list_tools is a read; 'scan' is scope-gated dispatch)",
+                f"(supported: {sorted(ALLOWED_ACTIONS | LIST_ACTIONS)})",
             )
         extra = extra_scan_keys(payload)
         if extra:
@@ -80,38 +75,26 @@ class NmapArm:
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error="nmap scan takes only args.target, optional args.mode "
-                "and args.ports (fixed argv)",
+                error="nmap scan takes args.target and optional args.mode, "
+                "args.ports, and args.options",
             )
         for refusal in (
             host_refusal(payload),
             mode_refusal(payload),
             ports_refusal(payload),
+            options_refusal(payload),
         ):
             if refusal:
                 return Result(
                     ok=False, arm_id=spec.id, action=action, output=None, error=refusal
                 )
         target = str(payload["target"]).strip()
-        # The shared host scope parser needs bracketed IPv6; nmap needs
-        # a bare address and -6 (translated by the closed argv builder).
-        if ":" in target:
-            target = "[" + target.strip("[]") + "]"
         mode = payload.get("mode")
         ports = payload.get("ports")
-        scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, target)
-        if scope is None:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=f"{refusal} Caveat: {CAVEATS}",
-            )
-        log_dispatch(ARM_ID, action, scope, target)
+        options = payload.get("options")
         try:
             proc, overflowed = run_bounded(
-                argv_for(binary, target, mode, ports),
+                argv_for(binary, target, mode, ports, options),
                 maximum=MAX_OUTPUT_CHARS,
                 timeout=self.timeout,
             )
@@ -135,21 +118,21 @@ class NmapArm:
             return Result(ok=False, arm_id=spec.id, action=action, output=None,
                           error="subprocess output exceeded capture cap")
         output = _parse_output(proc.stdout)
-        stamped = {"dispatch": stamp(scope, target), "output": output}
+        report = {"output": output}
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or f"{action} failed").strip()
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
-                output=stamped,
+                output=report,
                 error=redact(detail[:MAX_OUTPUT_CHARS]),
             )
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
-            output=stamped,
+            output=report,
             error=None,
         )
 
@@ -162,37 +145,16 @@ class NmapArm:
                 output=None,
                 error="list_tools takes no arguments (fixed argv)",
             )
-        scope, _ = load_scope(ENV_DISPATCH_SCOPE)
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
             output={
-                "read_actions": sorted(LIST_ACTIONS | ALLOWED_ACTIONS),
-                "dispatch_actions": sorted(DISPATCH_ACTIONS),
-                "dispatch_armed": scope is not None,
+                "actions": sorted(LIST_ACTIONS | ALLOWED_ACTIONS),
                 "caveats": CAVEATS,
                 "modes": sorted(MODES),
+                "options": "optional array of upstream nmap argv tokens",
             },
-            error=None,
-        )
-
-    def _static_read(
-        self, spec: ArmSpec, action: str, payload: dict
-    ) -> Result:
-        if payload:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=f"{action} takes no arguments (static allowlist)",
-            )
-        return Result(
-            ok=True,
-            arm_id=spec.id,
-            action=action,
-            output={"modes": sorted(MODES)},
             error=None,
         )
 

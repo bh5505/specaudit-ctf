@@ -2,18 +2,14 @@
 
 from __future__ import annotations
 
-import ipaddress
 import os
 import re
 from pathlib import Path
-from urllib.parse import urlparse
 
 ARM_ID = "dark-moon"
 ENV_BIN = "DARK_MOON_BIN"
-ENV_DISPATCH_SCOPE = "DARK_MOON_DISPATCH_SCOPE"
 
-ALLOWED_ACTIONS = frozenset({"log"})
-DISPATCH_ACTIONS = frozenset({"campaign", "run"})
+ALLOWED_ACTIONS = frozenset({"log", "campaign", "run"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 
 TIMEOUT_SECONDS = 600.0
@@ -40,66 +36,21 @@ def session_id_refusal(payload: dict) -> str | None:
     return None
 
 
-def _parsed_hostname(target: str) -> str | None:
-    """urlparse hostname, or None when missing or malformed (bad IPv6)."""
-    try:
-        parsed = urlparse(target if "://" in target else "//" + target)
-        return parsed.hostname
-    except ValueError:
-        return None
-
-
 def target_refusal(payload: dict) -> str | None:
+    """Operator-selected target: one data argv token (TARGET: <raw>).
+
+    Only technical guards stay here: the value must be a nonempty string
+    without NUL/CR/LF controls. Eligibility (where the operator may point
+    the tool) is the operator's decision, not the tool's. Separate argv
+    (no shell) carries the raw value through to the launcher.
+    """
     raw = payload.get("target")
     if not isinstance(raw, str) or not raw.strip():
         return "campaign/run requires a target in args.target"
     target = raw.strip()
     if "\x00" in target or "\r" in target or "\n" in target:
         return "target contains control characters"
-    if " " in target:
-        return "target must be a hostname or http(s) URL"
-    if target.startswith("-"):
-        return "target must not be flag-shaped"
-    if "://" in target:
-        try:
-            parsed = urlparse(target)
-            host = parsed.hostname
-        except ValueError:
-            return "target must be an http(s) URL or hostname"
-        if parsed.scheme not in ("http", "https") or not host:
-            return "target must be an http(s) URL or hostname"
-        # userinfo would sit on argv (TARGET: <raw>); never echo the secret.
-        if (
-            parsed.username is not None
-            or parsed.password is not None
-            or "@" in (parsed.netloc or "")
-        ):
-            return "target must not include URL userinfo"
-        return None
-    # Unbracketed IPv6 mangles under urlparse.
-    if ":" in target and not target.startswith("["):
-        return "IPv6 targets must be bracketed"
-    allowed = set("abcdefghijklmnopqrstuvwxyz0123456789-.[]:")
-    if not target or any(ch not in allowed for ch in target.lower()):
-        return "target must be an http(s) URL or hostname"
-    if _parsed_hostname(target) is None:
-        return "target must be an http(s) URL or hostname"
     return None
-
-
-def canonical_host(target: str) -> str:
-    """Hostname used for authorize / audit; argv still carries the raw target.
-
-    IPv6 is re-bracketed: target_in_scope mangles unbracketed literals.
-    """
-    host = _parsed_hostname(target) or target
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return host
-    if ip.version == 6:
-        return f"[{ip}]"
-    return host
 
 
 def resolve_binary() -> str | None:
@@ -122,7 +73,7 @@ def argv_for(binary: str, action: str, payload: dict) -> list[str] | None:
         if not isinstance(session_id, str) or not session_id.strip():
             return None
         return [binary, "--log", session_id.strip()]
-    if action in DISPATCH_ACTIONS:
+    if action in ("campaign", "run"):
         target = payload.get("target")
         if not isinstance(target, str) or not target.strip():
             return None

@@ -1,4 +1,4 @@
-"""Curated agent-wiz arm: contained extract/visualize, gated OpenAI analyze."""
+"""Agent Wiz extraction, visualization, and analysis actions."""
 
 from __future__ import annotations
 
@@ -14,16 +14,12 @@ from ...contract import (
     Result,
 )
 from ..bounded_capture import run_bounded
-from ..dispatch import authorize, load_scope, log_dispatch, stamp
 from ..mcp_client import redact
 from .policy import (
     ACTION_TIMEOUTS,
     ALLOWED_ACTIONS,
     ARM_ID,
-    ARMING,
     CAVEATS,
-    DISPATCH_ACTIONS,
-    ENV_DISPATCH_SCOPE,
     EXTRACT_KEYS,
     FRAMEWORKS,
     INPUT_KEYS,
@@ -54,8 +50,7 @@ class AgentWizArm:
     def installed(self, spec: ArmSpec) -> bool:
         # list_tools enumerates from the measured bundled/catalog source (see
         # _list_tools) and needs no external agent-wiz binary. Every other
-        # action still requires one; that gate lives in invoke() below, not
-        # here, so a caller cannot use "not installed" to skip past it.
+        # action still needs the installed executable in invoke().
         return spec.id == ARM_ID
 
     def _timeout_for(self, action: str) -> float:
@@ -72,15 +67,13 @@ class AgentWizArm:
         binary = resolve_binary()
         if binary is None:
             raise NotInstalledError(spec.id)
-        if action not in ALLOWED_ACTIONS and action not in DISPATCH_ACTIONS:
+        if action not in ALLOWED_ACTIONS:
             return Result(
                 ok=False,
                 arm_id=spec.id,
                 action=action,
                 output=None,
-                error=f"action {action!r} is not on any tier "
-                "(list_tools/extract/visualize read; analyze is "
-                "scope-gated dispatch)",
+                error=f"action {action!r} is not supported",
             )
         root, refusal = resolve_scan_root()
         if root is None:
@@ -108,17 +101,13 @@ class AgentWizArm:
                 output=None,
                 error="list_tools takes no caller arguments",
             )
-        scope, _ = load_scope(ENV_DISPATCH_SCOPE)
         return Result(
             ok=True,
             arm_id=spec.id,
             action=action,
             output={
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": sorted(DISPATCH_ACTIONS),
-                "dispatch_armed": scope is not None,
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "caveats": CAVEATS,
-                "arming": ARMING,
                 "frameworks": sorted(FRAMEWORKS),
             },
             error=None,
@@ -177,7 +166,6 @@ class AgentWizArm:
             action,
             argv_extract(binary, framework, directory, output),
             root,
-            None,
         )
 
     def _visualize(
@@ -208,7 +196,7 @@ class AgentWizArm:
                 output=None,
                 error=refusal,
             )
-        return self._run(spec, action, argv_visualize(binary, inp), root, None)
+        return self._run(spec, action, argv_visualize(binary, inp), root)
 
     def _analyze(
         self,
@@ -246,23 +234,11 @@ class AgentWizArm:
                 output=None,
                 error=MISSING_OPENAI_CREDENTIAL,
             )
-        audit = f"graph:{inp}"
-        scope, refusal = authorize(ENV_DISPATCH_SCOPE, action, None)
-        if scope is None:
-            return Result(
-                ok=False,
-                arm_id=spec.id,
-                action=action,
-                output=None,
-                error=_with_caveat(refusal),
-            )
-        log_dispatch(ARM_ID, action, scope, audit)
         return self._run(
             spec,
             action,
             argv_analyze(binary, inp),
             root,
-            stamp(scope, audit),
         )
 
     def _run(
@@ -271,7 +247,6 @@ class AgentWizArm:
         action: str,
         cmd: list[str],
         cwd: Path,
-        dispatch_stamp: dict[str, str] | None,
     ) -> Result:
         timeout = self._timeout_for(action)
         try:
@@ -301,8 +276,6 @@ class AgentWizArm:
             return Result(ok=False, arm_id=spec.id, action=action, output=None,
                           error="subprocess output exceeded capture cap")
         output: Any = _parse_output(proc.stdout)
-        if dispatch_stamp is not None:
-            output = {"dispatch": dispatch_stamp, "output": output}
         if proc.returncode != 0:
             detail = (proc.stderr or proc.stdout or f"{action} failed").strip()
             return Result(
@@ -319,13 +292,6 @@ class AgentWizArm:
             output=output,
             error=None,
         )
-
-
-def _with_caveat(message: str | None) -> str:
-    text = message or "refused"
-    if CAVEATS and CAVEATS not in text:
-        return f"{text} Caveat: {CAVEATS}"
-    return text
 
 
 def _parse_output(stdout: str) -> Any:

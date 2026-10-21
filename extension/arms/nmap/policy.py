@@ -1,10 +1,8 @@
-"""Tier rules for the nmap arm: closed flags, single host, XML on stdout.
+"""Argument assembly for the nmap arm with XML on stdout.
 
 The binary is never bundled (NPSL): this arm invokes a user-installed
-``nmap`` only. The flag surface is a closed allowlist assembled by
-:func:`argv_for` — caller-controlled argv is impossible by construction,
-and targets are single hosts (CIDR-shaped targets are refused before the
-dispatch scope is consulted; the shared scope check is host-granular).
+``nmap`` only. The operator supplies the target expression and may provide
+additional nmap arguments as separate argv tokens.
 """
 
 from __future__ import annotations
@@ -14,19 +12,13 @@ from pathlib import Path
 
 ARM_ID = "nmap"
 ENV_BIN = "NMAP_BIN"
-ENV_DISPATCH_SCOPE = "NMAP_DISPATCH_SCOPE"
 
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
-ALLOWED_ACTIONS = frozenset()  # no static read action beyond list_tools
-DISPATCH_ACTIONS = frozenset({"scan"})
+ALLOWED_ACTIONS = frozenset({"scan"})
 
-CLOSED_SCAN_KEYS = frozenset({"target", "mode", "ports"})
+CLOSED_SCAN_KEYS = frozenset({"target", "mode", "ports", "options"})
 
-# Fixed per-mode flag sets. connect = TCP connect scan (no raw sockets,
-# unprivileged); version = connect scan + service version detection.
-# version-light limits version probes and disables discovery and reverse DNS.
-# Deliberately absent: -sS/-O/--send-eth (raw sockets), -sU, -sC/--script
-# (NSE is unsandboxed Lua), -A, -D/-S/-e, -T5, --script-args.
+# Convenient presets. ``options`` lets the operator use other upstream modes.
 MODES = {
     "connect": ("-sT",),
     "version": ("-sT", "-sV"),
@@ -34,8 +26,7 @@ MODES = {
 }
 TIMING_FLAG = "-T4"
 
-# Port selection: an explicit list, or the top-100 default. A full-range
-# port list is refused; name the ports you mean.
+# Port selection: an explicit list, or the top-100 default.
 DEFAULT_TOP_PORTS = 100
 MAX_PORTS = 128
 MAX_PORT = 65535
@@ -45,12 +36,9 @@ TIMEOUT_SECONDS = 180.0
 MAX_OUTPUT_CHARS = 200_000
 
 CAVEATS = (
-    "Invokes the user's own nmap (NPSL; never bundled). Single-host "
-    "targets only — CIDR/range targets are refused before scope. Fixed "
-    "-T4 timing, connect/version/version-light modes only; no NSE scripts, OS detect, "
-    "raw-socket, or decoy paths. XML lands on stdout, capped and "
-    "keyword-redacted; dispatch defaults refused until NMAP_DISPATCH_SCOPE "
-    "names the target."
+    "Invokes the user's own nmap (NPSL; never bundled). The operator "
+    "chooses the target and may pass upstream options as argv tokens. "
+    "The arm requests XML on stdout for result capture."
 )
 
 
@@ -74,48 +62,12 @@ def extra_scan_keys(payload: dict) -> frozenset[str]:
 def host_refusal(payload: dict) -> str | None:
     raw = payload.get("target")
     if not isinstance(raw, str) or not raw.strip():
-        return "scan requires a single-host target in args.target"
+        return "scan requires args.target"
     host = raw.strip()
-    if any(ch in host for ch in ("\x00", "\r", "\n", " ", ",", ";", "|", "&")):
-        return "scan target must not contain spaces, commas, or control characters"
+    if any(ord(ch) < 33 or ord(ch) == 127 for ch in host):
+        return "scan target must be one argument without control characters"
     if host.startswith("-"):
         return "scan target must not be flag-shaped"
-    # CIDR/range targets are refused BEFORE the scope gate: the shared
-    # target_in_scope check is host-granular and would only see the
-    # network address of a CIDR target.
-    # Brackets are legal ONLY as a full [IPv6] literal. Anything else
-    # bracketed (IPv4-in-brackets, hostnames, unmatched brackets) must be
-    # a clean refusal here: the shared target_in_scope parser raises on
-    # those forms, and this arm's doctrine is refusal, never a crash.
-    import ipaddress
-    import re
-
-    if "[" in host or "]" in host:
-        inner = re.fullmatch(r"\[([^\[\]]+)\]", host)
-        if inner is None:
-            return "scan target brackets are only valid around an IPv6 literal"
-        try:
-            ipaddress.IPv6Address(inner.group(1))
-            return None
-        except ValueError:
-            return "scan target brackets are only valid around an IPv6 literal"
-    stripped = host
-    if stripped.startswith("-"):
-        return "scan target must not be flag-shaped"
-    try:
-        ipaddress.ip_address(stripped)
-        return None
-    except ValueError:
-        pass
-    bad = set(stripped) - set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-")
-    # Digit/dot/dash-only non-IP input is an nmap octet-range pattern
-    # ("10.0.0.1-20"); refuse it while hyphenated hostnames stay valid.
-    octet_range = stripped and set(stripped) <= set("0123456789.-") and "-" in stripped
-    if "/" in host or "@" in host or "://" in host or bad or octet_range:
-        return (
-            "scan target must be a single hostname, IPv4, or IPv6 address "
-            "(no CIDR, ranges, or URLs)"
-        )
     return None
 
 
@@ -146,19 +98,38 @@ def ports_refusal(payload: dict) -> str | None:
     return None
 
 
-def argv_for(binary: str, target: str, mode: str | None, ports: list[int] | None) -> list[str]:
-    """Assemble the closed nmap argv: fixed flags, XML on stdout.
+def options_refusal(payload: dict) -> str | None:
+    options = payload.get("options")
+    if options is None:
+        return None
+    if not isinstance(options, list) or not all(isinstance(item, str) for item in options):
+        return "scan options must be a list of argv strings"
+    if any(not item or "\x00" in item for item in options):
+        return "scan options must be nonempty argv strings without NUL bytes"
+    return None
 
-    The target is the only caller-derived token and host_refusal has
-    already rejected flag-shaped, range, and CIDR inputs.
+
+def argv_for(binary: str, target: str, mode: str | None, ports: list[int] | None,
+             options: list[str] | None = None) -> list[str]:
+    """Assemble the nmap argv, requesting XML on stdout.
+
+    ``host_refusal`` rejects a flag-shaped target; options are passed to
+    nmap as argv tokens without shell interpolation.
     """
-    argv = [binary, *MODES[mode or "connect"], TIMING_FLAG, "-oX", "-"]
+    if options is None:
+        argv = [binary, *MODES[mode or "connect"], TIMING_FLAG, "-oX", "-"]
+    else:
+        argv = [binary, *MODES[mode]] if mode else [binary]
     if ":" in target:
         argv.insert(1, "-6")
-        target = target.strip("[]")
+        if target.startswith("[") and target.endswith("]"):
+            target = target[1:-1]
     if ports:
         argv += ["-p", ",".join(str(port) for port in ports)]
-    else:
+    elif options is None:
         argv += ["--top-ports", str(DEFAULT_TOP_PORTS)]
+    if options is not None:
+        argv.extend(options)
+        argv += ["-oX", "-"]
     argv.append(target)
     return argv

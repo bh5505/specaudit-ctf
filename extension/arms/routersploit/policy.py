@@ -1,13 +1,14 @@
-"""Dispatch-only rules for the routersploit arm.
+"""Argument and process rules for the routersploit arm.
 
-Non-interactive -m always calls command_run (never check). Default
-unarmed. password is not an accepted -s key: it would sit in process
-argv regardless of Result redaction.
+Non-interactive -m always calls command_run (never check). The operation
+executes the selected module. The operator supplies the module, the target
+expression, and any upstream module options; values for secret-named
+options (and a password embedded in the target expression) are scrubbed
+from reported results.
 """
 
 from __future__ import annotations
 
-import ipaddress
 import os
 import re
 from pathlib import Path
@@ -15,27 +16,26 @@ from urllib import parse as urllib_parse
 
 ARM_ID = "routersploit"
 ENV_BIN = "ROUTERSPLOIT_BIN"
-ENV_DISPATCH_SCOPE = "ROUTERSPLOIT_DISPATCH_SCOPE"
 
-ALLOWED_ACTIONS = frozenset()
-DISPATCH_ACTIONS = frozenset({"run"})
+ALLOWED_ACTIONS = frozenset({"run"})
 LIST_ACTIONS = frozenset({"list_tools", "tools/list"})
 
-OPTION_KEYS = ("target", "port", "username")
-CLOSED_RUN_KEYS = frozenset({"module", "target", "port", "username"})
+RUN_KEYS = frozenset({"module", "target", "port", "username", "options"})
 
 TIMEOUT_SECONDS = 120.0
 MAX_OUTPUT_CHARS = 200_000
 
-MODULE_RE = re.compile(
-    r"^(exploits|scanners|creds|payloads|encoders|generic)/[a-z0-9_]+(/[a-z0-9_]+)*$"
+SECRET_KEY_RE = re.compile(
+    r"(token|password|passwd|secret|api[_-]?key|authorization|bearer|cookie)",
+    re.IGNORECASE,
 )
-USERNAME_RE = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
-MODULE_MAX_LEN = 128
+OPTION_KEY_MAX_LEN = 64
 
 CAVEATS = (
     "Exploitation framework; non-interactive run always executes the module "
-    "(command_run), not check. Default unarmed."
+    "(command_run), not check. The operator chooses the module, the target "
+    "expression, and any upstream module options (sent as -s pairs); "
+    "secret-named option values are scrubbed from reported results."
 )
 
 
@@ -62,7 +62,7 @@ def resolve_binary() -> str | None:
 
 
 def extra_run_keys(payload: dict) -> frozenset[str]:
-    return frozenset(payload) - CLOSED_RUN_KEYS
+    return frozenset(payload) - RUN_KEYS
 
 
 def module_refusal(payload: dict) -> str | None:
@@ -72,25 +72,9 @@ def module_refusal(payload: dict) -> str | None:
     module = raw.strip()
     if module.startswith("-"):
         return "module must not be flag-shaped"
-    if len(module) > MODULE_MAX_LEN:
-        return "module name is too long"
-    if not MODULE_RE.match(module):
-        return "module must match the closed module pattern"
+    if any(ord(ch) < 33 or ord(ch) == 127 for ch in module):
+        return "module must be one argument without control characters"
     return None
-
-
-def _parse_host(target: str) -> tuple[urllib_parse.ParseResult | None, str | None]:
-    """Return (parsed, hostname). urlparse.hostname raises ValueError on
-    malformed IPv6 (empty brackets, unclosed, IPv4-in-brackets)."""
-    candidate = target if "://" in target else "//" + target
-    try:
-        parsed = urllib_parse.urlparse(candidate)
-        host = parsed.hostname
-    except ValueError:
-        return None, None
-    if not host:
-        return None, None
-    return parsed, host
 
 
 def target_refusal(payload: dict) -> str | None:
@@ -98,34 +82,10 @@ def target_refusal(payload: dict) -> str | None:
     if not isinstance(raw, str) or not raw.strip():
         return "run requires a target in args.target"
     target = raw.strip()
-    if "\x00" in target or "\r" in target or "\n" in target:
-        return "run target contains control characters"
-    if " " in target:
-        return "run target must be a hostname or http(s) URL"
+    if any(ord(ch) < 33 or ord(ch) == 127 for ch in target):
+        return "run target must be one argument without control characters"
     if target.startswith("-"):
         return "run target must not be flag-shaped"
-    if "://" in target:
-        parsed, host = _parse_host(target)
-        if parsed is None or parsed.scheme not in ("http", "https") or not host:
-            return "run target must be an http(s) URL or hostname"
-        # userinfo would sit on argv like a password -s key.
-        if (
-            parsed.username is not None
-            or parsed.password is not None
-            or "@" in (parsed.netloc or "")
-        ):
-            return "run target must not include URL userinfo"
-        return None
-    # Unbracketed IPv6 mangles under urlparse; require brackets so the
-    # audited target is the executed target.
-    if ":" in target and not target.startswith("["):
-        return "IPv6 targets must be bracketed"
-    allowed = set("abcdefghijklmnopqrstuvwxyz0123456789-.[]:")
-    if not target or any(ch not in allowed for ch in target.lower()):
-        return "run target must be an http(s) URL or hostname"
-    parsed, host = _parse_host(target)
-    if parsed is None or not host:
-        return "run target must be an http(s) URL or hostname"
     return None
 
 
@@ -144,27 +104,75 @@ def username_refusal(payload: dict) -> str | None:
     if "username" not in payload or payload["username"] is None:
         return None
     raw = payload["username"]
-    if not isinstance(raw, str) or not USERNAME_RE.match(raw):
-        return "username must match [A-Za-z0-9._-]{1,64}"
+    if not isinstance(raw, str) or not raw:
+        return "username must be a nonempty string"
+    if any(ord(ch) < 33 or ord(ch) == 127 for ch in raw):
+        return "username must be one argument without control characters"
     return None
 
 
-def canonical_target(raw: str) -> str:
-    """Hostname for authorize/log/stamp; IPv6 is bracketed."""
-    _parsed, host = _parse_host(raw)
-    if not host:
-        return raw.strip()
-    try:
-        ip = ipaddress.ip_address(host)
-    except ValueError:
-        return host
-    if ip.version == 6:
-        return f"[{ip}]"
-    return host
+def options_refusal(payload: dict) -> str | None:
+    if "options" not in payload or payload["options"] is None:
+        return None
+    options = payload["options"]
+    if not isinstance(options, dict):
+        return "run options must be a mapping of upstream option names to values"
+    for key, value in options.items():
+        if not isinstance(key, str) or not key:
+            return "run option names must be nonempty strings"
+        if len(key) > OPTION_KEY_MAX_LEN:
+            return (
+                f"run option names must be at most {OPTION_KEY_MAX_LEN} characters"
+            )
+        if any(ord(ch) < 33 or ord(ch) == 127 for ch in key):
+            return "run option names must be one argument without control characters"
+        if isinstance(value, bool) or not isinstance(value, (str, int, float)):
+            return f"run option {key!r} must be a string or number"
+        if isinstance(value, str) and any(
+            ord(ch) < 32 or ord(ch) == 127 for ch in value
+        ):
+            return f"run option {key!r} must not contain control characters"
+    return None
+
+
+def secret_values(payload: dict) -> set[str]:
+    """Exact secret values to scrub from reported results.
+
+    Values of secret-named upstream options, plus a password embedded in
+    the operator-supplied target expression. Scrubbing is reporting-only:
+    the values are still passed to upstream on argv.
+    """
+    found: set[str] = set()
+    target = payload.get("target")
+    if isinstance(target, str) and "@" in target and "://" in target:
+        try:
+            password = urllib_parse.urlsplit(target.strip()).password
+        except ValueError:
+            password = None
+        if password:
+            found.add(password)
+    options = payload.get("options")
+    if isinstance(options, dict):
+        for key, value in options.items():
+            if (
+                isinstance(key, str)
+                and SECRET_KEY_RE.search(key)
+                and isinstance(value, (str, int, float))
+                and not isinstance(value, bool)
+            ):
+                text = str(value)
+                if text:
+                    found.add(text)
+    return found
 
 
 def argv_for(binary: str, payload: dict) -> list[str] | None:
-    """Fixed argv: -m/-s target|port|username only. No password."""
+    """Fixed-shape argv: -m plus -s pairs for the target and module options.
+
+    The subprocess runs without a shell, so operator-supplied values are
+    single argv elements. Top-level port/username come first, then the
+    options mapping in order; every entry is passed through verbatim.
+    """
     module = payload.get("module")
     target = payload.get("target")
     if not isinstance(module, str) or not isinstance(target, str):
@@ -174,6 +182,10 @@ def argv_for(binary: str, payload: dict) -> list[str] | None:
     if port is not None:
         cmd.extend(["-s", f"port {int(port)}"])
     username = payload.get("username")
-    if username:
+    if username is not None:
         cmd.extend(["-s", f"username {username}"])
+    options = payload.get("options")
+    if isinstance(options, dict):
+        for key, value in options.items():
+            cmd.extend(["-s", f"{key} {value}"])
     return cmd

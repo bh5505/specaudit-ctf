@@ -3,21 +3,12 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
 import json
-import re
 import sys
 from pathlib import Path
 from typing import Any, Sequence
 
 from .runner import ExerciseError, run_exercise
-
-# Ledger vocabulary mirror (exercise_operator keeps the same local copy):
-# duplicated literally so ``python -m exercise`` never imports
-# attempt_ledger unless --ledger actually asks for it.
-ASSISTANCE_CHOICES = ("first-pass", "assisted", "tuned", "held-out", "none")
-_HEX_KEY = re.compile(r"[0-9a-f]{64}\Z")
-
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
@@ -27,7 +18,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             "optional standalone arm invocations, and the agent-head lane "
             "(readiness probe, executed fake-head attempt, or out-of-band "
             "attempt grading) into one consolidated run report. Everything "
-            "is synthetic; the report never claims success it cannot prove."
+            "records each selected lane's result."
         ),
     )
     parser.add_argument("--challenge", default=None, help="challenge directory name recorded in the report")
@@ -38,7 +29,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=(
             "JSON array of standalone arm requests: "
             '[{"arm_id": "...", "action": "...", "args": {...}}, ...] — '
-            "rides the same admission path as python -m extension invoke"
+            "uses the same handlers as python -m extension invoke"
         ),
     )
     parser.add_argument("--seed", type=int, default=None, help="seed applied to the range lifecycle run")
@@ -58,9 +49,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         help=(
             "agent head: claude-code | codex-cli | qwen-code for readiness probing; "
             "under --head-execute: 'fake' (the lane-internal scripted "
-            "head) or a REAL head armed on this host via "
-            "EXERCISE_HEAD_CLAUDE_CODE_CMD / EXERCISE_HEAD_CODEX_CLI_CMD / "
-            "EXERCISE_HEAD_QWEN_CODE_CMD"
+            "head) or a real head; EXERCISE_HEAD_*_CMD optionally overrides "
+            "its command path"
         ),
     )
     parser.add_argument(
@@ -87,8 +77,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             "execute the named head and grade its attempt (requires "
             "--attempt-dir, --expected, --head): 'fake' runs the "
             "lane-internal scripted head; a real head (claude-code, "
-            "codex-cli, qwen-code) is spawned headless only when armed via its "
-            "EXERCISE_HEAD_*_CMD env and given --attempt-prompt"
+            "codex-cli, qwen-code) uses the installed CLI and requires "
+            "--attempt-prompt"
         ),
     )
     parser.add_argument(
@@ -104,67 +94,13 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--battery",
         action="store_true",
         help=(
-            "run the default rehearsal battery preset (exercise/battery.py: "
-            "the offline/contained trio - checkov IaC scan over the packaged "
-            "range, semgrep inline rules under SEMGREP_SCAN_ROOT, the "
-            "attack-stix-data demo-bundle lookup - plus the dual-gated "
-            "target-facing pair wapiti/nmap, dispatched only when their "
-            "arming scope env AND LAB_TARGET_HOST are set); unavailable or "
-            "unarmed members are skipped (the run degrades), members that "
-            "run and fail fail the run"
+            "run the rehearsal battery: checkov, semgrep, ATT&CK demo lookup, "
+            "and wapiti/nmap when LAB_TARGET_HOST is set; unavailable members "
+            "are skipped and completed members report their results"
         ),
     )
     parser.add_argument("--out", default=None, help="write the report JSON here as well; stdout always gets it")
-    parser.add_argument(
-        "--ledger",
-        type=Path,
-        default=None,
-        help=(
-            "opt-in append-only attempt ledger (JSON-lines): after the run "
-            "document is produced, append one row per executed lane "
-            "(range, grade, arms, battery, head, run summary); the report "
-            "and grading are unchanged, and a ledger failure fails the "
-            "run closed"
-        ),
-    )
-    parser.add_argument(
-        "--ledger-key-hex",
-        default=None,
-        help="optional 64-hex HMAC key for the ledger (requires --ledger)",
-    )
-    parser.add_argument(
-        "--assistance",
-        choices=ASSISTANCE_CHOICES,
-        help="ledger assistance class (default first-pass; requires --ledger)",
-    )
-    parser.add_argument(
-        "--at",
-        default=None,
-        help="naive iso recording time for ledger rows; required with --ledger",
-    )
     args = parser.parse_args(list(argv) if argv is not None else None)
-
-    ledger_key = None
-    recorded_at = None
-    assistance = "first-pass"
-    if args.ledger is None:
-        if args.ledger_key_hex is not None or args.assistance is not None or args.at is not None:
-            parser.error("--ledger-key-hex/--assistance/--at require --ledger")
-    else:
-        if args.at is None:
-            parser.error("--at is required with --ledger")
-        try:
-            recorded_at = datetime.fromisoformat(args.at)
-        except ValueError:
-            parser.error(f"--at is not an iso datetime: {args.at}")
-        if recorded_at.tzinfo is not None:
-            parser.error("--at must be naive; this CLI never reads a clock")
-        if args.ledger_key_hex is not None:
-            key_text = args.ledger_key_hex.strip().lower()
-            if not _HEX_KEY.fullmatch(key_text):
-                parser.error("--ledger-key-hex must be 64 hex characters")
-            ledger_key = bytes.fromhex(key_text)
-        assistance = args.assistance or "first-pass"
 
     arms: list[dict[str, Any]] = []
     if args.arms:
@@ -205,23 +141,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ExerciseError as exc:
         print(f"exercise: {exc}", file=sys.stderr)
         return 2
-
-    if args.ledger is not None:
-        # Opt-in wiring, strictly after the document exists; the append is
-        # additive and never mutates the report. Fail closed exactly like
-        # exercise_operator: a run whose rows could not be appended never
-        # exits as graded-and-ledgered (machine-readable error, exit 2).
-        from .ledger_wiring import LedgerWiringError, append_document_rows
-
-        try:
-            append_document_rows(
-                args.ledger, document, ledger_key=ledger_key,
-                assistance=assistance, recorded_at=recorded_at)
-        except LedgerWiringError as exc:
-            print(json.dumps(
-                {"ok": False, "reason": "ledger-error", "error": str(exc)},
-                sort_keys=True))
-            return 2
 
     payload = json.dumps(document, indent=2, sort_keys=True)
     print(payload)

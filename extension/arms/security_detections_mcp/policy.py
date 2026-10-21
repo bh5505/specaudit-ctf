@@ -3,7 +3,7 @@
 Curated local rule reads over operator-supplied frozen detection indexes.  No rule
 generation, index mutation, deployment, or hosted fallback on the read
 path.  Every result identifies the operator file's exact input bytes;
-source revision, custody, and licensing remain operator gates.
+The tool reports the input digest; the operator chooses and evaluates the corpus.
 """
 
 from __future__ import annotations
@@ -32,19 +32,18 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 CAVEATS = (
     "offline read tier over operator-supplied local detection indexes",
     "no rule generation, index mutation, deployment, or hosted fallback",
-    "data-action results identify the exact input bytes but do not establish "
-    "source revision, custody, or authenticity",
-    "per-corpus revision and licensing must be reviewed before use",
+    "input digests identify supplied bytes but do not authenticate their source",
+    "the operator chooses and evaluates the input corpus",
 )
 
-ARMING = (
+INPUT_HINT = (
     "pass args.index (path to a local detection-rule index file in JSON "
-    "or YAML); the operator must review corpus licensing before first use"
+    "or YAML)"
 )
 
 
 def index_refusal(raw: object, *, max_bytes: int = MAX_INDEX_BYTES) -> tuple[Path | None, str | None]:
-    """Validate a caller-supplied local index path.  Egress gate."""
+    """Validate a caller-supplied local index path."""
     if not isinstance(raw, str) or not raw.strip():
         return None, "this action requires a local index path in args.index"
     text = raw.strip()

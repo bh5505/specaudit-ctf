@@ -4,6 +4,10 @@ Scripts that prepare, run and verify pack check executions, plus the demo-arc
 analyses built on a run's durable output. They are used *around*
 `ctf_run_checks.py`; none of them changes a check or a migration.
 
+The operator supplies the pack and evidence paths and remains responsible for
+choosing and authorizing any real-world activity. These utilities process the
+inputs they are given; they do not decide whether a target may be tested.
+
 This repository ships no pack: every pack is an explicit, operator-supplied
 path. Run the tools from a directory that has no private paths baked in - every
 default that used to point at somebody's laptop has been replaced by a required

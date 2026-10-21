@@ -2,8 +2,7 @@
 
 Recorded against the spawned golden target at `172.19.89.77`
 (WSL-internal NAT only), nmap + zgrab2 present on the kali lab host.
-The scopes were armed first (`NMAP_DISPATCH_SCOPE`,
-`ZGRAB2_DISPATCH_SCOPE`); installing never arms.
+The operator selected the spawned lab target for both reads.
 
 ## 1. The reads
 

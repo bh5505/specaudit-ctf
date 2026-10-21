@@ -1,10 +1,10 @@
-"""Curated routersploit dispatch-only arm."""
+"""Curated routersploit arm: operator-invoked module run."""
 
 from .arm import RoutersploitArm
-from .policy import ARM_ID, DISPATCH_ACTIONS
+from .policy import ALLOWED_ACTIONS, ARM_ID
 
 __all__ = [
+    "ALLOWED_ACTIONS",
     "ARM_ID",
-    "DISPATCH_ACTIONS",
     "RoutersploitArm",
 ]

@@ -15,7 +15,7 @@ from .policy import (
     ALLOWED_ACTIONS,
     ARM_ID,
     ARG_KEYS,
-    ARMING,
+    INPUT_HINT,
     CAVEATS,
     LIST_ACTIONS,
     MAX_OUTPUT_CHARS,
@@ -137,11 +137,10 @@ class RubeusArm:
         return _ok(
             spec, action,
             {
-                "read_actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
-                "dispatch_actions": [],
+                "actions": sorted(ALLOWED_ACTIONS | LIST_ACTIONS),
                 "arg_keys": {key: sorted(values) for key, values in ARG_KEYS.items()},
                 "caveats": list(CAVEATS),
-                "arming": ARMING,
+                "input_hint": INPUT_HINT,
             },
         )
 

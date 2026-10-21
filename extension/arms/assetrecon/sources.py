@@ -14,10 +14,10 @@ from .model import Observation, Refusal, bounded_list, closed, normalize
 
 # Live certificate-transparency responses for large telecom domains regularly
 # exceed 1 MiB (foxtrot.example ~1.2 MiB, echo.example ~1.4 MiB exact+wildcard). The
-# 1 MiB cap made the governed `asset-recon ct/discover` path fail closed on such
+# 1 MiB cap made `asset-recon ct/discover` fail on such
 # footprints, so the decode/fixture byte bound is raised to 16 MiB. The output
 # budget (max_output_bytes=1 MiB) independently prunes what is echoed; this is
-# only the read/parse admission bound.
+# only the read/parse size bound.
 MAX_FILE_BYTES = 16 * 1024 * 1024
 
 
@@ -174,7 +174,7 @@ def crtsh(data):
                     yield observation("crtsh", "certificate", fingerprint, "san", kind, name, metadata)
             else:
                 # crt.sh JSON does not necessarily include a certificate digest.
-                # A synthetic digest would falsely claim certificate-byte custody.
+                # A synthetic digest would misidentify bytes that were never returned.
                 anchor_kind, anchor_name = names[0]
                 yield observation("crtsh", anchor_kind, anchor_name, "query_match", anchor_kind, anchor_name, metadata)
                 for kind, name in names[1:]:

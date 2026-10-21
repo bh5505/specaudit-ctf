@@ -42,7 +42,7 @@ def normalize(kind, value):
             raise Refusal("invalid DNS pattern")
         base = value[2:].lower().rstrip(".")
         # Retain even a one-label wildcard suffix as certificate evidence;
-        # it never becomes a live domain query or a blanket scope grant.
+        # it never becomes a live domain query.
         if re.fullmatch(r"[a-z][a-z0-9-]{0,62}", base):
             return "*." + base
         return "*." + domain(base)
@@ -92,28 +92,22 @@ def bounded_list(value, maximum=64):
 
 DEFAULTS = dict(max_depth=3, max_nodes=500, max_edges=1000, max_requests=16,
                 max_records=2000, max_output_bytes=262144, wall_seconds=30,
-                min_interval_ms=250, retries=0, large_isp=False)
-CEILINGS = dict(max_depth=5, max_nodes=1000, max_edges=2000, max_requests=32,
-                max_records=4000, max_output_bytes=1048576, wall_seconds=60,
-                min_interval_ms=2000, retries=2, large_isp=True)
-LARGE_ISP = dict(max_depth=5, max_nodes=1000, max_edges=2000, max_requests=32,
-                 max_records=4000, max_output_bytes=1048576, wall_seconds=60,
-                 min_interval_ms=250, retries=2, large_isp=True)
+                min_interval_ms=250, retries=0)
 
 
 class Budget:
     def __init__(self, values=None):
         values = closed({} if values is None else values, DEFAULTS)
-        base = LARGE_ISP if values.get("large_isp") else DEFAULTS
-        self.values = base | values
+        self.values = DEFAULTS | values
         for key, value in self.values.items():
-            if key == "large_isp":
-                if type(value) is not bool:
-                    raise Refusal("invalid limit")
-                continue
-            minimum = 0 if key in ("max_depth", "retries") else (4096 if key == "max_output_bytes" else 50 if key == "min_interval_ms" else 1)
-            if type(value) is not int or not minimum <= value <= CEILINGS[key]:
+            minimum = 0 if key in ("max_depth", "retries", "min_interval_ms") else 1
+            if type(value) is not int or value < minimum:
                 raise Refusal("invalid limit")
+        try:
+            float(self.values["wall_seconds"])
+            float(self.values["min_interval_ms"])
+        except OverflowError:
+            raise Refusal("time limit is too large for the local clock") from None
         self.deadline = time.monotonic() + self.values["wall_seconds"]
         self.requests = 0
         self.records = 0
@@ -187,28 +181,6 @@ def seeds(values, exclusions):
             if len(output) > 512:
                 raise Refusal("seed expansion exceeds 512 nodes")
     return output
-
-
-def live_value(kind, value):
-    """Recorded documentation values are allowed offline, never sent live."""
-    if kind == "ip":
-        address = ipaddress.ip_address(value)
-        return address.is_global and not address.is_multicast and not address.is_reserved and not getattr(address, "is_site_local", False)
-    if kind == "domain":
-        return not any(value == suffix or value.endswith("." + suffix) for suffix in
-                       ("test", "invalid", "localhost", "local", "internal", "example", "example.com", "example.net", "example.org", "onion", "arpa"))
-    if kind == "asn":
-        number = int(value)
-        return not (number == 23456 or 64496 <= number <= 65551 or 4200000000 <= number <= 4294967295)
-    if kind == "network":
-        # A live query is worthwhile only for a public (non-private/reserved)
-        # announced prefix; private RFC1918 ranges are not globally routable.
-        try:
-            network = ipaddress.ip_network(value)
-            return network.is_global
-        except ValueError:
-            return False
-    return kind == "certificate"
 
 
 def pattern_covers(pattern, name):
