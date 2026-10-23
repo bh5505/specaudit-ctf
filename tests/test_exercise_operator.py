@@ -20,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_packaged_contracts_and_public_vocabulary() -> None:
     corpus = contracts()
     originals = sorted((ROOT / "challenges").glob("*/artifacts/expected-findings.json"))
-    assert len(corpus) == len(originals) == 13
+    # 14 since the Solidity planted-code review lane (2026-10-23).
+    assert len(corpus) == len(originals) == 14
     for original in originals:
         assert corpus[original.parents[1].name][1] == original.read_bytes()
     vocab = json.loads((ROOT / "exercise_operator/vocabulary.json").read_text())
@@ -33,10 +34,12 @@ def test_packaged_contracts_and_public_vocabulary() -> None:
 
 def test_inventory_classifies_lanes_and_cross_fixture_note() -> None:
     rows = {row["id"]: row for row in inventory()["challenges"]}
-    assert len(rows) == 13
+    assert len(rows) == 14
     assert sum(row["offline_packet"] for row in rows.values()) == 7
     assert [row["lane"] for row in rows.values()].count("live-service") == 5
-    assert [row["lane"] for row in rows.values()].count("planted-code") == 1
+    # 2 since the Solidity planted-code review lane (2026-10-23);
+    # offline_packet stays 7: planted-code is not a fixture-backed packet.
+    assert [row["lane"] for row in rows.values()].count("planted-code") == 2
     cross = rows["telecom-aws-02-iam-s3-misconfig"]
     assert "cross-fixture trace only" in cross["declared_fixtures"][1]
     assert cross["packet_fixtures"] == ["tf_iam_open", "tf_s3_public_access"]
@@ -141,6 +144,8 @@ def test_refuses_packet_contamination_and_unbounded_inputs(tmp_path: Path) -> No
         grade("telecom-aws-01-reachability", submitted, tmp_path / "huge")
     with pytest.raises(OperatorError, match="unsupported"):
         prepare("lab-web-01-dast-surface", tmp_path / "live")
+    with pytest.raises(OperatorError, match="unsupported"):
+        prepare("lab-contract-01-solidity-review", tmp_path / "planted")
 
 
 @pytest.mark.parametrize("missing", ["O_NONBLOCK", "O_NOFOLLOW"])

@@ -117,6 +117,10 @@
     {
       "finding_key": "demo-trap-anonymous-policy-contained",
       "control": "defense-in-depth: public access block neutralizes an anonymous grant"
+    },
+    {
+      "finding_key": "treasury-setter-unauthorized",
+      "control": "access control: only the administrator may change the payout destination"
     }
   ]
 }

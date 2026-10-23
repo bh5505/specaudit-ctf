@@ -1,0 +1,32 @@
+{
+  "artifact": "coverage ledger (worked example)",
+  "challenge": "lab-contract-01-solidity-review",
+  "note": "A worked example of the METHODOLOGY.md step-2 ledger: one row per entry point of the shipped contract, with looked/not-yet and the conclusion reached. This bookkeeping supports the reviewer's own confidence that traces_to names the right construct; it is never submitted to the grader.",
+  "rows": [
+    {
+      "function": "constructor(address initialTreasury)",
+      "looked": true,
+      "verdict": "ok: records the deployer as admin and points treasury/feeCollector at the initial synthetic destination"
+    },
+    {
+      "function": "setTreasury(address newTreasury)",
+      "looked": true,
+      "verdict": "finding: no administrator check, so any caller can redirect the payout destination (candidate confirmed independently; feeds finding_key treasury-setter-unauthorized)"
+    },
+    {
+      "function": "setFeeCollector(address newCollector)",
+      "looked": true,
+      "verdict": "near miss: guarded by require(msg.sender == admin) - shaped like setTreasury but benign; stays out of the submission"
+    },
+    {
+      "function": "payout(uint256 amount)",
+      "looked": true,
+      "verdict": "impact path: pays the current treasury address, so a redirected destination receives the funds"
+    },
+    {
+      "function": "receive() external payable",
+      "looked": true,
+      "verdict": "ok: passive balance intake, no authorization surface"
+    }
+  ]
+}

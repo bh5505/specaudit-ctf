@@ -263,7 +263,8 @@ def test_every_contract_finding_parses_to_coverable_fixtures() -> None:
     # listings over locally-run first-party servers.
     # 16 since the planted-code lane (2026-09-06): the semgrep
     # inline-rule-pack review of the static planted module.
-    assert len(contracts) == 16, "the challenge library grew — keep this pin honest"
+    # 17 since the Solidity planted-code review lane (2026-10-23).
+    assert len(contracts) == 17, "the challenge library grew — keep this pin honest"
     for contract in contracts:
         document = json.loads(contract.read_text(encoding="utf-8"))
         live = document.get("lane") in ("live-service", "planted-code")
