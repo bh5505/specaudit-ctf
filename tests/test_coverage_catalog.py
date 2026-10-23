@@ -92,6 +92,10 @@ EXPECTED_IDS = (
     "pashov-x-ray",
     "pashov-solidity-auditor",
     "pashov-fizz",
+    # Campaign 2026-10-23: the three bounded offline readers, in catalog order.
+    "hostbadger",
+    "idwolf",
+    "osv",
 )
 
 _TEXT_SUFFIXES = {".yaml", ".yml", ".md", ".json", ".py", ".txt", ".toml", ".ini", ".tf"}

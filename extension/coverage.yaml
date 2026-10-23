@@ -355,3 +355,18 @@ entries:
     kind: methodology-only
     protocols: [none]
     notes: "Pashov skills repo (pashov/skills @ eacfc09) fizz skill: drafts Echidna/Medusa property-suite harnesses for a local Solidity project. Not installed; not invocable; methodology reference only."
+
+  - id: hostbadger
+    kind: arm
+    protocols: [cli]
+    notes: "Reads an operator-supplied HostBadger analyzer JSONL export and reports findings, summaries, and honest coverage status; offline reader only - no collection, remediation, AI, or network path."
+
+  - id: idwolf
+    kind: arm
+    protocols: [cli]
+    notes: "Reads an operator-supplied IDWolf analyzer JSONL export (AD or Entra) and reports findings and honest coverage status; offline reader only - no collector, password-quality, AI, or network path."
+
+  - id: osv
+    kind: arm
+    protocols: [cli]
+    notes: "Reads an operator-supplied OSV-shaped snapshot and runs bounded read-only package or commit advisory queries against the fixed official api.osv.dev host; synthetic fixtures only, statuses distinguish complete, partial, unknown, and error."

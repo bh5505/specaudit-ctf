@@ -444,6 +444,12 @@ def _default_arms() -> dict[str, Transport]:
     from .arms.ivanti import IvantiArm
     from .arms.learning_operator import ARM_ID as LEARNING_OPERATOR_ARM_ID
     from .arms.learning_operator import LearningOperatorArm
+    from .arms.hostbadger import ARM_ID as HOSTBADGER_ARM_ID
+    from .arms.hostbadger import HostbadgerArm
+    from .arms.idwolf import ARM_ID as IDWOLF_ARM_ID
+    from .arms.idwolf import IdwolfArm
+    from .arms.osv import ARM_ID as OSV_ARM_ID
+    from .arms.osv import OsvArm
 
     return {
         BURP_ARM_ID: BurpArm(),
@@ -496,6 +502,9 @@ def _default_arms() -> dict[str, Transport]:
         ASSET_RECON_ARM_ID: AssetReconArm(),
         IVANTI_ARM_ID: IvantiArm(),
         LEARNING_OPERATOR_ARM_ID: LearningOperatorArm(),
+        HOSTBADGER_ARM_ID: HostbadgerArm(),
+        IDWOLF_ARM_ID: IdwolfArm(),
+        OSV_ARM_ID: OsvArm(),
     }
 
 
