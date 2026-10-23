@@ -1,0 +1,18 @@
+{
+  "track": "lab-contract-01-solidity-review",
+  "lane": "planted-code",
+  "seed": 123,
+  "fixtures": [
+    "challenges/lab-contract-01-solidity-review/planted/Treasury.sol"
+  ],
+  "total": 1,
+  "findings": [
+    {
+      "finding_key": "treasury-setter-unauthorized",
+      "control": "access control: only the administrator may change the payout destination",
+      "severity": "high",
+      "rationale": "setTreasury(address) performs no administrator check, so any caller can redirect the payout destination and the subsequent payout() then sends the contract balance to that attacker-chosen address; the nearby admin-guarded setFeeCollector shows the check was intended here too.",
+      "traces_to": "challenges/lab-contract-01-solidity-review/planted/Treasury.sol, setTreasury(address) setter without an administrator check and the payout() path that pays the redirected treasury"
+    }
+  ]
+}
