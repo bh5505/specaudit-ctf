@@ -21,6 +21,12 @@ shows the selected entry's notes. `availability` checks whether configured
 handlers can be reached on the current host; it does not invoke them or assess
 whether they are suitable for a particular target.
 
+Rows with `kind: methodology-only` are references to external methodology,
+never invocable: no handler is registered, and `invoke` refuses them with the
+same generic non-arm failure as any other non-arm id. The catalog id `foundry`
+names an open agentic-security evaluation specification; it is not the Foundry
+Solidity toolchain referenced by Solidity challenges.
+
 ## Invoke an arm
 
 Pass action arguments as a JSON object, either inline or in a local file:

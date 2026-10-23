@@ -87,6 +87,11 @@ EXPECTED_IDS = (
     "rubeus",
     "m365pwned",
     "ivanti",
+    # Campaign 2026-10-23: Pashov skills references, methodology-only,
+    # appended after ivanti in catalog order.
+    "pashov-x-ray",
+    "pashov-solidity-auditor",
+    "pashov-fizz",
 )
 
 _TEXT_SUFFIXES = {".yaml", ".yml", ".md", ".json", ".py", ".txt", ".toml", ".ini", ".tf"}

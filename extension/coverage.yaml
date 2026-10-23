@@ -340,3 +340,18 @@ entries:
     kind: arm
     protocols: [cli]
     notes: "Queries the operator-configured Ivanti VM API for assets, findings, vulnerabilities, tags, or an export; API credentials are required."
+
+  - id: pashov-x-ray
+    kind: methodology-only
+    protocols: [none]
+    notes: "Pashov skills repo (pashov/skills @ eacfc09) x-ray skill: pre-audit scan that frames a codebase's architecture, entry points, and invariants. Not installed; not invocable; methodology reference only."
+
+  - id: pashov-solidity-auditor
+    kind: methodology-only
+    protocols: [none]
+    notes: "Pashov skills repo (pashov/skills @ eacfc09) solidity-auditor skill: parallel specialized review passes that propose source-anchored Solidity findings as candidates. Not installed; not invocable; methodology reference only."
+
+  - id: pashov-fizz
+    kind: methodology-only
+    protocols: [none]
+    notes: "Pashov skills repo (pashov/skills @ eacfc09) fizz skill: drafts Echidna/Medusa property-suite harnesses for a local Solidity project. Not installed; not invocable; methodology reference only."
