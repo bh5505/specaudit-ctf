@@ -233,6 +233,32 @@ def test_complete_report_maps_to_ok_true(tmp_path: Path) -> None:
         assert outcome.document["output"]["status"] == "complete"
 
 
+@pytest.mark.parametrize(
+    "rows,expected_observed",
+    [
+        ([_summary_row()], {"findings": 0, "high": 0}),
+        (
+            [_finding_row(), _summary_row(high=0, low=1)],
+            {"findings": 1, "high": 1},
+        ),
+    ],
+)
+def test_summary_finding_counts_must_match_exported_rows(
+    tmp_path: Path, rows: list[dict], expected_observed: dict[str, int]
+) -> None:
+    report = _write(tmp_path / "inconsistent.jsonl", _jsonl(rows))
+    result = _invoke("list_findings", {"report": str(report)})
+    assert result.ok is False
+    assert result.output["status"] == "unknown"
+    assert result.error == "summary finding counts do not match report rows"
+    assert len(result.output["findings"]) == expected_observed["findings"]
+    (evidence,) = result.output["evidence"]
+    assert evidence["kind"] == "summary_count_mismatch"
+    assert evidence["finding_counts"]["observed"]["findings"] == expected_observed["findings"]
+    assert evidence["finding_counts"]["observed"]["high"] == expected_observed["high"]
+    assert _dispatch("summary", {"report": str(report)}).exit_code == 1
+
+
 def test_demo_summary_carries_bounded_evidence_and_clean_host() -> None:
     result = _invoke("summary", {"report": str(DEMO_REPORT)})
     assert result.ok is False

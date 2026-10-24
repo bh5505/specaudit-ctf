@@ -32,12 +32,14 @@ ARG_KEYS: dict[str, frozenset[str]] = {
 
 SEVERITIES = ("Critical", "High", "Medium", "Low")
 SOURCE_KINDS = ("ad", "entra")
+KNOWN_TOOL_VERSIONS = frozenset({"1.2"})
 
 CAVEATS = (
     "offline reads over an operator-supplied local IDWolf analyzer JSONL export",
     "list_tools is an interface listing and makes no claim about source coverage",
-    "completeness comes from the analyzer's own summary row; a successful parse "
-    "never attests that all checks ran or that the tenant or domain is secure",
+    "completeness requires each summary's coverage and finding counts to match "
+    "its exported rows; a successful parse never attests that all checks ran "
+    "or that the tenant or domain is secure",
     "score_reliable=false questions the score, not the coverage; alone it does "
     "not make a run partial",
     "default views omit detail, object_dn, and tenant_id; the exact finding "

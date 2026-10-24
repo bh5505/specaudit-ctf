@@ -16,6 +16,7 @@ from pathlib import Path
 
 from extension.contract import Extension, _default_arms
 from extension.dispatch import dispatch_invoke
+from extension.mcp_server import McpServer
 from extension.arms.osv import OsvArm
 from exercise.runner import run_exercise
 
@@ -26,6 +27,7 @@ from tests.test_arm_osv import FakeResponse, _page, _live_record
 HOSTBADGER_DEMO = ROOT / "extension/arms/hostbadger/data/demo-hostbadger-report.jsonl"
 IDWOLF_PARTIAL = ROOT / "extension/arms/idwolf/data/demo-idwolf-partial.jsonl"
 IDWOLF_AD = ROOT / "extension/arms/idwolf/data/demo-idwolf-ad.jsonl"
+OSV_DEMO = ROOT / "extension/arms/osv/data/demo-osv-snapshot.json"
 
 
 def _exercise(arms: list[dict], extension: Extension | None = None) -> dict:
@@ -101,6 +103,45 @@ def test_complete_reader_row_contributes_to_complete_run() -> None:
     assert document["ok"] is True
 
 
+def test_missing_finding_rows_cannot_complete_exercise(tmp_path: Path) -> None:
+    cases = (
+        ("hostbadger", HOSTBADGER_DEMO, "host_summary"),
+        ("idwolf", IDWOLF_AD, "summary"),
+    )
+    for arm_id, source, event_type in cases:
+        summary = next(
+            line
+            for line in source.read_text(encoding="utf-8").splitlines()
+            if json.loads(line)["event_type"] == event_type
+            and json.loads(line)["findings"] > 0
+        )
+        path = tmp_path / f"{arm_id}-summary-only.jsonl"
+        path.write_text(summary + "\n", encoding="utf-8")
+        document = _exercise(
+            [{"arm_id": arm_id, "action": "summary", "args": {"report": str(path)}}]
+        )
+        assert document["status"] == "degraded"
+        assert document["ok"] is False
+        assert document["arms"][0]["result"]["status"] == "unknown"
+        reply = McpServer(extension=Extension()).handle(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": "invoke",
+                    "arguments": {
+                        "id": arm_id,
+                        "action": "summary",
+                        "args": {"report": str(path)},
+                    },
+                },
+            }
+        )
+        assert reply["result"]["isError"] is True
+        assert json.loads(reply["result"]["content"][0]["text"])["output"]["status"] == "unknown"
+
+
 def test_osv_truncated_pagination_degrades_the_exercise() -> None:
     pages = [
         FakeResponse(200, _page([_live_record(f"OSV-SYNTH-{n:04d}")], token=f"p{n + 1}"))
@@ -138,6 +179,37 @@ def test_osv_transport_error_fails_the_exercise_not_degrades() -> None:
     row = next(row for row in document["arms"] if row["arm_id"] == "osv")
     assert row["status"] == "failed"
     assert document["status"] == "failed"
+
+
+def test_osv_snapshot_exercise_keeps_digest_without_local_path() -> None:
+    document = _exercise(
+        [{"arm_id": "osv", "action": "read_snapshot", "args": {"snapshot": str(OSV_DEMO)}}]
+    )
+    source = document["arms"][0]["result"]["source"]
+    assert source["kind"] == "osv-snapshot"
+    assert source["sha256"].startswith("sha256:")
+    assert source["snapshot_time"]
+    assert str(OSV_DEMO) not in json.dumps(document)
+
+
+def test_osv_live_exercise_keeps_page_digests_without_advisory_rows() -> None:
+    page = _page([_live_record("OSV-SYNTH-0001")])
+    arms = _default_arms()
+    arms["osv"] = OsvArm(transport=lambda request, timeout: FakeResponse(200, page))
+    document = _exercise(
+        [{"arm_id": "osv", "action": "query_package", "args": {"ecosystem": "PyPI", "name": "demo-package", "version": "1.2.3"}}],
+        extension=Extension(arms=arms),
+    )
+    assert document["status"] == "complete"
+    source = document["arms"][0]["result"]["source"]
+    assert source["kind"] == "osv-live"
+    assert source["host"] == "https://api.osv.dev"
+    assert source["endpoint"] == "/v1/query"
+    assert source["pages"] == 1
+    assert len(source["page_digests"]) == 1
+    assert len(source["page_digests"][0]["request_sha256"]) == 64
+    assert len(source["page_digests"][0]["response_sha256"]) == 64
+    assert "OSV-SYNTH-0001" not in json.dumps(document)
 
 
 def test_partial_data_actions_exit_one_over_cli_and_mcp() -> None:

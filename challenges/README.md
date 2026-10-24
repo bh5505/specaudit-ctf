@@ -29,4 +29,4 @@ python -m score --grade my-findings.json --expected artifacts/expected-findings.
 
 A passing grade means the findings match the planted contract. Review the explanation and tool output as well. See the [instructor guide](../INSTRUCTOR_GUIDE.md) and [operations](../OPERATIONS.md) for setup and cleanup.
 
-The `hostbadger`, `idwolf`, and `osv` arms are bounded offline readers over operator-supplied exports or snapshots, with synthetic demo reports shipped under each arm; they are reader demonstrations, not graded challenge inventory. A complete reader result reports what the source export claimed, never that a host, tenant, or package is secure.
+The `hostbadger` and `idwolf` arms read local analyzer exports. The `osv` arm reads a local synthetic snapshot or makes a bounded live query to the official OSV API. These are reader demonstrations, not graded challenge inventory. A complete result covers the selected export, snapshot, or query; it never proves that a host, tenant, package, or codebase is secure. The [campaign source record](../docs/campaign-source-record-2026-10-24.md) tracks source versions and data rights.
