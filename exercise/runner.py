@@ -8,6 +8,7 @@ Unavailable optional components are reported as skipped.
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -37,6 +38,9 @@ class ExerciseError(Exception):
 # never silently read as all-clear, and transport errors never degrade.
 _DEGRADED_ARM_STATUSES = frozenset({"partial", "degraded", "unknown"})
 _MAX_ARM_EVIDENCE_ITEMS = 64
+_OSV_DIGEST_RE = re.compile(r"^[0-9a-f]{64}$")
+_OSV_TIME_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$")
+_MAX_OSV_SOURCE_PAGES = 10
 
 
 def _evidence_is_bounded(value: Any) -> bool:
@@ -62,9 +66,9 @@ def _result_projection(document: Mapping[str, Any]) -> dict[str, Any]:
     """A small, redacted source/completeness projection of a reader result.
 
     Only honesty fields survive: status and reason strings (already
-    redacted by the arms), an evidence item count, and the source kind
-    and digest. Raw evidence rows, identity material, and free-text
-    detail never enter an exercise report.
+    redacted by the arms), an evidence item count, and bounded source
+    provenance. Raw evidence rows, identity material, file paths, and
+    free-text detail never enter an exercise report.
     """
     output = document.get("output")
     if not isinstance(output, Mapping):
@@ -83,6 +87,55 @@ def _result_projection(document: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(source.get("sha256"), str):
             kept["sha256"] = source["sha256"]
         projection["source"] = kept
+    elif isinstance(source, Mapping) and document.get("arm_id") == "osv":
+        digest = source.get("sha256")
+        if (
+            isinstance(digest, str)
+            and digest.startswith("sha256:")
+            and _OSV_DIGEST_RE.fullmatch(digest[7:])
+        ):
+            kept = {"kind": "osv-snapshot", "sha256": digest}
+            snapshot_time = source.get("snapshot_time")
+            if isinstance(snapshot_time, str) and _OSV_TIME_RE.fullmatch(snapshot_time):
+                kept["snapshot_time"] = snapshot_time
+            projection["source"] = kept
+        elif (
+            source.get("host") == "https://api.osv.dev"
+            and source.get("endpoint") == "/v1/query"
+        ):
+            kept = {
+                "kind": "osv-live",
+                "host": source["host"],
+                "endpoint": source["endpoint"],
+            }
+            fetched_at = source.get("fetched_at")
+            if isinstance(fetched_at, str) and _OSV_TIME_RE.fullmatch(fetched_at):
+                kept["fetched_at"] = fetched_at
+            pages = source.get("pages")
+            if type(pages) is int and 0 <= pages <= _MAX_OSV_SOURCE_PAGES:
+                kept["pages"] = pages
+            outcomes = source.get("page_outcomes")
+            if isinstance(outcomes, list) and len(outcomes) <= _MAX_OSV_SOURCE_PAGES:
+                digests = []
+                for entry in outcomes:
+                    if not isinstance(entry, Mapping):
+                        continue
+                    request_digest = entry.get("request_sha256")
+                    response_digest = entry.get("response_sha256")
+                    if (
+                        isinstance(request_digest, str)
+                        and _OSV_DIGEST_RE.fullmatch(request_digest)
+                        and isinstance(response_digest, str)
+                        and _OSV_DIGEST_RE.fullmatch(response_digest)
+                    ):
+                        digests.append(
+                            {
+                                "request_sha256": request_digest,
+                                "response_sha256": response_digest,
+                            }
+                        )
+                kept["page_digests"] = digests
+            projection["source"] = kept
     return projection
 
 

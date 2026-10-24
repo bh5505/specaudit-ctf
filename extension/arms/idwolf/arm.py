@@ -8,10 +8,11 @@ semantics follow the upstream serializer at the campaign-pinned revision:
 plus ONE ``summary`` row per run.
 
 Status model for data actions (summary, list_findings, finding): a report is
-``complete`` only when every run has its summary row and the analyzer
-reported full evaluation (``coverage_pct == 100``, ``not_evaluated == 0``,
-empty ``not_evaluated_checks``).  A missing summary row means the export
-cannot prove completeness (``unknown``); any reported coverage gap is
+``complete`` only when every run has its summary row, its finding and
+severity counts match the exported finding rows, and the analyzer reported
+full evaluation (``coverage_pct == 100``, ``not_evaluated == 0``, empty
+``not_evaluated_checks``). A count mismatch or missing summary means the
+export cannot prove completeness (``unknown``); any reported coverage gap is
 ``partial``.  Complete reports return ``ok=true``; partial and unknown
 reports return ``ok=false`` with ``output.status``, a reason, and bounded
 evidence (CLI exit 1 / MCP ``isError=true``), while still carrying the
@@ -49,6 +50,7 @@ from .policy import (
     ARG_KEYS,
     CAVEATS,
     INPUT_HINT,
+    KNOWN_TOOL_VERSIONS,
     LIST_ACTIONS,
     MAX_EVIDENCE_RUNS,
     MAX_FINDINGS,
@@ -69,7 +71,6 @@ _FINDING_STATUSES = (None, "new", "persisting")
 # 16 lowercase hex digits: upstream derives them as the first 8 SHA-256 bytes
 # of "check|object", stable across runs for the same check on the same object.
 _FINDING_ID_RE = re.compile(r"^[0-9a-f]{16}$")
-_VERSION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.\-+]{0,31}$")
 _SCORE_BOUND = 10_000
 
 _BASE_KEYS = frozenset(
@@ -474,7 +475,27 @@ def _run_coverage(run: dict[str, Any]) -> str:
         or summary["not_evaluated"] > 0
         or bool(summary["not_evaluated_checks"])
     )
-    return "partial" if gaps else "complete"
+    if gaps:
+        return "partial"
+    return "unknown" if _finding_count_mismatch(run) else "complete"
+
+
+def _finding_count_mismatch(run: dict[str, Any]) -> dict[str, dict[str, int]] | None:
+    """Compare the upstream summary with the current findings it exported.
+
+    The pinned IDWolf JSONL writer derives both total and severity counts
+    from its Findings array; resolved comparison rows are separate.
+    """
+    summary = run["summary"]
+    if summary is None:
+        return None
+    observed = {"findings": len(run["findings"])}
+    for severity in SEVERITIES:
+        observed[severity.lower()] = sum(
+            row["severity"] == severity for row in run["findings"]
+        )
+    declared = {key: summary[key] for key in observed}
+    return {"declared": declared, "observed": observed} if observed != declared else None
 
 
 def _overall_status(report: dict[str, Any]) -> tuple[str, str | None, list[dict[str, Any]]]:
@@ -486,19 +507,29 @@ def _overall_status(report: dict[str, Any]) -> tuple[str, str | None, list[dict[
     """
     incomplete: list[tuple[str, str]] = []
     evidence: list[dict[str, Any]] = []
+    count_mismatch = False
     for run in _sorted_runs(report):
         run_status = _run_coverage(run)
         if run_status == "complete":
             continue
         incomplete.append((run["run_id"], run_status))
         if run_status == "unknown":
-            entry: dict[str, Any] = {
-                "run_id": run["run_id"],
-                "run_status": "unknown",
-                "summary_present": False,
-                "finding_rows": len(run["findings"]),
-                "resolved_rows": len(run["resolved"]),
-            }
+            if run["summary"] is None:
+                entry: dict[str, Any] = {
+                    "run_id": run["run_id"],
+                    "run_status": "unknown",
+                    "summary_present": False,
+                    "finding_rows": len(run["findings"]),
+                    "resolved_rows": len(run["resolved"]),
+                }
+            else:
+                count_mismatch = True
+                entry = {
+                    "run_id": run["run_id"],
+                    "run_status": "unknown",
+                    "kind": "summary_count_mismatch",
+                    "finding_counts": _finding_count_mismatch(run),
+                }
         else:
             summary = run["summary"]
             entry = {
@@ -508,6 +539,9 @@ def _overall_status(report: dict[str, Any]) -> tuple[str, str | None, list[dict[
                 "not_evaluated": summary["not_evaluated"],
                 "not_evaluated_checks": list(summary["not_evaluated_checks"]),
             }
+            mismatch = _finding_count_mismatch(run)
+            if mismatch:
+                entry["finding_counts"] = mismatch
         if len(evidence) < MAX_EVIDENCE_RUNS:
             evidence.append(entry)
     if not incomplete:
@@ -517,6 +551,8 @@ def _overall_status(report: dict[str, Any]) -> tuple[str, str | None, list[dict[
             {"evidence_truncated": True, "unshown_runs": len(incomplete) - len(evidence)}
         )
     if any(status == "unknown" for _, status in incomplete):
+        if count_mismatch:
+            return "unknown", "summary finding counts do not match report rows", evidence
         return "unknown", "report is missing the summary row for at least one run", evidence
     return "partial", "analyzer reported incomplete evaluation coverage", evidence
 
@@ -625,8 +661,8 @@ def _time(value: Any, label: str) -> str:
 
 
 def _version(value: Any, label: str) -> str:
-    if not isinstance(value, str) or not _VERSION_RE.fullmatch(value):
-        raise ReportError(f"{label} is missing or not a recognized tool version")
+    if not isinstance(value, str) or value not in KNOWN_TOOL_VERSIONS:
+        raise ReportError(f"{label} is missing or not a supported analyzer version")
     return value
 
 

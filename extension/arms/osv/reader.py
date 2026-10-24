@@ -446,31 +446,66 @@ def _range_covers_version(entry: dict[str, Any], version: str) -> bool:
     parsed = _numeric_version(version)
     if parsed is None:
         return False
-    introduced = None
-    fixed = None
-    last_affected = None
+
+    # OSV events form a timeline, not one lower and one upper bound. A range
+    # may be reintroduced after a fix, and introduced="0" is an open lower
+    # bound. Only dotted-numeric values are comparable in this reader; when
+    # an event cannot be compared, fail closed instead of claiming a match.
+    timeline: list[tuple[tuple[int, ...], str]] = []
+    limits: list[tuple[int, ...] | None] = []
     for event in entry.get("events", []):
         key, value = next(iter(event.items()))
+        if key == "limit":
+            limit = None if "*" in value else _numeric_version(value)
+            if "*" not in value and limit is None:
+                return False
+            limits.append(limit)
+        else:
+            boundary = () if key == "introduced" and value == "0" else _numeric_version(value)
+            if boundary is None:
+                return False
+            timeline.append((boundary, key))
+    if not any(key == "introduced" for _, key in timeline):
+        return False
+    if {key for _, key in timeline} >= {"fixed", "last_affected"}:
+        return False
+    # The schema recommends sorted input but does not require it.
+    timeline.sort(key=lambda item: item[0])
+    introduced: tuple[int, ...] | None = None
+    intervals: list[tuple[tuple[int, ...], tuple[int, ...] | None, bool]] = []
+    for boundary, key in timeline:
         if key == "introduced":
-            introduced = None if value == "0" else (_numeric_version(value) or introduced)
-        elif key == "fixed":
-            fixed = _numeric_version(value)
-        elif key == "last_affected":
-            last_affected = _numeric_version(value)
-    if introduced is not None and parsed < introduced:
+            if introduced is not None:
+                return False
+            introduced = boundary
+        else:
+            if introduced is None or boundary < introduced:
+                return False
+            intervals.append((introduced, boundary, key == "last_affected"))
+            introduced = None
+    if introduced is not None:
+        intervals.append((introduced, None, False))
+    if limits and not any(limit is None or parsed < limit for limit in limits):
         return False
-    if fixed is not None and parsed >= fixed:
-        return False
-    if last_affected is not None and parsed > last_affected:
-        return False
-    return introduced is not None or fixed is not None or last_affected is not None
+    return any(
+        parsed >= lower
+        and (upper is None or parsed < upper or (inclusive and parsed == upper))
+        for lower, upper, inclusive in intervals
+    )
 
 
 def _numeric_version(value: str) -> tuple[int, ...] | None:
     parts = value.split(".")
-    if all(part.isdigit() for part in parts):
-        return tuple(int(part) for part in parts)
-    return None
+    if (
+        len(parts) > 64
+        or any(not part or len(part) > 64 or not part.isascii() or not part.isdecimal() for part in parts)
+    ):
+        return None
+    numbers = tuple(int(part) for part in parts)
+    # Numeric spellings such as 1.2 and 1.2.0 compare as the same boundary.
+    while len(numbers) > 1 and numbers[-1] == 0:
+        numbers = numbers[:-1]
+    return numbers
 
 
 def _parse_timestamp(value: str) -> Any:

@@ -44,9 +44,9 @@ CAVEATS = (
     "export; the upstream collector, remediation, online-enrichment, and AI "
     "paths do not exist in this arm",
     "list_tools is an interface listing and makes no claim about source coverage",
-    "completeness comes from the analyzer's own per-host host_summary row; a "
-    "successful parse never attests that all checks ran or that the host or "
-    "network is secure",
+    "completeness requires each host_summary's coverage and finding counts to "
+    "match its exported rows; a successful parse never attests that all checks "
+    "ran or that the host or network is secure",
     "policy_disabled_checks records organization policy, not a coverage gap; "
     "alone it never makes a host partial",
     "edr null means EDR services were not collected, distinct from an empty "

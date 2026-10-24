@@ -9,8 +9,10 @@ carry a reduced field set) plus ONE ``host_summary`` row per host.
 
 Status model for data actions (summary, list_findings, finding): a report
 is ``complete`` only when every host that appears in any row has its
-``host_summary`` row and every summary reports full evaluation
-(``not_evaluated == 0`` and empty ``not_evaluated_checks``).  A summary
+``host_summary`` row, its finding and severity counts match the exported
+finding rows, and every summary reports full evaluation
+(``not_evaluated == 0`` and empty ``not_evaluated_checks``). A count mismatch
+means the export cannot prove its reported contents (``unknown``). A summary
 reporting unevaluated checks is a proven gap (``partial``); a host with
 rows but no summary is a proven gap too (``partial``, evidence names the
 hosts); a truncated export (a finding/resolved row after the last
@@ -543,7 +545,28 @@ def _host_coverage(host: dict[str, Any]) -> str:
     if summary is None:
         return "unknown"
     gaps = summary["not_evaluated"] > 0 or bool(summary["not_evaluated_checks"])
-    return "partial" if gaps else "complete"
+    if gaps:
+        return "partial"
+    return "unknown" if _finding_count_mismatch(host) else "complete"
+
+
+def _finding_count_mismatch(host: dict[str, Any]) -> dict[str, dict[str, int]] | None:
+    """Compare the upstream summary to the rows it serialized for this host.
+
+    The pinned HostBadger JSONL writer counts current findings, excluding
+    resolved rows, both in total and by severity. A missing row must not
+    turn its positive summary into a clean, complete finding list.
+    """
+    summary = host["summary"]
+    if summary is None:
+        return None
+    observed = {"findings": len(host["findings"])}
+    for severity in SEVERITIES:
+        observed[severity.lower()] = sum(
+            row["severity"] == severity for row in host["findings"]
+        )
+    declared = {key: summary[key] for key in observed}
+    return {"declared": declared, "observed": observed} if observed != declared else None
 
 
 def _overall_status(report: dict[str, Any]) -> tuple[str, str | None, list[dict[str, Any]]]:
@@ -563,7 +586,7 @@ def _overall_status(report: dict[str, Any]) -> tuple[str, str | None, list[dict[
     evidence: list[dict[str, Any]] = []
     overflow = 0
     gaps = False
-    missing = False
+    count_mismatch = False
     for host in _sorted_hosts(report):
         host_status = _host_coverage(host)
         if host_status == "complete":
@@ -579,11 +602,21 @@ def _overall_status(report: dict[str, Any]) -> tuple[str, str | None, list[dict[
                 "not_evaluated": summary["not_evaluated"],
                 "not_evaluated_checks": list(summary["not_evaluated_checks"]),
             }
+            mismatch = _finding_count_mismatch(host)
+            if mismatch:
+                entry["finding_counts"] = mismatch
+        elif host["summary"] is not None:
+            count_mismatch = True
+            entry = {
+                "kind": "summary_count_mismatch",
+                "host": host["host"],
+                "run_id": host["run_id"],
+                "finding_counts": _finding_count_mismatch(host),
+            }
         else:
             # A missing summary is only a proven gap when the export shows
             # no truncation signal; under truncation the host's tail may
             # simply never have been written.
-            missing = not truncated
             entry = {
                 "kind": "missing_host_summary",
                 "host": host["host"],
@@ -622,6 +655,8 @@ def _overall_status(report: dict[str, Any]) -> tuple[str, str | None, list[dict[
             "export appears truncated mid-file; completeness cannot be proven",
             evidence,
         )
+    if count_mismatch:
+        return "unknown", "summary finding counts do not match report rows", evidence
     return "partial", "hosts with rows carry no host_summary row", evidence
 
 

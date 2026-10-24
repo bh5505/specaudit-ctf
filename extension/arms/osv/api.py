@@ -53,6 +53,7 @@ from .policy import (
 )
 
 Transport = Callable[[urllib.request.Request, float], Any]
+_EVENT_KEYS = frozenset({"introduced", "fixed", "last_affected", "limit"})
 
 
 class _RedirectRefused(Exception):
@@ -409,7 +410,41 @@ def _shape_problem(parsed: Any) -> str | None:
             if not isinstance(item.get("id"), str) or not item["id"]:
                 return "vulns record is missing its id"
             if not isinstance(item.get("modified"), str) or not item["modified"]:
-                return f"vulns record {item['id']} is missing modified"
+                return "vulns record is missing modified"
+            if "aliases" in item and (
+                not isinstance(item["aliases"], list)
+                or any(not isinstance(alias, str) for alias in item["aliases"])
+            ):
+                return "vulns record has malformed aliases"
+            if "affected" in item:
+                if not isinstance(item["affected"], list):
+                    return "vulns record has malformed affected entries"
+                for affected in item["affected"]:
+                    if not isinstance(affected, dict):
+                        return "vulns record has malformed affected entries"
+                    if "versions" in affected and (
+                        not isinstance(affected["versions"], list)
+                        or any(not isinstance(version, str) for version in affected["versions"])
+                    ):
+                        return "vulns record has malformed versions"
+                    if "ranges" not in affected:
+                        continue
+                    if not isinstance(affected["ranges"], list):
+                        return "vulns record has malformed ranges"
+                    for entry in affected["ranges"]:
+                        if not isinstance(entry, dict):
+                            return "vulns record has malformed ranges"
+                        events = entry.get("events")
+                        if not isinstance(events, list) or not events:
+                            return "vulns record has malformed range events"
+                        for event in events:
+                            if (
+                                not isinstance(event, dict)
+                                or len(event) != 1
+                                or set(event) - _EVENT_KEYS
+                                or not isinstance(next(iter(event.values())), str)
+                            ):
+                                return "vulns record has malformed range events"
     if "next_page_token" in parsed and not isinstance(parsed["next_page_token"], str):
         return "next_page_token is not a string"
     return None
