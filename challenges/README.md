@@ -17,6 +17,7 @@ The challenges use packaged synthetic fixtures or local lab services. Each direc
 | [Caldera listings](lab-emu-01-caldera-listings/README.md) | Emulation catalog | Configured Caldera endpoint |
 | [Metasploit listings](lab-emu-02-msf-listings/README.md) | Module catalog | Configured Metasploit endpoint |
 | [Semgrep review](lab-code-01-semgrep-review/README.md) | Static code review | Planted source |
+| [Solidity review](lab-contract-01-solidity-review/README.md) | Smart-contract access-control review | Planted source |
 
 Additional self-study exercises cover [tool-event interpretation](lab-agent-01-tool-boundary/README.md), [technique-to-detection reasoning](lab-detect-01-technique-chain/README.md), [threat-model review](lab-review-01-threat-model/README.md), and [Kubernetes RBAC paths](lab-k8s-01-rbac-path/instructor/KEY.md).
 
@@ -27,3 +28,5 @@ python -m score --grade my-findings.json --expected artifacts/expected-findings.
 ```
 
 A passing grade means the findings match the planted contract. Review the explanation and tool output as well. See the [instructor guide](../INSTRUCTOR_GUIDE.md) and [operations](../OPERATIONS.md) for setup and cleanup.
+
+The `hostbadger`, `idwolf`, and `osv` arms are bounded offline readers over operator-supplied exports or snapshots, with synthetic demo reports shipped under each arm; they are reader demonstrations, not graded challenge inventory. A complete reader result reports what the source export claimed, never that a host, tenant, or package is secure.

@@ -30,17 +30,60 @@ class ExerciseError(Exception):
     """Invalid exercise request or composition failure."""
 
 
+# An ok=false arm result degrades the run only when its output carries a
+# validated honesty status from the closed degraded set AND structured,
+# non-empty, bounded evidence. Anything else - error statuses, string or
+# missing evidence, oversized evidence - stays failed: partial data must
+# never silently read as all-clear, and transport errors never degrade.
+_DEGRADED_ARM_STATUSES = frozenset({"partial", "degraded", "unknown"})
+_MAX_ARM_EVIDENCE_ITEMS = 64
+
+
+def _evidence_is_bounded(value: Any) -> bool:
+    if isinstance(value, (str, bytes)) or not isinstance(value, (Mapping, Sequence)):
+        return False
+    return 0 < len(value) <= _MAX_ARM_EVIDENCE_ITEMS
+
+
 def _arm_status(document: Mapping[str, Any]) -> str:
     if document.get("ok") is True:
         return STATUS_COMPLETE
     output = document.get("output")
     if (
         isinstance(output, Mapping)
-        and output.get("status") in {"partial", "degraded"}
-        and output.get("evidence")
+        and output.get("status") in _DEGRADED_ARM_STATUSES
+        and _evidence_is_bounded(output.get("evidence"))
     ):
         return STATUS_DEGRADED
     return STATUS_FAILED
+
+
+def _result_projection(document: Mapping[str, Any]) -> dict[str, Any]:
+    """A small, redacted source/completeness projection of a reader result.
+
+    Only honesty fields survive: status and reason strings (already
+    redacted by the arms), an evidence item count, and the source kind
+    and digest. Raw evidence rows, identity material, and free-text
+    detail never enter an exercise report.
+    """
+    output = document.get("output")
+    if not isinstance(output, Mapping):
+        return {}
+    projection: dict[str, Any] = {}
+    for key in ("status", "reason"):
+        value = output.get(key)
+        if isinstance(value, str) and value:
+            projection[key] = value
+    evidence = output.get("evidence")
+    if _evidence_is_bounded(evidence):
+        projection["evidence_items"] = len(evidence)
+    source = output.get("source")
+    if isinstance(source, Mapping) and isinstance(source.get("kind"), str):
+        kept = {"kind": source["kind"]}
+        if isinstance(source.get("sha256"), str):
+            kept["sha256"] = source["sha256"]
+        projection["source"] = kept
+    return projection
 
 
 def run_exercise(
@@ -233,6 +276,9 @@ def run_exercise(
         row.update(status=_arm_status(outcome.document))
         if outcome.document.get("error"):
             row["reason"] = outcome.document["error"]
+        projection = _result_projection(outcome.document)
+        if projection:
+            row["result"] = projection
         arms_lane.append(row)
 
     battery_lane: list[dict[str, Any]] = []
@@ -331,7 +377,11 @@ def run_exercise(
     if grading_lane is not None:
         lanes_ok.append(grading_lane.get("passed") is True)
     arm_failures = [row for row in arms_lane if row["status"] == STATUS_FAILED]
-    lanes_ok.append(not arm_failures)
+    # Every requested arm must be COMPLETE for a complete run: a degraded
+    # reader row (partial or unknown source coverage) keeps the overall
+    # exercise from reading as all-clear.
+    arms_not_complete = [row for row in arms_lane if row["status"] != STATUS_COMPLETE]
+    lanes_ok.append(not arms_not_complete)
     battery_failed = any(row["status"] == STATUS_FAILED for row in battery_lane)
     battery_not_complete = any(
         row["status"] in (STATUS_SKIPPED, STATUS_DEGRADED) for row in battery_lane
