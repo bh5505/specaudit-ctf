@@ -27,7 +27,7 @@ Served-model discovery (server-side 400s name the account's real
 catalog): the legacy `-codex`-suffixed slugs (`gpt-5.1-codex`,
 `gpt-5.2-codex`, `gpt-5.1-codex-max`, `gpt-5.3-codex`) and bare
 `gpt-5.6` / `gpt-6` are all refused for ChatGPT accounts. Verified
-working: **`gpt-5.6-luna`**, **`gpt-6-astra`**, and — the operator
+working: **`gpt-6-luna`**, **`gpt-6.2-astra`**, and — the operator
 directive — **Daybreak Blue**: stable alias
 `gpt-daybreak-blue-latest`, model id `gpt-5.6-sol`. (Daybreak Red =
 `gpt-daybreak-red-latest` / `gpt-5.6-cyber`, per the operator's
